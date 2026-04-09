@@ -1,0 +1,174 @@
+/*******************************************************************************
+ *
+ *    Copyright (c) 2025 - 2026.
+ *    Haixing Hu, Qubit Co. Ltd.
+ *
+ *    All rights reserved.
+ *
+ ******************************************************************************/
+//! # HTTP configuration error
+//!
+//! Error type for configuration-to-options conversion failures.
+//!
+//! # Author
+//!
+//! Haixing Hu
+
+use std::fmt;
+
+use super::HttpConfigErrorKind;
+
+/// Error type for HTTP configuration conversion failures.
+///
+/// Carries the failing configuration path and a human-readable message so that
+/// callers can report exactly which key caused the problem.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HttpConfigError {
+    /// The configuration path that triggered the error, e.g. `http.proxy.port`.
+    pub path: String,
+    /// Human-readable description of the problem.
+    pub message: String,
+    /// Error category.
+    pub kind: HttpConfigErrorKind,
+}
+
+impl HttpConfigError {
+    /// Builds a configuration error with the given classification and message.
+    ///
+    /// # Parameters
+    /// - `kind`: Error category.
+    /// - `path`: Configuration key path (e.g. `http.proxy.port`).
+    /// - `message`: Human-readable explanation.
+    ///
+    /// # Returns
+    /// New [`HttpConfigError`].
+    pub fn new(
+        kind: HttpConfigErrorKind,
+        path: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            kind,
+            path: path.into(),
+            message: message.into(),
+        }
+    }
+
+    /// Shorthand for [`HttpConfigErrorKind::MissingField`].
+    ///
+    /// # Parameters
+    /// - `path`: Configuration path of the missing field.
+    /// - `message`: Explanation of what is missing.
+    ///
+    /// # Returns
+    /// New [`HttpConfigError`].
+    pub fn missing(path: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::new(HttpConfigErrorKind::MissingField, path, message)
+    }
+
+    /// Shorthand for [`HttpConfigErrorKind::TypeError`].
+    ///
+    /// # Parameters
+    /// - `path`: Configuration path where the type mismatch occurred.
+    /// - `message`: Details of the expected vs actual type.
+    ///
+    /// # Returns
+    /// New [`HttpConfigError`].
+    pub fn type_error(path: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::new(HttpConfigErrorKind::TypeError, path, message)
+    }
+
+    /// Shorthand for [`HttpConfigErrorKind::InvalidValue`].
+    ///
+    /// # Parameters
+    /// - `path`: Configuration path of the invalid value.
+    /// - `message`: Why the value is not acceptable.
+    ///
+    /// # Returns
+    /// New [`HttpConfigError`].
+    pub fn invalid_value(path: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::new(HttpConfigErrorKind::InvalidValue, path, message)
+    }
+
+    /// Shorthand for [`HttpConfigErrorKind::InvalidHeader`].
+    ///
+    /// # Parameters
+    /// - `path`: Configuration path related to the header map entry.
+    /// - `message`: Header name/value problem description.
+    ///
+    /// # Returns
+    /// New [`HttpConfigError`].
+    pub fn invalid_header(path: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::new(HttpConfigErrorKind::InvalidHeader, path, message)
+    }
+
+    /// Shorthand for [`HttpConfigErrorKind::ConfigError`] (underlying `qubit-config` failure).
+    ///
+    /// # Parameters
+    /// - `path`: Configuration path if known; may be empty when not applicable.
+    /// - `message`: Error text from the config layer.
+    ///
+    /// # Returns
+    /// New [`HttpConfigError`].
+    pub fn config_error(path: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::new(HttpConfigErrorKind::ConfigError, path, message)
+    }
+
+    /// Prepends `prefix` to [`Self::path`] (for composing subsection parsers under a logical key).
+    ///
+    /// # Parameters
+    /// - `prefix`: Segment such as `timeouts` or `proxy`; empty leaves `self` unchanged.
+    ///
+    /// # Returns
+    /// Updated error with `path` = `prefix` or `{prefix}.{path}`.
+    pub(crate) fn prepend_path_prefix(mut self, prefix: &str) -> Self {
+        if prefix.is_empty() {
+            return self;
+        }
+        self.path = if self.path.is_empty() {
+            prefix.to_string()
+        } else {
+            format!("{prefix}.{}", self.path)
+        };
+        self
+    }
+}
+
+impl fmt::Display for HttpConfigError {
+    /// Formats as `[kind] path: message`.
+    ///
+    /// # Parameters
+    /// - `f`: Destination formatter.
+    ///
+    /// # Returns
+    /// [`fmt::Result`].
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[{}] {}: {}", self.kind, self.path, self.message)
+    }
+}
+
+impl std::error::Error for HttpConfigError {}
+
+impl From<qubit_config::ConfigError> for HttpConfigError {
+    /// Converts a `qubit_config::ConfigError`, mapping typed failures to
+    /// [`HttpConfigErrorKind::TypeError`] when the source carries a property key.
+    ///
+    /// # Parameters
+    /// - `e`: Source configuration error.
+    ///
+    /// # Returns
+    /// Equivalent [`HttpConfigError`].
+    fn from(e: qubit_config::ConfigError) -> Self {
+        use qubit_config::ConfigError;
+        let msg = e.to_string();
+        match e {
+            ConfigError::TypeMismatch { key, .. }
+            | ConfigError::ConversionError { key, .. } => {
+                HttpConfigError::type_error(key, msg)
+            }
+            ConfigError::PropertyHasNoValue(key) => HttpConfigError::type_error(key, msg),
+            ConfigError::PropertyNotFound(key) => HttpConfigError::config_error(key, msg),
+            other => HttpConfigError::config_error("", other.to_string()),
+        }
+    }
+}

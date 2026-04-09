@@ -1,0 +1,40 @@
+/*******************************************************************************
+ *
+ *    Copyright (c) 2025 - 2026.
+ *    Haixing Hu, Qubit Co. Ltd.
+ *
+ *    All rights reserved.
+ *
+ ******************************************************************************/
+//! HTTP error category enum.
+
+/// Category of HTTP errors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HttpErrorKind {
+    /// URL is invalid or cannot be resolved.
+    InvalidUrl,
+    /// HTTP client construction failed.
+    BuildClient,
+    /// Proxy configuration is invalid.
+    ProxyConfig,
+    /// Connect timeout.
+    ConnectTimeout,
+    /// Read timeout.
+    ReadTimeout,
+    /// Write timeout.
+    WriteTimeout,
+    /// Transport-level request error.
+    Transport,
+    /// Non-success HTTP status.
+    Status,
+    /// Response decoding error.
+    Decode,
+    /// SSE protocol error.
+    SseProtocol,
+    /// SSE payload decoding error.
+    SseDecode,
+    /// Request was cancelled or interrupted.
+    Cancelled,
+    /// Any other error.
+    Other,
+}
