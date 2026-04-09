@@ -2,34 +2,36 @@
 
 ## 版本信息
 
-- 文档版本：`v1.1`
+- 文档版本：`v1.3`
 - 创建日期：`2026-04-08`
+- 最近同步：`2026-04-09`（与 `src/` 目录及公开类型落盘一致）
 - 目标目录：`rust-common/rust-http/doc`
 
 ## 1. 背景与目标
 
-`llmsdk-rust` 迁移清单已明确 `qubit-http` 为必须优先建设的基础设施能力。  
+`qubit-http`（crate：`rust-http`）是 **与具体业务解耦的通用 HTTP 基础设施**：为 Qubit 单仓及外部 Rust 组件提供可复用的客户端语义，不绑定某一 SDK 或单一业务线。
+
 本模块目标不是“再造 HTTP 客户端”，而是沉淀统一网络语义：
 
 1. 统一 HTTP 选项与默认值（超时、代理、日志、敏感头、IPv4-only）。
 2. 统一请求构建与 header 注入机制（含认证头）。
 3. 统一错误类型和可重试语义。
-4. 提供流式响应与 SSE 解码能力，直接服务 provider。
+4. 提供流式响应与 SSE 解码能力，供任意需要消费 SSE 的调用方复用。
 
-## 2. 基本需求分析（Checklist + Java 现状 + 当前决策）
+## 2. 基本需求分析（能力边界 + 默认值约定 + 当前决策）
 
-### 2.1 Checklist 的硬性要求
+### 2.1 能力边界（硬性要求）
 
-来自 `llmsdk/llmsdk-rust/rust-llmsdk-core/doc/java-porting-checklist.zh_CN.md`（4.1）：
+与 `doc/http_prd.zh_CN.md` 一致，本模块须满足：
 
 - 必须提供：`HttpClientOptions`、`HttpClientFactory`
 - 必须支持：默认 header 注入、代理、connect/read/write timeout、日志开关、敏感头脱敏、统一错误、流式入口
 - 技术栈约束：`reqwest` + `http` + `url` + `bytes`
-- 边界约束：不重复实现协议栈，不做 `reqwest` 全量转发层
+- 边界约束：不重复实现协议栈，不做 `reqwest` 全量转发层；本 crate **不反向依赖**具体业务 crate
 
-### 2.2 Java 现有语义（用于 Rust 对齐）
+### 2.2 默认值与行为约定
 
-从 `java-common` 的 `HttpClientConfig/DefaultHttpClientConfig/HttpClientBuilder` 抽取到的关键语义：
+以下为 **本设计采用的默认配置与行为**（在 PRD/用户文档中明示，便于各调用方预期一致）：
 
 1. 默认值：
    - `connection_timeout = 10s`
@@ -48,7 +50,7 @@
 ### 2.3 当前架构决策
 
 本轮按项目决策将 SSE 能力内聚到 `rust-http::sse` 子模块，不再单独拆 `qubit-sse`。  
-这样可减少短期模块拆分成本，并保持 provider 接入链路最短。
+这样可减少短期模块拆分成本，并保持调用方接入路径最短。
 
 ## 3. 非目标（边界冻结）
 
@@ -59,7 +61,7 @@
 ## 4. 总体架构
 
 ```text
-provider / engine
+调用方（服务 / 库）
       |
       v
   qubit-http
@@ -107,19 +109,15 @@ pub struct ProxyOptions {
 }
 ```
 
-默认值按 Java 对齐：`10/120/120` 秒、`use_proxy=false`、`use_http_logging=true`、`ipv4_only=false`。
+默认值与 §2.2 一致：`10/120/120` 秒、`use_proxy=false`、`use_http_logging=true`、`ipv4_only=false`。
 
 ### 5.2 客户端工厂
 
 ```rust
-pub trait HttpClientFactory: Send + Sync {
-    fn create(&self, options: HttpClientOptions) -> Result<HttpClient, HttpError>;
-}
-
-pub struct ReqwestHttpClientFactory;
+pub struct HttpClientFactory;
 ```
 
-- `ReqwestHttpClientFactory` 为默认实现。
+- `HttpClientFactory` 当前明确是基于 `reqwest` 的具体工厂类型。
 - 工厂负责把统一 options 映射到底层 `reqwest::ClientBuilder`。
 
 ### 5.3 请求与响应
@@ -151,38 +149,49 @@ pub trait HeaderInjector: Send + Sync {
 注入顺序：
 
 1. `options.default_headers`
-2. `HeaderInjector`（认证头、组织头、项目头等）
+2. `HeaderInjector`（认证头、租户/组织头等，由调用方实现具体策略）
 3. 请求级 headers（最后覆盖）
 
 ### 5.5 SSE 子模块（`rust-http::sse`）
 
 ```rust
-pub struct SseEvent {
-    pub event: Option<String>,
-    pub data: String,
-    pub id: Option<String>,
-    pub retry: Option<u64>,
-}
+pub struct SseEvent { /* sse/sse_event.rs */ }
 
-pub enum DoneMarkerPolicy {
+// `HttpResult<T> = Result<T, HttpError>` 见 `error/http_result.rs`
+pub type SseEventStream =
+    Pin<Box<dyn Stream<Item = Result<SseEvent, HttpError>> + Send>>;
+
+pub enum DoneMarkerPolicy { /* sse/done_marker_policy.rs */
     Disabled,
     DefaultDone,          // [DONE]
     Custom(String),
 }
 
-pub enum SseChunk<T> {
+pub enum SseChunk<T> { /* sse/sse_chunk.rs */
     Data(T),
     Done,
 }
 
-pub fn decode_events(
-    stream: HttpStreamResponse,
-) -> impl futures::Stream<Item = Result<SseEvent, HttpError>>;
+pub enum SseJsonMode { /* sse/sse_json_mode.rs */
+    Lenient,
+    Strict,
+}
 
-pub fn decode_json_chunks<T: serde::de::DeserializeOwned>(
+pub type SseChunkStream<T> =
+    Pin<Box<dyn Stream<Item = Result<SseChunk<T>, HttpError>> + Send>>;
+
+pub fn decode_events(stream: HttpStreamResponse) -> SseEventStream;
+
+pub fn decode_json_chunks<T: serde::de::DeserializeOwned + Send + 'static>(
     stream: HttpStreamResponse,
     done_policy: DoneMarkerPolicy,
-) -> impl futures::Stream<Item = Result<SseChunk<T>, HttpError>>;
+) -> SseChunkStream<T>;
+
+pub fn decode_json_chunks_with_mode<T: serde::de::DeserializeOwned + Send + 'static>(
+    stream: HttpStreamResponse,
+    done_policy: DoneMarkerPolicy,
+    mode: SseJsonMode,
+) -> SseChunkStream<T>;
 ```
 
 行为约束：
@@ -196,7 +205,7 @@ pub fn decode_json_chunks<T: serde::de::DeserializeOwned>(
 
 ### 6.1 日志开关
 
-`HttpLoggingOptions` 对齐 Java：
+`HttpLoggingOptions` 字段约定如下（与 §2.2 默认策略一致）：
 
 1. `enabled`
 2. `log_request_header`
@@ -206,7 +215,7 @@ pub fn decode_json_chunks<T: serde::de::DeserializeOwned>(
 
 ### 6.2 敏感头脱敏
 
-1. 内置 Java 同款默认敏感头集合。
+1. 内置常见敏感头默认集合（如 `Authorization`、`Api-Key`、`Cookie` 等，可配置扩展）。
 2. header 名称大小写不敏感匹配。
 3. 掩码策略：长度 `<=4` 返回 `****`，否则 `前2 + **** + 后2`。
 
@@ -221,7 +230,7 @@ pub fn decode_json_chunks<T: serde::de::DeserializeOwned>(
 ### 7.1 统一错误类型
 
 ```rust
-pub enum HttpErrorKind {
+pub enum HttpErrorKind { /* error/http_error_kind.rs */
     InvalidUrl,
     BuildClient,
     ProxyConfig,
@@ -234,16 +243,27 @@ pub enum HttpErrorKind {
     SseProtocol,
     SseDecode,
     Cancelled,
+    Other,
 }
 
-pub struct HttpError {
+// `source` 字段类型为 `qubit_common::BoxError`（与 `Box<dyn std::error::Error + Send + Sync>` 等价）
+
+pub struct HttpError { /* error/http_error.rs */
     pub kind: HttpErrorKind,
     pub method: Option<http::Method>,
     pub url: Option<url::Url>,
     pub status: Option<http::StatusCode>,
     pub message: String,
-    pub source: Option<Box<dyn std::error::Error + Send + Sync>>,
+    pub source: Option<BoxError>,
 }
+```
+
+配置转换错误（`config` feature）与运行时 `HttpError` 分层：
+
+```rust
+pub enum HttpConfigErrorKind { /* http_config_error_kind.rs */ }
+
+pub struct HttpConfigError { /* http_config_error.rs */ }
 ```
 
 ### 7.2 Retry 衔接点（面向 `qubit-retry`）
@@ -292,32 +312,69 @@ impl HttpError { pub fn retry_hint(&self) -> RetryHint { ... } }
 1. M1：字段与校验先落地（API 稳定）。
 2. M2：通过可插拔 DNS resolver 实现“仅解析/使用 IPv4”。
 
-## 9. 目录与模块落盘建议
+## 9. 目录与模块落盘（与当前 `src/` 一致）
+
+约定：**公开类型**尽量 **一类型一文件**（蛇形文件名与类型名对应）；`mod.rs` 仅做聚合与再导出；实现细节（如仅含函数的解码步骤）可保留在独立模块中。
 
 ```text
 rust-common/rust-http/
   ├─ src/
   │   ├─ lib.rs
-  │   ├─ options.rs
-  │   ├─ factory.rs
-  │   ├─ client.rs
-  │   ├─ request.rs
-  │   ├─ response.rs
-  │   ├─ stream.rs
-  │   ├─ error.rs
+  │   ├─ http_client.rs
+  │   ├─ constants.rs
   │   ├─ retry_hint.rs
+  │   ├─ http_config_error_kind.rs
+  │   ├─ http_config_error.rs
+  │   ├─ config_impl.rs              # feature `config`：from_config / validate 实现
+  │   ├─ error/
+  │   │   ├─ mod.rs
+  │   │   ├─ http_error_kind.rs
+  │   │   ├─ http_error.rs
+  │   │   └─ http_result.rs
+  │   ├─ factory/
+  │   │   ├─ mod.rs
+  │   │   ├─ http_client_factory.rs
+  │   │   └─ reqwest_http_client_factory.rs
+  │   ├─ options/
+  │   │   ├─ mod.rs
+  │   │   ├─ http_client_options.rs
+  │   │   ├─ timeout_options.rs
+  │   │   ├─ proxy_options.rs
+  │   │   ├─ proxy_type.rs
+  │   │   ├─ logging_options.rs
+  │   │   └─ sensitive_headers.rs
+  │   ├─ request/
+  │   │   ├─ mod.rs
+  │   │   ├─ http_request.rs
+  │   │   ├─ http_request_builder.rs
+  │   │   ├─ http_request_body.rs
+  │   │   └─ header_injector.rs
+  │   ├─ response/
+  │   │   ├─ mod.rs
+  │   │   └─ http_response.rs
+  │   ├─ stream/
+  │   │   ├─ mod.rs
+  │   │   ├─ http_byte_stream.rs
+  │   │   └─ http_stream_response.rs
   │   ├─ logging/
   │   │   ├─ mod.rs
   │   │   ├─ policy.rs
   │   │   └─ masker.rs
   │   └─ sse/
-  │       ├─ mod.rs
+  │       ├─ mod.rs                  # decode_events
   │       ├─ line_decoder.rs
   │       ├─ frame_decoder.rs
-  │       ├─ json_decoder.rs
-  │       └─ done_marker.rs
+  │       ├─ done_marker_policy.rs
+  │       ├─ sse_event.rs
+  │       ├─ sse_event_stream.rs
+  │       ├─ sse_chunk.rs
+  │       ├─ sse_json_mode.rs
+  │       ├─ sse_chunk_stream.rs
+  │       └─ json_decoder.rs         # decode_json_chunks / decode_json_chunks_with_mode
   └─ doc/
-      └─ http_design.zh_CN.md
+      ├─ http_design.zh_CN.md
+      ├─ http_v0.2.0_design.zh_CN.md
+      └─ http_prd.zh_CN.md
 ```
 
 ## 10. 分阶段落地计划（可直接执行）
@@ -353,7 +410,7 @@ rust-common/rust-http/
 2. 增加与 `qubit-retry` 的样例适配。
 3. 补全集成测试矩阵。
 
-验收：功能覆盖 Java 关键语义，具备 provider 复用能力。
+验收：默认值、超时、日志与 SSE 行为与本文 §2.2 / PRD 可追溯一致，具备跨业务复用能力。
 
 ## 11. 测试策略
 
@@ -367,16 +424,16 @@ rust-common/rust-http/
    - `execute_stream` 在坏块/断流下的错误语义稳定性；
    - `decode_json_chunks` 在异常 chunk 下不中断整流。
 
-## 12. Checklist 对照（4.1 + 本轮扩展）
+## 12. 能力清单对照（PRD + 本轮扩展）
 
 1. 定义客户端选项结构：`HttpClientOptions` + 子配置对象。
-2. 定义客户端工厂 trait / 默认实现：`HttpClientFactory` + `ReqwestHttpClientFactory`。
+2. 定义基于 `reqwest` 的客户端工厂：`HttpClientFactory`。
 3. 定义 header 注入和脱敏策略：`HeaderInjector` + `SensitiveHeaders`。
 4. 定义统一 timeout 和 proxy 配置：`TimeoutOptions` + `ProxyOptions`。
 5. 定义统一 HTTP error 类型：`HttpError/HttpErrorKind`。
 6. 预留与 `qubit-retry` 衔接点：`RetryHint` + `HttpError::retry_hint()`。
-7. 在 `rust-http::sse` 内提供 SSE 解码能力：`SseEvent/DoneMarker/JsonChunkDecoder`。
+7. 在 `rust-http::sse` 内提供 SSE 解码能力：`SseEvent`、`DoneMarkerPolicy`、`SseChunk`/`SseJsonMode`、行/帧解码与 `decode_json_chunks` 系列函数。
 
 ---
 
-该方案满足 checklist 的核心目标，并按当前决策将 SSE 内聚到 `rust-http`，避免 provider 侧重复实现流式解析逻辑。
+该方案满足 PRD 与 §2.1 能力边界，并按当前决策将 SSE 内聚到 `rust-http`，避免各调用方重复实现流式解析与日志脱敏等横切逻辑。
