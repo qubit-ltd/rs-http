@@ -33,12 +33,16 @@ mod timeout_options_tests;
 
 #[path = "factory/reqwest_http_client_factory_tests.rs"]
 mod reqwest_http_client_factory_tests;
+#[path = "factory/ipv4_only_tests.rs"]
+mod ipv4_only_tests;
 
 #[path = "error/http_error_tests.rs"]
 mod http_error_tests;
 
 #[path = "logging/masker_tests.rs"]
 mod masker_tests;
+#[path = "logging/logging_policy_tests.rs"]
+mod logging_policy_tests;
 
 #[path = "request/http_request_builder_tests.rs"]
 mod http_request_builder_tests;
@@ -52,6 +56,22 @@ mod sse_mod_tests;
 
 #[path = "http_client/http_client_tests.rs"]
 mod http_client_tests;
+#[path = "http_client/http_client_timeout_tests.rs"]
+mod http_client_timeout_tests;
+#[path = "http_client/http_client_behavior_tests.rs"]
+mod http_client_behavior_tests;
+#[path = "http_client/http_response_tests.rs"]
+mod http_response_tests;
+#[path = "http_client/http_client_cancel_tests.rs"]
+mod http_client_cancel_tests;
+
+#[path = "proxy/proxy_tests.rs"]
+mod proxy_tests;
+#[path = "proxy/socks5_proxy_tests.rs"]
+mod socks5_proxy_tests;
 
 #[path = "retry_hint/retry_hint_tests.rs"]
 mod retry_hint_tests;
+
+#[path = "sse/sse_integration_tests.rs"]
+mod sse_integration_tests;

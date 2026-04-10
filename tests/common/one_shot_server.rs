@@ -142,9 +142,17 @@ pub async fn spawn_one_shot_server(plan: ResponsePlan) -> OneShotServer {
             .expect("failed to read request in one-shot test server");
         let _ = request_tx.send(request);
 
-        write_response(&mut stream, plan)
-            .await
-            .expect("failed to write response in one-shot test server");
+        if let Err(error) = write_response(&mut stream, plan).await {
+            // Timeout tests intentionally allow client-side early disconnects.
+            if !matches!(
+                error.kind(),
+                std::io::ErrorKind::BrokenPipe
+                    | std::io::ErrorKind::ConnectionReset
+                    | std::io::ErrorKind::NotConnected
+            ) {
+                panic!("failed to write response in one-shot test server: {error}");
+            }
+        }
     });
 
     OneShotServer {
