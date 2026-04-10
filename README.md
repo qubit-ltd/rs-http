@@ -56,10 +56,12 @@ Design docs:
 
 ```toml
 [dependencies]
-qubit-http = "0.1.0"
+qubit-http = "0.2.0"
 ```
 
-## Quick Start
+## Usage Scenarios
+
+### 1) Basic request (JSON response)
 
 ```rust
 use http::Method;
@@ -82,7 +84,158 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-## Streaming + SSE Example
+### 2) Build request with query/header/body
+
+```rust
+use http::Method;
+use qubit_http::{HttpClientFactory, HttpClientOptions};
+use url::Url;
+
+#[derive(serde::Serialize)]
+struct CreateMessageRequest {
+    role: String,
+    content: String,
+}
+
+async fn create_message() -> qubit_http::HttpResult<()> {
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(Url::parse("https://api.example.com").unwrap());
+    let client = HttpClientFactory::new().create(options)?;
+
+    let body = CreateMessageRequest {
+        role: "user".to_string(),
+        content: "hello".to_string(),
+    };
+
+    let request = client
+        .request(Method::POST, "/v1/messages")
+        .query_param("stream", "false")
+        .header("x-request-id", "req-123")?
+        .json_body(&body)?
+        .build();
+
+    let response = client.execute(request).await?;
+    println!("status={}", response.status);
+    Ok(())
+}
+```
+
+### 3) Header injector (auth / tenant headers)
+
+```rust
+use std::sync::Arc;
+
+use http::{HeaderMap, HeaderValue};
+use qubit_http::{HeaderInjector, HttpClientFactory, HttpClientOptions, HttpResult};
+
+#[derive(Debug)]
+struct AuthInjector {
+    token: String,
+}
+
+impl HeaderInjector for AuthInjector {
+    fn inject(&self, headers: &mut HeaderMap) -> HttpResult<()> {
+        let value = HeaderValue::from_str(&format!("Bearer {}", self.token))
+            .map_err(|e| qubit_http::HttpError::other(format!("invalid auth header: {e}")))?;
+        headers.insert(http::header::AUTHORIZATION, value);
+        headers.insert("x-tenant-id", HeaderValue::from_static("tenant-a"));
+        Ok(())
+    }
+}
+
+fn build_client_with_injector() -> qubit_http::HttpResult<qubit_http::HttpClient> {
+    let client = HttpClientFactory::new().create(HttpClientOptions::default())?;
+    client.add_header_injector(Arc::new(AuthInjector {
+        token: "secret-token".to_string(),
+    }));
+    Ok(client)
+}
+```
+
+### 4) Timeouts (global + per-request override)
+
+```rust
+use std::time::Duration;
+
+use http::Method;
+use qubit_http::{HttpClientFactory, HttpClientOptions};
+
+async fn request_with_timeouts() -> qubit_http::HttpResult<()> {
+    let mut options = HttpClientOptions::default();
+    options.timeouts.connect_timeout = Duration::from_secs(3);
+    options.timeouts.read_timeout = Duration::from_secs(30);
+    options.timeouts.write_timeout = Duration::from_secs(15);
+    options.timeouts.request_timeout = Some(Duration::from_secs(60));
+
+    let client = HttpClientFactory::new().create(options)?;
+
+    // Per-request timeout overrides client default request_timeout.
+    let request = client
+        .request(Method::GET, "https://example.com/slow")
+        .timeout(Duration::from_secs(5))
+        .build();
+    let _ = client.execute(request).await?;
+    Ok(())
+}
+```
+
+### 5) Proxy (HTTP / HTTPS / SOCKS5)
+
+```rust
+use qubit_http::{HttpClientFactory, HttpClientOptions, ProxyType};
+
+fn build_client_with_proxy() -> qubit_http::HttpResult<qubit_http::HttpClient> {
+    let mut options = HttpClientOptions::default();
+    options.proxy.enabled = true;
+    options.proxy.proxy_type = ProxyType::Socks5; // or ProxyType::Http / ProxyType::Https
+    options.proxy.host = Some("127.0.0.1".to_string());
+    options.proxy.port = Some(1080);
+    options.proxy.username = Some("user".to_string());
+    options.proxy.password = Some("pass".to_string());
+
+    HttpClientFactory::new().create(options)
+}
+```
+
+### 6) Create client from config
+
+```rust
+use std::time::Duration;
+
+use qubit_config::Config;
+use qubit_http::HttpClientFactory;
+
+fn build_client_from_config() -> Result<qubit_http::HttpClient, qubit_http::HttpConfigError> {
+    let mut config = Config::new();
+    config.set("http.base_url", "https://api.example.com".to_string()).unwrap();
+    config.set("http.timeouts.connect_timeout", Duration::from_secs(3)).unwrap();
+    config.set("http.proxy.enabled", false).unwrap();
+    config.set("http.logging.enabled", true).unwrap();
+
+    HttpClientFactory::new().create_from_config(&config, "http")
+}
+```
+
+### 7) Raw streaming bytes
+
+```rust
+use futures_util::StreamExt;
+use http::Method;
+
+async fn consume_raw_stream(client: &qubit_http::HttpClient) -> qubit_http::HttpResult<()> {
+    let request = client.request(Method::GET, "/v1/stream-bytes").build();
+    let response = client.execute_stream(request).await?;
+
+    let mut stream = response.into_stream();
+    while let Some(item) = stream.next().await {
+        let bytes = item?;
+        println!("chunk size = {}", bytes.len());
+    }
+    Ok(())
+}
+```
+
+### 8) Streaming + SSE JSON chunks (lenient mode)
 
 ```rust
 use futures_util::StreamExt;
@@ -116,13 +269,55 @@ async fn run_stream(client: &qubit_http::HttpClient) -> qubit_http::HttpResult<(
 }
 ```
 
-## Retry Hint Integration
+### 9) SSE strict mode (fail fast on malformed JSON)
 
 ```rust
-use qubit_http::RetryHint;
+use futures_util::StreamExt;
+use qubit_http::sse::{decode_json_chunks_with_mode, DoneMarkerPolicy, SseJsonMode};
 
-fn should_retry(error: &qubit_http::HttpError) -> bool {
-    matches!(error.retry_hint(), RetryHint::Retryable)
+#[derive(Debug, serde::Deserialize)]
+struct Chunk {
+    token: String,
+}
+
+async fn strict_sse(client: &qubit_http::HttpClient) -> qubit_http::HttpResult<()> {
+    let response = client
+        .execute_stream(client.request(http::Method::GET, "/v1/stream").build())
+        .await?;
+
+    let mut stream = decode_json_chunks_with_mode::<Chunk>(
+        response,
+        DoneMarkerPolicy::DefaultDone,
+        SseJsonMode::Strict,
+    );
+
+    while let Some(item) = stream.next().await {
+        let _ = item?; // malformed JSON returns HttpErrorKind::SseDecode
+    }
+    Ok(())
+}
+```
+
+### 10) Error classification + retry hint
+
+```rust
+use qubit_http::{HttpErrorKind, RetryHint};
+
+fn handle_http_error(error: &qubit_http::HttpError) {
+    match error.kind {
+        HttpErrorKind::Status if error.status.is_some() => {
+            eprintln!("status error: {:?}", error.status);
+        }
+        HttpErrorKind::ReadTimeout | HttpErrorKind::WriteTimeout | HttpErrorKind::ConnectTimeout => {
+            eprintln!("timeout: {}", error);
+        }
+        _ => {
+            eprintln!("http error: {}", error);
+        }
+    }
+
+    let should_retry = matches!(error.retry_hint(), RetryHint::Retryable);
+    eprintln!("retryable={should_retry}");
 }
 ```
 
@@ -149,8 +344,10 @@ Tests are under [`tests/`](tests) and cover:
 - header masking behavior
 - request builder validation and body encoding
 - factory/proxy validation
+- proxy integration paths (`http` / `https CONNECT` / `socks5`)
 - client execute and execute_stream paths
 - status mapping and timeout behavior
+- logging policy behavior (toggle/masking/binary/truncation)
 - SSE event/frame/JSON decoding behavior
 
 ## Current Limitations
