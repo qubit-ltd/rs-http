@@ -1,4 +1,12 @@
 #!/bin/bash
+################################################################################
+#
+#    Copyright (c) 2026.
+#    Haixing Hu, Qubit Co. Ltd.
+#
+#    All rights reserved.
+#
+################################################################################
 #
 # Code coverage testing script
 # Uses cargo-llvm-cov to generate code coverage reports

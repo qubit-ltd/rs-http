@@ -1,4 +1,12 @@
 #!/bin/bash
+################################################################################
+#
+#    Copyright (c) 2026.
+#    Haixing Hu, Qubit Co. Ltd.
+#
+#    All rights reserved.
+#
+################################################################################
 #
 # Local CI check script
 # Run this script before committing code to ensure it passes all CircleCI checks
