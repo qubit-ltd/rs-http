@@ -100,10 +100,15 @@ impl HttpLoggingOptions {
 }
 ```
 
-也可以额外提供：
+同时保留工厂入口：
 
 ```rust
 impl HttpClientFactory {
+    pub fn create(&self) -> Result<HttpClient, HttpError>;
+    pub fn create_with_options(
+        &self,
+        options: HttpClientOptions,
+    ) -> Result<HttpClient, HttpError>;
     pub fn create_from_config(
         &self,
         config: &qubit_config::Config,

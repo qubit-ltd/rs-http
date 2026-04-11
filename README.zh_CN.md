@@ -15,6 +15,9 @@
   - `base_url`、`default_headers`、timeouts、proxy、logging、sensitive headers、`ipv4_only`
 - 工厂封装：
   - `HttpClientFactory`（基于 reqwest）
+  - `HttpClientFactory::create()` 使用默认选项创建客户端
+  - `HttpClientFactory::create_with_options(...)` 使用显式选项创建客户端
+  - `HttpClientFactory::create_from_config(...)` 从配置创建客户端
 - 高频客户端 API：
   - `request(...)`、`execute(...)`、`execute_stream(...)`
 - Header 便捷方法：
@@ -118,7 +121,7 @@ async fn create_message() -> qubit_http::HttpResult<()> {
 
 ```rust
 use http::HeaderValue;
-use qubit_http::{HeaderInjector, HttpClientFactory, HttpClientOptions, HttpResult};
+use qubit_http::{HeaderInjector, HttpClientFactory};
 
 fn build_client_with_injector() -> qubit_http::HttpResult<qubit_http::HttpClient> {
     let token = "secret-token".to_string();

@@ -83,7 +83,7 @@
 - 需求描述：提供 `HttpClientFactory`，统一构造基于 `reqwest` 的 `HttpClient`。
 - 优先级：`P0`
 - 验收标准：
-  1. 可通过工厂构建客户端并执行请求。
+  1. 可通过工厂使用默认选项或显式 `HttpClientOptions` 构建客户端并执行请求。
   2. 工厂错误统一转为 `HttpError`。
 
 ### PRD-HTTP-003：请求构建与执行
@@ -249,7 +249,7 @@
 | PRD 需求ID | 对齐设计章节 | 对齐说明 |
 | --- | --- | --- |
 | PRD-HTTP-001 | 5.1 | `HttpClientOptions` 结构与默认值 |
-| PRD-HTTP-002 | 5.2 | `HttpClientFactory` 与默认实现 |
+| PRD-HTTP-002 | 5.2 | `HttpClientFactory`、`create()` 与 `create_with_options(...)` |
 | PRD-HTTP-003 | 5.3 | `request/execute/execute_stream` |
 | PRD-HTTP-004 | 5.4 | Header 注入机制与顺序 |
 | PRD-HTTP-005 | 5.1, 8.1 | 代理字段与 `reqwest` 映射 |

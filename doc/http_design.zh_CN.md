@@ -115,10 +115,24 @@ pub struct ProxyOptions {
 
 ```rust
 pub struct HttpClientFactory;
+
+impl HttpClientFactory {
+    pub fn create(&self) -> Result<HttpClient, HttpError>;
+    pub fn create_with_options(
+        &self,
+        options: HttpClientOptions,
+    ) -> Result<HttpClient, HttpError>;
+    pub fn create_from_config(
+        &self,
+        config: &qubit_config::Config,
+        prefix: &str,
+    ) -> Result<HttpClient, HttpConfigError>;
+}
 ```
 
 - `HttpClientFactory` 当前明确是基于 `reqwest` 的具体工厂类型。
 - 工厂负责把统一 options 映射到底层 `reqwest::ClientBuilder`。
+- `create()` 等价于使用 `HttpClientOptions::default()` 调用 `create_with_options(...)`。
 
 ### 5.3 请求与响应
 

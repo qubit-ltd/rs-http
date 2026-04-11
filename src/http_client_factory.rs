@@ -98,7 +98,8 @@ impl HttpClientFactory {
         Ok(HttpClient::new(client, options))
     }
 
-    /// Loads [`HttpClientOptions`] from `config`, validates them, then calls [`HttpClientFactory::create_with_options`].
+    /// Loads [`HttpClientOptions`] from `config`, validates them, then calls
+    /// [`HttpClientFactory::create_with_options`].
     ///
     /// # Parameters
     /// - `config`: Application configuration.

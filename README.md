@@ -15,6 +15,9 @@ A general-purpose Rust HTTP infrastructure crate with unified client semantics, 
   - `base_url`, `default_headers`, timeouts, proxy, logging, sensitive headers, `ipv4_only`
 - Factory abstraction:
   - `HttpClientFactory` (reqwest-backed)
+  - `HttpClientFactory::create()` for default options
+  - `HttpClientFactory::create_with_options(...)` for explicit options
+  - `HttpClientFactory::create_from_config(...)` for config-backed creation
 - High-frequency client API:
   - `request(...)`, `execute(...)`, `execute_stream(...)`
 - Header convenience methods:
@@ -118,7 +121,7 @@ async fn create_message() -> qubit_http::HttpResult<()> {
 
 ```rust
 use http::HeaderValue;
-use qubit_http::{HeaderInjector, HttpClientFactory, HttpClientOptions, HttpResult};
+use qubit_http::{HeaderInjector, HttpClientFactory};
 
 fn build_client_with_injector() -> qubit_http::HttpResult<qubit_http::HttpClient> {
     let token = "secret-token".to_string();
