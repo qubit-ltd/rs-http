@@ -50,7 +50,7 @@ for crate_dir in "$WORKSPACE_ROOT"/rust-*/; do
 done
 
 # Exclude: cargo registry, rustup, and other workspace crates.
-# Do not use "/(crate)/" alone: paths like ".../rust-common/rust-http/src/..." contain
+# Do not use "/(crate)/" alone: paths like ".../rust-common/rs-http/src/..." contain
 # the workspace folder name "rust-common", which matches sibling "rust-common" and zeroes coverage.
 if command -v python3 >/dev/null 2>&1; then
     ESCAPED_WORKSPACE=$(python3 -c 'import re,sys; print(re.escape(sys.argv[1]))' "$WORKSPACE_ROOT")
