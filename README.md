@@ -1,25 +1,13 @@
 # Qubit HTTP (`rust-http`)
 
-[![CircleCI](https://circleci.com/gh/qubit-ltd/rust-http.svg?style=shield)](https://circleci.com/gh/qubit-ltd/rust-http)
-[![Coverage Status](https://coveralls.io/repos/github/qubit-ltd/rust-http/badge.svg?branch=main)](https://coveralls.io/github/qubit-ltd/rust-http?branch=main)
+[![CircleCI](https://circleci.com/gh/qubit-ltd/rs-http.svg?style=shield)](https://circleci.com/gh/qubit-ltd/rs-http)
+[![Coverage Status](https://coveralls.io/repos/github/qubit-ltd/rs-http/badge.svg?branch=main)](https://coveralls.io/github/qubit-ltd/rs-http?branch=main)
 [![Crates.io](https://img.shields.io/crates/v/qubit-http.svg?color=blue)](https://crates.io/crates/qubit-http)
 [![Rust](https://img.shields.io/badge/rust-1.70+-blue.svg?logo=rust)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![中文文档](https://img.shields.io/badge/文档-中文版-blue.svg)](README.zh_CN.md)
 
 A general-purpose Rust HTTP infrastructure crate with unified client semantics, secure logging, and built-in SSE decoding.
-
-## Status
-
-`qubit-http` is implemented and test-covered.
-
-- Implemented: client options, factory, request/response/stream APIs, logging + masking, error model + retry hint, SSE decoding.
-- Pending (enhancement): transport-level IPv4-only resolver enforcement.
-
-Design docs:
-
-- PRD: [`doc/http_prd.zh_CN.md`](doc/http_prd.zh_CN.md)
-- Design: [`doc/http_design.zh_CN.md`](doc/http_design.zh_CN.md)
 
 ## Features
 
@@ -29,6 +17,9 @@ Design docs:
   - `HttpClientFactory` (reqwest-backed)
 - High-frequency client API:
   - `request(...)`, `execute(...)`, `execute_stream(...)`
+- Header convenience methods:
+  - `HttpClientOptions::add_header(s)` for pre-create defaults
+  - `HttpClient::add_header(s)` for post-create defaults
 - Header injection pipeline:
   - `default headers -> injectors -> request headers (override last)`
 - Timeout semantics:
@@ -66,14 +57,14 @@ qubit-http = "0.2.0"
 ```rust
 use http::Method;
 use qubit_http::{HttpClientFactory, HttpClientOptions};
-use url::Url;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut options = HttpClientOptions::default();
-    options.base_url = Some(Url::parse("https://example.com")?);
+    options.set_base_url("https://example.com")?;
+    options.add_header("x-client-id", "demo")?;
 
-    let client = HttpClientFactory::new().create(options)?;
+    let client = HttpClientFactory::new().create_with_options(options)?;
 
     let request = client.request(Method::GET, "/health").build();
     let response = client.execute(request).await?;
@@ -89,7 +80,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```rust
 use http::Method;
 use qubit_http::{HttpClientFactory, HttpClientOptions};
-use url::Url;
 
 #[derive(serde::Serialize)]
 struct CreateMessageRequest {
@@ -99,8 +89,12 @@ struct CreateMessageRequest {
 
 async fn create_message() -> qubit_http::HttpResult<()> {
     let mut options = HttpClientOptions::default();
-    options.base_url = Some(Url::parse("https://api.example.com").unwrap());
-    let client = HttpClientFactory::new().create(options)?;
+    options.set_base_url("https://api.example.com")?;
+    options.add_headers([
+        ("x-client-id", "demo"),
+        ("x-env", "test"),
+    ])?;
+    let client = HttpClientFactory::new().create_with_options(options)?;
 
     let body = CreateMessageRequest {
         role: "user".to_string(),
@@ -123,30 +117,18 @@ async fn create_message() -> qubit_http::HttpResult<()> {
 ### 3) Header injector (auth / tenant headers)
 
 ```rust
-use std::sync::Arc;
-
-use http::{HeaderMap, HeaderValue};
+use http::HeaderValue;
 use qubit_http::{HeaderInjector, HttpClientFactory, HttpClientOptions, HttpResult};
 
-#[derive(Debug)]
-struct AuthInjector {
-    token: String,
-}
-
-impl HeaderInjector for AuthInjector {
-    fn inject(&self, headers: &mut HeaderMap) -> HttpResult<()> {
-        let value = HeaderValue::from_str(&format!("Bearer {}", self.token))
+fn build_client_with_injector() -> qubit_http::HttpResult<qubit_http::HttpClient> {
+    let token = "secret-token".to_string();
+    let mut client = HttpClientFactory::new().create()?;
+    client.add_header_injector(HeaderInjector::new(move |headers| {
+        let value = HeaderValue::from_str(&format!("Bearer {}", token))
             .map_err(|e| qubit_http::HttpError::other(format!("invalid auth header: {e}")))?;
         headers.insert(http::header::AUTHORIZATION, value);
         headers.insert("x-tenant-id", HeaderValue::from_static("tenant-a"));
         Ok(())
-    }
-}
-
-fn build_client_with_injector() -> qubit_http::HttpResult<qubit_http::HttpClient> {
-    let client = HttpClientFactory::new().create(HttpClientOptions::default())?;
-    client.add_header_injector(Arc::new(AuthInjector {
-        token: "secret-token".to_string(),
     }));
     Ok(client)
 }
@@ -167,7 +149,7 @@ async fn request_with_timeouts() -> qubit_http::HttpResult<()> {
     options.timeouts.write_timeout = Duration::from_secs(15);
     options.timeouts.request_timeout = Some(Duration::from_secs(60));
 
-    let client = HttpClientFactory::new().create(options)?;
+    let client = HttpClientFactory::new().create_with_options(options)?;
 
     // Per-request timeout overrides client default request_timeout.
     let request = client
@@ -193,7 +175,7 @@ fn build_client_with_proxy() -> qubit_http::HttpResult<qubit_http::HttpClient> {
     options.proxy.username = Some("user".to_string());
     options.proxy.password = Some("pass".to_string());
 
-    HttpClientFactory::new().create(options)
+    HttpClientFactory::new().create_with_options(options)
 }
 ```
 

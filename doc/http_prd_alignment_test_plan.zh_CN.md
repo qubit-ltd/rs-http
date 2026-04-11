@@ -5,7 +5,7 @@
 - 文档名称：`rust-http` 需求对齐评估与测试方案
 - 文档版本：`v1.0`
 - 创建日期：`2026-04-10`
-- 评估对象：`rust-common/rust-http`
+- 评估对象：`rust-common/rs-http`
 - 评估基线：
   - 需求文档：`doc/http_prd.zh_CN.md`
   - 设计文档：`doc/http_design.zh_CN.md`

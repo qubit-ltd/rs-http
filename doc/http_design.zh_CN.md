@@ -5,7 +5,7 @@
 - 文档版本：`v1.3`
 - 创建日期：`2026-04-08`
 - 最近同步：`2026-04-09`（与 `src/` 目录及公开类型落盘一致）
-- 目标目录：`rust-common/rust-http/doc`
+- 目标目录：`rust-common/rs-http/doc`
 
 ## 1. 背景与目标
 
@@ -49,7 +49,7 @@
 
 ### 2.3 当前架构决策
 
-本轮按项目决策将 SSE 能力内聚到 `rust-http::sse` 子模块，不再单独拆 `qubit-sse`。  
+本轮按项目决策将 SSE 能力内聚到 `rust-http::sse` 子模块，不再单独拆 `qubit-sse`。
 这样可减少短期模块拆分成本，并保持调用方接入路径最短。
 
 ## 3. 非目标（边界冻结）
@@ -141,15 +141,14 @@ impl HttpClient {
 ### 5.4 Header 注入机制
 
 ```rust
-pub trait HeaderInjector: Send + Sync {
-    fn inject(&self, headers: &mut http::HeaderMap) -> Result<(), HttpError>;
-}
+pub type HeaderInjector =
+    ArcMutatingFunction<http::HeaderMap, Result<(), HttpError>>;
 ```
 
 注入顺序：
 
 1. `options.default_headers`
-2. `HeaderInjector`（认证头、租户/组织头等，由调用方实现具体策略）
+2. `HeaderInjector`（认证头、租户/组织头等，由调用方通过闭包定义策略）
 3. 请求级 headers（最后覆盖）
 
 ### 5.5 SSE 子模块（`rust-http::sse`）
@@ -317,7 +316,7 @@ impl HttpError { pub fn retry_hint(&self) -> RetryHint { ... } }
 约定：**公开类型**尽量 **一类型一文件**（蛇形文件名与类型名对应）；`mod.rs` 仅做聚合与再导出；实现细节（如仅含函数的解码步骤）可保留在独立模块中。
 
 ```text
-rust-common/rust-http/
+rust-common/rs-http/
   ├─ src/
   │   ├─ lib.rs
   │   ├─ http_client.rs
