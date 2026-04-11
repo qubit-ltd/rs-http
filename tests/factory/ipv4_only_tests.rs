@@ -19,7 +19,9 @@ use crate::common::{spawn_one_shot_server, ResponsePlan};
 fn test_ipv4_only_option_is_preserved_in_client_options() {
     let mut options = HttpClientOptions::default();
     options.ipv4_only = true;
-    let client = HttpClientFactory::new().create_with_options(options).unwrap();
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
     assert!(client.options().ipv4_only);
 }
 
@@ -43,7 +45,9 @@ async fn test_ipv4_only_with_localhost_request_is_accessible() {
     options.timeouts.write_timeout = Duration::from_secs(2);
     options.timeouts.read_timeout = Duration::from_secs(2);
 
-    let client = HttpClientFactory::new().create_with_options(options).unwrap();
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
     let request = client.request(Method::GET, "/ipv4-check").build();
     let response = timeout(Duration::from_secs(3), client.execute(request))
         .await

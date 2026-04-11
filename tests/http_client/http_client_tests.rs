@@ -95,7 +95,9 @@ async fn test_execute_maps_non_success_status_to_http_error() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
 
-    let client = HttpClientFactory::new().create_with_options(options).unwrap();
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
     let request = client.request(Method::GET, "/health").build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -120,9 +122,7 @@ async fn test_execute_maps_non_success_status_to_http_error() {
 
 #[tokio::test]
 async fn test_execute_relative_path_without_base_url_returns_invalid_url() {
-    let client = HttpClientFactory::new()
-        .create()
-        .unwrap();
+    let client = HttpClientFactory::new().create().unwrap();
     let request = client.request(Method::GET, "/relative/path").build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -146,7 +146,9 @@ async fn test_execute_write_timeout() {
     options.timeouts.write_timeout = Duration::from_millis(80);
     options.timeouts.read_timeout = Duration::from_secs(1);
 
-    let client = HttpClientFactory::new().create_with_options(options).unwrap();
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
     let request = client.request(Method::GET, "/delayed").build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -178,7 +180,9 @@ async fn test_execute_read_timeout_on_buffered_body() {
     options.timeouts.write_timeout = Duration::from_secs(1);
     options.timeouts.read_timeout = Duration::from_millis(80);
 
-    let client = HttpClientFactory::new().create_with_options(options).unwrap();
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
     let request = client.request(Method::GET, "/slow-body").build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -215,7 +219,9 @@ async fn test_execute_stream_success_reads_all_chunks() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let client = HttpClientFactory::new().create_with_options(options).unwrap();
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
 
     let request = client.request(Method::GET, "/stream").build();
     let stream_response = timeout(Duration::from_secs(3), client.execute_stream(request))
@@ -266,7 +272,9 @@ async fn test_execute_stream_read_timeout() {
     options.timeouts.read_timeout = Duration::from_millis(80);
     options.timeouts.write_timeout = Duration::from_secs(1);
 
-    let client = HttpClientFactory::new().create_with_options(options).unwrap();
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
     let request = client.request(Method::GET, "/stream-timeout").build();
     let response = timeout(Duration::from_secs(3), client.execute_stream(request))
         .await
@@ -298,7 +306,9 @@ async fn test_execute_with_text_body_and_request_timeout() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let client = HttpClientFactory::new().create_with_options(options).unwrap();
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
 
     let request = client
         .request(Method::POST, "/text")
@@ -335,7 +345,9 @@ async fn test_execute_with_bytes_body() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let client = HttpClientFactory::new().create_with_options(options).unwrap();
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
 
     let request = client
         .request(Method::PUT, "/bytes")
@@ -371,7 +383,9 @@ async fn test_execute_stream_post_json_body_with_query_and_timeout() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let client = HttpClientFactory::new().create_with_options(options).unwrap();
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
 
     let request = client
         .request(Method::POST, "/stream-post")
@@ -423,7 +437,9 @@ async fn test_execute_stream_with_text_body() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let client = HttpClientFactory::new().create_with_options(options).unwrap();
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
 
     let request = client
         .request(Method::POST, "/stream-text")
@@ -474,7 +490,9 @@ async fn test_execute_stream_with_bytes_body() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let client = HttpClientFactory::new().create_with_options(options).unwrap();
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
 
     let request = client
         .request(Method::PUT, "/stream-bytes")
@@ -514,7 +532,9 @@ async fn test_execute_stream_maps_non_success_status_to_http_error() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let client = HttpClientFactory::new().create_with_options(options).unwrap();
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
     let request = client.request(Method::GET, "/stream-status").build();
 
     let error = timeout(Duration::from_secs(3), client.execute_stream(request))
@@ -545,7 +565,9 @@ async fn test_execute_maps_truncated_response_body_to_decode_error() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let client = HttpClientFactory::new().create_with_options(options).unwrap();
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
     let request = client.request(Method::GET, "/truncated-body").build();
 
     let error = timeout(Duration::from_secs(3), client.execute(request))

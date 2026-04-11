@@ -15,13 +15,32 @@ use qubit_http::{
 };
 
 #[test]
-fn test_factory_create_with_default_options() {
+fn test_factory_create_uses_default_options() {
     let factory = HttpClientFactory::new();
-    let options = HttpClientOptions::default();
+    let client = factory
+        .create()
+        .expect("default options should create client");
+
+    assert!(!client.options().ipv4_only);
+    assert!(!client.options().proxy.enabled);
+    assert_eq!(
+        client.options().timeouts.request_timeout,
+        HttpClientOptions::default().timeouts.request_timeout
+    );
+}
+
+#[test]
+fn test_factory_create_with_options_preserves_options() {
+    let factory = HttpClientFactory::new();
+    let mut options = HttpClientOptions::default();
+    options.timeouts.request_timeout = Some(Duration::from_secs(2));
     let client = factory
         .create_with_options(options)
-        .expect("default options should create client");
-    assert!(!client.options().ipv4_only);
+        .expect("explicit options should create client");
+    assert_eq!(
+        client.options().timeouts.request_timeout,
+        Some(Duration::from_secs(2))
+    );
 }
 
 #[test]
@@ -155,7 +174,7 @@ fn test_factory_create_from_config_full() {
 }
 
 #[test]
-fn test_factory_create_rejects_zero_proxy_port() {
+fn test_factory_create_with_options_rejects_zero_proxy_port() {
     let mut options = HttpClientOptions::default();
     options.proxy.enabled = true;
     options.proxy.proxy_type = ProxyType::Http;
@@ -171,7 +190,7 @@ fn test_factory_create_rejects_zero_proxy_port() {
 }
 
 #[test]
-fn test_factory_create_accepts_proxy_without_auth_and_request_timeout() {
+fn test_factory_create_with_options_accepts_proxy_without_auth_and_request_timeout() {
     let mut options = HttpClientOptions::default();
     options.timeouts.request_timeout = Some(Duration::from_secs(2));
     options.proxy.enabled = true;
@@ -190,7 +209,7 @@ fn test_factory_create_accepts_proxy_without_auth_and_request_timeout() {
 }
 
 #[test]
-fn test_factory_create_rejects_invalid_proxy_url() {
+fn test_factory_create_with_options_rejects_invalid_proxy_url() {
     let mut options = HttpClientOptions::default();
     options.proxy.enabled = true;
     options.proxy.proxy_type = ProxyType::Http;

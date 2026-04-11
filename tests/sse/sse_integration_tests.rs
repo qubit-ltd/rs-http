@@ -99,7 +99,9 @@ async fn test_execute_stream_with_decode_events_end_to_end() {
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.write_timeout = Duration::from_secs(2);
-    let client = HttpClientFactory::new().create_with_options(options).unwrap();
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
 
     let request = client.request(Method::GET, "/sse").build();
     let stream_response = timeout(Duration::from_secs(3), client.execute_stream(request))
@@ -143,7 +145,9 @@ async fn test_execute_stream_decode_events_reports_read_timeout_when_interrupted
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_millis(80);
     options.timeouts.write_timeout = Duration::from_secs(1);
-    let client = HttpClientFactory::new().create_with_options(options).unwrap();
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
 
     let request = client.request(Method::GET, "/sse-timeout").build();
     let stream_response = client.execute_stream(request).await.unwrap();

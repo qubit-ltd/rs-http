@@ -38,7 +38,9 @@ async fn test_http_proxy_forwards_request_and_sends_proxy_auth() {
     options.timeouts.write_timeout = Duration::from_secs(2);
     options.timeouts.read_timeout = Duration::from_secs(2);
 
-    let client = HttpClientFactory::new().create_with_options(options).unwrap();
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
     let request = client.request(Method::GET, "/via-proxy").build();
     let response = timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -118,7 +120,9 @@ async fn test_https_via_http_proxy_uses_connect_tunnel() {
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.request_timeout = Some(Duration::from_secs(2));
 
-    let client = HttpClientFactory::new().create_with_options(options).unwrap();
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
     let request = client
         .request(Method::GET, "https://example.com/through-proxy")
         .build();

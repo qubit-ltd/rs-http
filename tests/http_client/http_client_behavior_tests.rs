@@ -41,7 +41,9 @@ async fn test_absolute_url_request_bypasses_base_url_join() {
     let mut options = HttpClientOptions::default();
     // Deliberately points to a non-existing host; absolute URL should bypass this.
     options.base_url = Some(url::Url::parse("http://127.0.0.1:1/").unwrap());
-    let client = HttpClientFactory::new().create_with_options(options).unwrap();
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
 
     let request = client
         .request(Method::GET, format!("{}absolute", target_server.base_url()))
@@ -90,7 +92,9 @@ async fn test_header_injector_order_is_stable_and_clear_works() {
     .await;
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server1.base_url());
-    let mut client = HttpClientFactory::new().create_with_options(options).unwrap();
+    let mut client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
     client.add_header_injector(HeaderInjector::new(|headers: &mut HeaderMap| {
         headers.insert(
             HeaderName::from_static("x-seq"),
@@ -146,7 +150,9 @@ async fn test_failing_header_injector_short_circuits_request() {
     .await;
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let mut client = HttpClientFactory::new().create_with_options(options).unwrap();
+    let mut client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
     client.add_header_injector(HeaderInjector::new(|_headers: &mut HeaderMap| {
         Err(HttpError::other("inject failed"))
     }));
@@ -167,7 +173,9 @@ async fn test_add_header_applies_client_default_header() {
     .await;
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let mut client = HttpClientFactory::new().create_with_options(options).unwrap();
+    let mut client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
     client.add_header("x-client", "default").unwrap();
 
     let request = client.request(Method::GET, "/default-header").build();
@@ -189,7 +197,9 @@ async fn test_add_headers_is_atomic_and_request_header_still_overrides() {
     .await;
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let mut client = HttpClientFactory::new().create_with_options(options).unwrap();
+    let mut client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
     client
         .add_headers([
             ("x-batch-a", "value-a"),
@@ -229,7 +239,9 @@ async fn test_add_headers_invalid_batch_does_not_partially_apply() {
     .await;
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let mut client = HttpClientFactory::new().create_with_options(options).unwrap();
+    let mut client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
 
     let error = client
         .add_headers([("x-valid", "kept-out"), ("bad header", "boom")])
@@ -253,7 +265,9 @@ async fn test_add_header_invalid_value_does_not_apply() {
     .await;
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let mut client = HttpClientFactory::new().create_with_options(options).unwrap();
+    let mut client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
 
     let error = client.add_header("x-bad", "line1\nline2").unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::Other);
@@ -275,7 +289,9 @@ async fn test_add_header_injector_still_overrides_client_default_header() {
     .await;
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let mut client = HttpClientFactory::new().create_with_options(options).unwrap();
+    let mut client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
     client.add_header("x-order", "client").unwrap();
     client.add_header_injector(HeaderInjector::new(|headers: &mut HeaderMap| {
         headers.insert(
@@ -309,9 +325,7 @@ async fn test_clone_default_headers_are_independent_after_creation() {
     })
     .await;
 
-    let mut client = HttpClientFactory::new()
-        .create()
-        .unwrap();
+    let mut client = HttpClientFactory::new().create().unwrap();
     client.add_header("x-shared", "base").unwrap();
 
     let mut cloned = client.clone();
