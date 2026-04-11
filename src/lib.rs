@@ -6,6 +6,10 @@
  *    All rights reserved.
  *
  ******************************************************************************/
+#![allow(clippy::result_large_err)]
+// Keep `HttpError` rich (method/url/status/source) for diagnostics and retry decisions
+// across the crate's public APIs.
+
 //! # Qubit HTTP
 //!
 //! A general-purpose HTTP infrastructure module for Rust services.

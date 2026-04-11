@@ -9,17 +9,13 @@
 //! Header injector abstraction for outgoing requests.
 
 use http::HeaderMap;
+use qubit_function::ArcMutatingFunction;
 
 use crate::HttpResult;
 
-/// Hook for adding or mutating headers on every outgoing request (e.g. auth tokens).
-pub trait HeaderInjector: Send + Sync {
-    /// Merges injector-specific headers into the map before per-request headers are applied.
-    ///
-    /// # Parameters
-    /// - `headers`: Map to mutate (already contains default client headers).
-    ///
-    /// # Returns
-    /// `Ok(())` or [`crate::HttpError`] if injection fails (e.g. invalid value).
-    fn inject(&self, headers: &mut HeaderMap) -> HttpResult<()>;
-}
+/// Header injector function used to mutate outgoing request headers.
+///
+/// This alias keeps the HTTP-domain name while directly reusing
+/// [`ArcMutatingFunction`], so callers can construct injectors with
+/// `HeaderInjector::new(...)`.
+pub type HeaderInjector = ArcMutatingFunction<HeaderMap, HttpResult<()>>;

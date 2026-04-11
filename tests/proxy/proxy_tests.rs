@@ -13,7 +13,9 @@ use http::Method;
 use qubit_http::{HttpClientFactory, HttpClientOptions, HttpErrorKind, ProxyType};
 use tokio::time::timeout;
 
-use crate::common::{spawn_one_shot_server, spawn_simple_proxy_server, ProxyBehavior, ResponsePlan};
+use crate::common::{
+    spawn_one_shot_server, spawn_simple_proxy_server, ProxyBehavior, ResponsePlan,
+};
 
 #[tokio::test]
 async fn test_http_proxy_forwards_request_and_sends_proxy_auth() {
@@ -36,7 +38,7 @@ async fn test_http_proxy_forwards_request_and_sends_proxy_auth() {
     options.timeouts.write_timeout = Duration::from_secs(2);
     options.timeouts.read_timeout = Duration::from_secs(2);
 
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientFactory::new().create_with_options(options).unwrap();
     let request = client.request(Method::GET, "/via-proxy").build();
     let response = timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -48,11 +50,10 @@ async fn test_http_proxy_forwards_request_and_sends_proxy_auth() {
         .await
         .expect("proxy finish timed out");
     assert_eq!(proxy_captured.method, "GET");
-    assert!(
-        proxy_captured
-            .target
-            .starts_with(&format!("http://127.0.0.1:{}/via-proxy", backend.base_url().port().unwrap()))
-    );
+    assert!(proxy_captured.target.starts_with(&format!(
+        "http://127.0.0.1:{}/via-proxy",
+        backend.base_url().port().unwrap()
+    )));
     assert_eq!(
         proxy_captured.headers.get("proxy-authorization"),
         Some(&"Basic dXNlcjpwYXNz".to_string())
@@ -86,7 +87,7 @@ async fn test_proxy_disabled_does_not_use_environment_proxy() {
     options.timeouts.read_timeout = Duration::from_secs(2);
 
     let result = HttpClientFactory::new()
-        .create(options)
+        .create_with_options(options)
         .unwrap()
         .execute(qubit_http::HttpRequestBuilder::new(Method::GET, "/direct").build())
         .await;
@@ -117,7 +118,7 @@ async fn test_https_via_http_proxy_uses_connect_tunnel() {
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.request_timeout = Some(Duration::from_secs(2));
 
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientFactory::new().create_with_options(options).unwrap();
     let request = client
         .request(Method::GET, "https://example.com/through-proxy")
         .build();

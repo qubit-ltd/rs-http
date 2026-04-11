@@ -912,6 +912,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "paste"
+version = "1.0.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
+
+[[package]]
 name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -962,9 +968,9 @@ dependencies = [
 
 [[package]]
 name = "qubit-common"
-version = "0.5.0"
+version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "efea996b3247d6c4a428ddc47fdc32485dd74024db0d19ff15d4d938be3bd09b"
+checksum = "8f85f9e2729c599959f67672c3251988128a010c3e0be339ad52225650cf18d6"
 dependencies = [
  "bigdecimal",
  "chrono",
@@ -979,7 +985,7 @@ dependencies = [
 
 [[package]]
 name = "qubit-config"
-version = "0.8.0"
+version = "0.8.2"
 dependencies = [
  "bigdecimal",
  "chrono",
@@ -998,6 +1004,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "qubit-function"
+version = "0.7.3"
+dependencies = [
+ "parking_lot",
+ "paste",
+]
+
+[[package]]
 name = "qubit-http"
 version = "0.2.0"
 dependencies = [
@@ -1007,6 +1021,7 @@ dependencies = [
  "http",
  "qubit-common",
  "qubit-config",
+ "qubit-function",
  "reqwest",
  "serde",
  "serde_json",
@@ -1019,9 +1034,9 @@ dependencies = [
 
 [[package]]
 name = "qubit-value"
-version = "0.3.1"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c18ebaad8d67b4a3eeee5fa1b246e6de96a4dc37c9c276f5c6395cc88c6ea4b9"
+checksum = "77adf775f1bdac68654b1de4df2d4894e3ccab87e1a00e21d1cb8ac343e69d29"
 dependencies = [
  "bigdecimal",
  "chrono",

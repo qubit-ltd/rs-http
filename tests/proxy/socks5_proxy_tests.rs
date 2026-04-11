@@ -36,7 +36,10 @@ impl SocksServer {
     }
 
     async fn finish(self) -> (String, u16) {
-        let target = self.target_rx.await.expect("failed to receive socks target");
+        let target = self
+            .target_rx
+            .await
+            .expect("failed to receive socks target");
         self.join_handle.await.expect("socks server task panicked");
         target
     }
@@ -46,7 +49,9 @@ async fn spawn_socks5_server() -> SocksServer {
     let listener = TcpListener::bind("127.0.0.1:0")
         .await
         .expect("failed to bind socks5 server");
-    let addr = listener.local_addr().expect("failed to query socks5 address");
+    let addr = listener
+        .local_addr()
+        .expect("failed to query socks5 address");
     let (target_tx, target_rx) = oneshot::channel::<(String, u16)>();
 
     let join_handle = tokio::spawn(async move {
@@ -209,7 +214,7 @@ async fn test_socks5_proxy_forwards_http_request() {
     options.timeouts.read_timeout = Duration::from_secs(3);
     options.timeouts.request_timeout = Some(Duration::from_secs(3));
 
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientFactory::new().create_with_options(options).unwrap();
     let request = client.request(Method::GET, "/socks").build();
     let response = timeout(Duration::from_secs(5), client.execute(request))
         .await

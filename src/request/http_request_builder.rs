@@ -12,13 +12,14 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use http::header::CONTENT_TYPE;
-use http::{HeaderMap, HeaderName, HeaderValue, Method};
+use http::{HeaderMap, HeaderValue, Method};
 use serde::Serialize;
 
 use crate::{HttpError, HttpResult};
 
 use super::http_request::HttpRequest;
 use super::http_request_body::HttpRequestBody;
+use super::parse_header;
 
 /// Builder for [`HttpRequest`](super::http_request::HttpRequest).
 #[derive(Debug, Clone)]
@@ -99,20 +100,7 @@ impl HttpRequestBuilder {
     /// # Returns
     /// `Ok(self)` or [`HttpError`] if name/value are invalid.
     pub fn header(mut self, name: impl AsRef<str>, value: impl AsRef<str>) -> HttpResult<Self> {
-        let header_name = HeaderName::from_bytes(name.as_ref().as_bytes()).map_err(|error| {
-            HttpError::other(format!(
-                "Invalid header name '{}': {}",
-                name.as_ref(),
-                error
-            ))
-        })?;
-        let header_value = HeaderValue::from_str(value.as_ref()).map_err(|error| {
-            HttpError::other(format!(
-                "Invalid header value for '{}': {}",
-                name.as_ref(),
-                error
-            ))
-        })?;
+        let (header_name, header_value) = parse_header(name.as_ref(), value.as_ref())?;
         self.headers.insert(header_name, header_value);
         Ok(self)
     }

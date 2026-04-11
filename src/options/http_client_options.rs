@@ -13,13 +13,14 @@ use http::HeaderMap;
 use qubit_config::{ConfigReader, ConfigResult};
 use url::Url;
 
-use super::HttpConfigError;
-
 use super::from_config_helpers::hashmap_to_headermap;
 use super::logging_options::HttpLoggingOptions;
 use super::proxy_options::ProxyOptions;
 use super::sensitive_headers::SensitiveHeaders;
 use super::timeout_options::TimeoutOptions;
+use super::HttpConfigError;
+use crate::request::parse_header;
+use crate::HttpResult;
 
 /// Aggregated settings for [`crate::HttpClient`] and [`crate::HttpClientFactory`].
 #[derive(Debug, Clone)]
@@ -77,12 +78,73 @@ impl HttpClientOptions {
         })
     }
 
+    fn parse_base_url(base_url: &str) -> Result<Url, HttpConfigError> {
+        Url::parse(base_url).map_err(|error| {
+            HttpConfigError::invalid_value("base_url", format!("Invalid URL: {error}"))
+        })
+    }
+
     /// Same as [`HttpClientOptions::default`].
     ///
     /// # Returns
     /// Fresh options with crate defaults.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Parses and sets the base URL used to resolve relative request paths.
+    ///
+    /// # Parameters
+    /// - `base_url`: Absolute base URL string.
+    ///
+    /// # Returns
+    /// `Ok(self)` or [`HttpConfigError`] if the URL is invalid.
+    pub fn set_base_url(&mut self, base_url: &str) -> Result<&mut Self, HttpConfigError> {
+        let parsed = Self::parse_base_url(base_url)?;
+        self.base_url = Some(parsed);
+        Ok(self)
+    }
+
+    /// Validates and adds one client-level default header.
+    ///
+    /// # Parameters
+    /// - `name`: Header name.
+    /// - `value`: Header value.
+    ///
+    /// # Returns
+    /// `Ok(self)` or an error if name/value are invalid.
+    pub fn add_header(
+        &mut self,
+        name: impl AsRef<str>,
+        value: impl AsRef<str>,
+    ) -> HttpResult<&mut Self> {
+        let (header_name, header_value) = parse_header(name.as_ref(), value.as_ref())?;
+        self.default_headers.insert(header_name, header_value);
+        Ok(self)
+    }
+
+    /// Validates and adds many client-level default headers atomically.
+    ///
+    /// If any input pair is invalid, no header from this batch is applied.
+    ///
+    /// # Parameters
+    /// - `headers`: Iterator of `(name, value)` pairs.
+    ///
+    /// # Returns
+    /// `Ok(self)` or an error if any pair is invalid.
+    pub fn add_headers<I, K, V>(&mut self, headers: I) -> HttpResult<&mut Self>
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: AsRef<str>,
+        V: AsRef<str>,
+    {
+        let mut parsed_headers = HeaderMap::new();
+        for (name, value) in headers {
+            let (header_name, header_value) = parse_header(name.as_ref(), value.as_ref())?;
+            parsed_headers.insert(header_name, header_value);
+        }
+        self.default_headers.extend(parsed_headers);
+        Ok(self)
     }
 
     /// Creates [`HttpClientOptions`] from `config` using **relative** keys.
@@ -99,10 +161,7 @@ impl HttpClientOptions {
         let root = Self::read_config(config).map_err(HttpConfigError::from)?;
 
         if let Some(s) = root.base_url {
-            let url = Url::parse(&s).map_err(|e| {
-                HttpConfigError::invalid_value("base_url", format!("Invalid URL: {e}"))
-            })?;
-            opts.base_url = Some(url);
+            opts.set_base_url(&s)?;
         }
 
         if let Some(v) = root.ipv4_only {

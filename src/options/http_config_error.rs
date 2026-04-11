@@ -125,8 +125,13 @@ impl HttpConfigError {
         if prefix.is_empty() {
             return self;
         }
+        let prefix_with_dot = format!("{prefix}.");
         self.path = if self.path.is_empty() {
             prefix.to_string()
+        } else if self.path == prefix || self.path.starts_with(&prefix_with_dot) {
+            self.path
+        } else if let Some(index) = self.path.find(&prefix_with_dot) {
+            self.path[index..].to_string()
         } else {
             format!("{prefix}.{}", self.path)
         };
@@ -162,8 +167,7 @@ impl From<qubit_config::ConfigError> for HttpConfigError {
         use qubit_config::ConfigError;
         let msg = e.to_string();
         match e {
-            ConfigError::TypeMismatch { key, .. }
-            | ConfigError::ConversionError { key, .. } => {
+            ConfigError::TypeMismatch { key, .. } | ConfigError::ConversionError { key, .. } => {
                 HttpConfigError::type_error(key, msg)
             }
             ConfigError::PropertyHasNoValue(key) => HttpConfigError::type_error(key, msg),

@@ -15,7 +15,7 @@ use qubit_http::{
         DEFAULT_CONNECT_TIMEOUT_SECS, DEFAULT_LOG_BODY_SIZE_LIMIT_BYTES, DEFAULT_READ_TIMEOUT_SECS,
         DEFAULT_WRITE_TIMEOUT_SECS,
     },
-    HttpClientOptions, HttpConfigErrorKind, ProxyType,
+    HttpClientOptions, HttpConfigErrorKind, HttpErrorKind, ProxyType,
 };
 
 #[test]
@@ -48,6 +48,46 @@ fn test_http_client_options_defaults() {
         DEFAULT_LOG_BODY_SIZE_LIMIT_BYTES
     );
     assert!(!options.ipv4_only);
+}
+
+#[test]
+fn test_http_client_options_new_matches_default() {
+    let options = HttpClientOptions::new();
+    let defaults = HttpClientOptions::default();
+
+    assert!(options.base_url.is_none());
+    assert_eq!(options.default_headers, defaults.default_headers);
+    assert_eq!(options.timeouts, defaults.timeouts);
+    assert_eq!(options.proxy, defaults.proxy);
+    assert_eq!(options.logging, defaults.logging);
+    assert_eq!(options.sensitive_headers, defaults.sensitive_headers);
+    assert_eq!(options.ipv4_only, defaults.ipv4_only);
+}
+
+#[test]
+fn test_http_client_options_set_base_url() {
+    let mut options = HttpClientOptions::new();
+
+    options.set_base_url("https://api.example.com/v1").unwrap();
+
+    assert_eq!(
+        options.base_url.unwrap().as_str(),
+        "https://api.example.com/v1"
+    );
+}
+
+#[test]
+fn test_http_client_options_set_base_url_invalid_url_does_not_apply() {
+    let mut options = HttpClientOptions::new();
+    options.set_base_url("https://api.example.com").unwrap();
+
+    let error = options.set_base_url("not a url").unwrap_err();
+
+    assert_eq!(error.kind, HttpConfigErrorKind::InvalidValue);
+    assert_eq!(
+        options.base_url.unwrap().as_str(),
+        "https://api.example.com/"
+    );
 }
 
 #[test]
@@ -159,6 +199,57 @@ fn test_http_client_options_invalid_header_name() {
 }
 
 #[test]
+fn test_http_client_options_invalid_header_value_from_config() {
+    let mut config = Config::new();
+    config
+        .set("http.default_headers.x-bad", "line1\nline2".to_string())
+        .unwrap();
+
+    let err = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap_err();
+
+    assert_eq!(err.kind, HttpConfigErrorKind::InvalidHeader);
+}
+
+#[test]
+fn test_http_client_options_non_string_header_value_from_config() {
+    let mut config = Config::new();
+    config.set("http.default_headers.x-number", 42_i32).unwrap();
+
+    let err = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap_err();
+
+    assert_eq!(err.kind, HttpConfigErrorKind::ConfigError);
+    assert!(err.path.contains("default_headers.x-number"));
+}
+
+#[test]
+fn test_http_client_options_add_header_and_add_headers_are_atomic() {
+    let mut opts = HttpClientOptions::new();
+    opts.add_header("x-app", "qubit").unwrap();
+    opts.add_headers([("x-env", "test"), ("x-region", "cn")])
+        .unwrap();
+
+    assert_eq!(opts.default_headers.get("x-app").unwrap(), "qubit");
+    assert_eq!(opts.default_headers.get("x-env").unwrap(), "test");
+    assert_eq!(opts.default_headers.get("x-region").unwrap(), "cn");
+
+    let error = opts
+        .add_headers([("x-keep", "value"), ("bad header", "boom")])
+        .unwrap_err();
+    assert_eq!(error.kind, HttpErrorKind::Other);
+    assert!(!opts.default_headers.contains_key("x-keep"));
+}
+
+#[test]
+fn test_http_client_options_add_header_invalid_value_does_not_apply() {
+    let mut opts = HttpClientOptions::new();
+
+    let error = opts.add_header("x-bad", "line1\nline2").unwrap_err();
+
+    assert_eq!(error.kind, HttpErrorKind::Other);
+    assert!(!opts.default_headers.contains_key("x-bad"));
+}
+
+#[test]
 fn test_http_client_options_sensitive_headers() {
     let mut config = Config::new();
     config
@@ -189,6 +280,19 @@ fn test_http_client_options_proxy_section() {
 }
 
 #[test]
+fn test_http_client_options_proxy_section_invalid_type_is_prefixed() {
+    let mut config = Config::new();
+    config
+        .set("http.proxy.proxy_type", "bad-proxy".to_string())
+        .unwrap();
+
+    let err = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap_err();
+
+    assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
+    assert_eq!(err.path, "proxy.proxy_type");
+}
+
+#[test]
 fn test_http_client_options_logging_section() {
     let mut config = Config::new();
     config.set("http.logging.enabled", false).unwrap();
@@ -199,6 +303,19 @@ fn test_http_client_options_logging_section() {
     let opts = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap();
     assert!(!opts.logging.enabled);
     assert_eq!(opts.logging.body_size_limit, 8192);
+}
+
+#[test]
+fn test_http_client_options_logging_section_type_error_is_prefixed() {
+    let mut config = Config::new();
+    config
+        .set("http.logging.enabled", "not-bool".to_string())
+        .unwrap();
+
+    let err = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap_err();
+
+    assert_eq!(err.kind, HttpConfigErrorKind::TypeError);
+    assert_eq!(err.path, "logging.enabled");
 }
 
 #[test]

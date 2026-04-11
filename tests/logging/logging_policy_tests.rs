@@ -64,7 +64,10 @@ fn test_log_request_toggles_header_and_body() {
 fn test_log_response_masks_sensitive_headers() {
     let mut headers = HeaderMap::new();
     headers.insert(SET_COOKIE, HeaderValue::from_static("session-token-value"));
-    headers.insert(AUTHORIZATION, HeaderValue::from_static("Bearer very-secret-token"));
+    headers.insert(
+        AUTHORIZATION,
+        HeaderValue::from_static("Bearer very-secret-token"),
+    );
 
     let logs = capture_trace_logs(|| {
         log_response(

@@ -25,6 +25,14 @@ impl HttpClientFactory {
         Self
     }
 
+    /// Creates a new [`HttpClient`] with default [`HttpClientOptions`].
+    ///
+    /// # Returns
+    /// [`HttpClient`] or [`HttpError`] (proxy/build failures).
+    pub fn create(&self) -> HttpResult<HttpClient> {
+        self.create_with_options(HttpClientOptions::default())
+    }
+
     /// Applies `options` to a new [`reqwest::Client::builder`], then wraps the built client.
     ///
     /// # Parameters
@@ -32,16 +40,12 @@ impl HttpClientFactory {
     ///
     /// # Returns
     /// [`HttpClient`] or [`HttpError`] (proxy/build failures).
-    pub fn create(&self, options: HttpClientOptions) -> HttpResult<HttpClient> {
+    pub fn create_with_options(&self, options: HttpClientOptions) -> HttpResult<HttpClient> {
         let mut builder = reqwest::Client::builder();
 
         builder = builder.connect_timeout(options.timeouts.connect_timeout);
         if let Some(request_timeout) = options.timeouts.request_timeout {
             builder = builder.timeout(request_timeout);
-        }
-
-        if !options.default_headers.is_empty() {
-            builder = builder.default_headers(options.default_headers.clone());
         }
 
         if options.proxy.enabled {
@@ -94,7 +98,7 @@ impl HttpClientFactory {
         Ok(HttpClient::new(client, options))
     }
 
-    /// Loads [`HttpClientOptions`] from `config`, validates them, then calls [`HttpClientFactory::create`].
+    /// Loads [`HttpClientOptions`] from `config`, validates them, then calls [`HttpClientFactory::create_with_options`].
     ///
     /// # Parameters
     /// - `config`: Application configuration.
@@ -109,12 +113,12 @@ impl HttpClientFactory {
         prefix: &str,
     ) -> Result<HttpClient, HttpConfigError> {
         let view = config.prefix_view(prefix);
-        let options = HttpClientOptions::from_config(&view)
-            .map_err(|e| prefix_config_error(prefix, e))?;
+        let options =
+            HttpClientOptions::from_config(&view).map_err(|e| prefix_config_error(prefix, e))?;
         options
             .validate()
             .map_err(|e| prefix_config_error(prefix, e))?;
-        self.create(options).map_err(|e| {
+        self.create_with_options(options).map_err(|e| {
             HttpConfigError::new(
                 crate::HttpConfigErrorKind::InvalidValue,
                 prefix,
@@ -128,8 +132,13 @@ fn prefix_config_error(prefix: &str, error: HttpConfigError) -> HttpConfigError 
     if prefix.is_empty() {
         return error;
     }
+    let prefix_with_dot = format!("{prefix}.");
     let path = if error.path.is_empty() {
         prefix.to_string()
+    } else if error.path == prefix || error.path.starts_with(&prefix_with_dot) {
+        error.path
+    } else if let Some(index) = error.path.find(&prefix_with_dot) {
+        error.path[index..].to_string()
     } else {
         format!("{prefix}.{}", error.path)
     };

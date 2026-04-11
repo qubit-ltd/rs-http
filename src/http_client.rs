@@ -14,44 +14,37 @@
 //!
 //! Haixing Hu
 
-use std::sync::{Arc, RwLock};
-
 use async_stream::stream;
 use bytes::Bytes;
 use futures_util::StreamExt;
 use http::HeaderMap;
+use qubit_function::MutatingFunction;
 use reqwest::Response;
 use url::Url;
 
 use crate::logging::{log_request, log_response, log_stream_response_headers};
 use crate::{
-    HeaderInjector, HttpError, HttpErrorKind, HttpRequest, HttpRequestBody, HttpRequestBuilder,
-    HttpResponse, HttpResult, HttpStreamResponse,
+    HeaderInjector, HttpClientOptions, HttpError, HttpErrorKind, HttpRequest, HttpRequestBody,
+    HttpRequestBuilder, HttpResponse, HttpResult, HttpStreamResponse,
 };
-
-/// Shared state for [`HttpClient`]: underlying reqwest client, options, and header injectors.
-#[derive(Clone)]
-struct Inner {
-    /// Low-level HTTP client used to send requests.
-    client: reqwest::Client,
-    /// Timeouts, proxy, logging, default headers, and related settings.
-    options: crate::HttpClientOptions,
-    /// Dynamic header injectors applied to every outgoing request after default headers.
-    injectors: Arc<RwLock<Vec<Arc<dyn HeaderInjector>>>>,
-}
 
 /// High-level HTTP client that applies options, header injection, logging, and timeouts.
 #[derive(Clone)]
 pub struct HttpClient {
-    /// Shared inner state (thread-safe via [`Arc`]).
-    inner: Arc<Inner>,
+    /// Low-level HTTP client used to send requests.
+    client: reqwest::Client,
+    /// Timeouts, proxy, logging, default headers, and related settings.
+    options: HttpClientOptions,
+    /// Header injectors applied to every outgoing request after default headers.
+    injectors: Vec<HeaderInjector>,
 }
 
 impl std::fmt::Debug for HttpClient {
-    /// Formats the client for debugging (exposes options only; omits injectors and reqwest client).
+    /// Formats the client for debugging (exposes options and injectors; omits reqwest client).
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("HttpClient")
-            .field("options", &self.inner.options)
+            .field("options", &self.options)
+            .field("injectors", &self.injectors)
             .finish_non_exhaustive()
     }
 }
@@ -64,47 +57,80 @@ impl HttpClient {
     /// - `options`: Client-wide timeouts, headers, proxy, logging, etc.
     ///
     /// # Returns
-    /// A new [`HttpClient`] sharing no injectors until [`HttpClient::add_header_injector`] is called.
-    pub(crate) fn new(client: reqwest::Client, options: crate::HttpClientOptions) -> Self {
+    /// A new [`HttpClient`] with no injectors until [`HttpClient::add_header_injector`] is called.
+    pub(crate) fn new(client: reqwest::Client, options: HttpClientOptions) -> Self {
         Self {
-            inner: Arc::new(Inner {
-                client,
-                options,
-                injectors: Arc::new(RwLock::new(Vec::new())),
-            }),
+            client,
+            options,
+            injectors: Vec::new(),
         }
     }
 
     /// Returns a reference to the client options (timeouts, proxy, logging, etc.).
     ///
     /// # Returns
-    /// Immutable borrow of [`crate::HttpClientOptions`].
-    pub fn options(&self) -> &crate::HttpClientOptions {
-        &self.inner.options
+    /// Immutable borrow of [`HttpClientOptions`].
+    pub fn options(&self) -> &HttpClientOptions {
+        &self.options
     }
 
-    /// Appends a [`HeaderInjector`] so its [`HeaderInjector::inject`] runs on every request.
+    /// Appends a [`HeaderInjector`] so its mutation function runs on every request.
     ///
     /// # Parameters
-    /// - `injector`: Shared injector to append (order is preserved).
-    pub fn add_header_injector(&self, injector: Arc<dyn HeaderInjector>) {
-        if let Ok(mut guard) = self.inner.injectors.write() {
-            guard.push(injector);
-        }
+    /// - `injector`: Injector to append (order is preserved).
+    pub fn add_header_injector(&mut self, injector: HeaderInjector) {
+        self.injectors.push(injector);
+    }
+
+    /// Validates and adds one client-level default header.
+    ///
+    /// The header is applied to every request before header injectors and
+    /// request-level headers.
+    ///
+    /// # Parameters
+    /// - `name`: Header name.
+    /// - `value`: Header value.
+    ///
+    /// # Returns
+    /// `Ok(self)` or [`HttpError`] if name/value are invalid.
+    pub fn add_header(
+        &mut self,
+        name: impl AsRef<str>,
+        value: impl AsRef<str>,
+    ) -> HttpResult<&mut Self> {
+        self.options.add_header(name, value)?;
+        Ok(self)
+    }
+
+    /// Validates and adds many client-level default headers atomically.
+    ///
+    /// If any input pair is invalid, no header from this batch is applied.
+    ///
+    /// # Parameters
+    /// - `headers`: Iterator of `(name, value)` pairs.
+    ///
+    /// # Returns
+    /// `Ok(self)` or [`HttpError`] if any pair is invalid.
+    pub fn add_headers<I, K, V>(&mut self, headers: I) -> HttpResult<&mut Self>
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: AsRef<str>,
+        V: AsRef<str>,
+    {
+        self.options.add_headers(headers)?;
+        Ok(self)
     }
 
     /// Removes all registered header injectors.
-    pub fn clear_header_injectors(&self) {
-        if let Ok(mut guard) = self.inner.injectors.write() {
-            guard.clear();
-        }
+    pub fn clear_header_injectors(&mut self) {
+        self.injectors.clear();
     }
 
     /// Starts building an [`HttpRequest`] with the given method and path (relative or absolute URL string).
     ///
     /// # Parameters
     /// - `method`: HTTP verb (GET, POST, …).
-    /// - `path`: Path relative to [`crate::HttpClientOptions::base_url`] or a full URL string.
+    /// - `path`: Path relative to [`HttpClientOptions::base_url`] or a full URL string.
     ///
     /// # Returns
     /// A fresh [`HttpRequestBuilder`] not yet tied to this client until [`HttpRequestBuilder::build`] and [`HttpClient::execute`].
@@ -136,11 +162,11 @@ impl HttpClient {
             &url,
             &headers,
             body_for_log.as_ref(),
-            &self.inner.options.logging,
-            &self.inner.options.sensitive_headers,
+            &self.options.logging,
+            &self.options.sensitive_headers,
         );
 
-        let mut builder = self.inner.client.request(method.clone(), url.clone());
+        let mut builder = self.client.request(method.clone(), url.clone());
         builder = builder.headers(headers);
 
         if !request.query.is_empty() {
@@ -189,8 +215,8 @@ impl HttpClient {
             &response_url,
             &response_headers,
             &body,
-            &self.inner.options.logging,
-            &self.inner.options.sensitive_headers,
+            &self.options.logging,
+            &self.options.sensitive_headers,
         );
 
         Ok(HttpResponse::new(
@@ -225,11 +251,11 @@ impl HttpClient {
             &url,
             &headers,
             body_for_log.as_ref(),
-            &self.inner.options.logging,
-            &self.inner.options.sensitive_headers,
+            &self.options.logging,
+            &self.options.sensitive_headers,
         );
 
-        let mut builder = self.inner.client.request(method.clone(), url.clone());
+        let mut builder = self.client.request(method.clone(), url.clone());
         builder = builder.headers(headers);
 
         if !request.query.is_empty() {
@@ -273,11 +299,11 @@ impl HttpClient {
             status,
             &response_url,
             &response_headers,
-            &self.inner.options.logging,
-            &self.inner.options.sensitive_headers,
+            &self.options.logging,
+            &self.options.sensitive_headers,
         );
 
-        let read_timeout = self.inner.options.timeouts.read_timeout;
+        let read_timeout = self.options.timeouts.read_timeout;
         let method_for_err = method.clone();
         let url_for_err = response_url.clone();
 
@@ -332,7 +358,7 @@ impl HttpClient {
             return Ok(url);
         }
 
-        let base = self.inner.options.base_url.as_ref().ok_or_else(|| {
+        let base = self.options.base_url.as_ref().ok_or_else(|| {
             HttpError::invalid_url(format!(
                 "Cannot resolve relative path '{}' without base_url",
                 request.path
@@ -355,12 +381,10 @@ impl HttpClient {
     /// # Returns
     /// Final [`HeaderMap`] or error if an injector fails.
     fn build_headers(&self, request: &HttpRequest) -> HttpResult<HeaderMap> {
-        let mut headers = self.inner.options.default_headers.clone();
+        let mut headers = self.options.default_headers.clone();
 
-        if let Ok(guard) = self.inner.injectors.read() {
-            for injector in guard.iter() {
-                injector.inject(&mut headers)?;
-            }
+        for injector in &self.injectors {
+            injector.apply(&mut headers)?;
         }
 
         headers.extend(request.headers.clone());
@@ -382,7 +406,7 @@ impl HttpClient {
         method: http::Method,
         url: Url,
     ) -> HttpResult<Response> {
-        let timeout = self.inner.options.timeouts.write_timeout;
+        let timeout = self.options.timeouts.write_timeout;
         match tokio::time::timeout(timeout, builder.send()).await {
             Ok(Ok(response)) => Ok(response),
             Ok(Err(error)) => Err(map_reqwest_error(
@@ -415,7 +439,7 @@ impl HttpClient {
         method: http::Method,
         url: Url,
     ) -> HttpResult<Bytes> {
-        let timeout = self.inner.options.timeouts.read_timeout;
+        let timeout = self.options.timeouts.read_timeout;
         match tokio::time::timeout(timeout, response.bytes()).await {
             Ok(Ok(body)) => Ok(body),
             Ok(Err(error)) => Err(map_reqwest_error(

@@ -6,6 +6,11 @@
  *    All rights reserved.
  *
  ******************************************************************************/
+#![allow(clippy::field_reassign_with_default)]
+#![allow(clippy::result_large_err)]
+// Integration tests favor readability of scenario setup; partial Default mutation and
+// direct `HttpError` assertions are intentional.
+
 //! # qubit-http integration tests
 //!
 //! Submodules mirror `src/` layout; paths are explicit so nested files are not
@@ -31,18 +36,18 @@ mod sensitive_headers_tests;
 #[path = "options/timeout_options_tests.rs"]
 mod timeout_options_tests;
 
-#[path = "factory/reqwest_http_client_factory_tests.rs"]
-mod reqwest_http_client_factory_tests;
 #[path = "factory/ipv4_only_tests.rs"]
 mod ipv4_only_tests;
+#[path = "factory/reqwest_http_client_factory_tests.rs"]
+mod reqwest_http_client_factory_tests;
 
 #[path = "error/http_error_tests.rs"]
 mod http_error_tests;
 
-#[path = "logging/masker_tests.rs"]
-mod masker_tests;
 #[path = "logging/logging_policy_tests.rs"]
 mod logging_policy_tests;
+#[path = "logging/masker_tests.rs"]
+mod masker_tests;
 
 #[path = "request/http_request_builder_tests.rs"]
 mod http_request_builder_tests;
@@ -54,16 +59,16 @@ mod json_decoder_tests;
 #[path = "sse/mod_tests.rs"]
 mod sse_mod_tests;
 
+#[path = "http_client/http_client_behavior_tests.rs"]
+mod http_client_behavior_tests;
+#[path = "http_client/http_client_cancel_tests.rs"]
+mod http_client_cancel_tests;
 #[path = "http_client/http_client_tests.rs"]
 mod http_client_tests;
 #[path = "http_client/http_client_timeout_tests.rs"]
 mod http_client_timeout_tests;
-#[path = "http_client/http_client_behavior_tests.rs"]
-mod http_client_behavior_tests;
 #[path = "http_client/http_response_tests.rs"]
 mod http_response_tests;
-#[path = "http_client/http_client_cancel_tests.rs"]
-mod http_client_cancel_tests;
 
 #[path = "proxy/proxy_tests.rs"]
 mod proxy_tests;
