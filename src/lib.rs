@@ -47,8 +47,10 @@ pub use http_client_factory::HttpClientFactory;
 pub use http_response::HttpResponse;
 pub use http_stream_response::HttpStreamResponse;
 pub use options::{
-    HttpClientOptions, HttpConfigError, HttpConfigErrorKind, HttpLoggingOptions, ProxyOptions,
-    ProxyType, SensitiveHeaders, TimeoutOptions,
+    HttpClientOptions, HttpConfigError, HttpConfigErrorKind, HttpLoggingOptions,
+    HttpRetryMethodPolicy, HttpRetryOptions, ProxyOptions, ProxyType, SensitiveHeaders,
+    TimeoutOptions,
 };
+pub use qubit_retry::{Delay, Jitter};
 pub use request::{HeaderInjector, HttpRequest, HttpRequestBody, HttpRequestBuilder};
 pub use retry_hint::RetryHint;

@@ -19,13 +19,16 @@ use bytes::Bytes;
 use futures_util::StreamExt;
 use http::HeaderMap;
 use qubit_function::MutatingFunction;
+use qubit_retry::{
+    AttemptFailure, Jitter, RetryDecision, RetryError, RetryExecutor, RetryOptions, RetryResult,
+};
 use reqwest::Response;
 use url::Url;
 
 use crate::logging::{log_request, log_response, log_stream_response_headers};
 use crate::{
     HeaderInjector, HttpClientOptions, HttpError, HttpErrorKind, HttpRequest, HttpRequestBody,
-    HttpRequestBuilder, HttpResponse, HttpResult, HttpStreamResponse,
+    HttpRequestBuilder, HttpResponse, HttpResult, HttpStreamResponse, RetryHint,
 };
 
 /// High-level HTTP client that applies options, header injection, logging, and timeouts.
@@ -147,6 +150,13 @@ impl HttpClient {
     /// - `Ok(HttpResponse)` when the HTTP status is success ([`http::StatusCode::is_success`]).
     /// - `Err(HttpError)` on URL/header errors, transport failure, timeout, or non-success status.
     pub async fn execute(&self, request: HttpRequest) -> HttpResult<HttpResponse> {
+        if !self.should_retry_request(&request) {
+            return self.execute_once(request).await;
+        }
+        self.execute_with_retry(request).await
+    }
+
+    async fn execute_once(&self, request: HttpRequest) -> HttpResult<HttpResponse> {
         let url = self.resolve_url(&request)?;
         let method = request.method.clone();
         let headers = self.build_headers(&request)?;
@@ -236,6 +246,13 @@ impl HttpClient {
     /// - `Ok(HttpStreamResponse)` with a stream that applies read timeout per options.
     /// - `Err(HttpError)` on failure before streaming starts (same cases as execute for the initial response).
     pub async fn execute_stream(&self, request: HttpRequest) -> HttpResult<HttpStreamResponse> {
+        if !self.should_retry_request(&request) {
+            return self.execute_stream_once(request).await;
+        }
+        self.execute_stream_with_retry(request).await
+    }
+
+    async fn execute_stream_once(&self, request: HttpRequest) -> HttpResult<HttpStreamResponse> {
         let url = self.resolve_url(&request)?;
         let method = request.method.clone();
         let headers = self.build_headers(&request)?;
@@ -344,6 +361,61 @@ impl HttpClient {
             response_url,
             Box::pin(wrapped),
         ))
+    }
+
+    fn should_retry_request(&self, request: &HttpRequest) -> bool {
+        self.options.retry.max_attempts > 1 && self.options.retry.allows_method(&request.method)
+    }
+
+    fn build_retry_executor(&self) -> HttpResult<RetryExecutor<HttpError>> {
+        let options = RetryOptions::new(
+            self.options.retry.max_attempts,
+            self.options.retry.max_duration,
+            self.options.retry.delay_strategy.clone(),
+            Jitter::factor(self.options.retry.jitter_factor),
+        )
+        .map_err(|error| HttpError::other(format!("Invalid HTTP retry options: {error}")))?;
+
+        RetryExecutor::<HttpError>::builder()
+            .options(options)
+            .classify_error(|error: &HttpError, _| {
+                if matches!(error.retry_hint(), RetryHint::Retryable) {
+                    RetryDecision::Retry
+                } else {
+                    RetryDecision::Abort
+                }
+            })
+            .build()
+            .map_err(|error| HttpError::other(format!("Invalid HTTP retry executor: {error}")))
+    }
+
+    async fn execute_with_retry(&self, request: HttpRequest) -> HttpResult<HttpResponse> {
+        let policy = self.build_retry_executor()?;
+        let client = self.clone();
+        let result = policy
+            .run_async(move || {
+                let client = client.clone();
+                let request = request.clone();
+                async move { client.execute_once(request).await }
+            })
+            .await;
+        map_retry_result(result)
+    }
+
+    async fn execute_stream_with_retry(
+        &self,
+        request: HttpRequest,
+    ) -> HttpResult<HttpStreamResponse> {
+        let policy = self.build_retry_executor()?;
+        let client = self.clone();
+        let result = policy
+            .run_async(move || {
+                let client = client.clone();
+                let request = request.clone();
+                async move { client.execute_stream_once(request).await }
+            })
+            .await;
+        map_retry_result(result)
     }
 
     /// Parses `request.path` as a URL or joins it to `base_url` when relative.
@@ -455,6 +527,71 @@ impl HttpClient {
             .with_method(method)
             .with_url(url)),
         }
+    }
+}
+
+fn map_retry_result<T>(result: RetryResult<T, HttpError>) -> HttpResult<T> {
+    match result {
+        Ok(value) => Ok(value),
+        Err(RetryError::Aborted { failure, .. }) => map_retry_failure(failure),
+        Err(RetryError::AttemptsExceeded {
+            attempts,
+            max_attempts,
+            last_failure: AttemptFailure::Error(mut error),
+            ..
+        }) => {
+            error.message = format!(
+                "{} (retry attempts exhausted: {attempts}/{max_attempts})",
+                error.message
+            );
+            Err(error)
+        }
+        Err(RetryError::AttemptsExceeded {
+            last_failure:
+                AttemptFailure::AttemptTimeout {
+                    elapsed, timeout, ..
+                },
+            ..
+        }) => Err(HttpError::other(format!(
+            "HTTP retry attempt timeout after {elapsed:?} (timeout: {timeout:?})"
+        ))),
+        Err(RetryError::MaxElapsedExceeded {
+            elapsed,
+            max_elapsed,
+            last_failure: Some(AttemptFailure::Error(mut error)),
+            ..
+        }) => {
+            error.message = format!(
+                "{} (retry max duration exceeded: {elapsed:?}/{max_elapsed:?})",
+                error.message
+            );
+            Err(error)
+        }
+        Err(RetryError::MaxElapsedExceeded {
+            elapsed,
+            max_elapsed,
+            last_failure: Some(AttemptFailure::AttemptTimeout { .. }),
+            ..
+        }) => Err(HttpError::other(format!(
+            "HTTP retry max duration exceeded after an attempt timeout: {elapsed:?}/{max_elapsed:?}"
+        ))),
+        Err(RetryError::MaxElapsedExceeded {
+            elapsed,
+            max_elapsed,
+            last_failure: None,
+            ..
+        }) => Err(HttpError::other(format!(
+            "HTTP retry max duration exceeded before a retryable error was captured: {elapsed:?}/{max_elapsed:?}"
+        ))),
+    }
+}
+
+fn map_retry_failure<T>(failure: AttemptFailure<HttpError>) -> HttpResult<T> {
+    match failure {
+        AttemptFailure::Error(error) => Err(error),
+        AttemptFailure::AttemptTimeout { elapsed, timeout } => Err(HttpError::other(format!(
+            "HTTP retry attempt timeout after {elapsed:?} (timeout: {timeout:?})"
+        ))),
     }
 }
 

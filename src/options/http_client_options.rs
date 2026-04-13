@@ -14,6 +14,7 @@ use qubit_config::{ConfigReader, ConfigResult};
 use url::Url;
 
 use super::from_config_helpers::hashmap_to_headermap;
+use super::http_retry_options::HttpRetryOptions;
 use super::logging_options::HttpLoggingOptions;
 use super::proxy_options::ProxyOptions;
 use super::sensitive_headers::SensitiveHeaders;
@@ -35,6 +36,8 @@ pub struct HttpClientOptions {
     pub proxy: ProxyOptions,
     /// Logging options.
     pub logging: HttpLoggingOptions,
+    /// Retry options.
+    pub retry: HttpRetryOptions,
     /// Sensitive headers for masking.
     pub sensitive_headers: SensitiveHeaders,
     /// Whether IPv4-only DNS behavior is requested.
@@ -54,6 +57,7 @@ impl Default for HttpClientOptions {
             timeouts: TimeoutOptions::default(),
             proxy: ProxyOptions::default(),
             logging: HttpLoggingOptions::default(),
+            retry: HttpRetryOptions::default(),
             sensitive_headers: SensitiveHeaders::default(),
             ipv4_only: false,
         }
@@ -186,6 +190,11 @@ impl HttpClientOptions {
                 .map_err(|e| e.prepend_path_prefix("logging"))?;
         }
 
+        if config.contains_prefix("retry") {
+            opts.retry = HttpRetryOptions::from_config(&config.prefix_view("retry"))
+                .map_err(|e| e.prepend_path_prefix("retry"))?;
+        }
+
         // default_headers – sub-key form: default_headers.<name> = <value>
         let headers_prefix = "default_headers";
         let full_headers_prefix = "default_headers.";
@@ -233,6 +242,9 @@ impl HttpClientOptions {
     pub fn validate(&self) -> Result<(), HttpConfigError> {
         self.proxy.validate()?;
         self.logging.validate()?;
+        self.retry
+            .validate()
+            .map_err(|e| e.prepend_path_prefix("retry"))?;
         Ok(())
     }
 }
