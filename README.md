@@ -30,6 +30,12 @@ A general-purpose Rust HTTP infrastructure crate with unified client semantics, 
   - `write_timeout` wraps send phase
   - `read_timeout` wraps body/chunk reads
   - optional `request_timeout` as overall reqwest timeout
+- Built-in retry:
+  - powered by `qubit-retry`
+  - disabled by default for backward compatibility
+  - retries `RetryHint::Retryable` errors (`timeout`, transport, `429`, `5xx`)
+  - default method policy retries only idempotent methods
+  - stream retry applies only before `HttpStreamResponse` is returned
 - Proxy support:
   - `http` / `https` / `socks5`
   - optional proxy auth
@@ -195,13 +201,47 @@ fn build_client_from_config() -> Result<qubit_http::HttpClient, qubit_http::Http
     config.set("http.base_url", "https://api.example.com".to_string()).unwrap();
     config.set("http.timeouts.connect_timeout", Duration::from_secs(3)).unwrap();
     config.set("http.proxy.enabled", false).unwrap();
+    config.set("http.retry.enabled", true).unwrap();
+    config.set("http.retry.max_attempts", 3_u32).unwrap();
     config.set("http.logging.enabled", true).unwrap();
 
     HttpClientFactory::new().create_from_config(&config, "http")
 }
 ```
 
-### 7) Raw streaming bytes
+### 7) Built-in retry
+
+```rust
+use std::time::Duration;
+
+use http::Method;
+use qubit_http::{
+    Delay, HttpClientFactory, HttpClientOptions, HttpRetryMethodPolicy,
+};
+
+async fn request_with_retry() -> qubit_http::HttpResult<()> {
+    let mut options = HttpClientOptions::default();
+    options.set_base_url("https://api.example.com")?;
+    options.retry.enabled = true;
+    options.retry.max_attempts = 3; // initial request + up to 2 retries
+    options.retry.delay_strategy = Delay::Exponential {
+        initial: Duration::from_millis(200),
+        max: Duration::from_secs(5),
+        multiplier: 2.0,
+    };
+
+    // Default is IdempotentOnly. Use AllMethods only when replaying the
+    // request is safe for your API.
+    options.retry.method_policy = HttpRetryMethodPolicy::IdempotentOnly;
+
+    let client = HttpClientFactory::new().create_with_options(options)?;
+    let request = client.request(Method::GET, "/v1/items").build();
+    let _ = client.execute(request).await?;
+    Ok(())
+}
+```
+
+### 8) Raw streaming bytes
 
 ```rust
 use futures_util::StreamExt;
@@ -220,7 +260,7 @@ async fn consume_raw_stream(client: &qubit_http::HttpClient) -> qubit_http::Http
 }
 ```
 
-### 8) Streaming + SSE JSON chunks (lenient mode)
+### 9) Streaming + SSE JSON chunks (lenient mode)
 
 ```rust
 use futures_util::StreamExt;
@@ -254,7 +294,7 @@ async fn run_stream(client: &qubit_http::HttpClient) -> qubit_http::HttpResult<(
 }
 ```
 
-### 9) SSE strict mode (fail fast on malformed JSON)
+### 10) SSE strict mode (fail fast on malformed JSON)
 
 ```rust
 use futures_util::StreamExt;
@@ -283,7 +323,7 @@ async fn strict_sse(client: &qubit_http::HttpClient) -> qubit_http::HttpResult<(
 }
 ```
 
-### 10) Error classification + retry hint
+### 11) Error classification + retry hint
 
 ```rust
 use qubit_http::{HttpErrorKind, RetryHint};
@@ -319,6 +359,11 @@ fn handle_http_error(error: &qubit_http::HttpError) {
 | `logging.enabled` | `true` |
 | `logging.*` header/body toggles | all `true` |
 | `logging.body_size_limit` | `16 * 1024` bytes |
+| `retry.enabled` | `false` |
+| `retry.max_attempts` | `3` |
+| `retry.delay_strategy` | exponential backoff (`200ms`, `5s`, `2.0`) |
+| `retry.jitter_factor` | `0.1` |
+| `retry.method_policy` | `IdempotentOnly` |
 | `ipv4_only` | `false` |
 
 ## Test Coverage
@@ -332,12 +377,14 @@ Tests are under [`tests/`](tests) and cover:
 - proxy integration paths (`http` / `https CONNECT` / `socks5`)
 - client execute and execute_stream paths
 - status mapping and timeout behavior
+- built-in retry behavior and method policy
 - logging policy behavior (toggle/masking/binary/truncation)
 - SSE event/frame/JSON decoding behavior
 
 ## Current Limitations
 
 - This crate intentionally does not wrap the full `reqwest` API.
+- Streaming retry only covers failures before `HttpStreamResponse` is returned; body stream errors are surfaced to the caller.
 - Non-HTTP streaming protocols (WebSocket, gRPC) are out of scope.
 - `ipv4_only` is currently a validated option flag; transport-level resolver enforcement is planned as a follow-up enhancement.
 

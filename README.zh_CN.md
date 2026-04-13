@@ -30,6 +30,12 @@
   - `write_timeout` 包装发送阶段
   - `read_timeout` 包装 body/chunk 读取阶段
   - 可选 `request_timeout` 作为 reqwest 总超时
+- 内建重试：
+  - 基于 `qubit-retry`
+  - 默认关闭，保持向后兼容
+  - 重试 `RetryHint::Retryable` 错误（timeout、transport、`429`、`5xx`）
+  - 默认只重试幂等 HTTP 方法
+  - 流式 retry 只覆盖 `HttpStreamResponse` 返回前的失败
 - 代理能力：
   - `http` / `https` / `socks5`
   - 支持代理认证
@@ -195,13 +201,46 @@ fn build_client_from_config() -> Result<qubit_http::HttpClient, qubit_http::Http
     config.set("http.base_url", "https://api.example.com".to_string()).unwrap();
     config.set("http.timeouts.connect_timeout", Duration::from_secs(3)).unwrap();
     config.set("http.proxy.enabled", false).unwrap();
+    config.set("http.retry.enabled", true).unwrap();
+    config.set("http.retry.max_attempts", 3_u32).unwrap();
     config.set("http.logging.enabled", true).unwrap();
 
     HttpClientFactory::new().create_from_config(&config, "http")
 }
 ```
 
-### 7）原始字节流消费
+### 7）内建重试
+
+```rust
+use std::time::Duration;
+
+use http::Method;
+use qubit_http::{
+    Delay, HttpClientFactory, HttpClientOptions, HttpRetryMethodPolicy,
+};
+
+async fn request_with_retry() -> qubit_http::HttpResult<()> {
+    let mut options = HttpClientOptions::default();
+    options.set_base_url("https://api.example.com")?;
+    options.retry.enabled = true;
+    options.retry.max_attempts = 3; // 初始请求 + 最多 2 次重试
+    options.retry.delay_strategy = Delay::Exponential {
+        initial: Duration::from_millis(200),
+        max: Duration::from_secs(5),
+        multiplier: 2.0,
+    };
+
+    // 默认值是 IdempotentOnly。只有当 API 可安全重放请求时，才改成 AllMethods。
+    options.retry.method_policy = HttpRetryMethodPolicy::IdempotentOnly;
+
+    let client = HttpClientFactory::new().create_with_options(options)?;
+    let request = client.request(Method::GET, "/v1/items").build();
+    let _ = client.execute(request).await?;
+    Ok(())
+}
+```
+
+### 8）原始字节流消费
 
 ```rust
 use futures_util::StreamExt;
@@ -220,7 +259,7 @@ async fn consume_raw_stream(client: &qubit_http::HttpClient) -> qubit_http::Http
 }
 ```
 
-### 8）流式 + SSE JSON chunk（宽松模式）
+### 9）流式 + SSE JSON chunk（宽松模式）
 
 ```rust
 use futures_util::StreamExt;
@@ -254,7 +293,7 @@ async fn run_stream(client: &qubit_http::HttpClient) -> qubit_http::HttpResult<(
 }
 ```
 
-### 9）SSE 严格模式（坏 JSON 立即失败）
+### 10）SSE 严格模式（坏 JSON 立即失败）
 
 ```rust
 use futures_util::StreamExt;
@@ -283,7 +322,7 @@ async fn strict_sse(client: &qubit_http::HttpClient) -> qubit_http::HttpResult<(
 }
 ```
 
-### 10）错误分类与重试衔接
+### 11）错误分类与重试衔接
 
 ```rust
 use qubit_http::{HttpErrorKind, RetryHint};
@@ -319,6 +358,11 @@ fn handle_http_error(error: &qubit_http::HttpError) {
 | `logging.enabled` | `true` |
 | `logging.*` 头体开关 | 全部 `true` |
 | `logging.body_size_limit` | `16 * 1024` 字节 |
+| `retry.enabled` | `false` |
+| `retry.max_attempts` | `3` |
+| `retry.delay_strategy` | 指数退避（`200ms`、`5s`、`2.0`） |
+| `retry.jitter_factor` | `0.1` |
+| `retry.method_policy` | `IdempotentOnly` |
 | `ipv4_only` | `false` |
 
 ## 测试覆盖
@@ -332,12 +376,14 @@ fn handle_http_error(error: &qubit_http::HttpError) {
 - 代理集成路径（`http` / `https CONNECT` / `socks5`）
 - client `execute/execute_stream` 核心路径
 - 状态码映射与超时行为
+- 内建 retry 行为与方法策略
 - logging 策略行为（开关/脱敏/二进制/截断）
 - SSE 事件分帧与 JSON 解码行为
 
 ## 当前限制
 
 - 本 crate 有意不封装 `reqwest` 全量 API。
+- 流式 retry 只覆盖 `HttpStreamResponse` 返回前的失败；body stream 中途错误会直接暴露给调用方。
 - 非 HTTP 流式协议（WebSocket、gRPC）不在范围内。
 - `ipv4_only` 当前是可配置并可校验的选项，传输层强制能力将在后续增强版本完成。
 
