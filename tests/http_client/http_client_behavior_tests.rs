@@ -45,9 +45,8 @@ async fn test_absolute_url_request_bypasses_base_url_join() {
         .create_with_options(options)
         .unwrap();
 
-    let request = client
-        .request(Method::GET, format!("{}absolute", target_server.base_url()))
-        .build();
+    let path = format!("{}absolute", target_server.base_url());
+    let request = client.request(Method::GET, path.as_str()).build();
     let response = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")
@@ -332,12 +331,10 @@ async fn test_clone_default_headers_are_independent_after_creation() {
     cloned.add_header("x-clone-only", "yes").unwrap();
     client.add_header("x-origin-only", "yes").unwrap();
 
-    let request_original = client
-        .request(Method::GET, format!("{}origin", server_original.base_url()))
-        .build();
-    let request_clone = cloned
-        .request(Method::GET, format!("{}clone", server_clone.base_url()))
-        .build();
+    let path = format!("{}origin", server_original.base_url());
+    let request_original = client.request(Method::GET, path.as_str()).build();
+    let path = format!("{}clone", server_clone.base_url());
+    let request_clone = cloned.request(Method::GET, path.as_str()).build();
 
     let _ = client.execute(request_original).await.unwrap();
     let _ = cloned.execute(request_clone).await.unwrap();

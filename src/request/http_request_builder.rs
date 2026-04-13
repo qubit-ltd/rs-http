@@ -47,10 +47,10 @@ impl HttpRequestBuilder {
     ///
     /// # Returns
     /// New [`HttpRequestBuilder`].
-    pub fn new(method: Method, path: impl AsRef<str>) -> Self {
+    pub fn new(method: Method, path: &str) -> Self {
         Self {
             method,
-            path: path.as_ref().to_string(),
+            path: path.to_string(),
             query: Vec::new(),
             headers: HeaderMap::new(),
             body: HttpRequestBody::Empty,
@@ -66,9 +66,8 @@ impl HttpRequestBuilder {
     ///
     /// # Returns
     /// `self` for chaining.
-    pub fn query_param(mut self, key: impl AsRef<str>, value: impl AsRef<str>) -> Self {
-        self.query
-            .push((key.as_ref().to_string(), value.as_ref().to_string()));
+    pub fn query_param(mut self, key: &str, value: &str) -> Self {
+        self.query.push((key.to_string(), value.to_string()));
         self
     }
 
@@ -79,11 +78,9 @@ impl HttpRequestBuilder {
     ///
     /// # Returns
     /// `self` for chaining.
-    pub fn query_params<I, K, V>(mut self, params: I) -> Self
+    pub fn query_params<'a, I>(mut self, params: I) -> Self
     where
-        I: IntoIterator<Item = (K, V)>,
-        K: AsRef<str>,
-        V: AsRef<str>,
+        I: IntoIterator<Item = (&'a str, &'a str)>,
     {
         for (key, value) in params {
             self = self.query_param(key, value);
@@ -99,8 +96,8 @@ impl HttpRequestBuilder {
     ///
     /// # Returns
     /// `Ok(self)` or [`HttpError`] if name/value are invalid.
-    pub fn header(mut self, name: impl AsRef<str>, value: impl AsRef<str>) -> HttpResult<Self> {
-        let (header_name, header_value) = parse_header(name.as_ref(), value.as_ref())?;
+    pub fn header(mut self, name: &str, value: &str) -> HttpResult<Self> {
+        let (header_name, header_value) = parse_header(name, value)?;
         self.headers.insert(header_name, header_value);
         Ok(self)
     }

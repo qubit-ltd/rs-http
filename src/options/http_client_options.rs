@@ -117,12 +117,8 @@ impl HttpClientOptions {
     ///
     /// # Returns
     /// `Ok(self)` or an error if name/value are invalid.
-    pub fn add_header(
-        &mut self,
-        name: impl AsRef<str>,
-        value: impl AsRef<str>,
-    ) -> HttpResult<&mut Self> {
-        let (header_name, header_value) = parse_header(name.as_ref(), value.as_ref())?;
+    pub fn add_header(&mut self, name: &str, value: &str) -> HttpResult<&mut Self> {
+        let (header_name, header_value) = parse_header(name, value)?;
         self.default_headers.insert(header_name, header_value);
         Ok(self)
     }
@@ -136,15 +132,13 @@ impl HttpClientOptions {
     ///
     /// # Returns
     /// `Ok(self)` or an error if any pair is invalid.
-    pub fn add_headers<I, K, V>(&mut self, headers: I) -> HttpResult<&mut Self>
+    pub fn add_headers<'a, I>(&mut self, headers: I) -> HttpResult<&mut Self>
     where
-        I: IntoIterator<Item = (K, V)>,
-        K: AsRef<str>,
-        V: AsRef<str>,
+        I: IntoIterator<Item = (&'a str, &'a str)>,
     {
         let mut parsed_headers = HeaderMap::new();
         for (name, value) in headers {
-            let (header_name, header_value) = parse_header(name.as_ref(), value.as_ref())?;
+            let (header_name, header_value) = parse_header(name, value)?;
             parsed_headers.insert(header_name, header_value);
         }
         self.default_headers.extend(parsed_headers);

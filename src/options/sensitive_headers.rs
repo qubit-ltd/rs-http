@@ -44,8 +44,8 @@ impl SensitiveHeaders {
     ///
     /// # Parameters
     /// - `header_name`: Name to mark sensitive.
-    pub fn insert(&mut self, header_name: impl AsRef<str>) {
-        let value = header_name.as_ref().trim().to_lowercase();
+    pub fn insert(&mut self, header_name: &str) {
+        let value = header_name.trim().to_lowercase();
         if !value.is_empty() {
             self.headers.insert(value);
         }
@@ -61,7 +61,7 @@ impl SensitiveHeaders {
         S: AsRef<str>,
     {
         for header in headers {
-            self.insert(header);
+            self.insert(header.as_ref());
         }
     }
 

@@ -117,11 +117,7 @@ impl HttpClient {
     ///
     /// # Errors
     /// Returns [`HttpError`] when the header name or value is invalid.
-    pub fn add_header(
-        &mut self,
-        name: impl AsRef<str>,
-        value: impl AsRef<str>,
-    ) -> HttpResult<&mut Self> {
+    pub fn add_header(&mut self, name: &str, value: &str) -> HttpResult<&mut Self> {
         self.options.add_header(name, value)?;
         Ok(self)
     }
@@ -139,11 +135,9 @@ impl HttpClient {
     /// # Errors
     /// Returns [`HttpError`] when any name/value pair is invalid (nothing from
     /// this call is applied).
-    pub fn add_headers<I, K, V>(&mut self, headers: I) -> HttpResult<&mut Self>
+    pub fn add_headers<'a, I>(&mut self, headers: I) -> HttpResult<&mut Self>
     where
-        I: IntoIterator<Item = (K, V)>,
-        K: AsRef<str>,
-        V: AsRef<str>,
+        I: IntoIterator<Item = (&'a str, &'a str)>,
     {
         self.options.add_headers(headers)?;
         Ok(self)
@@ -168,7 +162,7 @@ impl HttpClient {
     /// # Returns
     /// A fresh [`HttpRequestBuilder`] not yet tied to this client until
     /// [`HttpRequestBuilder::build`] and [`HttpClient::execute`].
-    pub fn request(&self, method: http::Method, path: impl AsRef<str>) -> HttpRequestBuilder {
+    pub fn request(&self, method: http::Method, path: &str) -> HttpRequestBuilder {
         HttpRequestBuilder::new(method, path)
     }
 
