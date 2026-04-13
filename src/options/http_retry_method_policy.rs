@@ -13,8 +13,10 @@ use super::HttpConfigError;
 
 /// HTTP method policy used to decide whether a request can be retried.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum HttpRetryMethodPolicy {
     /// Retry only HTTP methods that are safe to replay by default.
+    #[default]
     IdempotentOnly,
     /// Retry all HTTP methods, including `POST` and `PATCH`.
     AllMethods,
@@ -22,11 +24,6 @@ pub enum HttpRetryMethodPolicy {
     None,
 }
 
-impl Default for HttpRetryMethodPolicy {
-    fn default() -> Self {
-        Self::IdempotentOnly
-    }
-}
 
 impl HttpRetryMethodPolicy {
     pub(super) fn from_config_value(value: &str) -> Result<Self, HttpConfigError> {
