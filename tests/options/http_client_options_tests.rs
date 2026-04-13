@@ -303,7 +303,7 @@ fn test_http_client_options_proxy_section_invalid_type_is_prefixed() {
     let err = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap_err();
 
     assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
-    assert_eq!(err.path, "proxy.proxy_type");
+    assert_eq!(err.path, "http.proxy.proxy_type");
 }
 
 #[test]
@@ -329,7 +329,7 @@ fn test_http_client_options_logging_section_type_error_is_prefixed() {
     let err = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap_err();
 
     assert_eq!(err.kind, HttpConfigErrorKind::TypeError);
-    assert_eq!(err.path, "logging.enabled");
+    assert_eq!(err.path, "http.logging.enabled");
 }
 
 #[test]
@@ -467,7 +467,7 @@ fn test_http_client_options_retry_section_invalid_value_is_prefixed() {
     let err = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap_err();
 
     assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
-    assert_eq!(err.path, "retry.delay_strategy");
+    assert_eq!(err.path, "http.retry.delay_strategy");
 }
 
 #[test]

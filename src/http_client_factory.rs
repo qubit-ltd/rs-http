@@ -101,56 +101,37 @@ impl HttpClientFactory {
     /// # Parameters
     /// - `config`: Any [`ConfigReader`] (root [`qubit_config::Config`] or a
     ///   [`qubit_config::ConfigPrefixView`] from [`ConfigReader::prefix_view`]).
-    /// - `prefix`: Logical key prefix relative to `config`; options are read via
-    ///   [`ConfigReader::prefix_view`] (empty or dot-only values resolve to the root).
     ///
     /// # Returns
     /// - `Ok(HttpClient)` when parsing, validation, and client build succeed.
     /// - `Err(HttpConfigError)` on config or validation errors; build failures are mapped to [`HttpConfigError`].
-    pub fn create_from_config<R>(
-        &self,
-        config: &R,
-        prefix: &str,
-    ) -> Result<HttpClient, HttpConfigError>
+    pub fn create_from_config<R>(&self, config: &R) -> Result<HttpClient, HttpConfigError>
     where
         R: ConfigReader + ?Sized,
     {
-        let view = config.prefix_view(prefix);
-        let options =
-            HttpClientOptions::from_config(&view).map_err(|e| prefix_config_error(prefix, e))?;
+        let options = HttpClientOptions::from_config(config)
+            .map_err(|e| resolve_config_error(config, e))?;
         options
             .validate()
-            .map_err(|e| prefix_config_error(prefix, e))?;
+            .map_err(|e| resolve_config_error(config, e))?;
         self.create_with_options(options).map_err(|e| {
             HttpConfigError::new(
                 crate::HttpConfigErrorKind::InvalidValue,
-                prefix,
+                config.resolve_key(""),
                 e.to_string(),
             )
         })
     }
 }
 
-fn prefix_config_error(prefix: &str, error: HttpConfigError) -> HttpConfigError {
-    if prefix.is_empty() {
-        return error;
-    }
-    let prefix_with_dot = format!("{prefix}.");
-    let already_prefixed = error.path == prefix || error.path.starts_with(&prefix_with_dot);
-    let path = if already_prefixed {
-        error.path
+fn resolve_config_error<R>(config: &R, mut error: HttpConfigError) -> HttpConfigError
+where
+    R: ConfigReader + ?Sized,
+{
+    error.path = if error.path.is_empty() {
+        config.resolve_key("")
     } else {
-        error
-            .path
-            .find(&prefix_with_dot)
-            .map(|index| error.path[index..].to_string())
-            .unwrap_or_else(|| {
-                [prefix, error.path.as_str()]
-                    .into_iter()
-                    .filter(|part| !part.is_empty())
-                    .collect::<Vec<_>>()
-                    .join(".")
-            })
+        config.resolve_key(&error.path)
     };
-    HttpConfigError::new(error.kind, path, error.message)
+    error
 }

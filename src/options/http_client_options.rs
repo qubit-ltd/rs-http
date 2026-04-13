@@ -72,6 +72,18 @@ struct HttpClientRootConfigInput {
 }
 
 impl HttpClientOptions {
+    fn resolve_config_error<R>(config: &R, mut error: HttpConfigError) -> HttpConfigError
+    where
+        R: ConfigReader + ?Sized,
+    {
+        error.path = if error.path.is_empty() {
+            config.resolve_key("")
+        } else {
+            config.resolve_key(&error.path)
+        };
+        error
+    }
+
     fn read_config<R>(config: &R) -> ConfigResult<HttpClientRootConfigInput>
     where
         R: ConfigReader + ?Sized,
@@ -160,10 +172,13 @@ impl HttpClientOptions {
     {
         let mut opts = HttpClientOptions::default();
 
-        let root = Self::read_config(config).map_err(HttpConfigError::from)?;
+        let root = Self::read_config(config)
+            .map_err(HttpConfigError::from)
+            .map_err(|e| Self::resolve_config_error(config, e))?;
 
         if let Some(s) = root.base_url {
-            opts.set_base_url(&s)?;
+            opts.set_base_url(&s)
+                .map_err(|e| Self::resolve_config_error(config, e))?;
         }
 
         if let Some(v) = root.ipv4_only {
@@ -172,25 +187,29 @@ impl HttpClientOptions {
 
         // timeouts
         if config.contains_prefix("timeouts") {
-            opts.timeouts = TimeoutOptions::from_config(&config.prefix_view("timeouts"))
-                .map_err(|e| e.prepend_path_prefix("timeouts"))?;
+            let timeouts_config = config.prefix_view("timeouts");
+            opts.timeouts = TimeoutOptions::from_config(&timeouts_config)
+                .map_err(|e| Self::resolve_config_error(&timeouts_config, e))?;
         }
 
         // proxy
         if config.contains_prefix("proxy") {
-            opts.proxy = ProxyOptions::from_config(&config.prefix_view("proxy"))
-                .map_err(|e| e.prepend_path_prefix("proxy"))?;
+            let proxy_config = config.prefix_view("proxy");
+            opts.proxy = ProxyOptions::from_config(&proxy_config)
+                .map_err(|e| Self::resolve_config_error(&proxy_config, e))?;
         }
 
         // logging
         if config.contains_prefix("logging") {
-            opts.logging = HttpLoggingOptions::from_config(&config.prefix_view("logging"))
-                .map_err(|e| e.prepend_path_prefix("logging"))?;
+            let logging_config = config.prefix_view("logging");
+            opts.logging = HttpLoggingOptions::from_config(&logging_config)
+                .map_err(|e| Self::resolve_config_error(&logging_config, e))?;
         }
 
         if config.contains_prefix("retry") {
-            opts.retry = HttpRetryOptions::from_config(&config.prefix_view("retry"))
-                .map_err(|e| e.prepend_path_prefix("retry"))?;
+            let retry_config = config.prefix_view("retry");
+            opts.retry = HttpRetryOptions::from_config(&retry_config)
+                .map_err(|e| Self::resolve_config_error(&retry_config, e))?;
         }
 
         // default_headers – sub-key form: default_headers.<name> = <value>
@@ -201,19 +220,20 @@ impl HttpClientOptions {
             let header_name = &k[full_headers_prefix.len()..];
             let value = config
                 .get_string(k)
-                .map_err(|e| HttpConfigError::config_error(k, e.to_string()))?;
+                .map_err(|e| HttpConfigError::config_error(config.resolve_key(k), e.to_string()))?;
             header_map.insert(header_name.to_string(), value);
         }
         // Also support JSON map form stored at the exact key `default_headers`.
         if header_map.is_empty() {
             if let Some(json_str) = config
                 .get_optional_string(headers_prefix)
-                .map_err(HttpConfigError::from)?
+                .map_err(HttpConfigError::from)
+                .map_err(|e| Self::resolve_config_error(config, e))?
             {
                 let parsed: HashMap<String, String> =
                     serde_json::from_str(&json_str).map_err(|e| {
                         HttpConfigError::type_error(
-                            headers_prefix,
+                            config.resolve_key(headers_prefix),
                             format!("Failed to parse default_headers JSON: {e}"),
                         )
                     })?;

@@ -243,7 +243,7 @@ fn build_client_from_config() -> Result<qubit_http::HttpClient, qubit_http::Http
     config.set("http.retry.enabled", true).unwrap();
     config.set("http.retry.max_attempts", 3_u32).unwrap();
 
-    HttpClientFactory::new().create_from_config(&config, "http")
+    HttpClientFactory::new().create_from_config(&config.prefix_view("http"))
 }
 ```
 

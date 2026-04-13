@@ -9,7 +9,7 @@
 
 use std::time::Duration;
 
-use qubit_config::{Config, ConfigReader};
+use qubit_config::Config;
 use qubit_http::{
     HttpClientFactory, HttpClientOptions, HttpConfigErrorKind, HttpErrorKind, ProxyType,
 };
@@ -102,9 +102,10 @@ fn test_factory_proxy_with_auth_is_valid() {
 #[test]
 fn test_factory_create_from_config_minimal() {
     let config = Config::new();
+    let http = config.prefix_view("http");
     let factory = HttpClientFactory::new();
     let client = factory
-        .create_from_config(&config, "http")
+        .create_from_config(&http)
         .expect("minimal config should create client");
     assert!(!client.options().ipv4_only);
 }
@@ -117,29 +118,30 @@ fn test_factory_create_from_config_with_base_url() {
         .expect("test config should accept base_url");
 
     let factory = HttpClientFactory::new();
+    let http = config.prefix_view("http");
     let client = factory
-        .create_from_config(&config, "http")
+        .create_from_config(&http)
         .expect("valid config should create client");
     assert!(client.options().base_url.is_some());
 }
 
 #[test]
-fn test_factory_create_from_config_scoped_reader_with_empty_prefix() {
+fn test_factory_create_from_config_scoped_reader() {
     let mut config = Config::new();
     config
         .set("http.base_url", "https://api.example.com".to_string())
         .expect("test config should accept base_url");
 
     let factory = HttpClientFactory::new();
-    let http = ConfigReader::prefix_view(&config, "http");
+    let http = config.prefix_view("http");
     let client = factory
-        .create_from_config(&http, "")
-        .expect("prefix view as ConfigReader with empty prefix should work");
+        .create_from_config(&http)
+        .expect("prefix view as ConfigReader should work");
     assert!(client.options().base_url.is_some());
 }
 
 #[test]
-fn test_factory_create_from_config_empty_prefix_keeps_error_path() {
+fn test_factory_create_from_config_root_reader_keeps_error_path() {
     let mut config = Config::new();
     config
         .set("proxy.enabled", true)
@@ -150,8 +152,8 @@ fn test_factory_create_from_config_empty_prefix_keeps_error_path() {
 
     let factory = HttpClientFactory::new();
     let err = factory
-        .create_from_config(&config, "")
-        .expect_err("missing proxy host should fail with empty prefix");
+        .create_from_config(&config)
+        .expect_err("missing proxy host should fail for root reader");
     assert_eq!(err.kind, HttpConfigErrorKind::MissingField);
     assert_eq!(err.path, "proxy.host");
 }
@@ -164,13 +166,14 @@ fn test_factory_create_from_config_proxy_validation_error() {
         .expect("test config should set proxy.enabled");
 
     let factory = HttpClientFactory::new();
-    let err = factory.create_from_config(&config, "http").unwrap_err();
+    let http = config.prefix_view("http");
+    let err = factory.create_from_config(&http).unwrap_err();
     assert_eq!(err.kind, HttpConfigErrorKind::MissingField);
     assert_eq!(err.path, "http.proxy.host");
 }
 
 #[test]
-fn test_factory_create_from_config_empty_prefix_is_unchanged_when_type_error() {
+fn test_factory_create_from_config_root_reader_is_unchanged_when_type_error() {
     let mut config = Config::new();
     config
         .set("base_url", true)
@@ -178,7 +181,7 @@ fn test_factory_create_from_config_empty_prefix_is_unchanged_when_type_error() {
 
     let factory = HttpClientFactory::new();
     let err = factory
-        .create_from_config(&config, "")
+        .create_from_config(&config)
         .expect_err("invalid base_url type should fail");
     assert_eq!(err.kind, HttpConfigErrorKind::TypeError);
     assert_eq!(err.path, "base_url");
@@ -207,8 +210,9 @@ fn test_factory_create_from_config_full() {
         .expect("test config should set logging.body_size_limit");
 
     let factory = HttpClientFactory::new();
+    let svc = config.prefix_view("svc");
     let client = factory
-        .create_from_config(&config, "svc")
+        .create_from_config(&svc)
         .expect("full config should create client");
     assert_eq!(
         client.options().timeouts.connect_timeout,
@@ -280,7 +284,7 @@ fn test_factory_create_from_config_type_error_is_prefixed() {
         .expect("test config should set invalid type");
 
     let error = HttpClientFactory::new()
-        .create_from_config(&config, "svc")
+        .create_from_config(&config.prefix_view("svc"))
         .expect_err("type mismatch should fail");
 
     assert_eq!(error.kind, HttpConfigErrorKind::TypeError);
@@ -301,7 +305,7 @@ fn test_factory_create_from_config_maps_create_error_to_invalid_value() {
         .expect("test config should set proxy.port");
 
     let error = HttpClientFactory::new()
-        .create_from_config(&config, "svc")
+        .create_from_config(&config.prefix_view("svc"))
         .expect_err("invalid proxy URL should map to invalid value");
 
     assert_eq!(error.kind, HttpConfigErrorKind::InvalidValue);
