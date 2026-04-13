@@ -31,9 +31,9 @@ mod error;
 mod http_byte_stream;
 mod http_client;
 mod http_client_factory;
+mod http_logger;
 mod http_response;
 mod http_stream_response;
-pub mod logging;
 mod options;
 mod request;
 mod retry_hint;
@@ -44,6 +44,7 @@ pub use error::{HttpError, HttpErrorKind, HttpResult};
 pub use http_byte_stream::HttpByteStream;
 pub use http_client::HttpClient;
 pub use http_client_factory::HttpClientFactory;
+pub use http_logger::HttpLogger;
 pub use http_response::HttpResponse;
 pub use http_stream_response::HttpStreamResponse;
 pub use options::{

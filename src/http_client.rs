@@ -25,25 +25,36 @@ use qubit_retry::{
 use reqwest::Response;
 use url::Url;
 
-use crate::logging::{log_request, log_response, log_stream_response_headers};
 use crate::{
-    HeaderInjector, HttpClientOptions, HttpError, HttpErrorKind, HttpRequest, HttpRequestBody,
-    HttpRequestBuilder, HttpResponse, HttpResult, HttpStreamResponse, RetryHint,
+    HeaderInjector, HttpClientOptions, HttpError, HttpErrorKind, HttpLogger, HttpRequest,
+    HttpRequestBody, HttpRequestBuilder, HttpResponse, HttpResult, HttpStreamResponse, RetryHint,
 };
 
-/// High-level HTTP client that applies options, header injection, logging, and timeouts.
+/// High-level HTTP client that applies options, header injection, logging, and
+/// timeouts.
 #[derive(Clone)]
 pub struct HttpClient {
     /// Low-level HTTP client used to send requests.
     client: reqwest::Client,
     /// Timeouts, proxy, logging, default headers, and related settings.
     options: HttpClientOptions,
-    /// Header injectors applied to every outgoing request after default headers.
+    /// Header injectors applied to every outgoing request after default
+    /// headers.
     injectors: Vec<HeaderInjector>,
 }
 
 impl std::fmt::Debug for HttpClient {
-    /// Formats the client for debugging (exposes options and injectors; omits reqwest client).
+    /// Formats the client for debugging (exposes options and injectors; omits
+    /// the reqwest client).
+    ///
+    /// # Parameters
+    /// - `f`: Destination formatter.
+    ///
+    /// # Returns
+    /// `fmt::Result` from writing the debug struct.
+    ///
+    /// # Errors
+    /// Returns an error if formatting to `f` fails.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("HttpClient")
             .field("options", &self.options)
@@ -53,14 +64,16 @@ impl std::fmt::Debug for HttpClient {
 }
 
 impl HttpClient {
-    /// Wraps a built [`reqwest::Client`] with the given options and an empty injector list.
+    /// Wraps a built [`reqwest::Client`] with the given options and an empty
+    /// injector list.
     ///
     /// # Parameters
     /// - `client`: Configured reqwest client used for I/O.
     /// - `options`: Client-wide timeouts, headers, proxy, logging, etc.
     ///
     /// # Returns
-    /// A new [`HttpClient`] with no injectors until [`HttpClient::add_header_injector`] is called.
+    /// A new [`HttpClient`] with no injectors until
+    /// [`HttpClient::add_header_injector`] is called.
     pub(crate) fn new(client: reqwest::Client, options: HttpClientOptions) -> Self {
         Self {
             client,
@@ -69,7 +82,8 @@ impl HttpClient {
         }
     }
 
-    /// Returns a reference to the client options (timeouts, proxy, logging, etc.).
+    /// Returns a reference to the client options (timeouts, proxy, logging,
+    /// etc.).
     ///
     /// # Returns
     /// Immutable borrow of [`HttpClientOptions`].
@@ -77,10 +91,14 @@ impl HttpClient {
         &self.options
     }
 
-    /// Appends a [`HeaderInjector`] so its mutation function runs on every request.
+    /// Appends a [`HeaderInjector`] so its mutation function runs on every
+    /// request.
     ///
     /// # Parameters
     /// - `injector`: Injector to append (order is preserved).
+    ///
+    /// # Returns
+    /// Nothing.
     pub fn add_header_injector(&mut self, injector: HeaderInjector) {
         self.injectors.push(injector);
     }
@@ -95,7 +113,10 @@ impl HttpClient {
     /// - `value`: Header value.
     ///
     /// # Returns
-    /// `Ok(self)` or [`HttpError`] if name/value are invalid.
+    /// `Ok(self)` after the header is stored.
+    ///
+    /// # Errors
+    /// Returns [`HttpError`] when the header name or value is invalid.
     pub fn add_header(
         &mut self,
         name: impl AsRef<str>,
@@ -113,7 +134,11 @@ impl HttpClient {
     /// - `headers`: Iterator of `(name, value)` pairs.
     ///
     /// # Returns
-    /// `Ok(self)` or [`HttpError`] if any pair is invalid.
+    /// `Ok(self)` after all headers are stored.
+    ///
+    /// # Errors
+    /// Returns [`HttpError`] when any name/value pair is invalid (nothing from
+    /// this call is applied).
     pub fn add_headers<I, K, V>(&mut self, headers: I) -> HttpResult<&mut Self>
     where
         I: IntoIterator<Item = (K, V)>,
@@ -125,30 +150,40 @@ impl HttpClient {
     }
 
     /// Removes all registered header injectors.
+    ///
+    /// # Returns
+    /// Nothing.
     pub fn clear_header_injectors(&mut self) {
         self.injectors.clear();
     }
 
-    /// Starts building an [`HttpRequest`] with the given method and path (relative or absolute URL string).
+    /// Starts building an [`HttpRequest`] with the given method and path
+    /// (relative or absolute URL string).
     ///
     /// # Parameters
     /// - `method`: HTTP verb (GET, POST, …).
-    /// - `path`: Path relative to [`HttpClientOptions::base_url`] or a full URL string.
+    /// - `path`: Path relative to [`HttpClientOptions::base_url`] or a full URL
+    ///   string.
     ///
     /// # Returns
-    /// A fresh [`HttpRequestBuilder`] not yet tied to this client until [`HttpRequestBuilder::build`] and [`HttpClient::execute`].
+    /// A fresh [`HttpRequestBuilder`] not yet tied to this client until
+    /// [`HttpRequestBuilder::build`] and [`HttpClient::execute`].
     pub fn request(&self, method: http::Method, path: impl AsRef<str>) -> HttpRequestBuilder {
         HttpRequestBuilder::new(method, path)
     }
 
-    /// Sends the request, reads the full response body, logs per options, and returns a buffered [`HttpResponse`].
+    /// Sends the request, reads the full response body, logs per options, and
+    /// returns a buffered [`HttpResponse`].
     ///
     /// # Parameters
-    /// - `request`: Built request (URL resolved against `base_url` if path is not absolute).
+    /// - `request`: Built request (URL resolved against `base_url` if path is
+    ///   not absolute).
     ///
     /// # Returns
-    /// - `Ok(HttpResponse)` when the HTTP status is success ([`http::StatusCode::is_success`]).
-    /// - `Err(HttpError)` on URL/header errors, transport failure, timeout, or non-success status.
+    /// - `Ok(HttpResponse)` when the HTTP status is success
+    ///   ([`http::StatusCode::is_success`]).
+    /// - `Err(HttpError)` on URL/header errors, transport failure, timeout, or
+    ///   non-success status.
     pub async fn execute(&self, request: HttpRequest) -> HttpResult<HttpResponse> {
         if !self.should_retry_request(&request) {
             return self.execute_once(request).await;
@@ -156,6 +191,16 @@ impl HttpClient {
         self.execute_with_retry(request).await
     }
 
+    /// Performs one non-retrying execution: resolve URL, merge headers, log the
+    /// request, send with write timeout, reject non-success status, read the
+    /// full body with read timeout, then log the response.
+    ///
+    /// # Parameters
+    /// - `request`: Built request to send (same fields as for
+    ///   [`HttpClient::execute`]).
+    ///
+    /// # Returns
+    /// Buffered [`HttpResponse`] or [`HttpError`].
     async fn execute_once(&self, request: HttpRequest) -> HttpResult<HttpResponse> {
         let url = self.resolve_url(&request)?;
         let method = request.method.clone();
@@ -167,14 +212,8 @@ impl HttpClient {
             HttpRequestBody::Empty => None,
         };
 
-        log_request(
-            &method,
-            &url,
-            &headers,
-            body_for_log.as_ref(),
-            &self.options.logging,
-            &self.options.sensitive_headers,
-        );
+        let logger = HttpLogger::new(&self.options.logging, &self.options.sensitive_headers);
+        logger.log_request(&method, &url, &headers, body_for_log.as_ref());
 
         let mut builder = self.client.request(method.clone(), url.clone());
         builder = builder.headers(headers);
@@ -220,14 +259,7 @@ impl HttpClient {
             .read_body_with_timeout(response, method.clone(), response_url.clone())
             .await?;
 
-        log_response(
-            status,
-            &response_url,
-            &response_headers,
-            &body,
-            &self.options.logging,
-            &self.options.sensitive_headers,
-        );
+        logger.log_response(status, &response_url, &response_headers, &body);
 
         Ok(HttpResponse::new(
             status,
@@ -237,14 +269,17 @@ impl HttpClient {
         ))
     }
 
-    /// Sends the request and returns headers plus a byte stream without buffering the full body.
+    /// Sends the request and returns headers plus a byte stream without
+    /// buffering the full body.
     ///
     /// # Parameters
     /// - `request`: Same as [`HttpClient::execute`].
     ///
     /// # Returns
-    /// - `Ok(HttpStreamResponse)` with a stream that applies read timeout per options.
-    /// - `Err(HttpError)` on failure before streaming starts (same cases as execute for the initial response).
+    /// - `Ok(HttpStreamResponse)` with a stream that applies read timeout per
+    ///   options.
+    /// - `Err(HttpError)` before the stream starts (same cases as
+    ///   [`HttpClient::execute`] for the initial response).
     pub async fn execute_stream(&self, request: HttpRequest) -> HttpResult<HttpStreamResponse> {
         if !self.should_retry_request(&request) {
             return self.execute_stream_once(request).await;
@@ -252,6 +287,16 @@ impl HttpClient {
         self.execute_stream_with_retry(request).await
     }
 
+    /// Performs one non-retrying streaming execution: same setup as
+    /// [`HttpClient::execute_once`], but on success wraps the body in a stream
+    /// with per-chunk read timeouts instead of buffering the full body.
+    ///
+    /// # Parameters
+    /// - `request`: Built request to send (same fields as for
+    ///   [`HttpClient::execute_stream`]).
+    ///
+    /// # Returns
+    /// [`HttpStreamResponse`] or [`HttpError`].
     async fn execute_stream_once(&self, request: HttpRequest) -> HttpResult<HttpStreamResponse> {
         let url = self.resolve_url(&request)?;
         let method = request.method.clone();
@@ -263,14 +308,8 @@ impl HttpClient {
             HttpRequestBody::Empty => None,
         };
 
-        log_request(
-            &method,
-            &url,
-            &headers,
-            body_for_log.as_ref(),
-            &self.options.logging,
-            &self.options.sensitive_headers,
-        );
+        let logger = HttpLogger::new(&self.options.logging, &self.options.sensitive_headers);
+        logger.log_request(&method, &url, &headers, body_for_log.as_ref());
 
         let mut builder = self.client.request(method.clone(), url.clone());
         builder = builder.headers(headers);
@@ -312,13 +351,7 @@ impl HttpClient {
         let response_url = response.url().clone();
         let response_headers = response.headers().clone();
 
-        log_stream_response_headers(
-            status,
-            &response_url,
-            &response_headers,
-            &self.options.logging,
-            &self.options.sensitive_headers,
-        );
+        logger.log_stream_response_headers(status, &response_url, &response_headers);
 
         let read_timeout = self.options.timeouts.read_timeout;
         let method_for_err = method.clone();
@@ -363,10 +396,24 @@ impl HttpClient {
         ))
     }
 
+    /// Returns whether the client should run the retry policy for this request.
+    ///
+    /// Retries are enabled when `max_attempts` is greater than one and the
+    /// request method is allowed by [`HttpClientOptions`] retry settings.
+    ///
+    /// # Parameters
+    /// - `request`: Request whose HTTP method is checked against the configured
+    ///   retry policy.
     fn should_retry_request(&self, request: &HttpRequest) -> bool {
         self.options.retry.max_attempts > 1 && self.options.retry.allows_method(&request.method)
     }
 
+    /// Builds a [`RetryExecutor`] from client retry options and classifies
+    /// [`HttpError`] values using [`RetryHint`].
+    ///
+    /// # Returns
+    /// Configured executor or [`HttpError`] if retry options or executor
+    /// configuration is invalid.
     fn build_retry_executor(&self) -> HttpResult<RetryExecutor<HttpError>> {
         let options = RetryOptions::new(
             self.options.retry.max_attempts,
@@ -389,6 +436,15 @@ impl HttpClient {
             .map_err(|error| HttpError::other(format!("Invalid HTTP retry executor: {error}")))
     }
 
+    /// Runs [`HttpClient::execute_once`] under the configured retry policy.
+    ///
+    /// # Parameters
+    /// - `request`: Built request passed to each [`HttpClient::execute_once`]
+    ///   attempt.
+    ///
+    /// # Returns
+    /// Same as a successful single attempt, or a mapped [`HttpError`] when
+    /// retries abort or limits are exceeded.
     async fn execute_with_retry(&self, request: HttpRequest) -> HttpResult<HttpResponse> {
         let policy = self.build_retry_executor()?;
         let client = self.clone();
@@ -402,6 +458,16 @@ impl HttpClient {
         map_retry_result(result)
     }
 
+    /// Runs [`HttpClient::execute_stream_once`] under the configured retry
+    /// policy.
+    ///
+    /// # Parameters
+    /// - `request`: Built request passed to each
+    ///   [`HttpClient::execute_stream_once`] attempt.
+    ///
+    /// # Returns
+    /// Same as a successful single streaming attempt, or a mapped [`HttpError`]
+    /// when retries abort or limits are exceeded.
     async fn execute_stream_with_retry(
         &self,
         request: HttpRequest,
@@ -445,7 +511,8 @@ impl HttpClient {
         })
     }
 
-    /// Merges default headers, injector output, and per-request headers (later wins on duplicates).
+    /// Merges default headers, injector output, and per-request headers (later
+    /// wins on duplicates).
     ///
     /// # Parameters
     /// - `request`: Request supplying extra headers.
@@ -463,15 +530,18 @@ impl HttpClient {
         Ok(headers)
     }
 
-    /// Sends the built request with a write-phase timeout (time to finish sending the request).
+    /// Sends the built request with a write-phase timeout (time to finish
+    /// sending the request).
     ///
     /// # Parameters
-    /// - `builder`: Reqwest request builder (method, URL, headers, body already set).
+    /// - `builder`: Reqwest request builder (method, URL, headers, body already
+    ///   set).
     /// - `method`: Method for error context.
     /// - `url`: URL for error context.
     ///
     /// # Returns
-    /// Raw [`reqwest::Response`] or [`HttpError`] (transport, write timeout, etc.).
+    /// Raw [`reqwest::Response`] or [`HttpError`] (transport, write timeout,
+    /// etc.).
     async fn send_with_write_timeout(
         &self,
         builder: reqwest::RequestBuilder,
@@ -530,6 +600,18 @@ impl HttpClient {
     }
 }
 
+/// Converts a [`RetryResult`] from the HTTP retry executor into [`HttpResult`].
+///
+/// Successful attempts pass through. Retry exhaustion and deadline failures are
+/// turned into [`HttpError`] values with additional context on the message when
+/// applicable.
+///
+/// # Parameters
+/// - `result`: Outcome of the retry executor after one or more async attempts.
+///
+/// # Returns
+/// The successful value, or an [`HttpError`] describing abort, exhaustion, or
+/// deadline overrun.
 fn map_retry_result<T>(result: RetryResult<T, HttpError>) -> HttpResult<T> {
     match result {
         Ok(value) => Ok(value),
@@ -586,6 +668,14 @@ fn map_retry_result<T>(result: RetryResult<T, HttpError>) -> HttpResult<T> {
     }
 }
 
+/// Maps a single retry [`AttemptFailure`] into [`HttpResult`].
+///
+/// # Parameters
+/// - `failure`: Single attempt outcome from the retry layer.
+///
+/// # Returns
+/// Always `Err`: either the wrapped [`HttpError`] or a synthesized timeout
+/// message.
 fn map_retry_failure<T>(failure: AttemptFailure<HttpError>) -> HttpResult<T> {
     match failure {
         AttemptFailure::Error(error) => Err(error),
@@ -595,11 +685,13 @@ fn map_retry_failure<T>(failure: AttemptFailure<HttpError>) -> HttpResult<T> {
     }
 }
 
-/// Maps a [`reqwest::Error`] into [`HttpError`] with best-effort [`HttpErrorKind`] and optional context.
+/// Maps a [`reqwest::Error`] into [`HttpError`] with best-effort
+/// [`HttpErrorKind`] and optional context.
 ///
 /// # Parameters
 /// - `error`: Underlying reqwest error.
-/// - `default_kind`: Kind used when reqwest does not classify the error more specifically.
+/// - `default_kind`: Kind used when reqwest does not classify the error more
+///   specifically.
 /// - `method`: Optional request method to attach.
 /// - `url`: Optional request URL to attach.
 ///

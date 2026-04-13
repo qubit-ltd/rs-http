@@ -10,8 +10,7 @@
 use bytes::Bytes;
 use http::header::{AUTHORIZATION, CONTENT_TYPE, SET_COOKIE};
 use http::{HeaderMap, HeaderValue, Method, StatusCode};
-use qubit_http::logging::{log_request, log_response, log_stream_response_headers};
-use qubit_http::{HttpLoggingOptions, SensitiveHeaders};
+use qubit_http::{HttpLogger, HttpLoggingOptions, SensitiveHeaders};
 use url::Url;
 
 use crate::common::capture_trace_logs;
@@ -22,15 +21,15 @@ fn test_log_request_disabled_emits_nothing() {
     options.enabled = false;
     let mut headers = HeaderMap::new();
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    let sensitive_headers = SensitiveHeaders::default();
+    let logger = HttpLogger::new(&options, &sensitive_headers);
 
     let logs = capture_trace_logs(|| {
-        log_request(
+        logger.log_request(
             &Method::POST,
             &Url::parse("https://example.com/api").unwrap(),
             &headers,
             Some(&Bytes::from_static(br#"{"x":1}"#)),
-            &options,
-            &SensitiveHeaders::default(),
         );
     });
     assert!(logs.trim().is_empty());
@@ -44,15 +43,15 @@ fn test_log_request_toggles_header_and_body() {
 
     let mut headers = HeaderMap::new();
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    let sensitive_headers = SensitiveHeaders::default();
+    let logger = HttpLogger::new(&options, &sensitive_headers);
 
     let logs = capture_trace_logs(|| {
-        log_request(
+        logger.log_request(
             &Method::POST,
             &Url::parse("https://example.com/api").unwrap(),
             &headers,
             Some(&Bytes::from_static(br#"{"x":1}"#)),
-            &options,
-            &SensitiveHeaders::default(),
         );
     });
     assert!(logs.contains("--> POST https://example.com/api"));
@@ -68,15 +67,16 @@ fn test_log_response_masks_sensitive_headers() {
         AUTHORIZATION,
         HeaderValue::from_static("Bearer very-secret-token"),
     );
+    let options = HttpLoggingOptions::default();
+    let sensitive_headers = SensitiveHeaders::default();
+    let logger = HttpLogger::new(&options, &sensitive_headers);
 
     let logs = capture_trace_logs(|| {
-        log_response(
+        logger.log_response(
             StatusCode::OK,
             &Url::parse("https://example.com/data").unwrap(),
             &headers,
             &Bytes::from_static(b"ok"),
-            &HttpLoggingOptions::default(),
-            &SensitiveHeaders::default(),
         );
     });
     assert!(logs.contains("set-cookie: se****ue"));
@@ -90,15 +90,15 @@ fn test_log_response_binary_body_and_truncation() {
         ..HttpLoggingOptions::default()
     };
     let headers = HeaderMap::new();
+    let sensitive_headers = SensitiveHeaders::default();
+    let logger = HttpLogger::new(&options, &sensitive_headers);
 
     let logs = capture_trace_logs(|| {
-        log_response(
+        logger.log_response(
             StatusCode::OK,
             &Url::parse("https://example.com/bin").unwrap(),
             &headers,
             &Bytes::from_static(&[0xFF, 0xFE, 0xFD, 0xFC, 0xFB]),
-            &options,
-            &SensitiveHeaders::default(),
         );
     });
     assert!(logs.contains("Response body: <binary 5 bytes>...<truncated 1 bytes>"));
@@ -110,14 +110,14 @@ fn test_log_stream_response_headers_respects_toggle() {
     options.log_response_header = false;
     let mut headers = HeaderMap::new();
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("text/event-stream"));
+    let sensitive_headers = SensitiveHeaders::default();
+    let logger = HttpLogger::new(&options, &sensitive_headers);
 
     let logs = capture_trace_logs(|| {
-        log_stream_response_headers(
+        logger.log_stream_response_headers(
             StatusCode::OK,
             &Url::parse("https://example.com/stream").unwrap(),
             &headers,
-            &options,
-            &SensitiveHeaders::default(),
         );
     });
     assert!(logs.contains("<-- 200 https://example.com/stream (stream)"));

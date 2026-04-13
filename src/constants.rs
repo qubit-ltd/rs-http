@@ -57,7 +57,7 @@ pub const DEFAULT_WRITE_TIMEOUT_SECS: u64 = 120;
 pub const DEFAULT_LOG_BODY_SIZE_LIMIT_BYTES: usize = 16 * 1024;
 
 // ---------------------------------------------------------------------------
-// Sensitive header value masking ([`crate::logging::mask_header_value`])
+// Sensitive header value masking rules used by [`crate::HttpLogger`]
 // ---------------------------------------------------------------------------
 
 /// Values with at most this many characters are fully replaced by [`SENSITIVE_HEADER_MASK_PLACEHOLDER`].

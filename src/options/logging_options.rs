@@ -12,7 +12,7 @@ use qubit_config::{ConfigReader, ConfigResult};
 use super::HttpConfigError;
 use crate::constants::DEFAULT_LOG_BODY_SIZE_LIMIT_BYTES;
 
-/// Controls TRACE-level HTTP request/response logging in [`crate::logging`].
+/// Controls TRACE-level HTTP request/response logging in [`crate::HttpLogger`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HttpLoggingOptions {
     /// Whether logging is enabled.
