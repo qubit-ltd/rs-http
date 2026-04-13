@@ -1,4 +1,4 @@
-# Qubit HTTP（`rust-http`）
+# Qubit HTTP（`rs-http`）
 
 [![CircleCI](https://circleci.com/gh/qubit-ltd/rs-http.svg?style=shield)](https://circleci.com/gh/qubit-ltd/rs-http)
 [![Coverage Status](https://coveralls.io/repos/github/qubit-ltd/rs-http/badge.svg?branch=main)](https://coveralls.io/github/qubit-ltd/rs-http?branch=main)
@@ -7,61 +7,29 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![English Document](https://img.shields.io/badge/Document-English-blue.svg)](README.md)
 
-一个通用的 Rust HTTP 基础设施 crate，提供统一客户端语义、安全日志，以及内置 SSE 解码能力。
+`qubit-http` 是一个 Rust HTTP 基础设施库，用于构建行为一致的 API 客户端，核心能力包括：
 
-## 功能特性
+- 用统一的客户端模型处理普通请求和流式请求
+- 显式配置超时、重试、代理、日志
+- 内置 SSE 事件解析和 JSON chunk 解码
+- 统一错误模型（`HttpError`、`HttpErrorKind`、`RetryHint`）
 
-- 统一 HTTP 选项：
-  - `base_url`、`default_headers`、timeouts、proxy、logging、sensitive headers、`ipv4_only`
-- 工厂封装：
-  - `HttpClientFactory`（基于 reqwest）
-  - `HttpClientFactory::create()` 使用默认选项创建客户端
-  - `HttpClientFactory::create_with_options(...)` 使用显式选项创建客户端
-  - `HttpClientFactory::create_from_config(...)` 从配置创建客户端
-- 高频客户端 API：
-  - `request(...)`、`execute(...)`、`execute_stream(...)`
-- Header 便捷方法：
-  - `HttpClientOptions::add_header(s)` 用于创建前配置默认头
-  - `HttpClient::add_header(s)` 用于创建后配置默认头
-- Header 注入链路：
-  - `默认 headers -> 注入器 -> 请求级 headers（最终覆盖）`
-- 超时语义：
-  - `connect_timeout` 由 reqwest 处理
-  - `write_timeout` 包装发送阶段
-  - `read_timeout` 包装 body/chunk 读取阶段
-  - 可选 `request_timeout` 作为 reqwest 总超时
-- 内建重试：
-  - 基于 `qubit-retry`
-  - 默认关闭，保持向后兼容
-  - 重试 `RetryHint::Retryable` 错误（timeout、transport、`429`、`5xx`）
-  - 默认只重试幂等 HTTP 方法
-  - 流式 retry 只覆盖 `HttpStreamResponse` 返回前的失败
-- 代理能力：
-  - `http` / `https` / `socks5`
-  - 支持代理认证
-  - 显式 `proxy.enabled = false` 时不继承环境代理
-- 日志与脱敏：
-  - 请求/响应 header/body 独立开关
-  - 敏感头脱敏规则：`<=4 => ****`，否则保留前 2 后 2
-  - 二进制或非 UTF-8 body 不输出原文
-- 内置 SSE 解码（`qubit_http::sse`）：
-  - 行解码（`\n` / `\r\n`）
-  - 事件分帧（`data/event/id/retry`）
-  - 完结标记策略（`[DONE]` / 自定义 / 关闭）
-  - JSON chunk 解码（宽松/严格模式）
-- 统一错误模型：
-  - `HttpError`、`HttpErrorKind`、`RetryHint`
+如果你是第一次接触本库，建议先看 **快速开始**，再跳到对应场景示例。
 
 ## 安装
 
 ```toml
 [dependencies]
 qubit-http = "0.2.0"
+http = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+futures-util = "0.3"
+qubit-config = "0.8" # 可选：仅在 create_from_config(...) 示例中需要
 ```
 
-## 使用场景示例
-
-### 1）基础请求（JSON 响应）
+## 快速开始
 
 ```rust
 use http::Method;
@@ -69,22 +37,37 @@ use qubit_http::{HttpClientFactory, HttpClientOptions};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut options = HttpClientOptions::default();
-    options.set_base_url("https://example.com")?;
+    let mut options = HttpClientOptions::new();
+    options.set_base_url("https://httpbin.org")?;
     options.add_header("x-client-id", "demo")?;
 
     let client = HttpClientFactory::new().create_with_options(options)?;
 
-    let request = client.request(Method::GET, "/health").build();
-    let response = client.execute(request).await?;
+    let request = client
+        .request(Method::GET, "/anything")
+        .query_param("from", "readme")
+        .build();
 
-    println!("status={}", response.status);
-    println!("body={}", response.text()?);
+    let response = client.execute(request).await?;
+    println!("status = {}", response.status);
+    println!("text = {}", response.text()?);
     Ok(())
 }
 ```
 
-### 2）构建请求（query/header/body）
+## 核心类型
+
+- `HttpClientFactory`：通过默认配置、显式配置或配置中心创建客户端。
+- `HttpClientOptions`：管理 `base_url`、默认 Header、超时、代理、重试、日志、敏感头。
+- `HttpClient`：执行请求，提供一致的运行时行为。
+- `HttpRequestBuilder`：构建路径、查询参数、Header、Body、请求级超时。
+- `HttpResponse`：完整缓冲响应（`status`、`headers`、`body`、`text()`、`json()`）。
+- `HttpStreamResponse`：响应元数据 + 字节流（`into_stream()`）。
+- `qubit_http::sse`：SSE 事件解析和 JSON chunk 解码工具。
+
+## 常见用法
+
+### 1）构建带 query/header/body 的请求
 
 ```rust
 use http::Method;
@@ -96,13 +79,10 @@ struct CreateMessageRequest {
     content: String,
 }
 
-async fn create_message() -> qubit_http::HttpResult<()> {
-    let mut options = HttpClientOptions::default();
+async fn create_message() -> Result<(), Box<dyn std::error::Error>> {
+    let mut options = HttpClientOptions::new();
     options.set_base_url("https://api.example.com")?;
-    options.add_headers([
-        ("x-client-id", "demo"),
-        ("x-env", "test"),
-    ])?;
+
     let client = HttpClientFactory::new().create_with_options(options)?;
 
     let body = CreateMessageRequest {
@@ -123,93 +103,33 @@ async fn create_message() -> qubit_http::HttpResult<()> {
 }
 ```
 
-### 3）Header 注入器（认证头/租户头）
+### 2）Header 注入与优先级
+
+Header 合并优先级为：
+
+`默认 headers` -> `header injector` -> `请求级 headers（最高优先级）`
 
 ```rust
 use http::HeaderValue;
 use qubit_http::{HeaderInjector, HttpClientFactory};
 
-fn build_client_with_injector() -> qubit_http::HttpResult<qubit_http::HttpClient> {
+fn with_auth_injector() -> qubit_http::HttpResult<qubit_http::HttpClient> {
     let token = "secret-token".to_string();
     let mut client = HttpClientFactory::new().create()?;
+
+    client.add_header("x-client", "my-app")?;
     client.add_header_injector(HeaderInjector::new(move |headers| {
-        let value = HeaderValue::from_str(&format!("Bearer {}", token))
+        let bearer = HeaderValue::from_str(&format!("Bearer {token}"))
             .map_err(|e| qubit_http::HttpError::other(format!("invalid auth header: {e}")))?;
-        headers.insert(http::header::AUTHORIZATION, value);
-        headers.insert("x-tenant-id", HeaderValue::from_static("tenant-a"));
+        headers.insert(http::header::AUTHORIZATION, bearer);
         Ok(())
     }));
+
     Ok(client)
 }
 ```
 
-### 4）超时配置（全局 + 请求级覆盖）
-
-```rust
-use std::time::Duration;
-
-use http::Method;
-use qubit_http::{HttpClientFactory, HttpClientOptions};
-
-async fn request_with_timeouts() -> qubit_http::HttpResult<()> {
-    let mut options = HttpClientOptions::default();
-    options.timeouts.connect_timeout = Duration::from_secs(3);
-    options.timeouts.read_timeout = Duration::from_secs(30);
-    options.timeouts.write_timeout = Duration::from_secs(15);
-    options.timeouts.request_timeout = Some(Duration::from_secs(60));
-
-    let client = HttpClientFactory::new().create_with_options(options)?;
-
-    // 请求级 timeout 会覆盖 client 默认 request_timeout。
-    let request = client
-        .request(Method::GET, "https://example.com/slow")
-        .timeout(Duration::from_secs(5))
-        .build();
-    let _ = client.execute(request).await?;
-    Ok(())
-}
-```
-
-### 5）代理（HTTP / HTTPS / SOCKS5）
-
-```rust
-use qubit_http::{HttpClientFactory, HttpClientOptions, ProxyType};
-
-fn build_client_with_proxy() -> qubit_http::HttpResult<qubit_http::HttpClient> {
-    let mut options = HttpClientOptions::default();
-    options.proxy.enabled = true;
-    options.proxy.proxy_type = ProxyType::Socks5; // 也可以是 ProxyType::Http / ProxyType::Https
-    options.proxy.host = Some("127.0.0.1".to_string());
-    options.proxy.port = Some(1080);
-    options.proxy.username = Some("user".to_string());
-    options.proxy.password = Some("pass".to_string());
-
-    HttpClientFactory::new().create_with_options(options)
-}
-```
-
-### 6）从配置创建客户端
-
-```rust
-use std::time::Duration;
-
-use qubit_config::Config;
-use qubit_http::HttpClientFactory;
-
-fn build_client_from_config() -> Result<qubit_http::HttpClient, qubit_http::HttpConfigError> {
-    let mut config = Config::new();
-    config.set("http.base_url", "https://api.example.com".to_string()).unwrap();
-    config.set("http.timeouts.connect_timeout", Duration::from_secs(3)).unwrap();
-    config.set("http.proxy.enabled", false).unwrap();
-    config.set("http.retry.enabled", true).unwrap();
-    config.set("http.retry.max_attempts", 3_u32).unwrap();
-    config.set("http.logging.enabled", true).unwrap();
-
-    HttpClientFactory::new().create_from_config(&config, "http")
-}
-```
-
-### 7）内建重试
+### 3）超时与重试
 
 ```rust
 use std::time::Duration;
@@ -219,18 +139,22 @@ use qubit_http::{
     Delay, HttpClientFactory, HttpClientOptions, HttpRetryMethodPolicy,
 };
 
-async fn request_with_retry() -> qubit_http::HttpResult<()> {
-    let mut options = HttpClientOptions::default();
+async fn request_with_retry() -> Result<(), Box<dyn std::error::Error>> {
+    let mut options = HttpClientOptions::new();
     options.set_base_url("https://api.example.com")?;
+
+    options.timeouts.connect_timeout = Duration::from_secs(3);
+    options.timeouts.write_timeout = Duration::from_secs(15);
+    options.timeouts.read_timeout = Duration::from_secs(30);
+    options.timeouts.request_timeout = Some(Duration::from_secs(60));
+
     options.retry.enabled = true;
-    options.retry.max_attempts = 3; // 初始请求 + 最多 2 次重试
+    options.retry.max_attempts = 3;
     options.retry.delay_strategy = Delay::Exponential {
         initial: Duration::from_millis(200),
         max: Duration::from_secs(5),
         multiplier: 2.0,
     };
-
-    // 默认值是 IdempotentOnly。只有当 API 可安全重放请求时，才改成 AllMethods。
     options.retry.method_policy = HttpRetryMethodPolicy::IdempotentOnly;
 
     let client = HttpClientFactory::new().create_with_options(options)?;
@@ -240,7 +164,14 @@ async fn request_with_retry() -> qubit_http::HttpResult<()> {
 }
 ```
 
-### 8）原始字节流消费
+触发自动重试需要同时满足：
+
+- `retry.enabled = true`
+- `max_attempts > 1`
+- HTTP 方法被 `method_policy` 允许
+- 错误属于可重试类型（`timeout`、`transport`、`429`、`5xx`）
+
+### 4）消费流式字节响应
 
 ```rust
 use futures_util::StreamExt;
@@ -259,11 +190,10 @@ async fn consume_raw_stream(client: &qubit_http::HttpClient) -> qubit_http::Http
 }
 ```
 
-### 9）流式 + SSE JSON chunk（宽松模式）
+### 5）解码 SSE JSON chunk
 
 ```rust
 use futures_util::StreamExt;
-use http::Method;
 use qubit_http::sse::{decode_json_chunks, DoneMarkerPolicy, SseChunk};
 
 #[derive(Debug, serde::Deserialize)]
@@ -271,77 +201,77 @@ struct StreamChunk {
     delta: String,
 }
 
-async fn run_stream(client: &qubit_http::HttpClient) -> qubit_http::HttpResult<()> {
-    let request = client.request(Method::GET, "/v1/stream").build();
-    let stream_response = client.execute_stream(request).await?;
+async fn consume_sse_json(client: &qubit_http::HttpClient) -> qubit_http::HttpResult<()> {
+    let response = client
+        .execute_stream(client.request(http::Method::GET, "/v1/stream").build())
+        .await?;
 
     let mut chunks = decode_json_chunks::<StreamChunk>(
-        stream_response,
+        response,
         DoneMarkerPolicy::DefaultDone,
     );
 
     while let Some(item) = chunks.next().await {
         match item? {
-            SseChunk::Data(chunk) => {
-                println!("delta={}", chunk.delta);
-            }
+            SseChunk::Data(chunk) => println!("delta={}", chunk.delta),
             SseChunk::Done => break,
         }
     }
-
     Ok(())
 }
 ```
 
-### 10）SSE 严格模式（坏 JSON 立即失败）
+若你希望坏 JSON 立即失败，可使用 `decode_json_chunks_with_mode(..., SseJsonMode::Strict)`。
+
+### 6）从配置创建客户端
 
 ```rust
-use futures_util::StreamExt;
-use qubit_http::sse::{decode_json_chunks_with_mode, DoneMarkerPolicy, SseJsonMode};
+use std::time::Duration;
 
-#[derive(Debug, serde::Deserialize)]
-struct Chunk {
-    token: String,
-}
+use qubit_config::Config;
+use qubit_http::HttpClientFactory;
 
-async fn strict_sse(client: &qubit_http::HttpClient) -> qubit_http::HttpResult<()> {
-    let response = client
-        .execute_stream(client.request(http::Method::GET, "/v1/stream").build())
-        .await?;
+fn build_client_from_config() -> Result<qubit_http::HttpClient, qubit_http::HttpConfigError> {
+    let mut config = Config::new();
+    config
+        .set("http.base_url", "https://api.example.com".to_string())
+        .unwrap();
+    config
+        .set("http.timeouts.connect_timeout", Duration::from_secs(3))
+        .unwrap();
+    config.set("http.proxy.enabled", false).unwrap();
+    config.set("http.retry.enabled", true).unwrap();
+    config.set("http.retry.max_attempts", 3_u32).unwrap();
 
-    let mut stream = decode_json_chunks_with_mode::<Chunk>(
-        response,
-        DoneMarkerPolicy::DefaultDone,
-        SseJsonMode::Strict,
-    );
-
-    while let Some(item) = stream.next().await {
-        let _ = item?; // 坏 JSON 会返回 HttpErrorKind::SseDecode
-    }
-    Ok(())
+    HttpClientFactory::new().create_from_config(&config, "http")
 }
 ```
 
-### 11）错误分类与重试衔接
+## 错误处理
+
+`execute(...)` 和 `execute_stream(...)` 会在以下场景返回 `Err(HttpError)`：
+
+- URL 解析失败
+- 传输错误或超时
+- HTTP 状态码非 2xx（`HttpErrorKind::Status`）
+- 响应解码或 SSE 解码失败
+
+可以通过 `error.kind` 和 `error.retry_hint()` 分流处理：
 
 ```rust
 use qubit_http::{HttpErrorKind, RetryHint};
 
-fn handle_http_error(error: &qubit_http::HttpError) {
+fn handle_error(error: &qubit_http::HttpError) {
     match error.kind {
-        HttpErrorKind::Status if error.status.is_some() => {
-            eprintln!("status error: {:?}", error.status);
-        }
+        HttpErrorKind::Status => eprintln!("status error: {:?}", error.status),
         HttpErrorKind::ReadTimeout | HttpErrorKind::WriteTimeout | HttpErrorKind::ConnectTimeout => {
-            eprintln!("timeout: {}", error);
+            eprintln!("timeout: {}", error)
         }
-        _ => {
-            eprintln!("http error: {}", error);
-        }
+        _ => eprintln!("http error: {}", error),
     }
 
-    let should_retry = matches!(error.retry_hint(), RetryHint::Retryable);
-    eprintln!("retryable={should_retry}");
+    let retryable = matches!(error.retry_hint(), RetryHint::Retryable);
+    eprintln!("retryable={retryable}");
 }
 ```
 
@@ -356,7 +286,7 @@ fn handle_http_error(error: &qubit_http::HttpError) {
 | `proxy.enabled` | `false` |
 | `proxy.proxy_type` | `http` |
 | `logging.enabled` | `true` |
-| `logging.*` 头体开关 | 全部 `true` |
+| `logging.*` 头/体日志开关 | 全部 `true` |
 | `logging.body_size_limit` | `16 * 1024` 字节 |
 | `retry.enabled` | `false` |
 | `retry.max_attempts` | `3` |
@@ -365,27 +295,15 @@ fn handle_http_error(error: &qubit_http::HttpError) {
 | `retry.method_policy` | `IdempotentOnly` |
 | `ipv4_only` | `false` |
 
-## 测试覆盖
+## 说明
 
-测试位于 [`tests/`](tests)，覆盖：
-
-- options 默认值与归一化
-- 敏感头脱敏行为
-- request builder 校验与 body 编码
-- factory/代理配置校验
-- 代理集成路径（`http` / `https CONNECT` / `socks5`）
-- client `execute/execute_stream` 核心路径
-- 状态码映射与超时行为
-- 内建 retry 行为与方法策略
-- logging 策略行为（开关/脱敏/二进制/截断）
-- SSE 事件分帧与 JSON 解码行为
-
-## 当前限制
-
-- 本 crate 有意不封装 `reqwest` 全量 API。
-- 流式 retry 只覆盖 `HttpStreamResponse` 返回前的失败；body stream 中途错误会直接暴露给调用方。
-- 非 HTTP 流式协议（WebSocket、gRPC）不在范围内。
-- `ipv4_only` 当前是可配置并可校验的选项，传输层强制能力将在后续增强版本完成。
+- 本库聚焦稳定、通用的 HTTP 抽象，不覆盖 `reqwest` 的全部 API。
+- 日志基于 `tracing`，需要启用 `TRACE` 级别订阅器才能看到完整输出。
+- 敏感 Header 会自动脱敏。
+- 二进制或非 UTF-8 的 Body 不会按原文打印，而是输出摘要。
+- `proxy.enabled = false` 时，不继承环境变量代理。
+- `ipv4_only` 当前是可校验配置项，不会强制传输层解析器只走 IPv4。
+- 流式重试仅覆盖返回 `HttpStreamResponse` 之前的失败；流开始后的错误由调用方处理。
 
 ## 许可证
 
