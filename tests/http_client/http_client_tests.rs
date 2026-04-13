@@ -10,15 +10,19 @@
 //!
 //! Covers request execution, stream execution, and timeout/error behavior.
 
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use futures_util::StreamExt;
 use http::header::{HeaderName, AUTHORIZATION, CONTENT_TYPE};
 use http::{HeaderValue, Method, StatusCode};
-use qubit_http::{HeaderInjector, HttpClientFactory, HttpClientOptions, HttpErrorKind};
+use qubit_http::{
+    Delay, HeaderInjector, HttpClientFactory, HttpClientOptions, HttpErrorKind,
+    HttpRetryMethodPolicy,
+};
 use tokio::time::timeout;
 
-use crate::common::{spawn_one_shot_server, ResponseChunk, ResponsePlan};
+use crate::common::{spawn_multi_shot_server, spawn_one_shot_server, ResponseChunk, ResponsePlan};
 
 #[tokio::test]
 async fn test_execute_success_with_header_injector_and_request_override() {
@@ -587,4 +591,422 @@ async fn test_execute_maps_truncated_response_body_to_decode_error() {
         .await
         .expect("server finish timed out");
     assert_eq!(captured.target, "/truncated-body");
+}
+
+#[tokio::test]
+async fn test_execute_retries_retryable_status_until_success() {
+    let server = spawn_multi_shot_server(vec![
+        ResponsePlan::Immediate {
+            status: 500,
+            headers: vec![],
+            body: b"server error".to_vec(),
+        },
+        ResponsePlan::Immediate {
+            status: 200,
+            headers: vec![],
+            body: b"ok".to_vec(),
+        },
+    ])
+    .await;
+
+    let injector_count = Arc::new(Mutex::new(0_u32));
+    let injector_count_clone = injector_count.clone();
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.retry.enabled = true;
+    options.retry.max_attempts = 2;
+    options.retry.delay_strategy = Delay::None;
+    let mut client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
+    client.add_header_injector(HeaderInjector::new(move |headers| {
+        let mut count = injector_count_clone.lock().unwrap();
+        *count += 1;
+        headers.insert(
+            HeaderName::from_static("x-attempt"),
+            HeaderValue::from_str(&count.to_string()).unwrap(),
+        );
+        Ok(())
+    }));
+
+    let request = client.request(Method::GET, "/retry-status").build();
+    let response = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .unwrap();
+
+    assert_eq!(response.status, StatusCode::OK);
+    assert_eq!(response.body, b"ok".as_slice());
+    assert_eq!(*injector_count.lock().unwrap(), 2);
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.len(), 2);
+    assert_eq!(captured[0].headers.get("x-attempt"), Some(&"1".to_string()));
+    assert_eq!(captured[1].headers.get("x-attempt"), Some(&"2".to_string()));
+}
+
+#[tokio::test]
+async fn test_execute_does_not_retry_non_retryable_status() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 400,
+        headers: vec![],
+        body: b"bad request".to_vec(),
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.retry.enabled = true;
+    options.retry.max_attempts = 3;
+    options.retry.delay_strategy = Delay::None;
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
+
+    let request = client.request(Method::GET, "/bad-request").build();
+    let error = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .unwrap_err();
+
+    assert_eq!(error.kind, HttpErrorKind::Status);
+    assert_eq!(error.status, Some(StatusCode::BAD_REQUEST));
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.target, "/bad-request");
+}
+
+#[tokio::test]
+async fn test_execute_returns_last_error_after_retry_attempts_exhausted() {
+    let server = spawn_multi_shot_server(vec![
+        ResponsePlan::Immediate {
+            status: 503,
+            headers: vec![],
+            body: b"unavailable-1".to_vec(),
+        },
+        ResponsePlan::Immediate {
+            status: 503,
+            headers: vec![],
+            body: b"unavailable-2".to_vec(),
+        },
+        ResponsePlan::Immediate {
+            status: 503,
+            headers: vec![],
+            body: b"unavailable-3".to_vec(),
+        },
+    ])
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.retry.enabled = true;
+    options.retry.max_attempts = 3;
+    options.retry.delay_strategy = Delay::None;
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
+
+    let request = client.request(Method::GET, "/exhausted").build();
+    let error = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .unwrap_err();
+
+    assert_eq!(error.kind, HttpErrorKind::Status);
+    assert_eq!(error.status, Some(StatusCode::SERVICE_UNAVAILABLE));
+    assert!(error.message.contains("retry attempts exhausted: 3/3"));
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.len(), 3);
+}
+
+#[tokio::test]
+async fn test_execute_retry_max_duration_returns_last_error_after_retry_delay() {
+    let server = spawn_multi_shot_server(vec![ResponsePlan::Immediate {
+        status: 503,
+        headers: vec![],
+        body: b"unavailable".to_vec(),
+    }])
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.retry.enabled = true;
+    options.retry.max_attempts = 3;
+    options.retry.max_duration = Some(Duration::from_millis(100));
+    options.retry.delay_strategy = Delay::Fixed(Duration::from_millis(120));
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
+
+    let request = client.request(Method::GET, "/max-duration-after").build();
+    let error = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .unwrap_err();
+
+    assert_eq!(error.kind, HttpErrorKind::Status);
+    assert_eq!(error.status, Some(StatusCode::SERVICE_UNAVAILABLE));
+    assert!(error.message.contains("retry max duration exceeded"));
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.len(), 1);
+}
+
+#[tokio::test]
+async fn test_execute_retry_max_duration_zero_reports_no_retryable_failure() {
+    let server = spawn_multi_shot_server(vec![]).await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.retry.enabled = true;
+    options.retry.max_attempts = 3;
+    options.retry.max_duration = Some(Duration::ZERO);
+    options.retry.delay_strategy = Delay::None;
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
+
+    let request = client.request(Method::GET, "/max-duration-zero").build();
+    let error = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .unwrap_err();
+
+    assert_eq!(error.kind, HttpErrorKind::Other);
+    assert!(error
+        .message
+        .contains("before a retryable error was captured"));
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert!(captured.is_empty());
+}
+
+#[tokio::test]
+async fn test_execute_does_not_retry_post_by_default() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 500,
+        headers: vec![],
+        body: b"server error".to_vec(),
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.retry.enabled = true;
+    options.retry.max_attempts = 3;
+    options.retry.delay_strategy = Delay::None;
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
+
+    let request = client.request(Method::POST, "/post-default").build();
+    let error = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .unwrap_err();
+
+    assert_eq!(error.kind, HttpErrorKind::Status);
+    assert_eq!(error.method, Some(Method::POST));
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.method, "POST");
+}
+
+#[tokio::test]
+async fn test_execute_retries_post_when_all_methods_policy_is_enabled() {
+    let server = spawn_multi_shot_server(vec![
+        ResponsePlan::Immediate {
+            status: 500,
+            headers: vec![],
+            body: b"server error".to_vec(),
+        },
+        ResponsePlan::Immediate {
+            status: 200,
+            headers: vec![],
+            body: b"ok".to_vec(),
+        },
+    ])
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.retry.enabled = true;
+    options.retry.max_attempts = 2;
+    options.retry.delay_strategy = Delay::None;
+    options.retry.method_policy = HttpRetryMethodPolicy::AllMethods;
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
+
+    let request = client.request(Method::POST, "/post-all").build();
+    let response = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .unwrap();
+
+    assert_eq!(response.status, StatusCode::OK);
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.len(), 2);
+    assert_eq!(captured[0].method, "POST");
+    assert_eq!(captured[1].method, "POST");
+}
+
+#[tokio::test]
+async fn test_execute_retries_write_timeout_until_success() {
+    let server = spawn_multi_shot_server(vec![
+        ResponsePlan::DelayedStart {
+            delay: Duration::from_millis(120),
+            status: 200,
+            headers: vec![],
+            body: b"late".to_vec(),
+        },
+        ResponsePlan::Immediate {
+            status: 200,
+            headers: vec![],
+            body: b"ok".to_vec(),
+        },
+    ])
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.write_timeout = Duration::from_millis(30);
+    options.retry.enabled = true;
+    options.retry.max_attempts = 2;
+    options.retry.delay_strategy = Delay::None;
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
+
+    let request = client.request(Method::GET, "/write-timeout-retry").build();
+    let response = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .unwrap();
+
+    assert_eq!(response.status, StatusCode::OK);
+    assert_eq!(response.body, b"ok".as_slice());
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.len(), 2);
+}
+
+#[tokio::test]
+async fn test_execute_stream_retries_initial_status_until_success() {
+    let server = spawn_multi_shot_server(vec![
+        ResponsePlan::Immediate {
+            status: 503,
+            headers: vec![],
+            body: b"service unavailable".to_vec(),
+        },
+        ResponsePlan::Chunked {
+            status: 200,
+            headers: vec![("Content-Type".to_string(), "text/plain".to_string())],
+            chunks: vec![ResponseChunk {
+                delay: Duration::ZERO,
+                bytes: b"stream-ok".to_vec(),
+            }],
+            finish: true,
+        },
+    ])
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.retry.enabled = true;
+    options.retry.max_attempts = 2;
+    options.retry.delay_strategy = Delay::None;
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
+
+    let request = client.request(Method::GET, "/stream-retry").build();
+    let response = timeout(Duration::from_secs(3), client.execute_stream(request))
+        .await
+        .expect("execute_stream timed out")
+        .unwrap();
+    let body = response
+        .into_stream()
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+
+    assert_eq!(body[0], b"stream-ok".as_slice());
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.len(), 2);
+}
+
+#[tokio::test]
+async fn test_execute_stream_does_not_retry_after_stream_is_returned() {
+    let server = spawn_one_shot_server(ResponsePlan::Chunked {
+        status: 200,
+        headers: vec![("Content-Type".to_string(), "text/plain".to_string())],
+        chunks: vec![
+            ResponseChunk {
+                delay: Duration::ZERO,
+                bytes: b"first".to_vec(),
+            },
+            ResponseChunk {
+                delay: Duration::from_millis(120),
+                bytes: b"second".to_vec(),
+            },
+        ],
+        finish: true,
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.read_timeout = Duration::from_millis(30);
+    options.retry.enabled = true;
+    options.retry.max_attempts = 3;
+    options.retry.delay_strategy = Delay::None;
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
+
+    let request = client.request(Method::GET, "/stream-read-timeout").build();
+    let response = timeout(Duration::from_secs(3), client.execute_stream(request))
+        .await
+        .expect("execute_stream timed out")
+        .unwrap();
+
+    let mut stream = response.into_stream();
+    let first = stream
+        .next()
+        .await
+        .expect("first stream item should exist")
+        .unwrap();
+    assert_eq!(first, b"first".as_slice());
+    let error = stream
+        .next()
+        .await
+        .expect("second stream item should contain read timeout")
+        .unwrap_err();
+    assert_eq!(error.kind, HttpErrorKind::ReadTimeout);
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.target, "/stream-read-timeout");
 }

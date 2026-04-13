@@ -100,6 +100,14 @@ pub struct OneShotServer {
     join_handle: tokio::task::JoinHandle<()>,
 }
 
+/// Handle to a test server that serves a fixed sequence of responses.
+#[derive(Debug)]
+pub struct MultiShotServer {
+    base_url: Url,
+    request_rx: oneshot::Receiver<Vec<CapturedRequest>>,
+    join_handle: tokio::task::JoinHandle<()>,
+}
+
 impl OneShotServer {
     /// Returns the server base URL (e.g. `http://127.0.0.1:12345/`).
     pub fn base_url(&self) -> Url {
@@ -116,6 +124,25 @@ impl OneShotServer {
             .await
             .expect("one-shot test server task panicked");
         request
+    }
+}
+
+impl MultiShotServer {
+    /// Returns the server base URL (e.g. `http://127.0.0.1:12345/`).
+    pub fn base_url(&self) -> Url {
+        self.base_url.clone()
+    }
+
+    /// Waits for server completion and returns all captured requests.
+    pub async fn finish(self) -> Vec<CapturedRequest> {
+        let requests = self
+            .request_rx
+            .await
+            .expect("multi-shot test server dropped request sender");
+        self.join_handle
+            .await
+            .expect("multi-shot test server task panicked");
+        requests
     }
 }
 
@@ -156,6 +183,63 @@ pub async fn spawn_one_shot_server(plan: ResponsePlan) -> OneShotServer {
     });
 
     OneShotServer {
+        base_url,
+        request_rx,
+        join_handle,
+    }
+}
+
+/// Spawns a test HTTP server that serves one response plan per request.
+pub async fn spawn_multi_shot_server(plans: Vec<ResponsePlan>) -> MultiShotServer {
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("failed to bind multi-shot test server");
+    let addr = listener
+        .local_addr()
+        .expect("failed to query multi-shot server local address");
+    let base_url = Url::parse(&format!("http://{addr}/")).expect("failed to build base URL");
+    let (request_tx, request_rx) = oneshot::channel::<Vec<CapturedRequest>>();
+
+    let join_handle = tokio::spawn(async move {
+        let mut handles = Vec::with_capacity(plans.len());
+        for (index, plan) in plans.into_iter().enumerate() {
+            let accept_result = listener.accept().await;
+            let (mut stream, _) = match accept_result {
+                Ok(result) => result,
+                Err(error) => panic!("multi-shot test server failed to accept connection: {error}"),
+            };
+
+            handles.push(tokio::spawn(async move {
+                let request = read_request(&mut stream)
+                    .await
+                    .expect("failed to read request in multi-shot test server");
+
+                if let Err(error) = write_response(&mut stream, plan).await {
+                    if !matches!(
+                        error.kind(),
+                        std::io::ErrorKind::BrokenPipe
+                            | std::io::ErrorKind::ConnectionReset
+                            | std::io::ErrorKind::NotConnected
+                    ) {
+                        panic!("failed to write response in multi-shot test server: {error}");
+                    }
+                }
+                (index, request)
+            }));
+        }
+        let mut requests = vec![None; handles.len()];
+        for handle in handles {
+            let (index, request) = handle.await.expect("multi-shot request task panicked");
+            requests[index] = Some(request);
+        }
+        let requests = requests
+            .into_iter()
+            .map(|request| request.expect("multi-shot request missing"))
+            .collect();
+        let _ = request_tx.send(requests);
+    });
+
+    MultiShotServer {
         base_url,
         request_rx,
         join_handle,

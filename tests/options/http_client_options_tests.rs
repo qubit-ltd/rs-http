@@ -15,7 +15,8 @@ use qubit_http::{
         DEFAULT_CONNECT_TIMEOUT_SECS, DEFAULT_LOG_BODY_SIZE_LIMIT_BYTES, DEFAULT_READ_TIMEOUT_SECS,
         DEFAULT_WRITE_TIMEOUT_SECS,
     },
-    HttpClientOptions, HttpConfigErrorKind, HttpErrorKind, ProxyType,
+    Delay, HttpClientOptions, HttpConfigErrorKind, HttpErrorKind, HttpRetryMethodPolicy,
+    HttpRetryOptions, ProxyType,
 };
 
 #[test]
@@ -47,6 +48,13 @@ fn test_http_client_options_defaults() {
         options.logging.body_size_limit,
         DEFAULT_LOG_BODY_SIZE_LIMIT_BYTES
     );
+    assert_eq!(options.retry, HttpRetryOptions::default());
+    assert!(!options.retry.enabled);
+    assert_eq!(options.retry.max_attempts, 3);
+    assert_eq!(
+        options.retry.method_policy,
+        HttpRetryMethodPolicy::IdempotentOnly
+    );
     assert!(!options.ipv4_only);
 }
 
@@ -60,8 +68,14 @@ fn test_http_client_options_new_matches_default() {
     assert_eq!(options.timeouts, defaults.timeouts);
     assert_eq!(options.proxy, defaults.proxy);
     assert_eq!(options.logging, defaults.logging);
+    assert_eq!(options.retry, defaults.retry);
     assert_eq!(options.sensitive_headers, defaults.sensitive_headers);
     assert_eq!(options.ipv4_only, defaults.ipv4_only);
+}
+
+#[test]
+fn test_http_retry_options_new_matches_default() {
+    assert_eq!(HttpRetryOptions::new(), HttpRetryOptions::default());
 }
 
 #[test]
@@ -319,6 +333,174 @@ fn test_http_client_options_logging_section_type_error_is_prefixed() {
 }
 
 #[test]
+fn test_http_client_options_retry_section() {
+    let mut config = Config::new();
+    config.set("http.retry.enabled", true).unwrap();
+    config.set("http.retry.max_attempts", 4_u32).unwrap();
+    config
+        .set("http.retry.max_duration", Duration::from_secs(30))
+        .unwrap();
+    config
+        .set(
+            "http.retry.delay_strategy",
+            "EXPONENTIAL_BACKOFF".to_string(),
+        )
+        .unwrap();
+    config
+        .set(
+            "http.retry.backoff_initial_delay",
+            Duration::from_millis(50),
+        )
+        .unwrap();
+    config
+        .set("http.retry.backoff_max_delay", Duration::from_secs(2))
+        .unwrap();
+    config
+        .set("http.retry.backoff_multiplier", 1.5_f64)
+        .unwrap();
+    config.set("http.retry.jitter_factor", 0.25_f64).unwrap();
+    config
+        .set("http.retry.method_policy", "ALL_METHODS".to_string())
+        .unwrap();
+
+    let opts = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap();
+
+    assert!(opts.retry.enabled);
+    assert_eq!(opts.retry.max_attempts, 4);
+    assert_eq!(opts.retry.max_duration, Some(Duration::from_secs(30)));
+    assert_eq!(opts.retry.jitter_factor, 0.25);
+    assert_eq!(opts.retry.method_policy, HttpRetryMethodPolicy::AllMethods);
+    assert_eq!(
+        opts.retry.delay_strategy,
+        Delay::Exponential {
+            initial: Duration::from_millis(50),
+            max: Duration::from_secs(2),
+            multiplier: 1.5,
+        }
+    );
+}
+
+#[test]
+fn test_http_retry_options_delay_strategies_from_config() {
+    let mut fixed_config = Config::new();
+    fixed_config
+        .set("retry.delay_strategy", "FIXED".to_string())
+        .unwrap();
+    fixed_config
+        .set("retry.fixed_delay", Duration::from_millis(250))
+        .unwrap();
+    let fixed = HttpRetryOptions::from_config(&fixed_config.prefix_view("retry")).unwrap();
+    assert_eq!(
+        fixed.delay_strategy,
+        Delay::Fixed(Duration::from_millis(250))
+    );
+
+    let mut random_config = Config::new();
+    random_config
+        .set("retry.delay_strategy", "RANDOM".to_string())
+        .unwrap();
+    random_config
+        .set("retry.random_min_delay", Duration::from_millis(10))
+        .unwrap();
+    random_config
+        .set("retry.random_max_delay", Duration::from_millis(20))
+        .unwrap();
+    let random = HttpRetryOptions::from_config(&random_config.prefix_view("retry")).unwrap();
+    assert_eq!(
+        random.delay_strategy,
+        Delay::Random {
+            min: Duration::from_millis(10),
+            max: Duration::from_millis(20),
+        }
+    );
+
+    let mut none_config = Config::new();
+    none_config
+        .set("retry.delay_strategy", "NONE".to_string())
+        .unwrap();
+    let none = HttpRetryOptions::from_config(&none_config.prefix_view("retry")).unwrap();
+    assert_eq!(none.delay_strategy, Delay::None);
+}
+
+#[test]
+fn test_http_retry_options_method_policy_aliases_from_config() {
+    let mut idempotent_config = Config::new();
+    idempotent_config
+        .set("retry.method_policy", "idempotent".to_string())
+        .unwrap();
+    let idempotent = HttpRetryOptions::from_config(&idempotent_config.prefix_view("retry"))
+        .expect("idempotent alias should parse");
+    assert_eq!(
+        idempotent.method_policy,
+        HttpRetryMethodPolicy::IdempotentOnly
+    );
+
+    let mut none_config = Config::new();
+    none_config
+        .set("retry.method_policy", "disabled".to_string())
+        .unwrap();
+    let none = HttpRetryOptions::from_config(&none_config.prefix_view("retry"))
+        .expect("disabled alias should parse");
+    assert_eq!(none.method_policy, HttpRetryMethodPolicy::None);
+}
+
+#[test]
+fn test_http_retry_options_invalid_method_policy_from_config() {
+    let mut config = Config::new();
+    config
+        .set("retry.method_policy", "unsafe-only".to_string())
+        .unwrap();
+
+    let err = HttpRetryOptions::from_config(&config.prefix_view("retry")).unwrap_err();
+
+    assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
+    assert_eq!(err.path, "method_policy");
+}
+
+#[test]
+fn test_http_client_options_retry_section_invalid_value_is_prefixed() {
+    let mut config = Config::new();
+    config
+        .set("http.retry.delay_strategy", "bad-strategy".to_string())
+        .unwrap();
+
+    let err = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap_err();
+
+    assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
+    assert_eq!(err.path, "retry.delay_strategy");
+}
+
+#[test]
+fn test_http_retry_options_validate_rejects_invalid_values() {
+    let mut options = HttpRetryOptions::default();
+    options.max_attempts = 0;
+    let err = options.validate().unwrap_err();
+    assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
+    assert_eq!(err.path, "max_attempts");
+
+    let mut options = HttpRetryOptions::default();
+    options.jitter_factor = 1.5;
+    let err = options.validate().unwrap_err();
+    assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
+    assert_eq!(err.path, "jitter_factor");
+
+    let mut options = HttpRetryOptions::default();
+    options.delay_strategy = Delay::Fixed(Duration::ZERO);
+    let err = options.validate().unwrap_err();
+    assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
+    assert_eq!(err.path, "delay_strategy");
+}
+
+#[test]
+fn test_http_retry_method_policy_allows_methods() {
+    assert!(HttpRetryMethodPolicy::IdempotentOnly.allows_method(&http::Method::GET));
+    assert!(HttpRetryMethodPolicy::IdempotentOnly.allows_method(&http::Method::DELETE));
+    assert!(!HttpRetryMethodPolicy::IdempotentOnly.allows_method(&http::Method::POST));
+    assert!(HttpRetryMethodPolicy::AllMethods.allows_method(&http::Method::POST));
+    assert!(!HttpRetryMethodPolicy::None.allows_method(&http::Method::GET));
+}
+
+#[test]
 fn test_http_client_options_validate_default_ok() {
     let opts = HttpClientOptions::default();
     assert!(opts.validate().is_ok());
@@ -341,6 +523,16 @@ fn test_http_client_options_validate_propagates_logging_error() {
 
     let err = opts.validate().unwrap_err();
     assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
+}
+
+#[test]
+fn test_http_client_options_validate_propagates_retry_error() {
+    let mut opts = HttpClientOptions::default();
+    opts.retry.max_attempts = 0;
+
+    let err = opts.validate().unwrap_err();
+    assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
+    assert_eq!(err.path, "retry.max_attempts");
 }
 
 #[test]
