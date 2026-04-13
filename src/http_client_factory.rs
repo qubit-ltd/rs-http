@@ -10,7 +10,7 @@
 
 use crate::HttpConfigError;
 use crate::{HttpClient, HttpClientOptions, HttpError, HttpResult};
-use qubit_config::Config;
+use qubit_config::ConfigReader;
 
 /// Public factory used to build reqwest-backed [`HttpClient`] instances.
 #[derive(Debug, Default, Clone, Copy)]
@@ -90,10 +90,7 @@ impl HttpClientFactory {
             );
         }
 
-        let client = builder.build().map_err(|error| {
-            HttpError::build_client(format!("Failed to build reqwest client: {}", error))
-                .with_source(error)
-        })?;
+        let client = builder.build().map_err(HttpError::from)?;
 
         Ok(HttpClient::new(client, options))
     }
@@ -102,17 +99,22 @@ impl HttpClientFactory {
     /// [`HttpClientFactory::create_with_options`].
     ///
     /// # Parameters
-    /// - `config`: Application configuration.
-    /// - `prefix`: Logical key prefix; options are read via [`qubit_config::Config::prefix_view`].
+    /// - `config`: Any [`ConfigReader`] (root [`qubit_config::Config`] or a
+    ///   [`qubit_config::ConfigPrefixView`] from [`ConfigReader::prefix_view`]).
+    /// - `prefix`: Logical key prefix relative to `config`; options are read via
+    ///   [`ConfigReader::prefix_view`] (empty or dot-only values resolve to the root).
     ///
     /// # Returns
     /// - `Ok(HttpClient)` when parsing, validation, and client build succeed.
     /// - `Err(HttpConfigError)` on config or validation errors; build failures are mapped to [`HttpConfigError`].
-    pub fn create_from_config(
+    pub fn create_from_config<R>(
         &self,
-        config: &Config,
+        config: &R,
         prefix: &str,
-    ) -> Result<HttpClient, HttpConfigError> {
+    ) -> Result<HttpClient, HttpConfigError>
+    where
+        R: ConfigReader + ?Sized,
+    {
         let view = config.prefix_view(prefix);
         let options =
             HttpClientOptions::from_config(&view).map_err(|e| prefix_config_error(prefix, e))?;
@@ -134,14 +136,21 @@ fn prefix_config_error(prefix: &str, error: HttpConfigError) -> HttpConfigError 
         return error;
     }
     let prefix_with_dot = format!("{prefix}.");
-    let path = if error.path.is_empty() {
-        prefix.to_string()
-    } else if error.path == prefix || error.path.starts_with(&prefix_with_dot) {
+    let already_prefixed = error.path == prefix || error.path.starts_with(&prefix_with_dot);
+    let path = if already_prefixed {
         error.path
-    } else if let Some(index) = error.path.find(&prefix_with_dot) {
-        error.path[index..].to_string()
     } else {
-        format!("{prefix}.{}", error.path)
+        error
+            .path
+            .find(&prefix_with_dot)
+            .map(|index| error.path[index..].to_string())
+            .unwrap_or_else(|| {
+                [prefix, error.path.as_str()]
+                    .into_iter()
+                    .filter(|part| !part.is_empty())
+                    .collect::<Vec<_>>()
+                    .join(".")
+            })
     };
     HttpConfigError::new(error.kind, path, error.message)
 }

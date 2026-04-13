@@ -72,9 +72,10 @@ struct HttpClientRootConfigInput {
 }
 
 impl HttpClientOptions {
-    fn read_config<R: ConfigReader + ?Sized>(
-        config: &R,
-    ) -> ConfigResult<HttpClientRootConfigInput> {
+    fn read_config<R>(config: &R) -> ConfigResult<HttpClientRootConfigInput>
+    where
+        R: ConfigReader + ?Sized,
+    {
         Ok(HttpClientRootConfigInput {
             base_url: config.get_optional_string("base_url")?,
             ipv4_only: config.get_optional("ipv4_only")?,
@@ -153,7 +154,10 @@ impl HttpClientOptions {
     ///
     /// # Returns
     /// Parsed options or [`HttpConfigError`].
-    pub fn from_config<R: ConfigReader + ?Sized>(config: &R) -> Result<Self, HttpConfigError> {
+    pub fn from_config<R>(config: &R) -> Result<Self, HttpConfigError>
+    where
+        R: ConfigReader + ?Sized,
+    {
         let mut opts = HttpClientOptions::default();
 
         let root = Self::read_config(config).map_err(HttpConfigError::from)?;

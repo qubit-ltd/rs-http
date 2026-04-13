@@ -39,7 +39,7 @@ tokio = { version = "1.0", features = ["time"] }
 async-stream = "0.3"
 futures-util = "0.3"
 qubit-common = "0.5.3"
-qubit-config = "0.8.2"
+qubit-config = "0.8.3"
 qubit-function = "0.8.1"
 qubit-retry = "0.3.0"
 

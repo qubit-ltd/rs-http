@@ -54,7 +54,10 @@ struct TimeoutConfigInput {
     request_timeout: Option<Duration>,
 }
 
-fn read_timeout_config<R: ConfigReader + ?Sized>(config: &R) -> ConfigResult<TimeoutConfigInput> {
+fn read_timeout_config<R>(config: &R) -> ConfigResult<TimeoutConfigInput>
+where
+    R: ConfigReader + ?Sized,
+{
     Ok(TimeoutConfigInput {
         connect_timeout: config.get_optional("connect_timeout")?,
         read_timeout: config.get_optional("read_timeout")?,
@@ -78,7 +81,10 @@ impl TimeoutOptions {
     ///
     /// # Returns
     /// Populated [`TimeoutOptions`] or [`HttpConfigError`] on type conversion failure.
-    pub fn from_config<R: ConfigReader + ?Sized>(config: &R) -> Result<Self, HttpConfigError> {
+    pub fn from_config<R>(config: &R) -> Result<Self, HttpConfigError>
+    where
+        R: ConfigReader + ?Sized,
+    {
         let raw = read_timeout_config(config).map_err(HttpConfigError::from)?;
 
         let mut opts = TimeoutOptions::default();

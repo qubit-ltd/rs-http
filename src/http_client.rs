@@ -232,17 +232,24 @@ impl HttpClient {
             .await?;
 
         if !response.status().is_success() {
-            return Err(HttpError::status(
+            let message = format!(
+                "HTTP request failed with status {} for {} {}",
                 response.status(),
-                format!(
-                    "HTTP request failed with status {} for {} {}",
-                    response.status(),
-                    method,
-                    url
-                ),
+                method,
+                url
+            );
+            let error = response.error_for_status_ref().expect_err(
+                "non-success HTTP status must produce reqwest status error via error_for_status_ref",
+            );
+            let mut mapped = map_reqwest_error(
+                error,
+                HttpErrorKind::Status,
+                Some(method.clone()),
+                Some(url.clone()),
             )
-            .with_method(method)
-            .with_url(url));
+            .with_status(response.status());
+            mapped.message = message;
+            return Err(mapped);
         }
 
         let status = response.status();
@@ -328,17 +335,24 @@ impl HttpClient {
             .await?;
 
         if !response.status().is_success() {
-            return Err(HttpError::status(
+            let message = format!(
+                "HTTP streaming request failed with status {} for {} {}",
                 response.status(),
-                format!(
-                    "HTTP streaming request failed with status {} for {} {}",
-                    response.status(),
-                    method,
-                    url
-                ),
+                method,
+                url
+            );
+            let error = response.error_for_status_ref().expect_err(
+                "non-success HTTP status must produce reqwest status error via error_for_status_ref",
+            );
+            let mut mapped = map_reqwest_error(
+                error,
+                HttpErrorKind::Status,
+                Some(method.clone()),
+                Some(url.clone()),
             )
-            .with_method(method)
-            .with_url(url));
+            .with_status(response.status());
+            mapped.message = message;
+            return Err(mapped);
         }
 
         let status = response.status();
@@ -613,44 +627,29 @@ fn map_retry_result<T>(result: RetryResult<T, HttpError>) -> HttpResult<T> {
         Err(RetryError::AttemptsExceeded {
             attempts,
             max_attempts,
-            last_failure: AttemptFailure::Error(mut error),
+            last_failure,
             ..
         }) => {
+            let mut error = map_retry_failure_to_error(last_failure);
             error.message = format!(
                 "{} (retry attempts exhausted: {attempts}/{max_attempts})",
                 error.message
             );
             Err(error)
         }
-        Err(RetryError::AttemptsExceeded {
-            last_failure:
-                AttemptFailure::AttemptTimeout {
-                    elapsed, timeout, ..
-                },
-            ..
-        }) => Err(HttpError::other(format!(
-            "HTTP retry attempt timeout after {elapsed:?} (timeout: {timeout:?})"
-        ))),
         Err(RetryError::MaxElapsedExceeded {
             elapsed,
             max_elapsed,
-            last_failure: Some(AttemptFailure::Error(mut error)),
+            last_failure: Some(last_failure),
             ..
         }) => {
+            let mut error = map_retry_failure_to_error(last_failure);
             error.message = format!(
                 "{} (retry max duration exceeded: {elapsed:?}/{max_elapsed:?})",
                 error.message
             );
             Err(error)
         }
-        Err(RetryError::MaxElapsedExceeded {
-            elapsed,
-            max_elapsed,
-            last_failure: Some(AttemptFailure::AttemptTimeout { .. }),
-            ..
-        }) => Err(HttpError::other(format!(
-            "HTTP retry max duration exceeded after an attempt timeout: {elapsed:?}/{max_elapsed:?}"
-        ))),
         Err(RetryError::MaxElapsedExceeded {
             elapsed,
             max_elapsed,
@@ -671,11 +670,22 @@ fn map_retry_result<T>(result: RetryResult<T, HttpError>) -> HttpResult<T> {
 /// Always `Err`: either the wrapped [`HttpError`] or a synthesized timeout
 /// message.
 fn map_retry_failure<T>(failure: AttemptFailure<HttpError>) -> HttpResult<T> {
+    Err(map_retry_failure_to_error(failure))
+}
+
+/// Converts a retry-layer attempt failure into [`HttpError`].
+///
+/// # Parameters
+/// - `failure`: Attempt failure from the retry executor.
+///
+/// # Returns
+/// Mapped [`HttpError`] with timeout context when applicable.
+fn map_retry_failure_to_error(failure: AttemptFailure<HttpError>) -> HttpError {
     match failure {
-        AttemptFailure::Error(error) => Err(error),
-        AttemptFailure::AttemptTimeout { elapsed, timeout } => Err(HttpError::other(format!(
+        AttemptFailure::Error(error) => error,
+        AttemptFailure::AttemptTimeout { elapsed, timeout } => HttpError::other(format!(
             "HTTP retry attempt timeout after {elapsed:?} (timeout: {timeout:?})"
-        ))),
+        )),
     }
 }
 
@@ -699,12 +709,12 @@ fn map_reqwest_error(
 ) -> HttpError {
     let kind = if error.is_timeout() {
         HttpErrorKind::ConnectTimeout
-    } else if error.is_request() {
-        HttpErrorKind::InvalidUrl
     } else if error.is_decode() {
         HttpErrorKind::Decode
     } else if error.is_status() {
         HttpErrorKind::Status
+    } else if error.is_request() && error.url().is_none() {
+        HttpErrorKind::InvalidUrl
     } else {
         default_kind
     };

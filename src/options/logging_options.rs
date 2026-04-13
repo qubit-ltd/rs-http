@@ -57,7 +57,10 @@ struct LoggingConfigInput {
     body_size_limit: Option<usize>,
 }
 
-fn read_logging_config<R: ConfigReader + ?Sized>(config: &R) -> ConfigResult<LoggingConfigInput> {
+fn read_logging_config<R>(config: &R) -> ConfigResult<LoggingConfigInput>
+where
+    R: ConfigReader + ?Sized,
+{
     Ok(LoggingConfigInput {
         enabled: config.get_optional("enabled")?,
         log_request_header: config.get_optional("log_request_header")?,
@@ -84,7 +87,10 @@ impl HttpLoggingOptions {
     ///
     /// # Returns
     /// Populated [`HttpLoggingOptions`] or [`HttpConfigError`].
-    pub fn from_config<R: ConfigReader + ?Sized>(config: &R) -> Result<Self, HttpConfigError> {
+    pub fn from_config<R>(config: &R) -> Result<Self, HttpConfigError>
+    where
+        R: ConfigReader + ?Sized,
+    {
         let raw = read_logging_config(config).map_err(HttpConfigError::from)?;
 
         let mut opts = HttpLoggingOptions::default();

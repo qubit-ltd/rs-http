@@ -25,6 +25,8 @@ mod http_client_options_tests;
 mod http_config_error_kind_tests;
 #[path = "options/http_config_error_tests.rs"]
 mod http_config_error_tests;
+#[path = "options/http_retry_options_tests.rs"]
+mod http_retry_options_tests;
 #[path = "options/logging_options_tests.rs"]
 mod logging_options_tests;
 #[path = "options/proxy_options_tests.rs"]
@@ -69,6 +71,8 @@ mod http_client_tests;
 mod http_client_timeout_tests;
 #[path = "http_client/http_response_tests.rs"]
 mod http_response_tests;
+#[path = "http_client/http_stream_response_tests.rs"]
+mod http_stream_response_tests;
 
 #[path = "proxy/proxy_tests.rs"]
 mod proxy_tests;
@@ -78,5 +82,7 @@ mod socks5_proxy_tests;
 #[path = "retry_hint/retry_hint_tests.rs"]
 mod retry_hint_tests;
 
+#[path = "sse/frame_decoder_tests.rs"]
+mod frame_decoder_tests;
 #[path = "sse/sse_integration_tests.rs"]
 mod sse_integration_tests;

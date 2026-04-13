@@ -291,3 +291,16 @@ impl From<std::io::Error> for HttpError {
         Self::transport(error.to_string()).with_source(error)
     }
 }
+
+impl From<reqwest::Error> for HttpError {
+    /// Maps [`reqwest::Error`] to [`HttpErrorKind::BuildClient`] with chained source.
+    ///
+    /// # Parameters
+    /// - `error`: Reqwest error to wrap.
+    ///
+    /// # Returns
+    /// Wrapped [`HttpError`].
+    fn from(error: reqwest::Error) -> Self {
+        Self::build_client(format!("Failed to build reqwest client: {}", error)).with_source(error)
+    }
+}

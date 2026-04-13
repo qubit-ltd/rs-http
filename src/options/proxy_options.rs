@@ -56,7 +56,10 @@ struct ProxyConfigInput {
     password: Option<String>,
 }
 
-fn read_proxy_config<R: ConfigReader + ?Sized>(config: &R) -> ConfigResult<ProxyConfigInput> {
+fn read_proxy_config<R>(config: &R) -> ConfigResult<ProxyConfigInput>
+where
+    R: ConfigReader + ?Sized,
+{
     Ok(ProxyConfigInput {
         enabled: config.get_optional("enabled")?,
         proxy_type: config.get_optional_string("proxy_type")?,
@@ -83,7 +86,10 @@ impl ProxyOptions {
     ///
     /// # Returns
     /// Populated [`ProxyOptions`] or [`HttpConfigError`].
-    pub fn from_config<R: ConfigReader + ?Sized>(config: &R) -> Result<Self, HttpConfigError> {
+    pub fn from_config<R>(config: &R) -> Result<Self, HttpConfigError>
+    where
+        R: ConfigReader + ?Sized,
+    {
         let raw = read_proxy_config(config).map_err(HttpConfigError::from)?;
 
         let mut opts = ProxyOptions::default();

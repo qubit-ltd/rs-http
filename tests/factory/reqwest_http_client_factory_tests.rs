@@ -9,7 +9,7 @@
 
 use std::time::Duration;
 
-use qubit_config::Config;
+use qubit_config::{Config, ConfigReader};
 use qubit_http::{
     HttpClientFactory, HttpClientOptions, HttpConfigErrorKind, HttpErrorKind, ProxyType,
 };
@@ -124,6 +124,39 @@ fn test_factory_create_from_config_with_base_url() {
 }
 
 #[test]
+fn test_factory_create_from_config_scoped_reader_with_empty_prefix() {
+    let mut config = Config::new();
+    config
+        .set("http.base_url", "https://api.example.com".to_string())
+        .expect("test config should accept base_url");
+
+    let factory = HttpClientFactory::new();
+    let http = ConfigReader::prefix_view(&config, "http");
+    let client = factory
+        .create_from_config(&http, "")
+        .expect("prefix view as ConfigReader with empty prefix should work");
+    assert!(client.options().base_url.is_some());
+}
+
+#[test]
+fn test_factory_create_from_config_empty_prefix_keeps_error_path() {
+    let mut config = Config::new();
+    config
+        .set("proxy.enabled", true)
+        .expect("test config should set proxy.enabled");
+    config
+        .set("proxy.port", 8080u16)
+        .expect("test config should set proxy.port");
+
+    let factory = HttpClientFactory::new();
+    let err = factory
+        .create_from_config(&config, "")
+        .expect_err("missing proxy host should fail with empty prefix");
+    assert_eq!(err.kind, HttpConfigErrorKind::MissingField);
+    assert_eq!(err.path, "proxy.host");
+}
+
+#[test]
 fn test_factory_create_from_config_proxy_validation_error() {
     let mut config = Config::new();
     config
@@ -134,6 +167,21 @@ fn test_factory_create_from_config_proxy_validation_error() {
     let err = factory.create_from_config(&config, "http").unwrap_err();
     assert_eq!(err.kind, HttpConfigErrorKind::MissingField);
     assert_eq!(err.path, "http.proxy.host");
+}
+
+#[test]
+fn test_factory_create_from_config_empty_prefix_is_unchanged_when_type_error() {
+    let mut config = Config::new();
+    config
+        .set("base_url", true)
+        .expect("test config should set invalid value for base_url");
+
+    let factory = HttpClientFactory::new();
+    let err = factory
+        .create_from_config(&config, "")
+        .expect_err("invalid base_url type should fail");
+    assert_eq!(err.kind, HttpConfigErrorKind::TypeError);
+    assert_eq!(err.path, "base_url");
 }
 
 #[test]

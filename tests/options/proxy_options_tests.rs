@@ -68,6 +68,14 @@ fn test_proxy_options_socks5h_type() {
 }
 
 #[test]
+fn test_proxy_options_proxy_type_case_insensitive() {
+    let mut config = Config::new();
+    config.set("p.proxy_type", "HtTp".to_string()).unwrap();
+    let opts = ProxyOptions::from_config(&config.prefix_view("p")).unwrap();
+    assert_eq!(opts.proxy_type, ProxyType::Http);
+}
+
+#[test]
 fn test_proxy_options_unknown_type_returns_error() {
     let mut config = Config::new();
     config.set("p.proxy_type", "ftp".to_string()).unwrap();

@@ -1010,3 +1010,25 @@ async fn test_execute_stream_does_not_retry_after_stream_is_returned() {
         .expect("server finish timed out");
     assert_eq!(captured.target, "/stream-read-timeout");
 }
+
+#[tokio::test]
+async fn test_execute_connect_refused_maps_to_transport_error() {
+    let listener =
+        std::net::TcpListener::bind("127.0.0.1:0").expect("ephemeral listener bind should work");
+    let addr = listener
+        .local_addr()
+        .expect("listener should expose a local address");
+    drop(listener);
+
+    let client = HttpClientFactory::new()
+        .create()
+        .expect("default client should be created");
+    let target = format!("http://{addr}/refused");
+    let request = client.request(Method::GET, &target).build();
+    let error = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .expect_err("closed local port should fail with transport error");
+
+    assert_eq!(error.kind, HttpErrorKind::Transport);
+}

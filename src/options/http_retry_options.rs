@@ -71,7 +71,10 @@ struct HttpRetryConfigInput {
 }
 
 impl HttpRetryOptions {
-    fn read_config<R: ConfigReader + ?Sized>(config: &R) -> ConfigResult<HttpRetryConfigInput> {
+    fn read_config<R>(config: &R) -> ConfigResult<HttpRetryConfigInput>
+    where
+        R: ConfigReader + ?Sized,
+    {
         Ok(HttpRetryConfigInput {
             enabled: config.get_optional("enabled")?,
             max_attempts: config.get_optional("max_attempts")?,
@@ -103,7 +106,10 @@ impl HttpRetryOptions {
     ///
     /// # Returns
     /// Parsed retry options or [`HttpConfigError`].
-    pub fn from_config<R: ConfigReader + ?Sized>(config: &R) -> Result<Self, HttpConfigError> {
+    pub fn from_config<R>(config: &R) -> Result<Self, HttpConfigError>
+    where
+        R: ConfigReader + ?Sized,
+    {
         let raw = Self::read_config(config).map_err(HttpConfigError::from)?;
         let mut opts = Self::default();
 

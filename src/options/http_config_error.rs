@@ -122,19 +122,21 @@ impl HttpConfigError {
     /// # Returns
     /// Updated error with `path` = `prefix` or `{prefix}.{path}`.
     pub(crate) fn prepend_path_prefix(mut self, prefix: &str) -> Self {
-        if prefix.is_empty() {
-            return self;
-        }
         let prefix_with_dot = format!("{prefix}.");
-        self.path = if self.path.is_empty() {
-            prefix.to_string()
-        } else if self.path == prefix || self.path.starts_with(&prefix_with_dot) {
-            self.path
-        } else if let Some(index) = self.path.find(&prefix_with_dot) {
-            self.path[index..].to_string()
-        } else {
-            format!("{prefix}.{}", self.path)
-        };
+        let already_prefixed = self.path == prefix || self.path.starts_with(&prefix_with_dot);
+        if !already_prefixed {
+            self.path = self
+                .path
+                .find(&prefix_with_dot)
+                .map(|index| self.path[index..].to_string())
+                .unwrap_or_else(|| {
+                    [prefix, self.path.as_str()]
+                        .into_iter()
+                        .filter(|part| !part.is_empty())
+                        .collect::<Vec<_>>()
+                        .join(".")
+                });
+        }
         self
     }
 }
