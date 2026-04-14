@@ -9,11 +9,13 @@
 
 use std::time::Duration;
 
+use http::StatusCode;
 use qubit_config::{ConfigReader, ConfigResult};
 use qubit_retry::Delay;
 
 use super::http_retry_method_policy::HttpRetryMethodPolicy;
 use super::HttpConfigError;
+use crate::HttpErrorKind;
 
 const DEFAULT_RETRY_MAX_ATTEMPTS: u32 = 3;
 const DEFAULT_RETRY_INITIAL_DELAY: Duration = Duration::from_millis(200);
@@ -36,6 +38,14 @@ pub struct HttpRetryOptions {
     pub jitter_factor: f64,
     /// Method replay policy.
     pub method_policy: HttpRetryMethodPolicy,
+    /// Optional retryable status-code allowlist.
+    ///
+    /// When set, only listed statuses are retryable for status errors.
+    pub retry_status_codes: Option<Vec<StatusCode>>,
+    /// Optional retryable error-kind allowlist for non-status failures.
+    ///
+    /// When set, only listed kinds are retryable for non-status errors.
+    pub retry_error_kinds: Option<Vec<HttpErrorKind>>,
 }
 
 impl Default for HttpRetryOptions {
@@ -51,6 +61,8 @@ impl Default for HttpRetryOptions {
             },
             jitter_factor: DEFAULT_RETRY_JITTER_FACTOR,
             method_policy: HttpRetryMethodPolicy::default(),
+            retry_status_codes: None,
+            retry_error_kinds: None,
         }
     }
 }
@@ -68,6 +80,8 @@ struct HttpRetryConfigInput {
     backoff_multiplier: Option<f64>,
     jitter_factor: Option<f64>,
     method_policy: Option<String>,
+    status_codes: Option<Vec<String>>,
+    error_kinds: Option<Vec<String>>,
 }
 
 impl HttpRetryOptions {
@@ -88,6 +102,8 @@ impl HttpRetryOptions {
             backoff_multiplier: config.get_optional("backoff_multiplier")?,
             jitter_factor: config.get_optional("jitter_factor")?,
             method_policy: config.get_optional_string("method_policy")?,
+            status_codes: config.get_optional_string_list("status_codes")?,
+            error_kinds: config.get_optional_string_list("error_kinds")?,
         })
     }
 
@@ -125,6 +141,12 @@ impl HttpRetryOptions {
         }
         if let Some(method_policy) = raw.method_policy.as_ref() {
             opts.method_policy = HttpRetryMethodPolicy::from_config_value(method_policy)?;
+        }
+        if let Some(status_codes) = raw.status_codes.as_ref() {
+            opts.retry_status_codes = Some(parse_retry_status_codes(status_codes)?);
+        }
+        if let Some(error_kinds) = raw.error_kinds.as_ref() {
+            opts.retry_error_kinds = Some(parse_retry_error_kinds(error_kinds)?);
         }
 
         if let Some(delay_strategy) = raw.delay_strategy.as_ref() {
@@ -168,6 +190,37 @@ impl HttpRetryOptions {
     pub fn allows_method(&self, method: &http::Method) -> bool {
         self.enabled && self.method_policy.allows_method(method)
     }
+
+    /// Returns whether a status code is retryable under current retry policy.
+    ///
+    /// # Parameters
+    /// - `status`: HTTP status code from the failure response.
+    ///
+    /// # Returns
+    /// `true` if status should be retried.
+    pub fn is_retryable_status(&self, status: StatusCode) -> bool {
+        if let Some(status_codes) = &self.retry_status_codes {
+            status_codes.contains(&status)
+        } else {
+            default_retryable_status(status)
+        }
+    }
+
+    /// Returns whether a non-status error kind is retryable under current retry
+    /// policy.
+    ///
+    /// # Parameters
+    /// - `kind`: Error kind to evaluate.
+    ///
+    /// # Returns
+    /// `true` if kind should be retried.
+    pub fn is_retryable_error_kind(&self, kind: HttpErrorKind) -> bool {
+        if let Some(error_kinds) = &self.retry_error_kinds {
+            error_kinds.contains(&kind)
+        } else {
+            default_retryable_error_kind(kind)
+        }
+    }
 }
 
 fn parse_retry_delay_strategy(
@@ -196,4 +249,139 @@ fn parse_retry_delay_strategy(
             format!("Unsupported retry delay strategy: {value}"),
         )),
     }
+}
+
+/// Parses retry status-code list from config string values.
+///
+/// # Parameters
+/// - `values`: Status-code strings from config.
+///
+/// # Returns
+/// Normalized unique status-code list in ascending order.
+///
+/// # Errors
+/// Returns [`HttpConfigError`] when any entry is blank or not a valid HTTP
+/// status code.
+fn parse_retry_status_codes(values: &[String]) -> Result<Vec<StatusCode>, HttpConfigError> {
+    let mut result = Vec::<StatusCode>::new();
+    for value in values {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            return Err(HttpConfigError::invalid_value(
+                "status_codes",
+                "Retry status_codes cannot contain blank values",
+            ));
+        }
+        let raw_code = trimmed.parse::<u16>().map_err(|error| {
+            HttpConfigError::invalid_value(
+                "status_codes",
+                format!("Invalid retry status code '{trimmed}': {error}"),
+            )
+        })?;
+        if !(100..=599).contains(&raw_code) {
+            return Err(HttpConfigError::invalid_value(
+                "status_codes",
+                format!("Retry status code must be in range 100..=599, got {raw_code}"),
+            ));
+        }
+        let status = StatusCode::from_u16(raw_code)
+            .expect("retry status code range is pre-validated to 100..=599");
+        if !result.contains(&status) {
+            result.push(status);
+        }
+    }
+    result.sort_by_key(|status| status.as_u16());
+    Ok(result)
+}
+
+/// Parses retry error-kind list from config string values.
+///
+/// # Parameters
+/// - `values`: Error-kind strings from config.
+///
+/// # Returns
+/// Normalized unique error-kind list.
+///
+/// # Errors
+/// Returns [`HttpConfigError`] when any entry is blank or unsupported.
+fn parse_retry_error_kinds(values: &[String]) -> Result<Vec<HttpErrorKind>, HttpConfigError> {
+    let mut result = Vec::<HttpErrorKind>::new();
+    for value in values {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            return Err(HttpConfigError::invalid_value(
+                "error_kinds",
+                "Retry error_kinds cannot contain blank values",
+            ));
+        }
+        let kind = parse_retry_error_kind(trimmed).ok_or_else(|| {
+            HttpConfigError::invalid_value(
+                "error_kinds",
+                format!("Unsupported retry error kind: {trimmed}"),
+            )
+        })?;
+        if !result.contains(&kind) {
+            result.push(kind);
+        }
+    }
+    Ok(result)
+}
+
+/// Parses one retry error-kind token.
+///
+/// # Parameters
+/// - `value`: Config token for one error kind.
+///
+/// # Returns
+/// Parsed error kind, or `None` when unsupported.
+fn parse_retry_error_kind(value: &str) -> Option<HttpErrorKind> {
+    let normalized = value.trim().to_ascii_uppercase().replace('-', "_");
+    match normalized.as_str() {
+        "INVALID_URL" => Some(HttpErrorKind::InvalidUrl),
+        "BUILD_CLIENT" => Some(HttpErrorKind::BuildClient),
+        "PROXY_CONFIG" => Some(HttpErrorKind::ProxyConfig),
+        "CONNECT_TIMEOUT" => Some(HttpErrorKind::ConnectTimeout),
+        "READ_TIMEOUT" => Some(HttpErrorKind::ReadTimeout),
+        "WRITE_TIMEOUT" => Some(HttpErrorKind::WriteTimeout),
+        "REQUEST_TIMEOUT" => Some(HttpErrorKind::RequestTimeout),
+        "TRANSPORT" => Some(HttpErrorKind::Transport),
+        "STATUS" => Some(HttpErrorKind::Status),
+        "DECODE" => Some(HttpErrorKind::Decode),
+        "SSE_PROTOCOL" => Some(HttpErrorKind::SseProtocol),
+        "SSE_DECODE" => Some(HttpErrorKind::SseDecode),
+        "CANCELLED" => Some(HttpErrorKind::Cancelled),
+        "OTHER" => Some(HttpErrorKind::Other),
+        _ => None,
+    }
+}
+
+/// Returns default retryable status policy when no explicit status allowlist is
+/// configured.
+///
+/// # Parameters
+/// - `status`: HTTP status code to evaluate.
+///
+/// # Returns
+/// `true` for `429` and `5xx`, otherwise `false`.
+fn default_retryable_status(status: StatusCode) -> bool {
+    status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error()
+}
+
+/// Returns default retryable non-status error-kind policy when no explicit
+/// error-kind allowlist is configured.
+///
+/// # Parameters
+/// - `kind`: Error kind to evaluate.
+///
+/// # Returns
+/// `true` for timeout and transport failures, otherwise `false`.
+fn default_retryable_error_kind(kind: HttpErrorKind) -> bool {
+    matches!(
+        kind,
+        HttpErrorKind::ConnectTimeout
+            | HttpErrorKind::ReadTimeout
+            | HttpErrorKind::WriteTimeout
+            | HttpErrorKind::RequestTimeout
+            | HttpErrorKind::Transport
+    )
 }
