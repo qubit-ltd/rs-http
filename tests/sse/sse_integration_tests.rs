@@ -19,7 +19,7 @@ use futures_util::StreamExt;
 use http::{HeaderMap, Method, StatusCode};
 use qubit_http::{
     sse::{DoneMarkerPolicy, SseChunk, SseJsonMode, SseReconnectOptions},
-    HttpClientFactory, HttpClientOptions, HttpError, HttpErrorKind, HttpStreamResponse,
+    HttpClientFactory, HttpClientOptions, HttpError, HttpErrorKind, StreamingHttpResponse,
     RequestInterceptor,
 };
 use tokio::time::timeout;
@@ -31,13 +31,13 @@ struct TestChunk {
     value: i32,
 }
 
-fn stream_response_from_chunks(chunks: Vec<Vec<u8>>) -> HttpStreamResponse {
+fn stream_response_from_chunks(chunks: Vec<Vec<u8>>) -> StreamingHttpResponse {
     let stream = futures_util::stream::iter(
         chunks
             .into_iter()
             .map(|bytes| Ok::<Bytes, qubit_http::HttpError>(Bytes::from(bytes))),
     );
-    HttpStreamResponse::new(
+    StreamingHttpResponse::new_stream(
         StatusCode::OK,
         HeaderMap::new(),
         url::Url::parse("https://example.com/stream").unwrap(),
@@ -75,7 +75,7 @@ async fn test_decode_events_propagates_upstream_stream_error() {
     let stream = futures_util::stream::iter(vec![Err::<Bytes, HttpError>(HttpError::transport(
         "upstream broken",
     ))]);
-    let response = HttpStreamResponse::new(
+    let response = StreamingHttpResponse::new_stream(
         StatusCode::OK,
         HeaderMap::new(),
         url::Url::parse("https://example.com/stream").unwrap(),

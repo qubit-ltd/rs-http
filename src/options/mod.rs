@@ -27,6 +27,7 @@ mod logging_options;
 mod proxy_options;
 mod proxy_type;
 mod sensitive_headers;
+mod sse_decode_options;
 mod timeout_options;
 
 pub use http_client_options::HttpClientOptions;
@@ -38,4 +39,5 @@ pub use logging_options::HttpLoggingOptions;
 pub use proxy_options::ProxyOptions;
 pub use proxy_type::ProxyType;
 pub use sensitive_headers::SensitiveHeaders;
+pub use sse_decode_options::SseDecodeOptions;
 pub use timeout_options::TimeoutOptions;

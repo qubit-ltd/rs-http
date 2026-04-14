@@ -8,7 +8,7 @@
  ******************************************************************************/
 //! # SSE Decoding
 //!
-//! SSE utilities built on top of [`HttpStreamResponse`](crate::HttpStreamResponse).
+//! SSE utilities built on top of [`StreamingHttpResponse`](crate::StreamingHttpResponse).
 //!
 //! # Author
 //!
@@ -26,7 +26,7 @@ mod sse_event;
 mod sse_event_stream;
 mod sse_json_mode;
 
-use crate::HttpStreamResponse;
+use crate::StreamingHttpResponse;
 
 pub use done_marker_policy::DoneMarkerPolicy;
 pub use sse_chunk::SseChunk;
@@ -85,7 +85,7 @@ impl SseReconnectOptions {
 /// # Returns
 /// Stream yielding [`SseEvent`] values or protocol/transport errors.
 pub(crate) fn decode_events_from_response_with_limits(
-    stream: HttpStreamResponse,
+    stream: StreamingHttpResponse,
     max_line_bytes: usize,
     max_frame_bytes: usize,
 ) -> SseEventStream {

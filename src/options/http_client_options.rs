@@ -61,7 +61,7 @@ pub struct HttpClientOptions {
     pub sensitive_headers: SensitiveHeaders,
     /// Whether IPv4-only DNS behavior is requested.
     pub ipv4_only: bool,
-    /// Default JSON handling mode used by [`crate::HttpStreamResponse::decode_json_chunks`].
+    /// Default JSON handling mode used by [`crate::StreamingHttpResponse::decode_json_chunks`].
     pub sse_json_mode: SseJsonMode,
     /// Default maximum bytes for one SSE line.
     pub sse_max_line_bytes: usize,

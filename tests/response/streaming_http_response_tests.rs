@@ -10,12 +10,12 @@
 use bytes::Bytes;
 use futures_util::StreamExt;
 use http::{HeaderMap, StatusCode};
-use qubit_http::HttpStreamResponse;
+use qubit_http::StreamingHttpResponse;
 use url::Url;
 
 #[test]
 fn test_http_stream_response_is_success_and_new() {
-    let response = HttpStreamResponse::new(
+    let response = StreamingHttpResponse::new_stream(
         StatusCode::CREATED,
         HeaderMap::new(),
         Url::parse("https://example.com/stream").unwrap(),
@@ -26,7 +26,7 @@ fn test_http_stream_response_is_success_and_new() {
 
     assert!(response.is_success());
     let debug = format!("{:?}", &response);
-    assert!(debug.contains("HttpStreamResponse"));
+    assert!(debug.contains("HttpResponse"));
     assert!(debug.contains("status"));
     assert!(debug.contains("headers"));
     assert!(debug.contains("url"));
@@ -34,7 +34,7 @@ fn test_http_stream_response_is_success_and_new() {
 
 #[tokio::test]
 async fn test_http_stream_response_into_stream_consumes_body() {
-    let response = HttpStreamResponse::new(
+    let response = StreamingHttpResponse::new_stream(
         StatusCode::OK,
         HeaderMap::new(),
         Url::parse("https://example.com/stream").unwrap(),

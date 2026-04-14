@@ -16,8 +16,8 @@ use qubit_retry::{
 };
 
 use crate::{
-    HttpClient, HttpError, HttpErrorKind, HttpRequest, HttpResponse, HttpResult, HttpRetryOptions,
-    HttpStreamResponse,
+    BufferedHttpResponse, HttpClient, HttpError, HttpErrorKind, HttpRequest, HttpResult,
+    HttpRetryOptions, StreamingHttpResponse,
 };
 
 /// Shared state used to carry extra `Retry-After` delay into the next async
@@ -124,7 +124,7 @@ impl RetryController {
         &self,
         client: &HttpClient,
         request: HttpRequest,
-    ) -> HttpResult<HttpResponse> {
+    ) -> HttpResult<BufferedHttpResponse> {
         let client = client.clone();
         let pending_retry_after_delay = self.pending_retry_after_delay.clone();
         let result = self
@@ -161,7 +161,7 @@ impl RetryController {
         &self,
         client: &HttpClient,
         request: HttpRequest,
-    ) -> HttpResult<HttpStreamResponse> {
+    ) -> HttpResult<StreamingHttpResponse> {
         let client = client.clone();
         let pending_retry_after_delay = self.pending_retry_after_delay.clone();
         let result = self

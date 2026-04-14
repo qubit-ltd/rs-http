@@ -368,7 +368,7 @@ async fn test_execute_stream_applies_response_interceptor() {
         .request(Method::GET, "/stream-response-interceptor")
         .build();
     let response = client.execute_stream(request).await.unwrap();
-    assert_eq!(response.status.as_u16(), 200);
+    assert_eq!(response.status().as_u16(), 200);
     assert_eq!(called.load(Ordering::Relaxed), 1);
 }
 

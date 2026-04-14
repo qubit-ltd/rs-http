@@ -6,37 +6,23 @@
  *    All rights reserved.
  *
  ******************************************************************************/
-//! Streaming HTTP response wrapper.
+//! Streaming HTTP response payload and helper methods.
 
 use http::{HeaderMap, StatusCode};
 use serde::de::DeserializeOwned;
 use url::Url;
 
 use crate::{
-    constants::{DEFAULT_SSE_MAX_FRAME_BYTES, DEFAULT_SSE_MAX_LINE_BYTES},
     sse::{DoneMarkerPolicy, SseChunkStream, SseEventStream, SseJsonMode},
-    HttpByteStream,
+    HttpByteStream, HttpResponse, HttpResponseMeta, SseDecodeOptions,
 };
 
-/// HTTP response metadata plus a lazy body stream (from [`crate::HttpClient::execute_stream`]).
-pub struct HttpStreamResponse {
-    /// HTTP status code of the first response line.
-    pub status: StatusCode,
-    /// Response headers available before consuming the body.
-    pub headers: HeaderMap,
-    /// Effective URL after redirects.
-    pub url: Url,
-    /// Body as an async stream of [`bytes::Bytes`] chunks.
-    stream: HttpByteStream,
-    /// Default JSON decoding mode used by [`HttpStreamResponse::decode_json_chunks`].
-    sse_json_mode: SseJsonMode,
-    /// Default maximum bytes allowed for one SSE line.
-    sse_max_line_bytes: usize,
-    /// Default maximum bytes allowed for one SSE frame.
-    sse_max_frame_bytes: usize,
-}
+use super::StreamingBody;
 
-impl HttpStreamResponse {
+/// Streaming HTTP response alias backed by [`HttpResponse`] and [`StreamingBody`].
+pub type StreamingHttpResponse = HttpResponse<StreamingBody>;
+
+impl HttpResponse<StreamingBody> {
     /// Wraps status, headers, URL, and the byte stream.
     ///
     /// # Parameters
@@ -46,58 +32,46 @@ impl HttpStreamResponse {
     /// - `stream`: Pinned body stream.
     ///
     /// # Returns
-    /// New [`HttpStreamResponse`].
-    pub fn new(status: StatusCode, headers: HeaderMap, url: Url, stream: HttpByteStream) -> Self {
-        Self::new_with_sse_options(
-            status,
-            headers,
-            url,
-            stream,
-            SseJsonMode::Lenient,
-            DEFAULT_SSE_MAX_LINE_BYTES,
-            DEFAULT_SSE_MAX_FRAME_BYTES,
-        )
+    /// New [`StreamingHttpResponse`].
+    pub fn new_stream(
+        status: StatusCode,
+        headers: HeaderMap,
+        url: Url,
+        stream: HttpByteStream,
+    ) -> Self {
+        Self::new_with_sse_decode_options(status, headers, url, stream, SseDecodeOptions::default())
     }
 
-    /// Wraps status, headers, URL, and byte stream with SSE decode defaults.
+    /// Wraps status, headers, URL, and byte stream with SSE decode options.
     ///
     /// # Parameters
     /// - `status`: HTTP status.
     /// - `headers`: Header map.
     /// - `url`: Final URL.
     /// - `stream`: Pinned body stream.
-    /// - `sse_json_mode`: Default JSON strictness used by `decode_json_chunks`.
-    /// - `sse_max_line_bytes`: Default max bytes for one SSE line.
-    /// - `sse_max_frame_bytes`: Default max bytes for one SSE frame.
+    /// - `sse_decode_options`: Default options used by SSE decode helpers.
     ///
     /// # Returns
-    /// New [`HttpStreamResponse`].
-    pub(crate) fn new_with_sse_options(
+    /// New [`StreamingHttpResponse`].
+    pub(crate) fn new_with_sse_decode_options(
         status: StatusCode,
         headers: HeaderMap,
         url: Url,
         stream: HttpByteStream,
-        sse_json_mode: SseJsonMode,
-        sse_max_line_bytes: usize,
-        sse_max_frame_bytes: usize,
+        sse_decode_options: SseDecodeOptions,
     ) -> Self {
-        Self {
-            status,
-            headers,
-            url,
+        let body = StreamingBody {
             stream,
-            sse_json_mode,
-            sse_max_line_bytes: sse_max_line_bytes.max(1),
-            sse_max_frame_bytes: sse_max_frame_bytes.max(1),
+            sse_decode_options: SseDecodeOptions::new(
+                sse_decode_options.json_mode,
+                sse_decode_options.max_line_bytes,
+                sse_decode_options.max_frame_bytes,
+            ),
+        };
+        Self {
+            meta: HttpResponseMeta::new(status, headers, url),
+            body,
         }
-    }
-
-    /// Same semantics as [`crate::HttpResponse::is_success`].
-    ///
-    /// # Returns
-    /// `true` when status is 2xx.
-    pub fn is_success(&self) -> bool {
-        self.status.is_success()
     }
 
     /// Destructures `self`, yielding the body stream for manual polling.
@@ -105,7 +79,7 @@ impl HttpStreamResponse {
     /// # Returns
     /// The inner [`HttpByteStream`].
     pub fn into_stream(self) -> HttpByteStream {
-        self.stream
+        self.body.stream
     }
 
     /// Decodes current stream body as SSE events (`UTF-8 lines -> SSE frames`).
@@ -118,8 +92,8 @@ impl HttpStreamResponse {
     /// - transport/read errors forwarded from the underlying HTTP stream;
     /// - [`crate::HttpError::sse_protocol`] when SSE line UTF-8 decoding fails.
     pub fn decode_events(self) -> SseEventStream {
-        let max_line_bytes = self.sse_max_line_bytes;
-        let max_frame_bytes = self.sse_max_frame_bytes;
+        let max_line_bytes = self.body.sse_decode_options.max_line_bytes;
+        let max_frame_bytes = self.body.sse_decode_options.max_frame_bytes;
         self.decode_events_with_limits(max_line_bytes, max_frame_bytes)
     }
 
@@ -161,14 +135,12 @@ impl HttpStreamResponse {
     where
         T: DeserializeOwned + Send + 'static,
     {
-        let mode = self.sse_json_mode;
-        let max_line_bytes = self.sse_max_line_bytes;
-        let max_frame_bytes = self.sse_max_frame_bytes;
+        let options = self.body.sse_decode_options;
         self.decode_json_chunks_with_mode_and_limits(
             done_policy,
-            mode,
-            max_line_bytes,
-            max_frame_bytes,
+            options.json_mode,
+            options.max_line_bytes,
+            options.max_frame_bytes,
         )
     }
 
@@ -197,13 +169,12 @@ impl HttpStreamResponse {
     where
         T: DeserializeOwned + Send + 'static,
     {
-        let max_line_bytes = self.sse_max_line_bytes;
-        let max_frame_bytes = self.sse_max_frame_bytes;
+        let options = self.body.sse_decode_options;
         self.decode_json_chunks_with_mode_and_limits(
             done_policy,
             mode,
-            max_line_bytes,
-            max_frame_bytes,
+            options.max_line_bytes,
+            options.max_frame_bytes,
         )
     }
 
@@ -238,25 +209,5 @@ impl HttpStreamResponse {
             max_line_bytes,
             max_frame_bytes,
         )
-    }
-}
-
-impl std::fmt::Debug for HttpStreamResponse {
-    /// Debug output includes status, headers, and URL; omits the stream body.
-    ///
-    /// # Parameters
-    /// - `f`: Formatter.
-    ///
-    /// # Returns
-    /// [`std::fmt::Result`].
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("HttpStreamResponse")
-            .field("status", &self.status)
-            .field("headers", &self.headers)
-            .field("url", &self.url)
-            .field("sse_json_mode", &self.sse_json_mode)
-            .field("sse_max_line_bytes", &self.sse_max_line_bytes)
-            .field("sse_max_frame_bytes", &self.sse_max_frame_bytes)
-            .finish_non_exhaustive()
     }
 }

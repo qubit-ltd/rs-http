@@ -42,7 +42,7 @@ pub use client::HttpClientFactory;
 pub use options::{
     HttpClientOptions, HttpConfigError, HttpConfigErrorKind, HttpLoggingOptions,
     HttpRetryMethodPolicy, HttpRetryOptions, ProxyOptions, ProxyType, SensitiveHeaders,
-    TimeoutOptions,
+    SseDecodeOptions, TimeoutOptions,
 };
 pub use qubit_retry::{Delay, Jitter};
 pub use request::{
@@ -50,6 +50,7 @@ pub use request::{
     HttpRequestRetryOverride, RequestInterceptor,
 };
 pub use response::{
-    HttpByteStream, HttpResponse, HttpResponseMeta, HttpStreamResponse, ResponseInterceptor,
+    BufferedHttpResponse, HttpByteStream, HttpResponse, HttpResponseMeta, StreamingHttpResponse,
+    ResponseInterceptor, StreamingBody,
 };
 pub use tokio_util::sync::CancellationToken;

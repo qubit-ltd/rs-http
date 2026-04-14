@@ -12,7 +12,7 @@ use bytes::Bytes;
 use futures_util::StreamExt;
 use http::HeaderMap;
 use qubit_http::sse::{DoneMarkerPolicy, SseChunk, SseJsonMode};
-use qubit_http::{HttpResult, HttpStreamResponse};
+use qubit_http::{HttpResult, StreamingHttpResponse};
 
 #[derive(Debug, serde::Deserialize, PartialEq, Eq)]
 struct TestChunk {
@@ -26,13 +26,13 @@ async fn collect_results<T>(stream: impl futures_util::Stream<Item = HttpResult<
         .await
 }
 
-fn stream_response_from_chunks(chunks: Vec<&'static str>) -> HttpStreamResponse {
+fn stream_response_from_chunks(chunks: Vec<&'static str>) -> StreamingHttpResponse {
     let stream = futures_util::stream::iter(
         chunks
             .into_iter()
             .map(|text| Ok::<Bytes, qubit_http::HttpError>(Bytes::from(text.to_string()))),
     );
-    HttpStreamResponse::new(
+    StreamingHttpResponse::new_stream(
         http::StatusCode::OK,
         HeaderMap::new(),
         url::Url::parse("https://example.com/stream").unwrap(),
