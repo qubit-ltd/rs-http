@@ -277,6 +277,32 @@ fn test_factory_create_with_options_rejects_invalid_proxy_url() {
 }
 
 #[test]
+fn test_factory_create_with_options_rejects_invalid_logging_options() {
+    let mut options = HttpClientOptions::default();
+    options.logging.body_size_limit = 0;
+
+    let error = HttpClientFactory::new()
+        .create_with_options(options)
+        .expect_err("invalid logging options should fail");
+
+    assert_eq!(error.kind, HttpErrorKind::Other);
+    assert!(error.message.contains("logging.body_size_limit"));
+}
+
+#[test]
+fn test_factory_create_with_options_rejects_invalid_retry_options() {
+    let mut options = HttpClientOptions::default();
+    options.retry.max_attempts = 0;
+
+    let error = HttpClientFactory::new()
+        .create_with_options(options)
+        .expect_err("invalid retry options should fail");
+
+    assert_eq!(error.kind, HttpErrorKind::Other);
+    assert!(error.message.contains("retry.max_attempts"));
+}
+
+#[test]
 fn test_factory_create_from_config_type_error_is_prefixed() {
     let mut config = Config::new();
     config

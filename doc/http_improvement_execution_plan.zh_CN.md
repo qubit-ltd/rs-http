@@ -55,7 +55,7 @@
     - `./coverage.sh text`
   - Commit: `feat(error): attach bounded response body preview for non-2xx`
 
-- [ ] A4. `create_with_options` 统一执行 `validate()`
+- [x] A4. `create_with_options` 统一执行 `validate()`
   - 实现要点：
     - 保证 from_config 与 direct options 路径行为一致；
     - 错误类型与路径语义保持可理解。
@@ -65,7 +65,7 @@
   - 验收命令：
     - `cargo test`
     - `./coverage.sh text`
-  - Commit: `TBD`
+  - Commit: `refactor(factory): validate options at entry and keep proxy mapping`
 
 - [ ] A5. SSE 行/帧大小上限保护
   - 实现要点：

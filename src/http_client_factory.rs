@@ -79,6 +79,8 @@ impl HttpClientFactory {
     /// # Returns
     /// [`HttpClient`] or [`HttpError`] (proxy/build failures).
     pub fn create_with_options(&self, options: HttpClientOptions) -> HttpResult<HttpClient> {
+        options.validate().map_err(map_validation_error)?;
+
         let mut builder = reqwest::Client::builder();
 
         builder = builder.connect_timeout(options.timeouts.connect_timeout);
@@ -90,10 +92,11 @@ impl HttpClientFactory {
         }
 
         if options.proxy.enabled {
-            let host =
-                options.proxy.host.clone().ok_or_else(|| {
-                    HttpError::proxy_config("Proxy is enabled but host is missing")
-                })?;
+            let host = options
+                .proxy
+                .host
+                .clone()
+                .expect("proxy.host must exist after HttpClientOptions::validate");
             if options.ipv4_only && is_ipv6_literal_host(&host) {
                 return Err(HttpError::proxy_config(format!(
                     "Proxy host '{host}' is IPv6, which is not allowed when ipv4_only=true",
@@ -102,21 +105,12 @@ impl HttpClientFactory {
             let port = options
                 .proxy
                 .port
-                .ok_or_else(|| HttpError::proxy_config("Proxy is enabled but port is missing"))?;
-            if port == 0 {
-                return Err(HttpError::proxy_config("Proxy port must be greater than 0"));
-            }
+                .expect("proxy.port must exist after HttpClientOptions::validate");
 
             let proxy_url = format!("{}://{}:{}", options.proxy.proxy_type.scheme(), host, port);
             let mut proxy = reqwest::Proxy::all(&proxy_url).map_err(|error| {
                 HttpError::proxy_config(format!("Invalid proxy URL '{}': {}", proxy_url, error))
             })?;
-
-            if options.proxy.username.is_none() && options.proxy.password.is_some() {
-                return Err(HttpError::proxy_config(
-                    "Proxy password is configured but username is missing",
-                ));
-            }
 
             if let Some(username) = options.proxy.username.clone() {
                 let password = options.proxy.password.as_deref().unwrap_or("");
@@ -174,6 +168,22 @@ where
         config.resolve_key(&error.path)
     };
     error
+}
+
+/// Maps options validation errors to runtime [`HttpError`] values.
+///
+/// # Parameters
+/// - `error`: Validation error returned by [`HttpClientOptions::validate`].
+///
+/// # Returns
+/// - [`HttpError::proxy_config`] for proxy section validation failures;
+/// - [`HttpError::other`] for all other option validation failures.
+fn map_validation_error(error: HttpConfigError) -> HttpError {
+    if error.path.starts_with("proxy.") {
+        HttpError::proxy_config(error.to_string())
+    } else {
+        HttpError::other(format!("Invalid HTTP client options: {error}"))
+    }
 }
 
 /// Checks whether `host` is an IPv6 literal value.

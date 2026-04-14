@@ -91,3 +91,25 @@ fn test_ipv4_only_rejects_ipv6_literal_proxy_host() {
     assert_eq!(error.kind, HttpErrorKind::ProxyConfig);
     assert!(error.message.contains("not allowed when ipv4_only=true"));
 }
+
+#[tokio::test]
+async fn test_ipv4_only_fails_on_hostname_without_ipv4_address() {
+    let mut options = HttpClientOptions::default();
+    options
+        .set_base_url("http://ip6-localhost")
+        .expect("base URL should parse");
+    options.ipv4_only = true;
+    options.timeouts.write_timeout = Duration::from_secs(1);
+    options.timeouts.read_timeout = Duration::from_secs(1);
+
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
+    let request = client.request(Method::GET, "/only-ipv6").build();
+    let error = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .unwrap_err();
+
+    assert_eq!(error.kind, HttpErrorKind::Transport);
+}
