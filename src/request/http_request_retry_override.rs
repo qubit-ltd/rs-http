@@ -17,7 +17,7 @@ use crate::HttpRetryMethodPolicy;
 /// - force-disable retry for one request;
 /// - override the retryable-method policy for one request;
 /// - optionally honor `Retry-After` on `429 Too Many Requests`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct HttpRequestRetryOverride {
     /// Force retry on for this request (unless explicitly force-disabled).
     force_enable: bool,
@@ -27,17 +27,6 @@ pub struct HttpRequestRetryOverride {
     method_policy: Option<HttpRetryMethodPolicy>,
     /// Whether to honor `Retry-After` on `429` responses.
     honor_retry_after: bool,
-}
-
-impl Default for HttpRequestRetryOverride {
-    fn default() -> Self {
-        Self {
-            force_enable: false,
-            force_disable: false,
-            method_policy: None,
-            honor_retry_after: false,
-        }
-    }
 }
 
 impl HttpRequestRetryOverride {
