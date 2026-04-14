@@ -58,7 +58,7 @@
 
 - [x] B5（对应“实用特性 #5”）SSE 自动重连与 `Last-Event-ID` 支持。
   - 验收：断线重连策略可控，事件 ID 透传并可恢复。
-  - Commit: `feat(sse): add auto reconnect and last-event-id resume support`
+  - Commit: `28e1d58` (`feat(sse): add auto reconnect and last-event-id resume support`)
 
 ## 每项执行模板
 
