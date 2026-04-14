@@ -47,7 +47,9 @@ pub use options::{
 pub use qubit_retry::{Delay, Jitter};
 pub use request::{
     AsyncHeaderInjector, HeaderInjector, HttpRequest, HttpRequestBody, HttpRequestBuilder,
-    HttpRequestRetryOverride, RequestInterceptor, ResponseInterceptor,
+    HttpRequestRetryOverride, RequestInterceptor,
 };
-pub use response::{HttpByteStream, HttpResponse, HttpStreamResponse};
+pub use response::{
+    HttpByteStream, HttpResponse, HttpStreamResponse, ResponseInterceptor,
+};
 pub use tokio_util::sync::CancellationToken;

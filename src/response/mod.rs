@@ -6,12 +6,14 @@
  *    All rights reserved.
  *
  ******************************************************************************/
-//! HTTP response types and streaming body aliases.
+//! HTTP response types, streaming body aliases, and response interceptors.
 
 mod http_byte_stream;
 mod http_response;
 mod http_stream_response;
+mod response_interceptor;
 
 pub use http_byte_stream::HttpByteStream;
 pub use http_response::HttpResponse;
 pub use http_stream_response::HttpStreamResponse;
+pub use response_interceptor::ResponseInterceptor;
