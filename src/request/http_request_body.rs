@@ -22,4 +22,10 @@ pub enum HttpRequestBody {
     Text(String),
     /// JSON-serialized bytes; builders may set `Content-Type: application/json`.
     Json(Bytes),
+    /// URL-encoded form bytes; builders may set `Content-Type: application/x-www-form-urlencoded`.
+    Form(Bytes),
+    /// Multipart body bytes; builders may set `Content-Type: multipart/form-data; boundary=...`.
+    Multipart(Bytes),
+    /// NDJSON bytes (`\n`-delimited JSON objects); builders may set `application/x-ndjson`.
+    Ndjson(Bytes),
 }

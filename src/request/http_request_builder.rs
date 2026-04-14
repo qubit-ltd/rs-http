@@ -15,6 +15,7 @@ use http::header::CONTENT_TYPE;
 use http::{HeaderMap, HeaderValue, Method};
 use serde::Serialize;
 use tokio_util::sync::CancellationToken;
+use url::form_urlencoded;
 
 use crate::{HttpError, HttpResult, HttpRetryMethodPolicy};
 
@@ -170,6 +171,94 @@ impl HttpRequestBuilder {
                 .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         }
         self.body = HttpRequestBody::Json(Bytes::from(bytes));
+        Ok(self)
+    }
+
+    /// Serializes key-value pairs as `application/x-www-form-urlencoded`.
+    ///
+    /// # Parameters
+    /// - `fields`: Iterable of `(key, value)` string pairs.
+    ///
+    /// # Returns
+    /// `self` for chaining.
+    pub fn form_body<'a, I>(mut self, fields: I) -> Self
+    where
+        I: IntoIterator<Item = (&'a str, &'a str)>,
+    {
+        let mut serializer = form_urlencoded::Serializer::new(String::new());
+        for (key, value) in fields {
+            serializer.append_pair(key, value);
+        }
+        let body = serializer.finish();
+        if !self.headers.contains_key(CONTENT_TYPE) {
+            self.headers.insert(
+                CONTENT_TYPE,
+                HeaderValue::from_static("application/x-www-form-urlencoded"),
+            );
+        }
+        self.body = HttpRequestBody::Form(Bytes::from(body));
+        self
+    }
+
+    /// Sets multipart body bytes and optional auto content-type by boundary.
+    ///
+    /// # Parameters
+    /// - `body`: Multipart payload bytes.
+    /// - `boundary`: Multipart boundary used in payload framing.
+    ///
+    /// # Returns
+    /// `Ok(self)` for chaining.
+    ///
+    /// # Errors
+    /// Returns [`HttpError`] when `boundary` is empty or content-type cannot be built.
+    pub fn multipart_body(mut self, body: impl Into<Bytes>, boundary: &str) -> HttpResult<Self> {
+        if boundary.trim().is_empty() {
+            return Err(HttpError::other(
+                "Multipart boundary cannot be empty for multipart_body",
+            ));
+        }
+        if !self.headers.contains_key(CONTENT_TYPE) {
+            let value = HeaderValue::from_str(&format!("multipart/form-data; boundary={boundary}"))
+                .map_err(|error| {
+                    HttpError::other(format!(
+                        "Invalid multipart Content-Type header value: {error}"
+                    ))
+                })?;
+            self.headers.insert(CONTENT_TYPE, value);
+        }
+        self.body = HttpRequestBody::Multipart(body.into());
+        Ok(self)
+    }
+
+    /// Serializes records as NDJSON (`one JSON object per line`).
+    ///
+    /// # Parameters
+    /// - `records`: Serializable records to encode as NDJSON lines.
+    ///
+    /// # Returns
+    /// `Ok(self)` for chaining.
+    ///
+    /// # Errors
+    /// Returns [`HttpError`] when any record fails JSON serialization.
+    pub fn ndjson_body<T>(mut self, records: &[T]) -> HttpResult<Self>
+    where
+        T: Serialize,
+    {
+        let mut payload = String::new();
+        for record in records {
+            let line = serde_json::to_string(record).map_err(|error| {
+                HttpError::decode(format!("Failed to encode NDJSON record: {error}"))
+            })?;
+            payload.push_str(&line);
+            payload.push('\n');
+        }
+        if !self.headers.contains_key(CONTENT_TYPE) {
+            self.headers.insert(
+                CONTENT_TYPE,
+                HeaderValue::from_static("application/x-ndjson"),
+            );
+        }
+        self.body = HttpRequestBody::Ndjson(Bytes::from(payload));
         Ok(self)
     }
 

@@ -241,11 +241,7 @@ impl HttpClient {
         }
         let headers = self.build_headers(&request).await?;
 
-        let body_for_log = match &request.body {
-            HttpRequestBody::Bytes(bytes) | HttpRequestBody::Json(bytes) => Some(bytes.clone()),
-            HttpRequestBody::Text(text) => Some(Bytes::from(text.clone())),
-            HttpRequestBody::Empty => None,
-        };
+        let body_for_log = clone_request_body_for_log(&request.body);
 
         let logger = HttpLogger::new(&self.options.logging, &self.options.sensitive_headers);
         logger.log_request(&method, &url, &headers, body_for_log.as_ref());
@@ -261,12 +257,7 @@ impl HttpClient {
             builder = builder.timeout(timeout);
         }
 
-        builder = match request.body {
-            HttpRequestBody::Empty => builder,
-            HttpRequestBody::Bytes(bytes) => builder.body(bytes),
-            HttpRequestBody::Text(text) => builder.body(text),
-            HttpRequestBody::Json(bytes) => builder.body(bytes),
-        };
+        builder = apply_request_body(builder, request.body);
 
         let response = self
             .send_with_write_timeout(
@@ -371,11 +362,7 @@ impl HttpClient {
         }
         let headers = self.build_headers(&request).await?;
 
-        let body_for_log = match &request.body {
-            HttpRequestBody::Bytes(bytes) | HttpRequestBody::Json(bytes) => Some(bytes.clone()),
-            HttpRequestBody::Text(text) => Some(Bytes::from(text.clone())),
-            HttpRequestBody::Empty => None,
-        };
+        let body_for_log = clone_request_body_for_log(&request.body);
 
         let logger = HttpLogger::new(&self.options.logging, &self.options.sensitive_headers);
         logger.log_request(&method, &url, &headers, body_for_log.as_ref());
@@ -391,12 +378,7 @@ impl HttpClient {
             builder = builder.timeout(timeout);
         }
 
-        builder = match request.body {
-            HttpRequestBody::Empty => builder,
-            HttpRequestBody::Bytes(bytes) => builder.body(bytes),
-            HttpRequestBody::Text(text) => builder.body(text),
-            HttpRequestBody::Json(bytes) => builder.body(bytes),
-        };
+        builder = apply_request_body(builder, request.body);
 
         let response = self
             .send_with_write_timeout(
@@ -879,6 +861,48 @@ fn cancelled_request_error_if_needed(
         )
     } else {
         None
+    }
+}
+
+/// Clones request body content for request logging.
+///
+/// # Parameters
+/// - `body`: Request body variant.
+///
+/// # Returns
+/// Optional byte payload for logger previewing.
+fn clone_request_body_for_log(body: &HttpRequestBody) -> Option<Bytes> {
+    match body {
+        HttpRequestBody::Bytes(bytes)
+        | HttpRequestBody::Json(bytes)
+        | HttpRequestBody::Form(bytes)
+        | HttpRequestBody::Multipart(bytes)
+        | HttpRequestBody::Ndjson(bytes) => Some(bytes.clone()),
+        HttpRequestBody::Text(text) => Some(Bytes::from(text.clone())),
+        HttpRequestBody::Empty => None,
+    }
+}
+
+/// Applies request body variant to a reqwest request builder.
+///
+/// # Parameters
+/// - `builder`: Request builder with method/url/headers/query already set.
+/// - `body`: Request body variant to apply.
+///
+/// # Returns
+/// Updated builder containing the request body payload.
+fn apply_request_body(
+    builder: reqwest::RequestBuilder,
+    body: HttpRequestBody,
+) -> reqwest::RequestBuilder {
+    match body {
+        HttpRequestBody::Empty => builder,
+        HttpRequestBody::Bytes(bytes)
+        | HttpRequestBody::Json(bytes)
+        | HttpRequestBody::Form(bytes)
+        | HttpRequestBody::Multipart(bytes)
+        | HttpRequestBody::Ndjson(bytes) => builder.body(bytes),
+        HttpRequestBody::Text(text) => builder.body(text),
     }
 }
 

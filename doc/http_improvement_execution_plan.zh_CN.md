@@ -119,7 +119,7 @@
     - `./coverage.sh text`
   - Commit: `feat(headers): add async header injector chain with deterministic ordering`
 
-- [ ] B4. 表单 / multipart / NDJSON 请求体支持
+- [x] B4. 表单 / multipart / NDJSON 请求体支持
   - 实现要点：
     - builder 增加 `form_body`、`multipart_body`、`ndjson_body`；
     - 自动 `Content-Type` 策略与现有 text/json 语义一致。
@@ -130,7 +130,7 @@
   - 验收命令：
     - `cargo test`
     - `./coverage.sh text`
-  - Commit: `TBD`
+  - Commit: `feat(body): support form multipart and ndjson request payload builders`
 
 ## 3. 每项执行模板
 
