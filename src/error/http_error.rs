@@ -33,6 +33,8 @@ pub struct HttpError {
     pub status: Option<StatusCode>,
     /// Human-readable message.
     pub message: String,
+    /// Optional preview of non-success response body.
+    pub response_body_preview: Option<String>,
     /// Optional source error.
     #[source]
     pub source: Option<BoxError>,
@@ -54,6 +56,7 @@ impl HttpError {
             url: None,
             status: None,
             message: message.into(),
+            response_body_preview: None,
             source: None,
         }
     }
@@ -106,6 +109,18 @@ impl HttpError {
         E: Error + Send + Sync + 'static,
     {
         self.source = Some(Box::new(source));
+        self
+    }
+
+    /// Attaches a preview of the non-success response body.
+    ///
+    /// # Parameters
+    /// - `preview`: Truncated or summarized response body text.
+    ///
+    /// # Returns
+    /// `self` for chaining.
+    pub fn with_response_body_preview(mut self, preview: impl Into<String>) -> Self {
+        self.response_body_preview = Some(preview.into());
         self
     }
 

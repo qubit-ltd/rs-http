@@ -42,7 +42,7 @@
     - `./coverage.sh text`
   - Commit: `feat(timeout): classify request deadline timeout explicitly`
 
-- [ ] A3. 非 2xx 错误携带响应体摘要
+- [x] A3. 非 2xx 错误携带响应体摘要
   - 实现要点：
     - 在 `HttpError` 中加入可控长度的错误响应体预览；
     - 避免泄露敏感信息，限制长度并标记截断。
@@ -53,7 +53,7 @@
   - 验收命令：
     - `cargo test`
     - `./coverage.sh text`
-  - Commit: `TBD`
+  - Commit: `feat(error): attach bounded response body preview for non-2xx`
 
 - [ ] A4. `create_with_options` 统一执行 `validate()`
   - 实现要点：

@@ -233,14 +233,14 @@ impl HttpClient {
             .await?;
 
         if !response.status().is_success() {
-            let message = format!(
-                "HTTP request failed with status {} for {} {}",
-                response.status(),
-                method,
-                url
-            );
+            let status = response.status();
             let error = response.error_for_status_ref().expect_err(
                 "non-success HTTP status must produce reqwest status error via error_for_status_ref",
+            );
+            let body_preview = self.read_error_response_preview(response).await;
+            let message = format!(
+                "HTTP request failed with status {} for {} {}; response body preview: {}",
+                status, method, url, body_preview
             );
             let mut mapped = map_reqwest_error(
                 error,
@@ -248,7 +248,8 @@ impl HttpClient {
                 Some(method.clone()),
                 Some(url.clone()),
             )
-            .with_status(response.status());
+            .with_status(status)
+            .with_response_body_preview(body_preview);
             mapped.message = message;
             return Err(mapped);
         }
@@ -336,14 +337,14 @@ impl HttpClient {
             .await?;
 
         if !response.status().is_success() {
-            let message = format!(
-                "HTTP streaming request failed with status {} for {} {}",
-                response.status(),
-                method,
-                url
-            );
+            let status = response.status();
             let error = response.error_for_status_ref().expect_err(
                 "non-success HTTP status must produce reqwest status error via error_for_status_ref",
+            );
+            let body_preview = self.read_error_response_preview(response).await;
+            let message = format!(
+                "HTTP streaming request failed with status {} for {} {}; response body preview: {}",
+                status, method, url, body_preview
             );
             let mut mapped = map_reqwest_error(
                 error,
@@ -351,7 +352,8 @@ impl HttpClient {
                 Some(method.clone()),
                 Some(url.clone()),
             )
-            .with_status(response.status());
+            .with_status(status)
+            .with_response_body_preview(body_preview);
             mapped.message = message;
             return Err(mapped);
         }
@@ -630,6 +632,54 @@ impl HttpClient {
             .with_url(url)),
         }
     }
+
+    /// Reads and renders a bounded preview for a non-success response body.
+    ///
+    /// # Parameters
+    /// - `response`: Non-success response whose body will be consumed.
+    ///
+    /// # Returns
+    /// Rendered preview text. On preview read failure, returns a descriptive placeholder.
+    async fn read_error_response_preview(&self, mut response: Response) -> String {
+        let read_timeout = self.options.timeouts.read_timeout;
+        let max_bytes = self.options.logging.body_size_limit.max(1);
+        let mut preview = Vec::new();
+        let mut truncated = false;
+
+        loop {
+            let next = tokio::time::timeout(read_timeout, response.chunk()).await;
+            match next {
+                Ok(Ok(Some(chunk))) => {
+                    if preview.len() >= max_bytes {
+                        truncated = true;
+                        break;
+                    }
+                    let remaining = max_bytes - preview.len();
+                    if chunk.len() > remaining {
+                        preview.extend_from_slice(&chunk[..remaining]);
+                        truncated = true;
+                        break;
+                    }
+                    preview.extend_from_slice(&chunk);
+                }
+                Ok(Ok(None)) => break,
+                Ok(Err(error)) => {
+                    return format!(
+                        "<error body unavailable: failed to read response body: {}>",
+                        error
+                    );
+                }
+                Err(_) => {
+                    return format!(
+                        "<error body unavailable: read timeout after {:?}>",
+                        read_timeout
+                    );
+                }
+            }
+        }
+
+        render_error_body_preview(&preview, truncated)
+    }
 }
 
 /// Converts a [`RetryResult`] from the HTTP retry executor into [`HttpResult`].
@@ -767,5 +817,25 @@ fn classify_reqwest_timeout_kind(error: &reqwest::Error) -> HttpErrorKind {
         HttpErrorKind::ConnectTimeout
     } else {
         HttpErrorKind::RequestTimeout
+    }
+}
+
+/// Renders a human-readable error-body preview from raw bytes.
+///
+/// # Parameters
+/// - `bytes`: Captured body bytes (already size-limited).
+/// - `truncated`: Whether additional bytes were omitted.
+///
+/// # Returns
+/// UTF-8 text preview or binary placeholder with truncation suffix when needed.
+fn render_error_body_preview(bytes: &[u8], truncated: bool) -> String {
+    if bytes.is_empty() {
+        return "<empty>".to_string();
+    }
+
+    let suffix = if truncated { "...<truncated>" } else { "" };
+    match std::str::from_utf8(bytes) {
+        Ok(text) => format!("{text}{suffix}"),
+        Err(_) => format!("<binary {} bytes>{suffix}", bytes.len()),
     }
 }

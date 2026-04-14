@@ -376,6 +376,10 @@ fn handle_error(error: &qubit_http::HttpError) {
 
     let retryable = matches!(error.retry_hint(), RetryHint::Retryable);
     eprintln!("retryable={retryable}");
+
+    if let Some(preview) = &error.response_body_preview {
+        eprintln!("response preview={preview}");
+    }
 }
 ```
 

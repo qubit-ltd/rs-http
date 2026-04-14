@@ -111,6 +111,11 @@ async fn test_execute_maps_non_success_status_to_http_error() {
     assert_eq!(error.kind, HttpErrorKind::Status);
     assert_eq!(error.status, Some(StatusCode::SERVICE_UNAVAILABLE));
     assert_eq!(error.method, Some(Method::GET));
+    assert_eq!(
+        error.response_body_preview.as_deref(),
+        Some("service unavailable")
+    );
+    assert!(error.message.contains("response body preview"));
     assert!(error
         .url
         .unwrap()
@@ -549,11 +554,121 @@ async fn test_execute_stream_maps_non_success_status_to_http_error() {
     assert_eq!(error.kind, HttpErrorKind::Status);
     assert_eq!(error.status, Some(StatusCode::SERVICE_UNAVAILABLE));
     assert_eq!(error.method, Some(Method::GET));
+    assert_eq!(
+        error.response_body_preview.as_deref(),
+        Some("service unavailable")
+    );
+    assert!(error.message.contains("response body preview"));
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
         .expect("server finish timed out");
     assert_eq!(captured.target, "/stream-status");
+}
+
+#[tokio::test]
+async fn test_execute_non_success_error_body_preview_is_truncated_by_limit() {
+    let body = "abcdefghijklmnopqrstuvwxyz";
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 500,
+        headers: vec![],
+        body: body.as_bytes().to_vec(),
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.logging.body_size_limit = 8;
+
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
+    let request = client.request(Method::GET, "/status-truncated").build();
+    let error = client.execute(request).await.unwrap_err();
+
+    assert_eq!(error.kind, HttpErrorKind::Status);
+    assert_eq!(
+        error.response_body_preview.as_deref(),
+        Some("abcdefgh...<truncated>")
+    );
+}
+
+#[tokio::test]
+async fn test_execute_non_success_error_body_preview_for_binary_body() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 500,
+        headers: vec![],
+        body: vec![0_u8, 159, 146, 150, 1, 2],
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.logging.body_size_limit = 16;
+
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
+    let request = client.request(Method::GET, "/status-binary").build();
+    let error = client.execute(request).await.unwrap_err();
+
+    assert_eq!(error.kind, HttpErrorKind::Status);
+    assert_eq!(
+        error.response_body_preview.as_deref(),
+        Some("<binary 6 bytes>")
+    );
+}
+
+#[tokio::test]
+async fn test_execute_non_success_error_body_preview_for_empty_body() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 500,
+        headers: vec![],
+        body: vec![],
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
+    let request = client.request(Method::GET, "/status-empty").build();
+    let error = client.execute(request).await.unwrap_err();
+
+    assert_eq!(error.kind, HttpErrorKind::Status);
+    assert_eq!(error.response_body_preview.as_deref(), Some("<empty>"));
+}
+
+#[tokio::test]
+async fn test_execute_non_success_error_body_preview_timeout_placeholder() {
+    let server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
+        status: 500,
+        headers: vec![],
+        total_length: 16,
+        prefix: b"abc".to_vec(),
+        delay: Duration::from_millis(250),
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.read_timeout = Duration::from_millis(30);
+    options.timeouts.write_timeout = Duration::from_secs(1);
+
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
+    let request = client.request(Method::GET, "/status-timeout").build();
+    let error = client.execute(request).await.unwrap_err();
+
+    assert_eq!(error.kind, HttpErrorKind::Status);
+    assert!(error
+        .response_body_preview
+        .as_deref()
+        .unwrap_or_default()
+        .contains("error body unavailable: read timeout"));
 }
 
 #[tokio::test]
