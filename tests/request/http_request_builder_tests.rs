@@ -54,6 +54,35 @@ fn test_request_builder_copies_base_url_and_ipv4_only_defaults() {
 }
 
 #[test]
+fn test_request_builder_copies_write_timeout_default_from_client_options() {
+    let mut options = HttpClientOptions::default();
+    options.timeouts.write_timeout = Duration::from_millis(321);
+
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .expect("client should be created");
+    let request = client.request(Method::GET, "/v1/default-write-timeout").build();
+
+    assert_eq!(request.write_timeout(), Duration::from_millis(321));
+}
+
+#[test]
+fn test_request_builder_write_timeout_overrides_default_from_options() {
+    let mut options = HttpClientOptions::default();
+    options.timeouts.write_timeout = Duration::from_secs(2);
+
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .expect("client should be created");
+    let request = client
+        .request(Method::GET, "/v1/override-write-timeout")
+        .write_timeout(Duration::from_millis(88))
+        .build();
+
+    assert_eq!(request.write_timeout(), Duration::from_millis(88));
+}
+
+#[test]
 fn test_request_builder_base_url_method_overrides_default_from_options() {
     let mut options = HttpClientOptions::default();
     options.set_base_url("https://api.example.com/v1/").unwrap();

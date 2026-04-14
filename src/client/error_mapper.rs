@@ -20,7 +20,7 @@ use crate::{HttpError, HttpErrorKind};
 /// Maps a [`reqwest::Error`] into [`HttpError`] with best-effort
 /// [`HttpErrorKind`] and optional context.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum ReqwestErrorPhase {
+pub(crate) enum ReqwestErrorPhase {
     /// Error happened while sending request / waiting first response bytes.
     Send,
     /// Error happened while reading response body.
@@ -40,7 +40,7 @@ pub(super) enum ReqwestErrorPhase {
 ///
 /// # Returns
 /// Configured [`HttpError`] including chained source.
-pub(super) fn map_reqwest_error(
+pub(crate) fn map_reqwest_error(
     error: reqwest::Error,
     default_kind: HttpErrorKind,
     phase: Option<ReqwestErrorPhase>,

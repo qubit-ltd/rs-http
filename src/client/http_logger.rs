@@ -22,7 +22,7 @@ use crate::constants::{
     SENSITIVE_HEADER_MASK_EDGE_CHARS, SENSITIVE_HEADER_MASK_PLACEHOLDER,
     SENSITIVE_HEADER_MASK_SHORT_LEN,
 };
-use crate::{HttpClientOptions, HttpLoggingOptions, SensitiveHeaders};
+use crate::{HttpClientOptions, HttpLoggingOptions, HttpRequestBody, SensitiveHeaders};
 
 /// HTTP logger bound to one pair of logging options and sensitive header policy.
 #[derive(Debug, Clone, Copy)]
@@ -53,7 +53,7 @@ impl<'a> HttpLogger<'a> {
     /// - `method`: HTTP method.
     /// - `url`: Full request URL.
     /// - `headers`: Outgoing headers (values may be masked).
-    /// - `body`: Optional body preview source.
+    /// - `body`: Request body variant used for optional preview output.
     ///
     /// # Returns
     /// Nothing; no-op when disabled or TRACE off.
@@ -62,7 +62,7 @@ impl<'a> HttpLogger<'a> {
         method: &Method,
         url: &Url,
         headers: &HeaderMap,
-        body: Option<&Bytes>,
+        body: &HttpRequestBody,
     ) {
         if !self.is_trace_enabled() {
             return;
@@ -79,8 +79,8 @@ impl<'a> HttpLogger<'a> {
         }
 
         if self.options.log_request_body {
-            match body {
-                Some(bytes) => tracing::trace!("Request body: {}", self.render_body(bytes)),
+            match Self::clone_request_body_for_log(body) {
+                Some(bytes) => tracing::trace!("Request body: {}", self.render_body(&bytes)),
                 None => tracing::trace!("Request body: <empty>"),
             }
         }
@@ -149,16 +149,6 @@ impl<'a> HttpLogger<'a> {
         self.options.enabled && tracing::enabled!(tracing::Level::TRACE)
     }
 
-    /// Returns whether [`Self::log_request`] will read and emit a request body preview.
-    ///
-    /// Callers can use this to avoid cloning request body bytes when TRACE logging will not use them.
-    ///
-    /// # Returns
-    /// `true` when TRACE logging is active and request body logging is enabled.
-    pub fn should_log_request_body(&self) -> bool {
-        self.is_trace_enabled() && self.options.log_request_body
-    }
-
     /// Returns a masked representation of a header value according to sensitivity rules.
     ///
     /// # Parameters
@@ -210,6 +200,26 @@ impl<'a> HttpLogger<'a> {
         match std::str::from_utf8(prefix) {
             Ok(text) => format!("{}{}", text, suffix),
             Err(_) => format!("<binary {} bytes>{}", body.len(), suffix),
+        }
+    }
+
+    /// Clones request body content only when body logging is needed.
+    ///
+    /// # Parameters
+    /// - `body`: Request body variant.
+    ///
+    /// # Returns
+    /// Optional byte payload for logger previewing.
+    fn clone_request_body_for_log(body: &HttpRequestBody) -> Option<Bytes> {
+        match body {
+            HttpRequestBody::Bytes(bytes)
+            | HttpRequestBody::Json(bytes)
+            | HttpRequestBody::Form(bytes)
+            | HttpRequestBody::Multipart(bytes)
+            | HttpRequestBody::Ndjson(bytes) => Some(bytes.clone()),
+            HttpRequestBody::Text(text) => Some(Bytes::from(text.clone())),
+            HttpRequestBody::Stream(_) => None,
+            HttpRequestBody::Empty => None,
         }
     }
 }

@@ -9,7 +9,9 @@
 
 use http::header::{HeaderName, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use http::{HeaderMap, Method};
-use qubit_http::{HttpClientOptions, HttpLogger, HttpLoggingOptions, SensitiveHeaders};
+use qubit_http::{
+    HttpClientOptions, HttpLogger, HttpLoggingOptions, HttpRequestBody, SensitiveHeaders,
+};
 use url::Url;
 
 use crate::common::capture_trace_logs;
@@ -33,7 +35,7 @@ fn capture_request_header_logs(name: HeaderName, value: HeaderValue) -> String {
             &Method::GET,
             &Url::parse("https://example.com/").unwrap(),
             &headers,
-            None,
+            &HttpRequestBody::Empty,
         );
     })
 }

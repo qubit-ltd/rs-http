@@ -29,7 +29,6 @@
 mod client;
 pub mod constants;
 mod error;
-mod http_client_factory;
 mod options;
 mod request;
 mod response;
@@ -39,7 +38,7 @@ pub use client::http_logger::HttpLogger;
 pub use client::HttpClient;
 pub use constants::DEFAULT_SENSITIVE_HEADER_NAMES;
 pub use error::{HttpError, HttpErrorKind, HttpResult, RetryHint};
-pub use http_client_factory::HttpClientFactory;
+pub use client::HttpClientFactory;
 pub use options::{
     HttpClientOptions, HttpConfigError, HttpConfigErrorKind, HttpLoggingOptions,
     HttpRetryMethodPolicy, HttpRetryOptions, ProxyOptions, ProxyType, SensitiveHeaders,
