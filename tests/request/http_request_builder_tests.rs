@@ -12,7 +12,9 @@ use std::time::Duration;
 use bytes::Bytes;
 use http::header::CONTENT_TYPE;
 use http::{HeaderMap, HeaderValue, Method};
-use qubit_http::{HttpErrorKind, HttpRequestBody, HttpRequestBuilder, HttpRetryMethodPolicy};
+use qubit_http::{
+    CancellationToken, HttpErrorKind, HttpRequestBody, HttpRequestBuilder, HttpRetryMethodPolicy,
+};
 use serde::ser::{Error as _, Serializer};
 
 struct FailingSerialize;
@@ -217,4 +219,19 @@ fn test_request_builder_retry_override_options() {
         Some(HttpRetryMethodPolicy::AllMethods)
     );
     assert!(request.retry_override.should_honor_retry_after());
+}
+
+#[test]
+fn test_request_builder_sets_cancellation_token() {
+    let token = CancellationToken::new();
+    let request = HttpRequestBuilder::new(Method::GET, "/v1/cancel")
+        .cancellation_token(token.clone())
+        .build();
+
+    assert!(request.cancellation_token.is_some());
+    assert!(!request
+        .cancellation_token
+        .as_ref()
+        .expect("cancellation token should exist")
+        .is_cancelled());
 }

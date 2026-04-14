@@ -57,3 +57,4 @@ pub use request::{
     HeaderInjector, HttpRequest, HttpRequestBody, HttpRequestBuilder, HttpRequestRetryOverride,
 };
 pub use retry_hint::RetryHint;
+pub use tokio_util::sync::CancellationToken;

@@ -94,7 +94,7 @@
     - `./coverage.sh text`
   - Commit: `feat(retry): add request-level retry override with optional Retry-After honoring`
 
-- [ ] B2. 取消能力（`CancellationToken`）
+- [x] B2. 取消能力（`CancellationToken`）
   - 实现要点：
     - 请求执行前和流式读取中支持取消；
     - 返回 `HttpErrorKind::Cancelled`。
@@ -104,7 +104,7 @@
   - 验收命令：
     - `cargo test`
     - `./coverage.sh text`
-  - Commit: `TBD`
+  - Commit: `feat(cancel): add CancellationToken support for execute and streaming paths`
 
 - [ ] B3. 异步 Header Injector
   - 实现要点：

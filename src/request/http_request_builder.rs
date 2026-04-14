@@ -14,6 +14,7 @@ use bytes::Bytes;
 use http::header::CONTENT_TYPE;
 use http::{HeaderMap, HeaderValue, Method};
 use serde::Serialize;
+use tokio_util::sync::CancellationToken;
 
 use crate::{HttpError, HttpResult, HttpRetryMethodPolicy};
 
@@ -37,6 +38,8 @@ pub struct HttpRequestBuilder {
     body: HttpRequestBody,
     /// Per-request timeout; if unset, the client default applies.
     request_timeout: Option<Duration>,
+    /// Optional cancellation token for this request.
+    cancellation_token: Option<CancellationToken>,
     /// Per-request retry override for one-off retry behavior customization.
     retry_override: HttpRequestRetryOverride,
 }
@@ -58,6 +61,7 @@ impl HttpRequestBuilder {
             headers: HeaderMap::new(),
             body: HttpRequestBody::Empty,
             request_timeout: None,
+            cancellation_token: None,
             retry_override: HttpRequestRetryOverride::default(),
         }
     }
@@ -181,6 +185,18 @@ impl HttpRequestBuilder {
         self
     }
 
+    /// Binds a [`CancellationToken`] to this request.
+    ///
+    /// # Parameters
+    /// - `token`: Cancellation token checked before send and during request/stream I/O.
+    ///
+    /// # Returns
+    /// `self` for chaining.
+    pub fn cancellation_token(mut self, token: CancellationToken) -> Self {
+        self.cancellation_token = Some(token);
+        self
+    }
+
     /// Forces retry enabled for this request even if client-level retry is disabled.
     ///
     /// # Returns
@@ -235,6 +251,7 @@ impl HttpRequestBuilder {
             headers: self.headers,
             body: self.body,
             request_timeout: self.request_timeout,
+            cancellation_token: self.cancellation_token,
             retry_override: self.retry_override,
         }
     }

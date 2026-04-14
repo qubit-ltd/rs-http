@@ -26,6 +26,7 @@ use qubit_retry::{
     AttemptFailure, Jitter, RetryDecision, RetryError, RetryExecutor, RetryOptions, RetryResult,
 };
 use reqwest::Response;
+use tokio_util::sync::CancellationToken;
 use url::Host;
 use url::Url;
 
@@ -206,6 +207,15 @@ impl HttpClient {
     async fn execute_once(&self, request: HttpRequest) -> HttpResult<HttpResponse> {
         let url = self.resolve_url(&request)?;
         let method = request.method.clone();
+        let cancellation_token = request.cancellation_token.clone();
+        if let Some(error) = cancelled_request_error_if_needed(
+            cancellation_token.as_ref(),
+            &method,
+            &url,
+            "Request cancelled before sending",
+        ) {
+            return Err(error);
+        }
         let headers = self.build_headers(&request)?;
 
         let body_for_log = match &request.body {
@@ -236,7 +246,12 @@ impl HttpClient {
         };
 
         let response = self
-            .send_with_write_timeout(builder, method.clone(), url.clone())
+            .send_with_write_timeout(
+                builder,
+                method.clone(),
+                url.clone(),
+                cancellation_token.as_ref(),
+            )
             .await?;
 
         if !response.status().is_success() {
@@ -270,7 +285,12 @@ impl HttpClient {
         let response_headers = response.headers().clone();
 
         let body = self
-            .read_body_with_timeout(response, method.clone(), response_url.clone())
+            .read_body_with_timeout(
+                response,
+                method.clone(),
+                response_url.clone(),
+                cancellation_token.as_ref(),
+            )
             .await?;
 
         logger.log_response(status, &response_url, &response_headers, &body);
@@ -317,6 +337,15 @@ impl HttpClient {
     async fn execute_stream_once(&self, request: HttpRequest) -> HttpResult<HttpStreamResponse> {
         let url = self.resolve_url(&request)?;
         let method = request.method.clone();
+        let cancellation_token = request.cancellation_token.clone();
+        if let Some(error) = cancelled_request_error_if_needed(
+            cancellation_token.as_ref(),
+            &method,
+            &url,
+            "Streaming request cancelled before sending",
+        ) {
+            return Err(error);
+        }
         let headers = self.build_headers(&request)?;
 
         let body_for_log = match &request.body {
@@ -347,7 +376,12 @@ impl HttpClient {
         };
 
         let response = self
-            .send_with_write_timeout(builder, method.clone(), url.clone())
+            .send_with_write_timeout(
+                builder,
+                method.clone(),
+                url.clone(),
+                cancellation_token.as_ref(),
+            )
             .await?;
 
         if !response.status().is_success() {
@@ -385,11 +419,24 @@ impl HttpClient {
         let read_timeout = self.options.timeouts.read_timeout;
         let method_for_err = method.clone();
         let url_for_err = response_url.clone();
+        let cancellation_token_for_stream = cancellation_token.clone();
 
         let mut stream = response.bytes_stream();
         let wrapped = stream! {
             loop {
-                let next = tokio::time::timeout(read_timeout, stream.next()).await;
+                let next = if let Some(token) = &cancellation_token_for_stream {
+                    tokio::select! {
+                        _ = token.cancelled() => {
+                            yield Err(HttpError::cancelled("Streaming response cancelled while reading body")
+                                .with_method(method_for_err.clone())
+                                .with_url(url_for_err.clone()));
+                            break;
+                        }
+                        item = tokio::time::timeout(read_timeout, stream.next()) => item,
+                    }
+                } else {
+                    tokio::time::timeout(read_timeout, stream.next()).await
+                };
                 match next {
                     Ok(Some(Ok(bytes))) => yield Ok(bytes),
                     Ok(Some(Err(error))) => {
@@ -653,9 +700,23 @@ impl HttpClient {
         builder: reqwest::RequestBuilder,
         method: http::Method,
         url: Url,
+        cancellation_token: Option<&CancellationToken>,
     ) -> HttpResult<Response> {
         let timeout = self.options.timeouts.write_timeout;
-        match tokio::time::timeout(timeout, builder.send()).await {
+        let send_future = tokio::time::timeout(timeout, builder.send());
+        let next = if let Some(token) = cancellation_token {
+            tokio::select! {
+                _ = token.cancelled() => {
+                    return Err(HttpError::cancelled("Request cancelled while sending")
+                        .with_method(method)
+                        .with_url(url));
+                }
+                send_result = send_future => send_result,
+            }
+        } else {
+            send_future.await
+        };
+        match next {
             Ok(Ok(response)) => Ok(response),
             Ok(Err(error)) => Err(map_reqwest_error(
                 error,
@@ -686,9 +747,23 @@ impl HttpClient {
         response: Response,
         method: http::Method,
         url: Url,
+        cancellation_token: Option<&CancellationToken>,
     ) -> HttpResult<Bytes> {
         let timeout = self.options.timeouts.read_timeout;
-        match tokio::time::timeout(timeout, response.bytes()).await {
+        let read_future = tokio::time::timeout(timeout, response.bytes());
+        let next = if let Some(token) = cancellation_token {
+            tokio::select! {
+                _ = token.cancelled() => {
+                    return Err(HttpError::cancelled("Request cancelled while reading response body")
+                        .with_method(method)
+                        .with_url(url));
+                }
+                read_result = read_future => read_result,
+            }
+        } else {
+            read_future.await
+        };
+        match next {
             Ok(Ok(body)) => Ok(body),
             Ok(Err(error)) => Err(map_reqwest_error(
                 error,
@@ -751,6 +826,33 @@ impl HttpClient {
         }
 
         render_error_body_preview(&preview, truncated)
+    }
+}
+
+/// Builds a cancelled error when `token` is already cancelled.
+///
+/// # Parameters
+/// - `token`: Optional cancellation token for this request.
+/// - `method`: Request method for error context.
+/// - `url`: Request URL for error context.
+/// - `message`: Cancellation message.
+///
+/// # Returns
+/// `Some(HttpError)` when cancelled, otherwise `None`.
+fn cancelled_request_error_if_needed(
+    token: Option<&CancellationToken>,
+    method: &http::Method,
+    url: &Url,
+    message: &str,
+) -> Option<HttpError> {
+    if token.is_some_and(CancellationToken::is_cancelled) {
+        Some(
+            HttpError::cancelled(message.to_string())
+                .with_method(method.clone())
+                .with_url(url.clone()),
+        )
+    } else {
+        None
     }
 }
 
