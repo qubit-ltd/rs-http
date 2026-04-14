@@ -938,6 +938,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "paste"
+version = "1.0.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
+
+[[package]]
 name = "pastey"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -993,6 +999,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "qubit-atomic"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a4796e65c2e33a278db608c15ec55e6eff949c6b0093e527538c30e87f13c7ea"
+
+[[package]]
 name = "qubit-common"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1007,6 +1019,21 @@ dependencies = [
  "thiserror 2.0.18",
  "tracing",
  "url",
+]
+
+[[package]]
+name = "qubit-concurrent"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "553b9dfdab3b2ee49872f384ac40ac8f30cd78d85efbbc416210b5eb594d25cb"
+dependencies = [
+ "log",
+ "parking_lot",
+ "qubit-atomic",
+ "qubit-common",
+ "qubit-function 0.7.3",
+ "thiserror 2.0.18",
+ "tokio",
 ]
 
 [[package]]
@@ -1033,6 +1060,16 @@ dependencies = [
 
 [[package]]
 name = "qubit-function"
+version = "0.7.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cfc2e7b88c03c88fa33f654c12454be0dfbc81f6f452ed930edf33fa1fc6ab3e"
+dependencies = [
+ "parking_lot",
+ "paste",
+]
+
+[[package]]
+name = "qubit-function"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0eaa85b2dcd3fe9d7c29a61b9f972c549379dbaeb3ca3d11c16ded58b616769e"
@@ -1051,8 +1088,9 @@ dependencies = [
  "http",
  "httpdate",
  "qubit-common",
+ "qubit-concurrent",
  "qubit-config",
- "qubit-function",
+ "qubit-function 0.8.1",
  "qubit-retry",
  "reqwest",
  "serde",
@@ -1074,7 +1112,7 @@ dependencies = [
  "chrono",
  "qubit-common",
  "qubit-config",
- "qubit-function",
+ "qubit-function 0.8.1",
  "rand 0.10.1",
  "serde",
  "serde_json",

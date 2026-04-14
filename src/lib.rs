@@ -26,26 +26,20 @@
 //!
 //! Haixing Hu
 
+mod client;
 pub mod constants;
 mod error;
-mod http_byte_stream;
-mod http_client;
 mod http_client_factory;
-mod http_logger;
-mod http_response;
-mod http_stream_response;
 mod options;
 mod request;
+mod response;
 pub mod sse;
 
+pub use client::http_logger::HttpLogger;
+pub use client::HttpClient;
 pub use constants::DEFAULT_SENSITIVE_HEADER_NAMES;
 pub use error::{HttpError, HttpErrorKind, HttpResult, RetryHint};
-pub use http_byte_stream::HttpByteStream;
-pub use http_client::HttpClient;
 pub use http_client_factory::HttpClientFactory;
-pub use http_logger::HttpLogger;
-pub use http_response::HttpResponse;
-pub use http_stream_response::HttpStreamResponse;
 pub use options::{
     HttpClientOptions, HttpConfigError, HttpConfigErrorKind, HttpLoggingOptions,
     HttpRetryMethodPolicy, HttpRetryOptions, ProxyOptions, ProxyType, SensitiveHeaders,
@@ -56,4 +50,5 @@ pub use request::{
     AsyncHeaderInjector, HeaderInjector, HttpRequest, HttpRequestBody, HttpRequestBuilder,
     HttpRequestRetryOverride, RequestInterceptor, ResponseInterceptor,
 };
+pub use response::{HttpByteStream, HttpResponse, HttpStreamResponse};
 pub use tokio_util::sync::CancellationToken;

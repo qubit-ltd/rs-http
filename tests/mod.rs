@@ -81,13 +81,13 @@ mod http_client_error_paths_tests;
 mod http_client_request_body_tests;
 #[path = "http_client/http_client_retry_override_tests.rs"]
 mod http_client_retry_override_tests;
-#[path = "http_client/http_client_tests.rs"]
+#[path = "client/http_client_tests.rs"]
 mod http_client_tests;
 #[path = "http_client/http_client_timeout_tests.rs"]
 mod http_client_timeout_tests;
-#[path = "http_client/http_response_tests.rs"]
+#[path = "response/http_response_tests.rs"]
 mod http_response_tests;
-#[path = "http_client/http_stream_response_tests.rs"]
+#[path = "response/http_stream_response_tests.rs"]
 mod http_stream_response_tests;
 
 #[path = "proxy/proxy_tests.rs"]
