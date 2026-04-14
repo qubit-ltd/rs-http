@@ -24,11 +24,11 @@
 
 - [x] A3（对应“优先改进 #6”）将错误响应体预览限制与日志 body 限制解耦。
   - 验收：错误预览不再受 `logging.body_size_limit` 直接耦合影响。
-  - Commit: `refactor(error): decouple error preview limit from logging body limit`
+  - Commit: `2c04389` (`refactor(error): decouple error preview limit from logging body limit`)
 
-- [ ] A4（对应“优先改进 #3”）将 timeout 分类改为阶段驱动，去除字符串启发式分类。
+- [x] A4（对应“优先改进 #3”）将 timeout 分类改为阶段驱动，去除字符串启发式分类。
   - 验收：`connect/read/write/request` 分类稳定且测试可复现。
-  - Commit: _pending_
+  - Commit: `refactor(timeout): classify reqwest timeouts by execution phase`
 
 - [ ] A5（对应“优先改进 #2”）增强 `Retry-After` 解析范围（支持 HTTP-date，并扩展适用状态码）。
   - 验收：`Retry-After` 秒数/日期格式解析正确，重试等待逻辑可验证。
