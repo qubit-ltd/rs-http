@@ -8,9 +8,47 @@
  ******************************************************************************/
 //! Reqwest-backed HTTP client factory.
 
+use std::net::{IpAddr, SocketAddr};
+
+use reqwest::dns::{Addrs, Name, Resolve, Resolving};
+
 use crate::HttpConfigError;
 use crate::{HttpClient, HttpClientOptions, HttpError, HttpResult};
 use qubit_config::ConfigReader;
+
+/// DNS resolver that filters out non-IPv4 addresses for `ipv4_only` mode.
+#[derive(Debug, Clone, Copy, Default)]
+struct Ipv4OnlyResolver;
+
+impl Resolve for Ipv4OnlyResolver {
+    /// Resolves `name` using the OS resolver and returns only IPv4 addresses.
+    ///
+    /// # Parameters
+    /// - `name`: DNS name to resolve.
+    ///
+    /// # Returns
+    /// A future yielding only IPv4 socket addresses.
+    ///
+    /// # Errors
+    /// Returns an error when DNS lookup fails or when no IPv4 address exists for `name`.
+    fn resolve(&self, name: Name) -> Resolving {
+        let host = name.as_str().to_string();
+        Box::pin(async move {
+            let resolved = tokio::net::lookup_host((host.as_str(), 0))
+                .await
+                .map_err(|error| Box::new(error) as Box<dyn std::error::Error + Send + Sync>)?;
+            let ipv4_addrs: Vec<SocketAddr> = resolved.filter(SocketAddr::is_ipv4).collect();
+            if ipv4_addrs.is_empty() {
+                let error = std::io::Error::new(
+                    std::io::ErrorKind::AddrNotAvailable,
+                    format!("No IPv4 address found for host '{host}'"),
+                );
+                return Err(Box::new(error) as Box<dyn std::error::Error + Send + Sync>);
+            }
+            Ok(Box::new(ipv4_addrs.into_iter()) as Addrs)
+        })
+    }
+}
 
 /// Public factory used to build reqwest-backed [`HttpClient`] instances.
 #[derive(Debug, Default, Clone, Copy)]
@@ -47,12 +85,20 @@ impl HttpClientFactory {
         if let Some(request_timeout) = options.timeouts.request_timeout {
             builder = builder.timeout(request_timeout);
         }
+        if options.ipv4_only {
+            builder = builder.dns_resolver(Ipv4OnlyResolver);
+        }
 
         if options.proxy.enabled {
             let host =
                 options.proxy.host.clone().ok_or_else(|| {
                     HttpError::proxy_config("Proxy is enabled but host is missing")
                 })?;
+            if options.ipv4_only && is_ipv6_literal_host(&host) {
+                return Err(HttpError::proxy_config(format!(
+                    "Proxy host '{host}' is IPv6, which is not allowed when ipv4_only=true",
+                )));
+            }
             let port = options
                 .proxy
                 .port
@@ -82,12 +128,6 @@ impl HttpClientFactory {
             // Keep behavior aligned with explicit proxy switch semantics:
             // when proxy is disabled, do not inherit environment proxies.
             builder = builder.no_proxy();
-        }
-
-        if options.ipv4_only {
-            tracing::warn!(
-                "IPv4-only mode is requested but not yet enforced at transport resolver level"
-            );
         }
 
         let client = builder.build().map_err(HttpError::from)?;
@@ -134,4 +174,16 @@ where
         config.resolve_key(&error.path)
     };
     error
+}
+
+/// Checks whether `host` is an IPv6 literal value.
+///
+/// # Parameters
+/// - `host`: Raw host text, optionally wrapped by square brackets.
+///
+/// # Returns
+/// `true` if `host` parses as an IPv6 literal.
+fn is_ipv6_literal_host(host: &str) -> bool {
+    let trimmed = host.trim().trim_start_matches('[').trim_end_matches(']');
+    matches!(trimmed.parse::<IpAddr>(), Ok(IpAddr::V6(_)))
 }

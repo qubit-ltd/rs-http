@@ -10,7 +10,7 @@
 use std::time::Duration;
 
 use http::Method;
-use qubit_http::{HttpClientFactory, HttpClientOptions};
+use qubit_http::{HttpClientFactory, HttpClientOptions, HttpErrorKind};
 use tokio::time::timeout;
 
 use crate::common::{spawn_one_shot_server, ResponsePlan};
@@ -55,4 +55,39 @@ async fn test_ipv4_only_with_localhost_request_is_accessible() {
         .unwrap();
     assert_eq!(response.status.as_u16(), 200);
     assert_eq!(response.text().unwrap(), "ipv4-only-ok");
+}
+
+#[tokio::test]
+async fn test_ipv4_only_rejects_ipv6_literal_request_url() {
+    let mut options = HttpClientOptions::default();
+    options.ipv4_only = true;
+    options.timeouts.write_timeout = Duration::from_secs(1);
+    options.timeouts.read_timeout = Duration::from_secs(1);
+
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
+    let request = client
+        .request(Method::GET, "http://[::1]:18080/ipv6")
+        .build();
+    let error = client.execute(request).await.unwrap_err();
+
+    assert_eq!(error.kind, HttpErrorKind::InvalidUrl);
+    assert!(error.message.contains("ipv4_only=true"));
+}
+
+#[test]
+fn test_ipv4_only_rejects_ipv6_literal_proxy_host() {
+    let mut options = HttpClientOptions::default();
+    options.ipv4_only = true;
+    options.proxy.enabled = true;
+    options.proxy.host = Some("[::1]".to_string());
+    options.proxy.port = Some(8080);
+
+    let error = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap_err();
+
+    assert_eq!(error.kind, HttpErrorKind::ProxyConfig);
+    assert!(error.message.contains("not allowed when ipv4_only=true"));
 }

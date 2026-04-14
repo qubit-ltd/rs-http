@@ -403,7 +403,7 @@ fn handle_error(error: &qubit_http::HttpError) {
 - Sensitive headers are masked in logs.
 - Binary or non-UTF8 bodies are printed as binary summaries instead of raw bytes.
 - `proxy.enabled = false` disables environment proxy inheritance.
-- `ipv4_only` is a validated option flag; transport-level resolver forcing is not applied.
+- `ipv4_only` enforces IPv4 DNS resolution and rejects IPv6 literal target/proxy hosts.
 - Streaming retry covers failures before `HttpStreamResponse` is returned. Errors after streaming starts are surfaced to the caller.
 
 ## License

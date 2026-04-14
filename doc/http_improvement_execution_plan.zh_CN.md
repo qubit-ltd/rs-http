@@ -15,7 +15,7 @@
 
 ### 阶段 A：优先改进
 
-- [ ] A1. `ipv4_only` 真正生效（不再仅告警）
+- [x] A1. `ipv4_only` 真正生效（不再仅告警）
   - 实现要点：
     - 引入可测试、可配置的 IPv4-only 解析/连接约束机制；
     - 明确 HTTPS/SNI 与 Host header 场景下的行为；
@@ -27,7 +27,7 @@
   - 验收命令：
     - `cargo test`
     - `./coverage.sh text`
-  - Commit: `TBD`
+  - Commit: `feat(ipv4): enforce ipv4-only resolver and reject ipv6 literals`
 
 - [ ] A2. 引入精确 `RequestTimeout` 错误分类
   - 实现要点：

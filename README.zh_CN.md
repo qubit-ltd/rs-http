@@ -403,7 +403,7 @@ fn handle_error(error: &qubit_http::HttpError) {
 - 敏感 Header 会自动脱敏。
 - 二进制或非 UTF-8 的 Body 不会按原文打印，而是输出摘要。
 - `proxy.enabled = false` 时，不继承环境变量代理。
-- `ipv4_only` 当前是可校验配置项，不会强制传输层解析器只走 IPv4。
+- `ipv4_only` 会强制 DNS 仅使用 IPv4 地址，并拒绝 IPv6 字面量目标/代理主机。
 - 流式重试仅覆盖返回 `HttpStreamResponse` 之前的失败；流开始后的错误由调用方处理。
 
 ## 许可证

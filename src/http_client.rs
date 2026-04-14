@@ -23,6 +23,7 @@ use qubit_retry::{
     AttemptFailure, Jitter, RetryDecision, RetryError, RetryExecutor, RetryOptions, RetryResult,
 };
 use reqwest::Response;
+use url::Host;
 use url::Url;
 
 use crate::{
@@ -501,6 +502,7 @@ impl HttpClient {
     /// Resolved [`Url`] or [`HttpError::invalid_url`] if resolution fails.
     fn resolve_url(&self, request: &HttpRequest) -> HttpResult<Url> {
         if let Ok(url) = Url::parse(&request.path) {
+            self.validate_resolved_url_host(&url)?;
             return Ok(url);
         }
 
@@ -511,12 +513,34 @@ impl HttpClient {
             ))
         })?;
 
-        base.join(&request.path).map_err(|error| {
+        let url = base.join(&request.path).map_err(|error| {
             HttpError::invalid_url(format!(
                 "Failed to resolve path '{}' against base URL '{}': {}",
                 request.path, base, error
             ))
-        })
+        })?;
+        self.validate_resolved_url_host(&url)?;
+        Ok(url)
+    }
+
+    /// Validates host constraints for a resolved URL under current client options.
+    ///
+    /// # Parameters
+    /// - `url`: Fully resolved request URL.
+    ///
+    /// # Returns
+    /// `Ok(())` when host is allowed by options.
+    ///
+    /// # Errors
+    /// Returns [`HttpError::invalid_url`] when `ipv4_only=true` and `url` uses an IPv6 literal host.
+    fn validate_resolved_url_host(&self, url: &Url) -> HttpResult<()> {
+        if self.options.ipv4_only && matches!(url.host(), Some(Host::Ipv6(_))) {
+            return Err(HttpError::invalid_url(format!(
+                "IPv6 literal host is not allowed when ipv4_only=true: {}",
+                url
+            )));
+        }
+        Ok(())
     }
 
     /// Merges default headers, injector output, and per-request headers (later
