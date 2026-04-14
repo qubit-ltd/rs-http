@@ -56,12 +56,44 @@ impl HttpResponse {
         }
     }
 
+    /// Returns shared response metadata.
+    ///
+    /// # Returns
+    /// Immutable metadata reference.
+    pub fn meta(&self) -> &HttpResponseMeta {
+        &self.meta
+    }
+
+    /// Returns response status code.
+    ///
+    /// # Returns
+    /// HTTP status code from [`HttpResponse::meta`].
+    pub fn status(&self) -> StatusCode {
+        self.meta.status
+    }
+
+    /// Returns response headers.
+    ///
+    /// # Returns
+    /// Immutable headers from [`HttpResponse::meta`].
+    pub fn headers(&self) -> &HeaderMap {
+        &self.meta.headers
+    }
+
+    /// Returns final response URL.
+    ///
+    /// # Returns
+    /// Final URL from [`HttpResponse::meta`].
+    pub fn url(&self) -> &Url {
+        &self.meta.url
+    }
+
     /// Returns whether [`HttpResponse::status`] is a success code ([`StatusCode::is_success`]).
     ///
     /// # Returns
     /// `true` for 2xx responses.
     pub fn is_success(&self) -> bool {
-        self.meta.status.is_success()
+        self.status().is_success()
     }
 
     /// Interprets [`HttpResponse::body`] as UTF-8 text.
