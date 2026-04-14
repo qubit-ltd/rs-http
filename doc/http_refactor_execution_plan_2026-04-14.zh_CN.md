@@ -32,11 +32,11 @@
 
 - [x] A5（对应“优先改进 #2”）增强 `Retry-After` 解析范围（支持 HTTP-date，并扩展适用状态码）。
   - 验收：`Retry-After` 秒数/日期格式解析正确，重试等待逻辑可验证。
-  - Commit: `refactor(retry): support HTTP-date Retry-After on retryable statuses`
+  - Commit: `0a6cee3` (`refactor(retry): support HTTP-date Retry-After on retryable statuses`)
 
-- [ ] A6（对应“优先改进 #1”）移除阻塞等待（`std::thread::sleep`），替换为异步友好机制。
+- [x] A6（对应“优先改进 #1”）移除阻塞等待（`std::thread::sleep`），替换为异步友好机制。
   - 验收：重试等待不阻塞 Tokio worker，行为与策略一致。
-  - Commit: _pending_
+  - Commit: `refactor(retry): replace blocking retry-after wait with async sleep`
 
 ### B. 可增加的实用特性（按要求顺序）
 

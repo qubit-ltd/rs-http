@@ -14,6 +14,7 @@
 //!
 //! Haixing Hu
 
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
 use async_stream::stream;
@@ -63,6 +64,10 @@ struct PreparedRequestSend {
     /// Raw response returned by reqwest for this attempt.
     response: Response,
 }
+
+/// Shared state used to carry extra `Retry-After` delay into the next async
+/// retry attempt.
+type PendingRetryAfterDelay = Arc<Mutex<Option<Duration>>>;
 
 impl std::fmt::Debug for HttpClient {
     /// Formats the client for debugging (exposes options and injectors; omits
@@ -540,13 +545,13 @@ impl HttpClient {
     ///   status responses (`429` and `5xx`).
     ///
     /// # Returns
-    /// Configured executor or [`HttpError`] if retry options or executor
-    /// configuration is invalid.
+    /// Configured executor plus optional shared extra-delay state, or
+    /// [`HttpError`] if retry options or executor configuration is invalid.
     fn build_retry_executor(
         &self,
         retry_options: &HttpRetryOptions,
         honor_retry_after: bool,
-    ) -> HttpResult<RetryExecutor<HttpError>> {
+    ) -> HttpResult<(RetryExecutor<HttpError>, Option<PendingRetryAfterDelay>)> {
         let options = RetryOptions::new(
             retry_options.max_attempts,
             retry_options.max_duration,
@@ -565,7 +570,9 @@ impl HttpClient {
                 }
             });
         if honor_retry_after {
-            builder = builder.on_retry(|context, failure| {
+            let pending_retry_after_delay: PendingRetryAfterDelay = Arc::new(Mutex::new(None));
+            let pending_for_listener = Arc::clone(&pending_retry_after_delay);
+            builder = builder.on_retry(move |context, failure| {
                 let AttemptFailure::Error(error) = failure else {
                     return;
                 };
@@ -573,12 +580,22 @@ impl HttpClient {
                     return;
                 };
                 if retry_after > context.next_delay {
-                    std::thread::sleep(retry_after - context.next_delay);
+                    set_pending_retry_after_delay(
+                        &pending_for_listener,
+                        retry_after - context.next_delay,
+                    );
                 }
             });
+            return builder
+                .build()
+                .map(|policy| (policy, Some(pending_retry_after_delay)))
+                .map_err(|error| {
+                    HttpError::other(format!("Invalid HTTP retry executor: {error}"))
+                });
         }
         builder
             .build()
+            .map(|policy| (policy, None))
             .map_err(|error| HttpError::other(format!("Invalid HTTP retry executor: {error}")))
     }
 
@@ -600,13 +617,23 @@ impl HttpClient {
         retry_options: HttpRetryOptions,
         honor_retry_after: bool,
     ) -> HttpResult<HttpResponse> {
-        let policy = self.build_retry_executor(&retry_options, honor_retry_after)?;
+        let (policy, pending_retry_after_delay) =
+            self.build_retry_executor(&retry_options, honor_retry_after)?;
         let client = self.clone();
         let result = policy
             .run_async(move || {
                 let client = client.clone();
                 let request = request.clone();
-                async move { client.execute_once(request).await }
+                let pending_retry_after_delay = pending_retry_after_delay.clone();
+                async move {
+                    if let Some(delay) = pending_retry_after_delay
+                        .as_ref()
+                        .and_then(take_pending_retry_after_delay)
+                    {
+                        tokio::time::sleep(delay).await;
+                    }
+                    client.execute_once(request).await
+                }
             })
             .await;
         map_retry_result(result)
@@ -631,13 +658,23 @@ impl HttpClient {
         retry_options: HttpRetryOptions,
         honor_retry_after: bool,
     ) -> HttpResult<HttpStreamResponse> {
-        let policy = self.build_retry_executor(&retry_options, honor_retry_after)?;
+        let (policy, pending_retry_after_delay) =
+            self.build_retry_executor(&retry_options, honor_retry_after)?;
         let client = self.clone();
         let result = policy
             .run_async(move || {
                 let client = client.clone();
                 let request = request.clone();
-                async move { client.execute_stream_once(request).await }
+                let pending_retry_after_delay = pending_retry_after_delay.clone();
+                async move {
+                    if let Some(delay) = pending_retry_after_delay
+                        .as_ref()
+                        .and_then(take_pending_retry_after_delay)
+                    {
+                        tokio::time::sleep(delay).await;
+                    }
+                    client.execute_stream_once(request).await
+                }
             })
             .await;
         map_retry_result(result)
@@ -1146,6 +1183,33 @@ fn parse_retry_after_value(value: &str) -> Option<Duration> {
             .duration_since(now)
             .unwrap_or_else(|_| Duration::from_secs(0)),
     )
+}
+
+/// Stores the extra `Retry-After` delay that should be applied before the next
+/// retry attempt.
+///
+/// # Parameters
+/// - `pending`: Shared state carrying a pending delay.
+/// - `delay`: Extra delay to store.
+fn set_pending_retry_after_delay(pending: &PendingRetryAfterDelay, delay: Duration) {
+    let mut guard = pending
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    *guard = Some(delay);
+}
+
+/// Takes and clears the pending extra `Retry-After` delay.
+///
+/// # Parameters
+/// - `pending`: Shared state carrying a pending delay.
+///
+/// # Returns
+/// Pending delay if one exists.
+fn take_pending_retry_after_delay(pending: &PendingRetryAfterDelay) -> Option<Duration> {
+    let mut guard = pending
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    guard.take()
 }
 
 /// Renders a human-readable error-body preview from raw bytes.

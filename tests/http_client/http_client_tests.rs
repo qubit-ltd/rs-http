@@ -594,6 +594,43 @@ async fn test_execute_non_success_error_body_preview_is_truncated_by_limit() {
 }
 
 #[tokio::test]
+async fn test_execute_non_success_error_body_preview_truncates_when_limit_reached_before_next_chunk()
+{
+    let server = spawn_one_shot_server(ResponsePlan::Chunked {
+        status: 500,
+        headers: vec![],
+        chunks: vec![
+            ResponseChunk {
+                delay: Duration::ZERO,
+                bytes: b"abc".to_vec(),
+            },
+            ResponseChunk {
+                delay: Duration::ZERO,
+                bytes: b"def".to_vec(),
+            },
+        ],
+        finish: true,
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.error_response_preview_limit = 3;
+
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
+    let request = client.request(Method::GET, "/status-truncated-next-chunk").build();
+    let error = client.execute(request).await.unwrap_err();
+
+    assert_eq!(error.kind, HttpErrorKind::Status);
+    assert_eq!(
+        error.response_body_preview.as_deref(),
+        Some("abc...<truncated>")
+    );
+}
+
+#[tokio::test]
 async fn test_execute_error_body_preview_limit_is_decoupled_from_logging_limit() {
     let body = "abcdefghijklmnopqrstuvwxyz";
     let server = spawn_one_shot_server(ResponsePlan::Immediate {

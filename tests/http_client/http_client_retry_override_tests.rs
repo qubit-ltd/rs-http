@@ -7,15 +7,20 @@
  *
  ******************************************************************************/
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
+use futures_util::StreamExt;
 use http::{Method, StatusCode};
 use qubit_http::{
     Delay, HttpClientFactory, HttpClientOptions, HttpErrorKind, HttpRetryMethodPolicy,
 };
 use tokio::time::timeout;
 
-use crate::common::{spawn_multi_shot_server, spawn_one_shot_server, ResponsePlan};
+use crate::common::{
+    ResponseChunk, ResponsePlan, spawn_multi_shot_server, spawn_one_shot_server,
+};
 
 #[tokio::test]
 async fn test_request_retry_override_force_enable_and_all_methods_for_post() {
@@ -224,6 +229,173 @@ async fn test_request_retry_override_honor_retry_after_waits_before_retrying_on_
     assert!(
         elapsed >= Duration::from_millis(900),
         "elapsed={elapsed:?} should reflect Retry-After waiting on 503"
+    );
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.len(), 2);
+}
+
+#[tokio::test]
+async fn test_request_retry_override_honor_retry_after_waits_before_stream_retrying() {
+    let server = spawn_multi_shot_server(vec![
+        ResponsePlan::Immediate {
+            status: 429,
+            headers: vec![("Retry-After".to_string(), "1".to_string())],
+            body: b"too many requests".to_vec(),
+        },
+        ResponsePlan::Chunked {
+            status: 200,
+            headers: vec![("Content-Type".to_string(), "text/plain".to_string())],
+            chunks: vec![ResponseChunk {
+                delay: Duration::ZERO,
+                bytes: b"stream-ok".to_vec(),
+            }],
+            finish: true,
+        },
+    ])
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.retry.enabled = true;
+    options.retry.max_attempts = 2;
+    options.retry.delay_strategy = Delay::None;
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .expect("client should be created");
+
+    let request = client
+        .request(Method::GET, "/stream-retry-after")
+        .honor_retry_after(true)
+        .build();
+    let start = Instant::now();
+    let response = timeout(Duration::from_secs(4), client.execute_stream(request))
+        .await
+        .expect("execute_stream timed out")
+        .expect("request should succeed after retry");
+    let elapsed = start.elapsed();
+    let body = response
+        .into_stream()
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .collect::<Result<Vec<_>, _>>()
+        .expect("stream body should decode");
+    assert_eq!(body[0], b"stream-ok".as_slice());
+    assert!(
+        elapsed >= Duration::from_millis(900),
+        "elapsed={elapsed:?} should reflect Retry-After waiting before stream retry"
+    );
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.len(), 2);
+}
+
+#[tokio::test]
+async fn test_request_retry_override_honor_retry_after_without_header_does_not_add_delay() {
+    let server = spawn_multi_shot_server(vec![
+        ResponsePlan::Immediate {
+            status: 503,
+            headers: vec![],
+            body: b"service unavailable".to_vec(),
+        },
+        ResponsePlan::Immediate {
+            status: 200,
+            headers: vec![],
+            body: b"ok".to_vec(),
+        },
+    ])
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.retry.enabled = true;
+    options.retry.max_attempts = 2;
+    options.retry.delay_strategy = Delay::None;
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .expect("client should be created");
+
+    let request = client
+        .request(Method::GET, "/retry-after-missing-header")
+        .honor_retry_after(true)
+        .build();
+    let start = Instant::now();
+    let response = timeout(Duration::from_secs(4), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .expect("request should succeed after retry");
+    let elapsed = start.elapsed();
+    assert_eq!(response.status, StatusCode::OK);
+    assert!(
+        elapsed < Duration::from_millis(700),
+        "elapsed={elapsed:?} should not include extra Retry-After delay when header is missing"
+    );
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.len(), 2);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn test_request_retry_override_honor_retry_after_does_not_block_runtime_thread() {
+    let server = spawn_multi_shot_server(vec![
+        ResponsePlan::Immediate {
+            status: 429,
+            headers: vec![("Retry-After".to_string(), "1".to_string())],
+            body: b"too many requests".to_vec(),
+        },
+        ResponsePlan::Immediate {
+            status: 200,
+            headers: vec![],
+            body: b"ok".to_vec(),
+        },
+    ])
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.retry.enabled = true;
+    options.retry.max_attempts = 2;
+    options.retry.delay_strategy = Delay::None;
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .expect("client should be created");
+
+    let tick_count = Arc::new(AtomicUsize::new(0));
+    let stop_ticker = Arc::new(AtomicBool::new(false));
+    let tick_count_for_task = Arc::clone(&tick_count);
+    let stop_ticker_for_task = Arc::clone(&stop_ticker);
+    let ticker = tokio::spawn(async move {
+        while !stop_ticker_for_task.load(Ordering::Relaxed) {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            tick_count_for_task.fetch_add(1, Ordering::Relaxed);
+        }
+    });
+
+    let request = client
+        .request(Method::GET, "/retry-after-async-friendly")
+        .honor_retry_after(true)
+        .build();
+    let response = timeout(Duration::from_secs(4), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .expect("request should succeed after retry");
+    assert_eq!(response.status, StatusCode::OK);
+
+    stop_ticker.store(true, Ordering::Relaxed);
+    timeout(Duration::from_secs(2), ticker)
+        .await
+        .expect("ticker join timed out")
+        .expect("ticker task panicked");
+    assert!(
+        tick_count.load(Ordering::Relaxed) >= 5,
+        "ticker should keep running while honoring Retry-After without blocking runtime"
     );
 
     let captured = timeout(Duration::from_secs(3), server.finish())
