@@ -361,6 +361,7 @@ impl HttpClient {
                         let mapped = map_reqwest_error(
                             error,
                             HttpErrorKind::Transport,
+                            Some(ReqwestErrorPhase::Read),
                             Some(method_for_err.clone()),
                             Some(url_for_err.clone()),
                         );
@@ -483,6 +484,7 @@ impl HttpClient {
         let mut mapped = map_reqwest_error(
             error,
             HttpErrorKind::Status,
+            None,
             Some(method.clone()),
             Some(url.clone()),
         )
@@ -747,6 +749,7 @@ impl HttpClient {
             Ok(Err(error)) => Err(map_reqwest_error(
                 error,
                 HttpErrorKind::Transport,
+                Some(ReqwestErrorPhase::Send),
                 Some(method),
                 Some(url),
             )),
@@ -794,6 +797,7 @@ impl HttpClient {
             Ok(Err(error)) => Err(map_reqwest_error(
                 error,
                 HttpErrorKind::Decode,
+                Some(ReqwestErrorPhase::Read),
                 Some(method),
                 Some(url),
             )),
@@ -1007,11 +1011,22 @@ fn map_retry_failure_to_error(failure: AttemptFailure<HttpError>) -> HttpError {
 
 /// Maps a [`reqwest::Error`] into [`HttpError`] with best-effort
 /// [`HttpErrorKind`] and optional context.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReqwestErrorPhase {
+    /// Error happened while sending request / waiting first response bytes.
+    Send,
+    /// Error happened while reading response body.
+    Read,
+}
+
+/// Maps a [`reqwest::Error`] into [`HttpError`] with phase-aware timeout
+/// classification and optional context.
 ///
 /// # Parameters
 /// - `error`: Underlying reqwest error.
 /// - `default_kind`: Kind used when reqwest does not classify the error more
 ///   specifically.
+/// - `phase`: Optional execution phase used to classify timeout errors.
 /// - `method`: Optional request method to attach.
 /// - `url`: Optional request URL to attach.
 ///
@@ -1020,11 +1035,12 @@ fn map_retry_failure_to_error(failure: AttemptFailure<HttpError>) -> HttpError {
 fn map_reqwest_error(
     error: reqwest::Error,
     default_kind: HttpErrorKind,
+    phase: Option<ReqwestErrorPhase>,
     method: Option<http::Method>,
     url: Option<Url>,
 ) -> HttpError {
     let kind = if error.is_timeout() {
-        classify_reqwest_timeout_kind(&error)
+        classify_reqwest_timeout_kind(&error, phase)
     } else if error.is_decode() {
         HttpErrorKind::Decode
     } else if error.is_status() {
@@ -1045,20 +1061,31 @@ fn map_reqwest_error(
     result.with_source(error)
 }
 
-/// Classifies reqwest timeout errors into connect-timeout vs request-timeout.
+/// Classifies reqwest timeout errors by execution phase.
 ///
 /// # Parameters
 /// - `error`: Reqwest timeout error to classify.
+/// - `phase`: Optional phase where timeout happened.
 ///
 /// # Returns
-/// [`HttpErrorKind::ConnectTimeout`] when the timeout message indicates a connect-phase timeout;
-/// otherwise [`HttpErrorKind::RequestTimeout`].
-fn classify_reqwest_timeout_kind(error: &reqwest::Error) -> HttpErrorKind {
-    let message = error.to_string().to_ascii_lowercase();
-    if message.contains("connect") {
-        HttpErrorKind::ConnectTimeout
-    } else {
-        HttpErrorKind::RequestTimeout
+/// Timeout kind inferred from phase:
+/// - send phase: `ConnectTimeout` when reqwest marks connect errors; otherwise `RequestTimeout`;
+/// - read phase: `ReadTimeout`;
+/// - unknown phase: `RequestTimeout`.
+fn classify_reqwest_timeout_kind(
+    error: &reqwest::Error,
+    phase: Option<ReqwestErrorPhase>,
+) -> HttpErrorKind {
+    match phase {
+        Some(ReqwestErrorPhase::Send) => {
+            if error.is_connect() {
+                HttpErrorKind::ConnectTimeout
+            } else {
+                HttpErrorKind::RequestTimeout
+            }
+        }
+        Some(ReqwestErrorPhase::Read) => HttpErrorKind::ReadTimeout,
+        None => HttpErrorKind::RequestTimeout,
     }
 }
 
