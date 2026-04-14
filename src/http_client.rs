@@ -51,6 +51,18 @@ pub struct HttpClient {
     async_injectors: Vec<AsyncHeaderInjector>,
 }
 
+/// Shared pre-send outcome for one HTTP attempt.
+struct PreparedRequestSend {
+    /// Request method used for this attempt.
+    method: http::Method,
+    /// Resolved request URL used for this attempt.
+    url: Url,
+    /// Optional cancellation token bound to this request.
+    cancellation_token: Option<CancellationToken>,
+    /// Raw response returned by reqwest for this attempt.
+    response: Response,
+}
+
 impl std::fmt::Debug for HttpClient {
     /// Formats the client for debugging (exposes options and injectors; omits
     /// the reqwest client).
@@ -228,71 +240,18 @@ impl HttpClient {
     /// # Returns
     /// Buffered [`HttpResponse`] or [`HttpError`].
     async fn execute_once(&self, request: HttpRequest) -> HttpResult<HttpResponse> {
-        let url = self.resolve_url(&request)?;
-        let method = request.method.clone();
-        let cancellation_token = request.cancellation_token.clone();
-        if let Some(error) = cancelled_request_error_if_needed(
-            cancellation_token.as_ref(),
-            &method,
-            &url,
-            "Request cancelled before sending",
-        ) {
-            return Err(error);
-        }
-        let headers = self.build_headers(&request).await?;
-
-        let body_for_log = clone_request_body_for_log(&request.body);
-
-        let logger = HttpLogger::new(&self.options.logging, &self.options.sensitive_headers);
-        logger.log_request(&method, &url, &headers, body_for_log.as_ref());
-
-        let mut builder = self.client.request(method.clone(), url.clone());
-        builder = builder.headers(headers);
-
-        if !request.query.is_empty() {
-            builder = builder.query(&request.query);
-        }
-
-        if let Some(timeout) = request.request_timeout {
-            builder = builder.timeout(timeout);
-        }
-
-        builder = apply_request_body(builder, request.body);
-
-        let response = self
-            .send_with_write_timeout(
-                builder,
-                method.clone(),
-                url.clone(),
-                cancellation_token.as_ref(),
-            )
+        let PreparedRequestSend {
+            method,
+            url,
+            cancellation_token,
+            response,
+        } = self
+            .prepare_and_send_once(request, "Request cancelled before sending")
             .await?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let retry_after = parse_retry_after(status, response.headers());
-            let error = response.error_for_status_ref().expect_err(
-                "non-success HTTP status must produce reqwest status error via error_for_status_ref",
-            );
-            let body_preview = self.read_error_response_preview(response).await;
-            let message = format!(
-                "HTTP request failed with status {} for {} {}; response body preview: {}",
-                status, method, url, body_preview
-            );
-            let mut mapped = map_reqwest_error(
-                error,
-                HttpErrorKind::Status,
-                Some(method.clone()),
-                Some(url.clone()),
-            )
-            .with_status(status)
-            .with_response_body_preview(body_preview);
-            if let Some(retry_after) = retry_after {
-                mapped = mapped.with_retry_after(retry_after);
-            }
-            mapped.message = message;
-            return Err(mapped);
-        }
+        let response = self
+            .ensure_success_response(response, &method, &url, "HTTP request failed")
+            .await?;
 
         let status = response.status();
         let response_url = response.url().clone();
@@ -307,6 +266,7 @@ impl HttpClient {
             )
             .await?;
 
+        let logger = HttpLogger::new(&self.options.logging, &self.options.sensitive_headers);
         logger.log_response(status, &response_url, &response_headers, &body);
 
         Ok(HttpResponse::new(
@@ -349,76 +309,29 @@ impl HttpClient {
     /// # Returns
     /// [`HttpStreamResponse`] or [`HttpError`].
     async fn execute_stream_once(&self, request: HttpRequest) -> HttpResult<HttpStreamResponse> {
-        let url = self.resolve_url(&request)?;
-        let method = request.method.clone();
-        let cancellation_token = request.cancellation_token.clone();
-        if let Some(error) = cancelled_request_error_if_needed(
-            cancellation_token.as_ref(),
-            &method,
-            &url,
-            "Streaming request cancelled before sending",
-        ) {
-            return Err(error);
-        }
-        let headers = self.build_headers(&request).await?;
-
-        let body_for_log = clone_request_body_for_log(&request.body);
-
-        let logger = HttpLogger::new(&self.options.logging, &self.options.sensitive_headers);
-        logger.log_request(&method, &url, &headers, body_for_log.as_ref());
-
-        let mut builder = self.client.request(method.clone(), url.clone());
-        builder = builder.headers(headers);
-
-        if !request.query.is_empty() {
-            builder = builder.query(&request.query);
-        }
-
-        if let Some(timeout) = request.request_timeout {
-            builder = builder.timeout(timeout);
-        }
-
-        builder = apply_request_body(builder, request.body);
-
-        let response = self
-            .send_with_write_timeout(
-                builder,
-                method.clone(),
-                url.clone(),
-                cancellation_token.as_ref(),
-            )
+        let PreparedRequestSend {
+            method,
+            url,
+            cancellation_token,
+            response,
+        } = self
+            .prepare_and_send_once(request, "Streaming request cancelled before sending")
             .await?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let retry_after = parse_retry_after(status, response.headers());
-            let error = response.error_for_status_ref().expect_err(
-                "non-success HTTP status must produce reqwest status error via error_for_status_ref",
-            );
-            let body_preview = self.read_error_response_preview(response).await;
-            let message = format!(
-                "HTTP streaming request failed with status {} for {} {}; response body preview: {}",
-                status, method, url, body_preview
-            );
-            let mut mapped = map_reqwest_error(
-                error,
-                HttpErrorKind::Status,
-                Some(method.clone()),
-                Some(url.clone()),
+        let response = self
+            .ensure_success_response(
+                response,
+                &method,
+                &url,
+                "HTTP streaming request failed",
             )
-            .with_status(status)
-            .with_response_body_preview(body_preview);
-            if let Some(retry_after) = retry_after {
-                mapped = mapped.with_retry_after(retry_after);
-            }
-            mapped.message = message;
-            return Err(mapped);
-        }
+            .await?;
 
         let status = response.status();
         let response_url = response.url().clone();
         let response_headers = response.headers().clone();
 
+        let logger = HttpLogger::new(&self.options.logging, &self.options.sensitive_headers);
         logger.log_stream_response_headers(status, &response_url, &response_headers);
 
         let read_timeout = self.options.timeouts.read_timeout;
@@ -478,6 +391,108 @@ impl HttpClient {
             self.options.sse_max_line_bytes,
             self.options.sse_max_frame_bytes,
         ))
+    }
+
+    /// Resolves URL, applies headers/query/body/timeout, logs request, then sends one attempt.
+    ///
+    /// # Parameters
+    /// - `request`: Request to execute.
+    /// - `cancellation_message`: Error message used when cancelled before send.
+    ///
+    /// # Returns
+    /// Request context and raw response for this attempt.
+    async fn prepare_and_send_once(
+        &self,
+        request: HttpRequest,
+        cancellation_message: &str,
+    ) -> HttpResult<PreparedRequestSend> {
+        let url = self.resolve_url(&request)?;
+        let method = request.method.clone();
+        let cancellation_token = request.cancellation_token.clone();
+        if let Some(error) = cancelled_request_error_if_needed(
+            cancellation_token.as_ref(),
+            &method,
+            &url,
+            cancellation_message,
+        ) {
+            return Err(error);
+        }
+        let headers = self.build_headers(&request).await?;
+        let body_for_log = clone_request_body_for_log(&request.body);
+
+        let logger = HttpLogger::new(&self.options.logging, &self.options.sensitive_headers);
+        logger.log_request(&method, &url, &headers, body_for_log.as_ref());
+
+        let mut builder = self.client.request(method.clone(), url.clone());
+        builder = builder.headers(headers);
+        if !request.query.is_empty() {
+            builder = builder.query(&request.query);
+        }
+        if let Some(timeout) = request.request_timeout {
+            builder = builder.timeout(timeout);
+        }
+        builder = apply_request_body(builder, request.body);
+
+        let response = self
+            .send_with_write_timeout(
+                builder,
+                method.clone(),
+                url.clone(),
+                cancellation_token.as_ref(),
+            )
+            .await?;
+        Ok(PreparedRequestSend {
+            method,
+            url,
+            cancellation_token,
+            response,
+        })
+    }
+
+    /// Converts a non-success response into [`HttpError`] with status/retry/body-preview context.
+    ///
+    /// # Parameters
+    /// - `response`: Raw response from reqwest.
+    /// - `method`: Request method used for this attempt.
+    /// - `url`: Resolved request URL used for this attempt.
+    /// - `message_prefix`: Prefix for the final error message.
+    ///
+    /// # Returns
+    /// Original response when successful, otherwise mapped [`HttpError`].
+    async fn ensure_success_response(
+        &self,
+        response: Response,
+        method: &http::Method,
+        url: &Url,
+        message_prefix: &str,
+    ) -> HttpResult<Response> {
+        if response.status().is_success() {
+            return Ok(response);
+        }
+
+        let status = response.status();
+        let retry_after = parse_retry_after(status, response.headers());
+        let error = response.error_for_status_ref().expect_err(
+            "non-success HTTP status must produce reqwest status error via error_for_status_ref",
+        );
+        let body_preview = self.read_error_response_preview(response).await;
+        let message = format!(
+            "{} with status {} for {} {}; response body preview: {}",
+            message_prefix, status, method, url, body_preview
+        );
+        let mut mapped = map_reqwest_error(
+            error,
+            HttpErrorKind::Status,
+            Some(method.clone()),
+            Some(url.clone()),
+        )
+        .with_status(status)
+        .with_response_body_preview(body_preview);
+        if let Some(retry_after) = retry_after {
+            mapped = mapped.with_retry_after(retry_after);
+        }
+        mapped.message = message;
+        Err(mapped)
     }
 
     /// Returns whether the client should run the retry policy for this request.
