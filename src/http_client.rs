@@ -31,8 +31,8 @@ use url::Host;
 use url::Url;
 
 use crate::{
-    HeaderInjector, HttpClientOptions, HttpError, HttpErrorKind, HttpLogger, HttpRequest,
-    HttpRequestBody, HttpRequestBuilder, HttpResponse, HttpResult, HttpRetryOptions,
+    AsyncHeaderInjector, HeaderInjector, HttpClientOptions, HttpError, HttpErrorKind, HttpLogger,
+    HttpRequest, HttpRequestBody, HttpRequestBuilder, HttpResponse, HttpResult, HttpRetryOptions,
     HttpStreamResponse, RetryHint,
 };
 
@@ -47,6 +47,8 @@ pub struct HttpClient {
     /// Header injectors applied to every outgoing request after default
     /// headers.
     injectors: Vec<HeaderInjector>,
+    /// Async header injectors applied after sync injectors and before request-level headers.
+    async_injectors: Vec<AsyncHeaderInjector>,
 }
 
 impl std::fmt::Debug for HttpClient {
@@ -65,6 +67,7 @@ impl std::fmt::Debug for HttpClient {
         f.debug_struct("HttpClient")
             .field("options", &self.options)
             .field("injectors", &self.injectors)
+            .field("async_injectors", &self.async_injectors)
             .finish_non_exhaustive()
     }
 }
@@ -85,6 +88,7 @@ impl HttpClient {
             client,
             options,
             injectors: Vec::new(),
+            async_injectors: Vec::new(),
         }
     }
 
@@ -107,6 +111,17 @@ impl HttpClient {
     /// Nothing.
     pub fn add_header_injector(&mut self, injector: HeaderInjector) {
         self.injectors.push(injector);
+    }
+
+    /// Appends an async header injector whose mutation runs after sync injectors.
+    ///
+    /// # Parameters
+    /// - `injector`: Async injector to append (order is preserved).
+    ///
+    /// # Returns
+    /// Nothing.
+    pub fn add_async_header_injector(&mut self, injector: AsyncHeaderInjector) {
+        self.async_injectors.push(injector);
     }
 
     /// Validates and adds one client-level default header.
@@ -155,6 +170,14 @@ impl HttpClient {
     /// Nothing.
     pub fn clear_header_injectors(&mut self) {
         self.injectors.clear();
+    }
+
+    /// Removes all registered async header injectors.
+    ///
+    /// # Returns
+    /// Nothing.
+    pub fn clear_async_header_injectors(&mut self) {
+        self.async_injectors.clear();
     }
 
     /// Starts building an [`HttpRequest`] with the given method and path
@@ -216,7 +239,7 @@ impl HttpClient {
         ) {
             return Err(error);
         }
-        let headers = self.build_headers(&request)?;
+        let headers = self.build_headers(&request).await?;
 
         let body_for_log = match &request.body {
             HttpRequestBody::Bytes(bytes) | HttpRequestBody::Json(bytes) => Some(bytes.clone()),
@@ -346,7 +369,7 @@ impl HttpClient {
         ) {
             return Err(error);
         }
-        let headers = self.build_headers(&request)?;
+        let headers = self.build_headers(&request).await?;
 
         let body_for_log = match &request.body {
             HttpRequestBody::Bytes(bytes) | HttpRequestBody::Json(bytes) => Some(bytes.clone()),
@@ -672,11 +695,14 @@ impl HttpClient {
     ///
     /// # Returns
     /// Final [`HeaderMap`] or error if an injector fails.
-    fn build_headers(&self, request: &HttpRequest) -> HttpResult<HeaderMap> {
+    async fn build_headers(&self, request: &HttpRequest) -> HttpResult<HeaderMap> {
         let mut headers = self.options.default_headers.clone();
 
         for injector in &self.injectors {
             injector.apply(&mut headers)?;
+        }
+        for injector in &self.async_injectors {
+            injector.apply(&mut headers).await?;
         }
 
         headers.extend(request.headers.clone());

@@ -106,7 +106,7 @@
     - `./coverage.sh text`
   - Commit: `feat(cancel): add CancellationToken support for execute and streaming paths`
 
-- [ ] B3. 异步 Header Injector
+- [x] B3. 异步 Header Injector
   - 实现要点：
     - 在保持现有同步注入器兼容的前提下，新增 async 注入器链；
     - 注入顺序和覆盖优先级保持确定性。
@@ -117,7 +117,7 @@
   - 验收命令：
     - `cargo test`
     - `./coverage.sh text`
-  - Commit: `TBD`
+  - Commit: `feat(headers): add async header injector chain with deterministic ordering`
 
 - [ ] B4. 表单 / multipart / NDJSON 请求体支持
   - 实现要点：

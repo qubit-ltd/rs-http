@@ -51,6 +51,8 @@ mod logging_policy_tests;
 #[path = "logging/masker_tests.rs"]
 mod masker_tests;
 
+#[path = "request/async_header_injector_tests.rs"]
+mod async_header_injector_tests;
 #[path = "request/http_request_builder_tests.rs"]
 mod http_request_builder_tests;
 #[path = "request/http_request_retry_override_tests.rs"]
@@ -65,6 +67,8 @@ mod sse_event_tests;
 #[path = "sse/mod_tests.rs"]
 mod sse_mod_tests;
 
+#[path = "http_client/http_client_async_injector_tests.rs"]
+mod http_client_async_injector_tests;
 #[path = "http_client/http_client_behavior_tests.rs"]
 mod http_client_behavior_tests;
 #[path = "http_client/http_client_cancel_tests.rs"]

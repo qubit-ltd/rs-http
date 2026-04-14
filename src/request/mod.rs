@@ -18,6 +18,7 @@ use http::{HeaderName, HeaderValue};
 
 use crate::{HttpError, HttpResult};
 
+mod async_header_injector;
 mod header_injector;
 mod http_request;
 mod http_request_body;
@@ -33,6 +34,7 @@ pub(crate) fn parse_header(name: &str, value: &str) -> HttpResult<(HeaderName, H
     Ok((header_name, header_value))
 }
 
+pub use async_header_injector::AsyncHeaderInjector;
 pub use header_injector::HeaderInjector;
 pub use http_request::HttpRequest;
 pub use http_request_body::HttpRequestBody;
