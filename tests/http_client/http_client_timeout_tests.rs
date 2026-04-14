@@ -40,7 +40,7 @@ async fn test_client_level_request_timeout_triggers_timeout_classification() {
         .expect("execute timed out")
         .unwrap_err();
 
-    assert_eq!(error.kind, HttpErrorKind::ConnectTimeout);
+    assert_eq!(error.kind, HttpErrorKind::RequestTimeout);
     assert_eq!(error.retry_hint(), RetryHint::Retryable);
 }
 
@@ -72,7 +72,7 @@ async fn test_request_level_timeout_overrides_client_level_timeout() {
         .expect("execute timed out")
         .unwrap_err();
 
-    assert_eq!(error.kind, HttpErrorKind::ConnectTimeout);
+    assert_eq!(error.kind, HttpErrorKind::RequestTimeout);
     assert_eq!(error.retry_hint(), RetryHint::Retryable);
 }
 
@@ -102,6 +102,6 @@ async fn test_timeout_classification_is_retryable_in_deterministic_path() {
         .await
         .expect("execute timed out")
         .unwrap_err();
-    assert_eq!(error.kind, HttpErrorKind::ConnectTimeout);
+    assert_eq!(error.kind, HttpErrorKind::RequestTimeout);
     assert_eq!(error.retry_hint(), RetryHint::Retryable);
 }

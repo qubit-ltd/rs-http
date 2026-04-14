@@ -33,6 +33,13 @@ fn test_http_error_build_client_constructor() {
 }
 
 #[test]
+fn test_http_error_request_timeout_constructor() {
+    let error = HttpError::request_timeout("request timed out");
+    assert_eq!(error.kind, HttpErrorKind::RequestTimeout);
+    assert_eq!(error.message, "request timed out");
+}
+
+#[test]
 fn test_http_error_retry_hint_status_without_status_code_is_non_retryable() {
     let error = HttpError::new(HttpErrorKind::Status, "status missing");
     assert_eq!(error.retry_hint(), RetryHint::NonRetryable);

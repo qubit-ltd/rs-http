@@ -29,7 +29,7 @@
     - `./coverage.sh text`
   - Commit: `feat(ipv4): enforce ipv4-only resolver and reject ipv6 literals`
 
-- [ ] A2. 引入精确 `RequestTimeout` 错误分类
+- [x] A2. 引入精确 `RequestTimeout` 错误分类
   - 实现要点：
     - 将总请求超时与 connect/read/write 超时区分；
     - 保持 `retry_hint()` 语义正确。
@@ -40,7 +40,7 @@
   - 验收命令：
     - `cargo test`
     - `./coverage.sh text`
-  - Commit: `TBD`
+  - Commit: `feat(timeout): classify request deadline timeout explicitly`
 
 - [ ] A3. 非 2xx 错误携带响应体摘要
   - 实现要点：

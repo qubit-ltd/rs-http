@@ -132,6 +132,7 @@ async fn test_https_via_http_proxy_uses_connect_tunnel() {
             error.kind,
             HttpErrorKind::Transport
                 | HttpErrorKind::ConnectTimeout
+                | HttpErrorKind::RequestTimeout
                 | HttpErrorKind::Decode
                 | HttpErrorKind::InvalidUrl
         ),

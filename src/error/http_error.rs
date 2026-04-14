@@ -175,6 +175,17 @@ impl HttpError {
         Self::new(HttpErrorKind::WriteTimeout, message)
     }
 
+    /// Builds [`HttpErrorKind::RequestTimeout`].
+    ///
+    /// # Parameters
+    /// - `message`: Timeout context for the whole request deadline.
+    ///
+    /// # Returns
+    /// New [`HttpError`].
+    pub fn request_timeout(message: impl Into<String>) -> Self {
+        Self::new(HttpErrorKind::RequestTimeout, message)
+    }
+
     /// Builds [`HttpErrorKind::Transport`].
     ///
     /// # Parameters
@@ -262,6 +273,7 @@ impl HttpError {
             HttpErrorKind::ConnectTimeout
             | HttpErrorKind::ReadTimeout
             | HttpErrorKind::WriteTimeout
+            | HttpErrorKind::RequestTimeout
             | HttpErrorKind::Transport => RetryHint::Retryable,
             HttpErrorKind::Status => {
                 if let Some(status) = self.status {

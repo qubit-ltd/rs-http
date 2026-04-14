@@ -732,7 +732,7 @@ fn map_reqwest_error(
     url: Option<Url>,
 ) -> HttpError {
     let kind = if error.is_timeout() {
-        HttpErrorKind::ConnectTimeout
+        classify_reqwest_timeout_kind(&error)
     } else if error.is_decode() {
         HttpErrorKind::Decode
     } else if error.is_status() {
@@ -751,4 +751,21 @@ fn map_reqwest_error(
         result = result.with_url(url);
     }
     result.with_source(error)
+}
+
+/// Classifies reqwest timeout errors into connect-timeout vs request-timeout.
+///
+/// # Parameters
+/// - `error`: Reqwest timeout error to classify.
+///
+/// # Returns
+/// [`HttpErrorKind::ConnectTimeout`] when the timeout message indicates a connect-phase timeout;
+/// otherwise [`HttpErrorKind::RequestTimeout`].
+fn classify_reqwest_timeout_kind(error: &reqwest::Error) -> HttpErrorKind {
+    let message = error.to_string().to_ascii_lowercase();
+    if message.contains("connect") {
+        HttpErrorKind::ConnectTimeout
+    } else {
+        HttpErrorKind::RequestTimeout
+    }
 }

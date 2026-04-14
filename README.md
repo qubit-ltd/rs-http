@@ -365,7 +365,10 @@ use qubit_http::{HttpErrorKind, RetryHint};
 fn handle_error(error: &qubit_http::HttpError) {
     match error.kind {
         HttpErrorKind::Status => eprintln!("status error: {:?}", error.status),
-        HttpErrorKind::ReadTimeout | HttpErrorKind::WriteTimeout | HttpErrorKind::ConnectTimeout => {
+        HttpErrorKind::ReadTimeout
+        | HttpErrorKind::WriteTimeout
+        | HttpErrorKind::ConnectTimeout
+        | HttpErrorKind::RequestTimeout => {
             eprintln!("timeout: {}", error)
         }
         _ => eprintln!("http error: {}", error),

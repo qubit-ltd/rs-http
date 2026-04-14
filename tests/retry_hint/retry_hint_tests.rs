@@ -14,11 +14,13 @@ use qubit_http::{HttpError, RetryHint};
 #[test]
 fn test_retry_hint_retryable_for_timeout_and_transport_errors() {
     let connect_timeout = HttpError::connect_timeout("connect timeout");
+    let request_timeout = HttpError::request_timeout("request timeout");
     let read_timeout = HttpError::read_timeout("read timeout");
     let write_timeout = HttpError::write_timeout("write timeout");
     let transport = HttpError::transport("transport error");
 
     assert_eq!(connect_timeout.retry_hint(), RetryHint::Retryable);
+    assert_eq!(request_timeout.retry_hint(), RetryHint::Retryable);
     assert_eq!(read_timeout.retry_hint(), RetryHint::Retryable);
     assert_eq!(write_timeout.retry_hint(), RetryHint::Retryable);
     assert_eq!(transport.retry_hint(), RetryHint::Retryable);
