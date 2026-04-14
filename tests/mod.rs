@@ -55,7 +55,7 @@ mod async_header_injector_tests;
 mod http_request_builder_tests;
 #[path = "request/http_request_retry_override_tests.rs"]
 mod http_request_retry_override_tests;
-#[path = "request/response_interceptor_tests.rs"]
+#[path = "response/response_interceptor_tests.rs"]
 mod response_interceptor_tests;
 
 #[path = "sse/done_marker_policy_tests.rs"]
