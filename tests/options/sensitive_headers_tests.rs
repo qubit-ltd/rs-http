@@ -12,7 +12,7 @@ use qubit_http::SensitiveHeaders;
 #[test]
 fn test_sensitive_headers_default_is_case_normalized() {
     let headers = SensitiveHeaders::default();
-    assert!(headers.len() > 0);
+    assert!(!headers.is_empty());
     assert!(headers.contains("AUTHORIZATION"));
     assert!(headers.contains("authorization"));
 }
