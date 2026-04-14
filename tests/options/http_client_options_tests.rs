@@ -583,6 +583,28 @@ fn test_http_client_options_validate_propagates_retry_error() {
 }
 
 #[test]
+fn test_http_client_options_validate_propagates_timeout_error() {
+    let mut opts = HttpClientOptions::default();
+    opts.timeouts.connect_timeout = Duration::ZERO;
+
+    let err = opts.validate().unwrap_err();
+    assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
+    assert_eq!(err.path, "timeouts.connect_timeout");
+}
+
+#[test]
+fn test_http_client_options_timeout_section_zero_value_is_prefixed() {
+    let mut config = Config::new();
+    config
+        .set("http.timeouts.connect_timeout", Duration::ZERO)
+        .expect("test config should set connect_timeout");
+
+    let err = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap_err();
+    assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
+    assert_eq!(err.path, "http.timeouts.connect_timeout");
+}
+
+#[test]
 fn test_http_client_options_validate_rejects_zero_sse_frame_limit() {
     let mut opts = HttpClientOptions::default();
     opts.sse_max_frame_bytes = 0;

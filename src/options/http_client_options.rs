@@ -334,6 +334,9 @@ impl HttpClientOptions {
     /// # Returns
     /// `Ok(())` or the first sub-validator error.
     pub fn validate(&self) -> Result<(), HttpConfigError> {
+        self.timeouts
+            .validate()
+            .map_err(|e| e.prepend_path_prefix("timeouts"))?;
         self.proxy.validate()?;
         self.logging.validate()?;
         self.retry

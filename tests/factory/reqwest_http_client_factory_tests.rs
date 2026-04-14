@@ -242,6 +242,35 @@ fn test_factory_create_with_options_rejects_zero_proxy_port() {
 }
 
 #[test]
+fn test_factory_create_with_options_rejects_blank_proxy_host() {
+    let mut options = HttpClientOptions::default();
+    options.proxy.enabled = true;
+    options.proxy.proxy_type = ProxyType::Http;
+    options.proxy.host = Some("   ".to_string());
+    options.proxy.port = Some(8080);
+
+    let error = HttpClientFactory::new()
+        .create_with_options(options)
+        .expect_err("blank proxy host should fail");
+
+    assert_eq!(error.kind, HttpErrorKind::ProxyConfig);
+    assert!(error.message.contains("cannot be empty"));
+}
+
+#[test]
+fn test_factory_create_with_options_rejects_zero_connect_timeout() {
+    let mut options = HttpClientOptions::default();
+    options.timeouts.connect_timeout = Duration::ZERO;
+
+    let error = HttpClientFactory::new()
+        .create_with_options(options)
+        .expect_err("zero connect timeout should fail");
+
+    assert_eq!(error.kind, HttpErrorKind::Other);
+    assert!(error.message.contains("timeouts.connect_timeout"));
+}
+
+#[test]
 fn test_factory_create_with_options_accepts_proxy_without_auth_and_request_timeout() {
     let mut options = HttpClientOptions::default();
     options.timeouts.request_timeout = Some(Duration::from_secs(2));

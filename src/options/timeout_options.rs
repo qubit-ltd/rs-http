@@ -67,6 +67,20 @@ where
 }
 
 impl TimeoutOptions {
+    /// Validates timeout bounds.
+    ///
+    /// # Returns
+    /// `Ok(())` when all configured durations are strictly greater than zero.
+    pub fn validate(&self) -> Result<(), HttpConfigError> {
+        validate_positive_duration("connect_timeout", self.connect_timeout)?;
+        validate_positive_duration("read_timeout", self.read_timeout)?;
+        validate_positive_duration("write_timeout", self.write_timeout)?;
+        if let Some(request_timeout) = self.request_timeout {
+            validate_positive_duration("request_timeout", request_timeout)?;
+        }
+        Ok(())
+    }
+
     /// Reads timeout settings from `config` using **relative** keys.
     ///
     /// # Parameters
@@ -98,7 +112,17 @@ impl TimeoutOptions {
             opts.write_timeout = d;
         }
         opts.request_timeout = raw.request_timeout;
-
+        opts.validate()?;
         Ok(opts)
     }
+}
+
+fn validate_positive_duration(path: &str, value: Duration) -> Result<(), HttpConfigError> {
+    if value.is_zero() {
+        return Err(HttpConfigError::invalid_value(
+            path,
+            "Timeout value must be greater than 0",
+        ));
+    }
+    Ok(())
 }

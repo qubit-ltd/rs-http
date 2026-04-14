@@ -116,11 +116,20 @@ impl ProxyOptions {
     /// - `Err(HttpConfigError)` if proxy is enabled but host/port invalid, or password without username.
     pub fn validate(&self) -> Result<(), HttpConfigError> {
         if self.enabled {
-            if self.host.is_none() {
-                return Err(HttpConfigError::missing(
-                    "proxy.host",
-                    "Proxy is enabled but host is missing",
-                ));
+            match self.host.as_deref() {
+                None => {
+                    return Err(HttpConfigError::missing(
+                        "proxy.host",
+                        "Proxy is enabled but host is missing",
+                    ));
+                }
+                Some(host) if host.trim().is_empty() => {
+                    return Err(HttpConfigError::invalid_value(
+                        "proxy.host",
+                        "Proxy host cannot be empty when proxy is enabled",
+                    ));
+                }
+                _ => {}
             }
             match self.port {
                 None => {
@@ -136,6 +145,14 @@ impl ProxyOptions {
                     ));
                 }
                 _ => {}
+            }
+        }
+        if let Some(username) = self.username.as_deref() {
+            if username.trim().is_empty() {
+                return Err(HttpConfigError::invalid_value(
+                    "proxy.username",
+                    "Proxy username cannot be empty when provided",
+                ));
             }
         }
         if self.username.is_none() && self.password.is_some() {

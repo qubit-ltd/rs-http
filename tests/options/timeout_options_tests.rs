@@ -10,7 +10,7 @@
 use std::time::Duration;
 
 use qubit_config::Config;
-use qubit_http::TimeoutOptions;
+use qubit_http::{HttpConfigErrorKind, TimeoutOptions};
 
 #[test]
 fn test_timeout_options_defaults_when_no_keys() {
@@ -74,4 +74,26 @@ fn test_timeout_options_invalid_type_is_prefixed() {
     let err = TimeoutOptions::from_config(&config.prefix_view("t")).unwrap_err();
 
     assert_eq!(err.path, "t.connect_timeout");
+}
+
+#[test]
+fn test_timeout_options_validate_rejects_zero_values() {
+    let mut opts = TimeoutOptions::default();
+    opts.connect_timeout = Duration::ZERO;
+
+    let err = opts.validate().unwrap_err();
+    assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
+    assert_eq!(err.path, "connect_timeout");
+}
+
+#[test]
+fn test_timeout_options_from_config_rejects_zero_request_timeout() {
+    let mut config = Config::new();
+    config
+        .set("t.request_timeout", Duration::ZERO)
+        .expect("test config should set request_timeout");
+
+    let err = TimeoutOptions::from_config(&config.prefix_view("t")).unwrap_err();
+    assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
+    assert_eq!(err.path, "request_timeout");
 }
