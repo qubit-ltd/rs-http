@@ -594,8 +594,8 @@ async fn test_execute_non_success_error_body_preview_is_truncated_by_limit() {
 }
 
 #[tokio::test]
-async fn test_execute_non_success_error_body_preview_truncates_when_limit_reached_before_next_chunk()
-{
+async fn test_execute_non_success_error_body_preview_truncates_when_limit_reached_before_next_chunk(
+) {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 500,
         headers: vec![],
@@ -620,7 +620,9 @@ async fn test_execute_non_success_error_body_preview_truncates_when_limit_reache
     let client = HttpClientFactory::new()
         .create_with_options(options)
         .unwrap();
-    let request = client.request(Method::GET, "/status-truncated-next-chunk").build();
+    let request = client
+        .request(Method::GET, "/status-truncated-next-chunk")
+        .build();
     let error = client.execute(request).await.unwrap_err();
 
     assert_eq!(error.kind, HttpErrorKind::Status);
@@ -648,7 +650,9 @@ async fn test_execute_error_body_preview_limit_is_decoupled_from_logging_limit()
     let client = HttpClientFactory::new()
         .create_with_options(options)
         .unwrap();
-    let request = client.request(Method::GET, "/status-decoupled-limit").build();
+    let request = client
+        .request(Method::GET, "/status-decoupled-limit")
+        .build();
     let error = client.execute(request).await.unwrap_err();
 
     assert_eq!(error.kind, HttpErrorKind::Status);

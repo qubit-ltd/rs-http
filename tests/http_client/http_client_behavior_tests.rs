@@ -7,10 +7,17 @@
  *
  ******************************************************************************/
 
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc, Mutex,
+};
 use std::time::Duration;
 
 use http::{HeaderMap, HeaderName, HeaderValue, Method};
-use qubit_http::{HeaderInjector, HttpClientFactory, HttpClientOptions, HttpError, HttpErrorKind};
+use qubit_http::{
+    HeaderInjector, HttpClientFactory, HttpClientOptions, HttpError, HttpErrorKind,
+    RequestInterceptor, ResponseInterceptor,
+};
 use tokio::time::timeout;
 
 use crate::common::{spawn_one_shot_server, ResponsePlan};
@@ -160,6 +167,213 @@ async fn test_failing_header_injector_short_circuits_request() {
     let error = client.execute(request).await.unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::Other);
     assert!(error.message.contains("inject failed"));
+}
+
+#[tokio::test]
+async fn test_request_interceptor_order_is_stable_and_clear_works() {
+    let server1 = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 200,
+        headers: vec![],
+        body: b"ok".to_vec(),
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server1.base_url());
+    let mut client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
+    client.add_request_interceptor(RequestInterceptor::new(|request| {
+        request.headers.insert(
+            HeaderName::from_static("x-request-seq"),
+            HeaderValue::from_static("A"),
+        );
+        request
+            .query
+            .push(("request_interceptor".to_string(), "first".to_string()));
+        Ok(())
+    }));
+    client.add_request_interceptor(RequestInterceptor::new(|request| {
+        request.headers.insert(
+            HeaderName::from_static("x-request-seq"),
+            HeaderValue::from_static("B"),
+        );
+        request
+            .query
+            .push(("request_interceptor".to_string(), "second".to_string()));
+        Ok(())
+    }));
+
+    let request = client
+        .request(Method::GET, "/request-order")
+        .query_param("initial", "1")
+        .build();
+    let _ = client.execute(request).await.unwrap();
+    let captured = server1.finish().await;
+    assert_eq!(
+        captured.headers.get("x-request-seq"),
+        Some(&"B".to_string())
+    );
+    assert!(captured.target.contains("initial=1"));
+    assert!(captured.target.contains("request_interceptor=first"));
+    assert!(captured.target.contains("request_interceptor=second"));
+
+    let server2 = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 200,
+        headers: vec![],
+        body: b"ok".to_vec(),
+    })
+    .await;
+    let mut options2 = HttpClientOptions::default();
+    options2.base_url = Some(server2.base_url());
+    let mut client2 = HttpClientFactory::new()
+        .create_with_options(options2)
+        .unwrap();
+    client2.add_request_interceptor(RequestInterceptor::new(|request| {
+        request.headers.insert(
+            HeaderName::from_static("x-request-cleared"),
+            HeaderValue::from_static("yes"),
+        );
+        Ok(())
+    }));
+    client2.clear_request_interceptors();
+
+    let request2 = client2.request(Method::GET, "/request-clear").build();
+    let _ = client2.execute(request2).await.unwrap();
+    let captured2 = server2.finish().await;
+    assert!(!captured2.headers.contains_key("x-request-cleared"));
+}
+
+#[tokio::test]
+async fn test_failing_request_interceptor_short_circuits_before_url_resolution() {
+    let mut client = HttpClientFactory::new()
+        .create()
+        .expect("default options should create client");
+    client.add_request_interceptor(RequestInterceptor::new(|_request| {
+        Err(HttpError::other("request blocked by interceptor"))
+    }));
+
+    let request = client
+        .request(
+            Method::GET,
+            "http://127.0.0.1:1/request-interceptor-blocked",
+        )
+        .build();
+    let error = client.execute(request).await.unwrap_err();
+    assert_eq!(error.kind, HttpErrorKind::Other);
+    assert!(error.message.contains("request blocked by interceptor"));
+    assert_eq!(error.method, Some(Method::GET));
+    let error_url = error
+        .url
+        .expect("request interceptor error should include URL");
+    assert_eq!(
+        error_url.as_str(),
+        "http://127.0.0.1:1/request-interceptor-blocked"
+    );
+}
+
+#[tokio::test]
+async fn test_response_interceptor_order_is_stable_and_short_circuits() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 200,
+        headers: vec![],
+        body: b"ok".to_vec(),
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    let mut client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
+
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let first_events = Arc::clone(&events);
+    client.add_response_interceptor(ResponseInterceptor::new(
+        move |_status, _headers, _method, _url| {
+            first_events
+                .lock()
+                .expect("lock response interceptor events for first")
+                .push("first".to_string());
+            Ok(())
+        },
+    ));
+    let second_events = Arc::clone(&events);
+    client.add_response_interceptor(ResponseInterceptor::new(
+        move |_status, _headers, _method, _url| {
+            second_events
+                .lock()
+                .expect("lock response interceptor events for second")
+                .push("second".to_string());
+            Err(HttpError::other("response blocked by interceptor"))
+        },
+    ));
+
+    let request = client.request(Method::GET, "/response-order").build();
+    let error = client.execute(request).await.unwrap_err();
+    assert_eq!(error.kind, HttpErrorKind::Other);
+    assert_eq!(error.status.map(|status| status.as_u16()), Some(200));
+    assert_eq!(error.method, Some(Method::GET));
+    assert!(error.url.is_some());
+    assert!(error.message.contains("response blocked by interceptor"));
+    assert_eq!(
+        *events
+            .lock()
+            .expect("lock response interceptor events for assertion"),
+        vec!["first".to_string(), "second".to_string()]
+    );
+}
+
+#[tokio::test]
+async fn test_clear_response_interceptors_restores_success_path() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 200,
+        headers: vec![],
+        body: b"ok".to_vec(),
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    let mut client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
+    client.add_response_interceptor(ResponseInterceptor::new(
+        |_status, _headers, _method, _url| Err(HttpError::other("should be cleared")),
+    ));
+    client.clear_response_interceptors();
+
+    let request = client.request(Method::GET, "/response-clear").build();
+    let response = client.execute(request).await.unwrap();
+    assert_eq!(response.status.as_u16(), 200);
+}
+
+#[tokio::test]
+async fn test_execute_stream_applies_response_interceptor() {
+    let server = spawn_one_shot_server(ResponsePlan::Chunked {
+        status: 200,
+        headers: vec![],
+        chunks: vec![],
+        finish: true,
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    let mut client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
+    let called = Arc::new(AtomicUsize::new(0));
+    let called_for_interceptor = Arc::clone(&called);
+    client.add_response_interceptor(ResponseInterceptor::new(
+        move |_status, _headers, _method, _url| {
+            called_for_interceptor.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        },
+    ));
+
+    let request = client
+        .request(Method::GET, "/stream-response-interceptor")
+        .build();
+    let response = client.execute_stream(request).await.unwrap();
+    assert_eq!(response.status.as_u16(), 200);
+    assert_eq!(called.load(Ordering::Relaxed), 1);
 }
 
 #[tokio::test]

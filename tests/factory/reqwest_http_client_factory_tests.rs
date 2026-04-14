@@ -50,7 +50,10 @@ fn test_factory_create_with_options_preserves_options() {
         Some("qubit-http-tests/1.0")
     );
     assert_eq!(client.options().max_redirects, Some(5));
-    assert_eq!(client.options().pool_idle_timeout, Some(Duration::from_secs(20)));
+    assert_eq!(
+        client.options().pool_idle_timeout,
+        Some(Duration::from_secs(20))
+    );
     assert_eq!(client.options().pool_max_idle_per_host, Some(24));
 }
 
@@ -251,7 +254,10 @@ fn test_factory_create_from_config_full() {
         Some("qubit-http-tests/1.0")
     );
     assert_eq!(client.options().max_redirects, Some(4));
-    assert_eq!(client.options().pool_idle_timeout, Some(Duration::from_secs(10)));
+    assert_eq!(
+        client.options().pool_idle_timeout,
+        Some(Duration::from_secs(10))
+    );
     assert_eq!(client.options().pool_max_idle_per_host, Some(16));
 }
 
