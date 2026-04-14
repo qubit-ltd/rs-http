@@ -8,11 +8,13 @@
  ******************************************************************************/
 //! HTTP client module root.
 
-mod error_mapper;
+pub(crate) mod error_mapper;
 mod http_client;
+mod http_client_factory;
 pub mod http_logger;
 mod request_pipeline;
 mod retry_controller;
 mod sse_reconnect;
 
 pub use http_client::HttpClient;
+pub use http_client_factory::HttpClientFactory;

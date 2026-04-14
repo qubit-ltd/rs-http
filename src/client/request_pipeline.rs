@@ -9,7 +9,6 @@
 //! Request preparation/sending and response-body handling pipeline helpers.
 
 use bytes::Bytes;
-use futures_util::stream as futures_stream;
 use reqwest::Response;
 use tokio_util::sync::CancellationToken;
 use url::Url;
@@ -17,9 +16,7 @@ use url::Url;
 use crate::client::error_mapper::{
     map_reqwest_error, parse_retry_after, render_error_body_preview, ReqwestErrorPhase,
 };
-use crate::{
-    HttpClient, HttpError, HttpErrorKind, HttpLogger, HttpRequest, HttpRequestBody, HttpResult,
-};
+use crate::{HttpClient, HttpError, HttpErrorKind, HttpLogger, HttpRequest, HttpResult};
 
 /// Shared pre-send outcome for one HTTP attempt.
 pub(super) struct PreparedRequestSend {
@@ -66,38 +63,18 @@ impl<'a> RequestPipeline<'a> {
         let mut request = request;
         let url = request.resolve_url()?;
         let method = request.method().clone();
-        let cancellation_token = request.cancellation_token().cloned();
         if let Some(error) = request.cancelled_error_if_needed(&url, cancellation_message) {
             return Err(error);
         }
         let headers = request.build_headers().await?;
 
         let logger = HttpLogger::new(&self.client.options);
-        let body_for_log = if logger.should_log_request_body() {
-            Self::clone_request_body_for_log(request.body())
-        } else {
-            None
-        };
-        logger.log_request(&method, &url, &headers, body_for_log.as_ref());
+        logger.log_request(&method, &url, &headers, request.body());
 
-        let mut builder = self.client.backend.request(method.clone(), url.clone());
-        builder = builder.headers(headers);
-        if !request.query().is_empty() {
-            builder = builder.query(request.query());
-        }
-        if let Some(timeout) = request.request_timeout() {
-            builder = builder.timeout(timeout);
-        }
-        builder = Self::apply_request_body(builder, request.take_body());
-
-        let response = self
-            .send_with_write_timeout(
-                builder,
-                method.clone(),
-                url.clone(),
-                cancellation_token.as_ref(),
-            )
+        let response = request
+            .send_impl(&self.client.backend, &method, &url, headers)
             .await?;
+        let cancellation_token = request.cancellation_token().cloned();
         Ok(PreparedRequestSend {
             method,
             url,
@@ -201,57 +178,6 @@ impl<'a> RequestPipeline<'a> {
         }
     }
 
-    /// Sends the built request with a write-phase timeout (time to finish
-    /// sending the request).
-    ///
-    /// # Parameters
-    /// - `builder`: Reqwest request builder (method, URL, headers, body already
-    ///   set).
-    /// - `method`: Method for error context.
-    /// - `url`: URL for error context.
-    ///
-    /// # Returns
-    /// Raw [`reqwest::Response`] or [`HttpError`] (transport, write timeout,
-    /// etc.).
-    async fn send_with_write_timeout(
-        &self,
-        builder: reqwest::RequestBuilder,
-        method: http::Method,
-        url: Url,
-        cancellation_token: Option<&CancellationToken>,
-    ) -> HttpResult<Response> {
-        let timeout = self.client.options.timeouts.write_timeout;
-        let send_future = tokio::time::timeout(timeout, builder.send());
-        let next = if let Some(token) = cancellation_token {
-            tokio::select! {
-                _ = token.cancelled() => {
-                    return Err(HttpError::cancelled("Request cancelled while sending")
-                        .with_method(method)
-                        .with_url(url));
-                }
-                send_result = send_future => send_result,
-            }
-        } else {
-            send_future.await
-        };
-        match next {
-            Ok(Ok(response)) => Ok(response),
-            Ok(Err(error)) => Err(map_reqwest_error(
-                error,
-                HttpErrorKind::Transport,
-                Some(ReqwestErrorPhase::Send),
-                Some(method),
-                Some(url),
-            )),
-            Err(_) => Err(HttpError::write_timeout(format!(
-                "Write timeout after {:?} while sending request",
-                timeout
-            ))
-            .with_method(method)
-            .with_url(url)),
-        }
-    }
-
     /// Reads and renders a bounded preview for a non-success response body.
     ///
     /// # Parameters
@@ -300,52 +226,4 @@ impl<'a> RequestPipeline<'a> {
         render_error_body_preview(&preview, truncated)
     }
 
-    /// Clones request body content for request logging.
-    ///
-    /// # Parameters
-    /// - `body`: Request body variant.
-    ///
-    /// # Returns
-    /// Optional byte payload for logger previewing.
-    fn clone_request_body_for_log(body: &HttpRequestBody) -> Option<Bytes> {
-        match body {
-            HttpRequestBody::Bytes(bytes)
-            | HttpRequestBody::Json(bytes)
-            | HttpRequestBody::Form(bytes)
-            | HttpRequestBody::Multipart(bytes)
-            | HttpRequestBody::Ndjson(bytes) => Some(bytes.clone()),
-            HttpRequestBody::Text(text) => Some(Bytes::from(text.clone())),
-            HttpRequestBody::Stream(_) => None,
-            HttpRequestBody::Empty => None,
-        }
-    }
-
-    /// Applies request body variant to a reqwest request builder.
-    ///
-    /// # Parameters
-    /// - `builder`: Request builder with method/url/headers/query already set.
-    /// - `body`: Request body variant to apply.
-    ///
-    /// # Returns
-    /// Updated builder containing the request body payload.
-    fn apply_request_body(
-        builder: reqwest::RequestBuilder,
-        body: HttpRequestBody,
-    ) -> reqwest::RequestBuilder {
-        match body {
-            HttpRequestBody::Empty => builder,
-            HttpRequestBody::Bytes(bytes)
-            | HttpRequestBody::Json(bytes)
-            | HttpRequestBody::Form(bytes)
-            | HttpRequestBody::Multipart(bytes)
-            | HttpRequestBody::Ndjson(bytes) => builder.body(bytes),
-            HttpRequestBody::Stream(chunks) => {
-                let body_stream = futures_stream::iter(
-                    chunks.into_iter().map(Result::<Bytes, std::io::Error>::Ok),
-                );
-                builder.body(reqwest::Body::wrap_stream(body_stream))
-            }
-            HttpRequestBody::Text(text) => builder.body(text),
-        }
-    }
 }

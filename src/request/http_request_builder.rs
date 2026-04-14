@@ -42,6 +42,8 @@ pub struct HttpRequestBuilder {
     pub(super) body: HttpRequestBody,
     /// Per-request timeout; if unset, the client default applies.
     pub(super) request_timeout: Option<Duration>,
+    /// Per-request write timeout used by the send phase.
+    pub(super) write_timeout: Duration,
     /// Base URL copied from client options and used by [`HttpRequest::resolve_url`].
     pub(super) base_url: Option<Url>,
     /// Whether IPv6 literal hosts are rejected during URL resolution.
@@ -77,6 +79,7 @@ impl HttpRequestBuilder {
             headers: HeaderMap::new(),
             body: HttpRequestBody::Empty,
             request_timeout: options.timeouts.request_timeout,
+            write_timeout: options.timeouts.write_timeout,
             base_url: options.base_url.clone(),
             ipv4_only: options.ipv4_only,
             cancellation_token: None,
@@ -307,6 +310,18 @@ impl HttpRequestBuilder {
     /// `self` for chaining.
     pub fn timeout(mut self, timeout: Duration) -> Self {
         self.request_timeout = Some(timeout);
+        self
+    }
+
+    /// Overrides the write-phase timeout for this request only.
+    ///
+    /// # Parameters
+    /// - `timeout`: Maximum time allowed for sending the request bytes.
+    ///
+    /// # Returns
+    /// `self` for chaining.
+    pub fn write_timeout(mut self, timeout: Duration) -> Self {
+        self.write_timeout = timeout;
         self
     }
 

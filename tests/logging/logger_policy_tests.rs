@@ -10,7 +10,9 @@
 use bytes::Bytes;
 use http::header::{AUTHORIZATION, CONTENT_TYPE, SET_COOKIE};
 use http::{HeaderMap, HeaderValue, Method, StatusCode};
-use qubit_http::{HttpClientOptions, HttpLogger, HttpLoggingOptions, SensitiveHeaders};
+use qubit_http::{
+    HttpClientOptions, HttpLogger, HttpLoggingOptions, HttpRequestBody, SensitiveHeaders,
+};
 use url::Url;
 
 use crate::common::capture_trace_logs;
@@ -32,7 +34,7 @@ fn test_log_request_disabled_emits_nothing() {
             &Method::POST,
             &Url::parse("https://example.com/api").unwrap(),
             &headers,
-            Some(&Bytes::from_static(br#"{"x":1}"#)),
+            &HttpRequestBody::Json(Bytes::from_static(br#"{"x":1}"#)),
         );
     });
     assert!(logs.trim().is_empty());
@@ -57,7 +59,7 @@ fn test_log_request_toggles_header_and_body() {
             &Method::POST,
             &Url::parse("https://example.com/api").unwrap(),
             &headers,
-            Some(&Bytes::from_static(br#"{"x":1}"#)),
+            &HttpRequestBody::Json(Bytes::from_static(br#"{"x":1}"#)),
         );
     });
     assert!(logs.contains("--> POST https://example.com/api"));
@@ -137,4 +139,48 @@ fn test_log_stream_response_headers_respects_toggle() {
     });
     assert!(logs.contains("<-- 200 https://example.com/stream (stream)"));
     assert!(!logs.contains("text/event-stream"));
+}
+
+#[test]
+fn test_log_request_text_body() {
+    let options = HttpLoggingOptions::default();
+    let headers = HeaderMap::new();
+    let sensitive_headers = SensitiveHeaders::default();
+    let mut client_options = HttpClientOptions::default();
+    client_options.logging = options;
+    client_options.sensitive_headers = sensitive_headers;
+    let logger = HttpLogger::new(&client_options);
+
+    let logs = capture_trace_logs(|| {
+        logger.log_request(
+            &Method::POST,
+            &Url::parse("https://example.com/text").unwrap(),
+            &headers,
+            &HttpRequestBody::Text("hello body".to_string()),
+        );
+    });
+    assert!(logs.contains("--> POST https://example.com/text"));
+    assert!(logs.contains("Request body: hello body"));
+}
+
+#[test]
+fn test_log_request_stream_body_logged_as_empty() {
+    let options = HttpLoggingOptions::default();
+    let headers = HeaderMap::new();
+    let sensitive_headers = SensitiveHeaders::default();
+    let mut client_options = HttpClientOptions::default();
+    client_options.logging = options;
+    client_options.sensitive_headers = sensitive_headers;
+    let logger = HttpLogger::new(&client_options);
+
+    let logs = capture_trace_logs(|| {
+        logger.log_request(
+            &Method::POST,
+            &Url::parse("https://example.com/stream-upload").unwrap(),
+            &headers,
+            &HttpRequestBody::Stream(vec![Bytes::from_static(b"a"), Bytes::from_static(b"b")]),
+        );
+    });
+    assert!(logs.contains("--> POST https://example.com/stream-upload"));
+    assert!(logs.contains("Request body: <empty>"));
 }
