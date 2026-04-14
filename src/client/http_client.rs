@@ -197,7 +197,19 @@ impl HttpClient {
     /// A fresh [`HttpRequestBuilder`] not yet tied to this client until
     /// [`HttpRequestBuilder::build`] and [`HttpClient::execute`].
     pub fn request(&self, method: http::Method, path: &str) -> HttpRequestBuilder {
-        HttpRequestBuilder::new(method, path, &self.options)
+        HttpRequestBuilder::new(method, path, self)
+    }
+
+    pub(crate) fn headers_snapshot(&self) -> http::HeaderMap {
+        self.options.default_headers.clone()
+    }
+
+    pub(crate) fn injectors_snapshot(&self) -> Vec<HeaderInjector> {
+        self.injectors.clone()
+    }
+
+    pub(crate) fn async_injectors_snapshot(&self) -> Vec<AsyncHeaderInjector> {
+        self.async_injectors.clone()
     }
 
     /// Sends the request, reads the full response body, logs per options, and
@@ -214,9 +226,10 @@ impl HttpClient {
     ///   non-success status.
     pub async fn execute(&self, request: HttpRequest) -> HttpResult<HttpResponse> {
         let retry_options = self.resolve_retry_options(&request);
-        let honor_retry_after = request.retry_override.should_honor_retry_after();
+        let honor_retry_after = request.retry_override().should_honor_retry_after();
         if self.should_retry_request(&request, &retry_options) {
-            self.execute_with_retry(request, retry_options, honor_retry_after).await
+            self.execute_with_retry(request, retry_options, honor_retry_after)
+                .await
         } else {
             self.execute_once(request).await
         }
@@ -235,9 +248,10 @@ impl HttpClient {
     ///   [`HttpClient::execute`] for the initial response).
     pub async fn execute_stream(&self, request: HttpRequest) -> HttpResult<HttpStreamResponse> {
         let retry_options = self.resolve_retry_options(&request);
-        let honor_retry_after = request.retry_override.should_honor_retry_after();
+        let honor_retry_after = request.retry_override().should_honor_retry_after();
         if self.should_retry_request(&request, &retry_options) {
-            self.execute_stream_with_retry(request, retry_options, honor_retry_after).await
+            self.execute_stream_with_retry(request, retry_options, honor_retry_after)
+                .await
         } else {
             self.execute_stream_once(request).await
         }
@@ -436,7 +450,7 @@ impl HttpClient {
         request: &HttpRequest,
         retry_options: &HttpRetryOptions,
     ) -> bool {
-        retry_options.max_attempts > 1 && retry_options.allows_method(&request.method)
+        retry_options.max_attempts > 1 && retry_options.allows_method(request.method())
     }
 
     /// Resolves request-level retry override against client-level retry options.
@@ -448,9 +462,9 @@ impl HttpClient {
     /// Effective retry options for this request.
     fn resolve_retry_options(&self, request: &HttpRequest) -> HttpRetryOptions {
         let mut options = self.options.retry.clone();
-        options.enabled = request.retry_override.resolve_enabled(options.enabled);
+        options.enabled = request.retry_override().resolve_enabled(options.enabled);
         options.method_policy = request
-            .retry_override
+            .retry_override()
             .resolve_method_policy(options.method_policy);
         options
     }
@@ -471,10 +485,10 @@ impl HttpClient {
             interceptor.apply(request).map_err(|error| {
                 let mut mapped = error;
                 if mapped.method.is_none() {
-                    mapped = mapped.with_method(request.method.clone());
+                    mapped = mapped.with_method(request.method().clone());
                 }
                 if mapped.url.is_none() {
-                    if let Ok(parsed_url) = Url::parse(&request.path) {
+                    if let Ok(parsed_url) = Url::parse(request.path()) {
                         mapped = mapped.with_url(parsed_url);
                     }
                 }
@@ -569,7 +583,6 @@ impl HttpClient {
         let retry_controller = RetryController::new(&retry_options, honor_retry_after)?;
         retry_controller.run_stream(self, request).await
     }
-
 }
 
 impl std::fmt::Debug for HttpClient {

@@ -13,7 +13,7 @@ use bytes::Bytes;
 use http::header::CONTENT_TYPE;
 use http::{HeaderMap, HeaderValue, Method};
 use qubit_http::{
-    CancellationToken, HttpClientOptions, HttpErrorKind, HttpRequestBody, HttpRequestBuilder,
+    CancellationToken, HttpClientFactory, HttpClientOptions, HttpErrorKind, HttpRequestBody,
     HttpRetryMethodPolicy,
 };
 use serde::ser::{Error as _, Serializer};
@@ -29,8 +29,11 @@ impl serde::Serialize for FailingSerialize {
     }
 }
 
-fn new_builder(method: Method, path: &str) -> HttpRequestBuilder {
-    HttpRequestBuilder::new(method, path, &HttpClientOptions::default())
+fn new_builder(method: Method, path: &str) -> qubit_http::HttpRequestBuilder {
+    let client = HttpClientFactory::new()
+        .create()
+        .expect("default options should create client");
+    client.request(method, path)
 }
 
 #[test]
@@ -39,12 +42,15 @@ fn test_request_builder_copies_base_url_and_ipv4_only_defaults() {
     options.set_base_url("https://api.example.com/v1/").unwrap();
     options.ipv4_only = true;
 
-    let request = HttpRequestBuilder::new(Method::GET, "users", &options).build();
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .expect("client should be created");
+    let request = client.request(Method::GET, "users").build();
     assert_eq!(
-        request.base_url.as_ref().map(url::Url::as_str),
+        request.base_url().map(url::Url::as_str),
         Some("https://api.example.com/v1/")
     );
-    assert!(request.ipv4_only);
+    assert!(request.ipv4_only());
 }
 
 #[test]
@@ -53,11 +59,15 @@ fn test_request_builder_base_url_method_overrides_default_from_options() {
     options.set_base_url("https://api.example.com/v1/").unwrap();
 
     let override_base = url::Url::parse("https://override.example.com/root/").unwrap();
-    let request = HttpRequestBuilder::new(Method::GET, "users", &options)
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .expect("client should be created");
+    let request = client
+        .request(Method::GET, "users")
         .base_url(override_base.clone())
         .build();
 
-    assert_eq!(request.base_url, Some(override_base));
+    assert_eq!(request.base_url(), Some(&override_base));
 }
 
 #[test]
@@ -65,11 +75,15 @@ fn test_request_builder_ipv4_only_method_overrides_default_from_options() {
     let mut options = HttpClientOptions::default();
     options.ipv4_only = true;
 
-    let request = HttpRequestBuilder::new(Method::GET, "users", &options)
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .expect("client should be created");
+    let request = client
+        .request(Method::GET, "users")
         .ipv4_only(false)
         .build();
 
-    assert!(!request.ipv4_only);
+    assert!(!request.ipv4_only());
 }
 
 #[test]
@@ -77,11 +91,15 @@ fn test_request_builder_clear_base_url_method_overrides_default_from_options() {
     let mut options = HttpClientOptions::default();
     options.set_base_url("https://api.example.com/v1/").unwrap();
 
-    let request = HttpRequestBuilder::new(Method::GET, "users", &options)
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .expect("client should be created");
+    let request = client
+        .request(Method::GET, "users")
         .clear_base_url()
         .build();
 
-    assert_eq!(request.base_url, None);
+    assert_eq!(request.base_url(), None);
 }
 
 #[test]
@@ -91,10 +109,10 @@ fn test_request_builder_with_query_params() {
         .query_param("b", "2")
         .build();
 
-    assert_eq!(request.method, Method::GET);
-    assert_eq!(request.path, "/v1/test");
+    assert_eq!(request.method(), &Method::GET);
+    assert_eq!(request.path(), "/v1/test");
     assert_eq!(
-        request.query,
+        request.query(),
         vec![
             ("a".to_string(), "1".to_string()),
             ("b".to_string(), "2".to_string())
@@ -114,17 +132,17 @@ fn test_request_builder_text_body_sets_content_type() {
         .text_body("hello world")
         .build();
 
-    assert_eq!(request.method, Method::POST);
-    assert_eq!(request.path, "/v1/text");
+    assert_eq!(request.method(), &Method::POST);
+    assert_eq!(request.path(), "/v1/text");
     assert_eq!(
         request
-            .headers
+            .headers()
             .get(CONTENT_TYPE)
             .expect("text body should set Content-Type"),
         "text/plain; charset=utf-8"
     );
-    match request.body {
-        HttpRequestBody::Text(text) => assert_eq!(text, "hello world"),
+    match request.body() {
+        HttpRequestBody::Text(text) => assert_eq!(text.as_str(), "hello world"),
         _ => panic!("expected text body"),
     }
 }
@@ -148,16 +166,16 @@ fn test_request_builder_json_body_sets_content_type_and_payload() {
 
     assert_eq!(
         request
-            .headers
+            .headers()
             .get(CONTENT_TYPE)
             .expect("json body should set Content-Type"),
         "application/json"
     );
 
-    match request.body {
+    match request.body() {
         HttpRequestBody::Json(bytes) => {
             let body: serde_json::Value =
-                serde_json::from_slice(&bytes).expect("JSON body bytes should decode");
+                serde_json::from_slice(bytes).expect("JSON body bytes should decode");
             assert_eq!(body["name"], "alpha");
             assert_eq!(body["value"], 42);
         }
@@ -172,9 +190,11 @@ fn test_request_builder_bytes_body_and_timeout() {
         .timeout(Duration::from_secs(5))
         .build();
 
-    assert_eq!(request.request_timeout, Some(Duration::from_secs(5)));
-    match request.body {
-        HttpRequestBody::Bytes(bytes) => assert_eq!(bytes, Bytes::from_static(b"abc123")),
+    assert_eq!(request.request_timeout(), Some(Duration::from_secs(5)));
+    match request.body() {
+        HttpRequestBody::Bytes(bytes) => {
+            assert_eq!(bytes.as_ref(), Bytes::from_static(b"abc123").as_ref())
+        }
         _ => panic!("expected bytes body"),
     }
 }
@@ -189,7 +209,7 @@ fn test_request_builder_stream_body_preserves_chunk_order() {
         ])
         .build();
 
-    match request.body {
+    match request.body() {
         HttpRequestBody::Stream(chunks) => {
             assert_eq!(chunks.len(), 3);
             assert_eq!(chunks[0], Bytes::from_static(b"alpha"));
@@ -219,7 +239,7 @@ fn test_request_builder_query_params_headers_and_text_body_preserve_existing_con
         .build();
 
     assert_eq!(
-        request.query,
+        request.query(),
         vec![
             ("a".to_string(), "1".to_string()),
             ("b".to_string(), "2".to_string()),
@@ -227,20 +247,20 @@ fn test_request_builder_query_params_headers_and_text_body_preserve_existing_con
     );
     assert_eq!(
         request
-            .headers
+            .headers()
             .get(CONTENT_TYPE)
             .expect("existing content-type should be kept"),
         "text/custom; charset=utf-8"
     );
     assert_eq!(
         request
-            .headers
+            .headers()
             .get("x-extra")
             .expect("custom header should be preserved"),
         "present"
     );
-    match request.body {
-        HttpRequestBody::Text(text) => assert_eq!(text, "hello"),
+    match request.body() {
+        HttpRequestBody::Text(text) => assert_eq!(text.as_str(), "hello"),
         _ => panic!("expected text body"),
     }
 }
@@ -256,15 +276,15 @@ fn test_request_builder_json_body_preserves_existing_content_type() {
 
     assert_eq!(
         request
-            .headers
+            .headers()
             .get(CONTENT_TYPE)
             .expect("existing content-type should be kept"),
         "application/vnd.test+json"
     );
-    match request.body {
+    match request.body() {
         HttpRequestBody::Json(bytes) => {
             let body: serde_json::Value =
-                serde_json::from_slice(&bytes).expect("JSON body bytes should decode");
+                serde_json::from_slice(bytes).expect("JSON body bytes should decode");
             assert_eq!(body["ok"], true);
         }
         _ => panic!("expected JSON body"),
@@ -289,13 +309,13 @@ fn test_request_builder_retry_override_options() {
         .honor_retry_after(true)
         .build();
 
-    assert!(request.retry_override.is_force_enable());
-    assert!(!request.retry_override.is_force_disable());
+    assert!(request.retry_override().is_force_enable());
+    assert!(!request.retry_override().is_force_disable());
     assert_eq!(
-        request.retry_override.method_policy(),
+        request.retry_override().method_policy(),
         Some(HttpRetryMethodPolicy::AllMethods)
     );
-    assert!(request.retry_override.should_honor_retry_after());
+    assert!(request.retry_override().should_honor_retry_after());
 }
 
 #[test]
@@ -305,9 +325,9 @@ fn test_request_builder_disable_retry_override() {
         .honor_retry_after(false)
         .build();
 
-    assert!(request.retry_override.is_force_disable());
-    assert!(!request.retry_override.should_honor_retry_after());
-    assert!(request.retry_override.method_policy().is_none());
+    assert!(request.retry_override().is_force_disable());
+    assert!(!request.retry_override().should_honor_retry_after());
+    assert!(request.retry_override().method_policy().is_none());
 }
 
 #[test]
@@ -317,10 +337,9 @@ fn test_request_builder_sets_cancellation_token() {
         .cancellation_token(token.clone())
         .build();
 
-    assert!(request.cancellation_token.is_some());
+    assert!(request.cancellation_token().is_some());
     assert!(!request
-        .cancellation_token
-        .as_ref()
+        .cancellation_token()
         .expect("cancellation token should exist")
         .is_cancelled());
 }
@@ -333,12 +352,12 @@ fn test_request_builder_form_body_sets_content_type_and_encodes_fields() {
 
     assert_eq!(
         request
-            .headers
+            .headers()
             .get(CONTENT_TYPE)
             .expect("form body should set Content-Type"),
         "application/x-www-form-urlencoded"
     );
-    match request.body {
+    match request.body() {
         HttpRequestBody::Form(bytes) => {
             let text = String::from_utf8(bytes.to_vec()).expect("form payload should be utf-8");
             assert!(text.contains("name=alice+bob"));
@@ -358,7 +377,7 @@ fn test_request_builder_form_body_preserves_existing_content_type() {
 
     assert_eq!(
         request
-            .headers
+            .headers()
             .get(CONTENT_TYPE)
             .expect("existing content-type should be kept"),
         "application/custom-form"
@@ -374,13 +393,15 @@ fn test_request_builder_multipart_body_sets_content_type_with_boundary() {
 
     assert_eq!(
         request
-            .headers
+            .headers()
             .get(CONTENT_TYPE)
             .expect("multipart body should set Content-Type"),
         "multipart/form-data; boundary=abc"
     );
-    match request.body {
-        HttpRequestBody::Multipart(bytes) => assert_eq!(bytes, Bytes::from_static(b"--abc\r\n...")),
+    match request.body() {
+        HttpRequestBody::Multipart(bytes) => {
+            assert_eq!(bytes.as_ref(), Bytes::from_static(b"--abc\r\n...").as_ref())
+        }
         _ => panic!("expected multipart body"),
     }
 }
@@ -416,7 +437,7 @@ fn test_request_builder_multipart_body_preserves_existing_content_type() {
 
     assert_eq!(
         request
-            .headers
+            .headers()
             .get(CONTENT_TYPE)
             .expect("existing content-type should be kept"),
         "multipart/mixed"
@@ -437,12 +458,12 @@ fn test_request_builder_ndjson_body_sets_content_type_and_serializes_lines() {
 
     assert_eq!(
         request
-            .headers
+            .headers()
             .get(CONTENT_TYPE)
             .expect("ndjson body should set Content-Type"),
         "application/x-ndjson"
     );
-    match request.body {
+    match request.body() {
         HttpRequestBody::Ndjson(bytes) => {
             let text = String::from_utf8(bytes.to_vec()).expect("ndjson payload should be utf-8");
             assert_eq!(text, "{\"id\":1}\n{\"id\":2}\n");
@@ -478,7 +499,7 @@ fn test_request_builder_ndjson_body_preserves_existing_content_type() {
 
     assert_eq!(
         request
-            .headers
+            .headers()
             .get(CONTENT_TYPE)
             .expect("existing content-type should be kept"),
         "application/custom-ndjson"
@@ -498,7 +519,7 @@ fn test_request_builder_ndjson_body_allows_empty_records() {
         .expect("empty ndjson records should be encoded")
         .build();
 
-    match request.body {
+    match request.body() {
         HttpRequestBody::Ndjson(bytes) => assert!(bytes.is_empty()),
         _ => panic!("expected ndjson body"),
     }

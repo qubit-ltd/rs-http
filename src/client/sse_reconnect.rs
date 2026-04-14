@@ -148,9 +148,7 @@ fn apply_last_event_id_header(request: &mut HttpRequest, last_event_id: &str) ->
             "Invalid Last-Event-ID header value '{last_event_id}': {error}"
         ))
     })?;
-    request
-        .headers
-        .insert(HeaderName::from_static(LAST_EVENT_ID_HEADER), header_value);
+    request.set_typed_header(HeaderName::from_static(LAST_EVENT_ID_HEADER), header_value);
     Ok(())
 }
 

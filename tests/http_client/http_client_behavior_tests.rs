@@ -183,23 +183,19 @@ async fn test_request_interceptor_order_is_stable_and_clear_works() {
         .create_with_options(options)
         .unwrap();
     client.add_request_interceptor(RequestInterceptor::new(|request| {
-        request.headers.insert(
+        request.set_typed_header(
             HeaderName::from_static("x-request-seq"),
             HeaderValue::from_static("A"),
         );
-        request
-            .query
-            .push(("request_interceptor".to_string(), "first".to_string()));
+        request.add_query_param("request_interceptor", "first");
         Ok(())
     }));
     client.add_request_interceptor(RequestInterceptor::new(|request| {
-        request.headers.insert(
+        request.set_typed_header(
             HeaderName::from_static("x-request-seq"),
             HeaderValue::from_static("B"),
         );
-        request
-            .query
-            .push(("request_interceptor".to_string(), "second".to_string()));
+        request.add_query_param("request_interceptor", "second");
         Ok(())
     }));
 
@@ -229,7 +225,7 @@ async fn test_request_interceptor_order_is_stable_and_clear_works() {
         .create_with_options(options2)
         .unwrap();
     client2.add_request_interceptor(RequestInterceptor::new(|request| {
-        request.headers.insert(
+        request.set_typed_header(
             HeaderName::from_static("x-request-cleared"),
             HeaderValue::from_static("yes"),
         );
