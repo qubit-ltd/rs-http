@@ -65,24 +65,23 @@ impl<'a> RequestPipeline<'a> {
         request: HttpRequest,
         cancellation_message: &str,
     ) -> HttpResult<PreparedRequestSend> {
-        let url = self.client.resolve_url(&request)?;
+        let url = request.resolve_url()?;
         let method = request.method.clone();
         let cancellation_token = request.cancellation_token.clone();
-        if let Some(error) = cancelled_request_error_if_needed(
-            cancellation_token.as_ref(),
-            &method,
-            &url,
-            cancellation_message,
-        ) {
+        if let Some(error) = request.cancelled_error_if_needed(&url, cancellation_message) {
             return Err(error);
         }
         let headers = self.build_headers(&request).await?;
-        let body_for_log = clone_request_body_for_log(&request.body);
 
         let logger = HttpLogger::new(&self.client.options);
+        let body_for_log = if logger.should_log_request_body() {
+            Self::clone_request_body_for_log(&request.body)
+        } else {
+            None
+        };
         logger.log_request(&method, &url, &headers, body_for_log.as_ref());
 
-        let mut builder = self.client.client.request(method.clone(), url.clone());
+        let mut builder = self.client.backend.request(method.clone(), url.clone());
         builder = builder.headers(headers);
         if !request.query.is_empty() {
             builder = builder.query(&request.query);
@@ -90,7 +89,7 @@ impl<'a> RequestPipeline<'a> {
         if let Some(timeout) = request.request_timeout {
             builder = builder.timeout(timeout);
         }
-        builder = apply_request_body(builder, request.body);
+        builder = Self::apply_request_body(builder, request.body);
 
         let response = self
             .send_with_write_timeout(
@@ -323,79 +322,53 @@ impl<'a> RequestPipeline<'a> {
 
         render_error_body_preview(&preview, truncated)
     }
-}
 
-/// Builds a cancelled error when `token` is already cancelled.
-///
-/// # Parameters
-/// - `token`: Optional cancellation token for this request.
-/// - `method`: Request method for error context.
-/// - `url`: Request URL for error context.
-/// - `message`: Cancellation message.
-///
-/// # Returns
-/// `Some(HttpError)` when cancelled, otherwise `None`.
-fn cancelled_request_error_if_needed(
-    token: Option<&CancellationToken>,
-    method: &http::Method,
-    url: &Url,
-    message: &str,
-) -> Option<HttpError> {
-    if token.is_some_and(CancellationToken::is_cancelled) {
-        Some(
-            HttpError::cancelled(message.to_string())
-                .with_method(method.clone())
-                .with_url(url.clone()),
-        )
-    } else {
-        None
-    }
-}
-
-/// Clones request body content for request logging.
-///
-/// # Parameters
-/// - `body`: Request body variant.
-///
-/// # Returns
-/// Optional byte payload for logger previewing.
-fn clone_request_body_for_log(body: &HttpRequestBody) -> Option<Bytes> {
-    match body {
-        HttpRequestBody::Bytes(bytes)
-        | HttpRequestBody::Json(bytes)
-        | HttpRequestBody::Form(bytes)
-        | HttpRequestBody::Multipart(bytes)
-        | HttpRequestBody::Ndjson(bytes) => Some(bytes.clone()),
-        HttpRequestBody::Text(text) => Some(Bytes::from(text.clone())),
-        HttpRequestBody::Stream(_) => None,
-        HttpRequestBody::Empty => None,
-    }
-}
-
-/// Applies request body variant to a reqwest request builder.
-///
-/// # Parameters
-/// - `builder`: Request builder with method/url/headers/query already set.
-/// - `body`: Request body variant to apply.
-///
-/// # Returns
-/// Updated builder containing the request body payload.
-fn apply_request_body(
-    builder: reqwest::RequestBuilder,
-    body: HttpRequestBody,
-) -> reqwest::RequestBuilder {
-    match body {
-        HttpRequestBody::Empty => builder,
-        HttpRequestBody::Bytes(bytes)
-        | HttpRequestBody::Json(bytes)
-        | HttpRequestBody::Form(bytes)
-        | HttpRequestBody::Multipart(bytes)
-        | HttpRequestBody::Ndjson(bytes) => builder.body(bytes),
-        HttpRequestBody::Stream(chunks) => {
-            let body_stream =
-                futures_stream::iter(chunks.into_iter().map(Result::<Bytes, std::io::Error>::Ok));
-            builder.body(reqwest::Body::wrap_stream(body_stream))
+    /// Clones request body content for request logging.
+    ///
+    /// # Parameters
+    /// - `body`: Request body variant.
+    ///
+    /// # Returns
+    /// Optional byte payload for logger previewing.
+    fn clone_request_body_for_log(body: &HttpRequestBody) -> Option<Bytes> {
+        match body {
+            HttpRequestBody::Bytes(bytes)
+            | HttpRequestBody::Json(bytes)
+            | HttpRequestBody::Form(bytes)
+            | HttpRequestBody::Multipart(bytes)
+            | HttpRequestBody::Ndjson(bytes) => Some(bytes.clone()),
+            HttpRequestBody::Text(text) => Some(Bytes::from(text.clone())),
+            HttpRequestBody::Stream(_) => None,
+            HttpRequestBody::Empty => None,
         }
-        HttpRequestBody::Text(text) => builder.body(text),
+    }
+
+    /// Applies request body variant to a reqwest request builder.
+    ///
+    /// # Parameters
+    /// - `builder`: Request builder with method/url/headers/query already set.
+    /// - `body`: Request body variant to apply.
+    ///
+    /// # Returns
+    /// Updated builder containing the request body payload.
+    fn apply_request_body(
+        builder: reqwest::RequestBuilder,
+        body: HttpRequestBody,
+    ) -> reqwest::RequestBuilder {
+        match body {
+            HttpRequestBody::Empty => builder,
+            HttpRequestBody::Bytes(bytes)
+            | HttpRequestBody::Json(bytes)
+            | HttpRequestBody::Form(bytes)
+            | HttpRequestBody::Multipart(bytes)
+            | HttpRequestBody::Ndjson(bytes) => builder.body(bytes),
+            HttpRequestBody::Stream(chunks) => {
+                let body_stream = futures_stream::iter(
+                    chunks.into_iter().map(Result::<Bytes, std::io::Error>::Ok),
+                );
+                builder.body(reqwest::Body::wrap_stream(body_stream))
+            }
+            HttpRequestBody::Text(text) => builder.body(text),
+        }
     }
 }

@@ -149,6 +149,16 @@ impl<'a> HttpLogger<'a> {
         self.options.enabled && tracing::enabled!(tracing::Level::TRACE)
     }
 
+    /// Returns whether [`Self::log_request`] will read and emit a request body preview.
+    ///
+    /// Callers can use this to avoid cloning request body bytes when TRACE logging will not use them.
+    ///
+    /// # Returns
+    /// `true` when TRACE logging is active and request body logging is enabled.
+    pub fn should_log_request_body(&self) -> bool {
+        self.is_trace_enabled() && self.options.log_request_body
+    }
+
     /// Returns a masked representation of a header value according to sensitivity rules.
     ///
     /// # Parameters

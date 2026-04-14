@@ -13,7 +13,8 @@ use bytes::Bytes;
 use http::header::CONTENT_TYPE;
 use http::{HeaderMap, HeaderValue, Method};
 use qubit_http::{
-    CancellationToken, HttpErrorKind, HttpRequestBody, HttpRequestBuilder, HttpRetryMethodPolicy,
+    CancellationToken, HttpClientOptions, HttpErrorKind, HttpRequestBody, HttpRequestBuilder,
+    HttpRetryMethodPolicy,
 };
 use serde::ser::{Error as _, Serializer};
 
@@ -28,9 +29,64 @@ impl serde::Serialize for FailingSerialize {
     }
 }
 
+fn new_builder(method: Method, path: &str) -> HttpRequestBuilder {
+    HttpRequestBuilder::new(method, path, &HttpClientOptions::default())
+}
+
+#[test]
+fn test_request_builder_copies_base_url_and_ipv4_only_defaults() {
+    let mut options = HttpClientOptions::default();
+    options.set_base_url("https://api.example.com/v1/").unwrap();
+    options.ipv4_only = true;
+
+    let request = HttpRequestBuilder::new(Method::GET, "users", &options).build();
+    assert_eq!(
+        request.base_url.as_ref().map(url::Url::as_str),
+        Some("https://api.example.com/v1/")
+    );
+    assert!(request.ipv4_only);
+}
+
+#[test]
+fn test_request_builder_base_url_method_overrides_default_from_options() {
+    let mut options = HttpClientOptions::default();
+    options.set_base_url("https://api.example.com/v1/").unwrap();
+
+    let override_base = url::Url::parse("https://override.example.com/root/").unwrap();
+    let request = HttpRequestBuilder::new(Method::GET, "users", &options)
+        .base_url(override_base.clone())
+        .build();
+
+    assert_eq!(request.base_url, Some(override_base));
+}
+
+#[test]
+fn test_request_builder_ipv4_only_method_overrides_default_from_options() {
+    let mut options = HttpClientOptions::default();
+    options.ipv4_only = true;
+
+    let request = HttpRequestBuilder::new(Method::GET, "users", &options)
+        .ipv4_only(false)
+        .build();
+
+    assert!(!request.ipv4_only);
+}
+
+#[test]
+fn test_request_builder_clear_base_url_method_overrides_default_from_options() {
+    let mut options = HttpClientOptions::default();
+    options.set_base_url("https://api.example.com/v1/").unwrap();
+
+    let request = HttpRequestBuilder::new(Method::GET, "users", &options)
+        .clear_base_url()
+        .build();
+
+    assert_eq!(request.base_url, None);
+}
+
 #[test]
 fn test_request_builder_with_query_params() {
-    let request = HttpRequestBuilder::new(Method::GET, "/v1/test")
+    let request = new_builder(Method::GET, "/v1/test")
         .query_param("a", "1")
         .query_param("b", "2")
         .build();
@@ -48,13 +104,13 @@ fn test_request_builder_with_query_params() {
 
 #[test]
 fn test_request_builder_header_validation() {
-    let result = HttpRequestBuilder::new(Method::GET, "/").header("Invalid Header", "value");
+    let result = new_builder(Method::GET, "/").header("Invalid Header", "value");
     assert!(result.is_err());
 }
 
 #[test]
 fn test_request_builder_text_body_sets_content_type() {
-    let request = HttpRequestBuilder::new(Method::POST, "/v1/text")
+    let request = new_builder(Method::POST, "/v1/text")
         .text_body("hello world")
         .build();
 
@@ -85,7 +141,7 @@ fn test_request_builder_json_body_sets_content_type_and_payload() {
         name: "alpha".to_string(),
         value: 42,
     };
-    let request = HttpRequestBuilder::new(Method::POST, "/v1/json")
+    let request = new_builder(Method::POST, "/v1/json")
         .json_body(&payload)
         .expect("valid JSON payload should serialize")
         .build();
@@ -111,7 +167,7 @@ fn test_request_builder_json_body_sets_content_type_and_payload() {
 
 #[test]
 fn test_request_builder_bytes_body_and_timeout() {
-    let request = HttpRequestBuilder::new(Method::PUT, "/v1/blob")
+    let request = new_builder(Method::PUT, "/v1/blob")
         .bytes_body(Bytes::from_static(b"abc123"))
         .timeout(Duration::from_secs(5))
         .build();
@@ -125,7 +181,7 @@ fn test_request_builder_bytes_body_and_timeout() {
 
 #[test]
 fn test_request_builder_stream_body_preserves_chunk_order() {
-    let request = HttpRequestBuilder::new(Method::PUT, "/v1/stream")
+    let request = new_builder(Method::PUT, "/v1/stream")
         .stream_body([
             Bytes::from_static(b"alpha"),
             Bytes::from_static(b"-"),
@@ -156,7 +212,7 @@ fn test_request_builder_query_params_headers_and_text_body_preserve_existing_con
         HeaderValue::from_static("present"),
     );
 
-    let request = HttpRequestBuilder::new(Method::POST, "/v1/text")
+    let request = new_builder(Method::POST, "/v1/text")
         .query_params([("a", "1"), ("b", "2")])
         .headers(headers)
         .text_body("hello")
@@ -191,7 +247,7 @@ fn test_request_builder_query_params_headers_and_text_body_preserve_existing_con
 
 #[test]
 fn test_request_builder_json_body_preserves_existing_content_type() {
-    let request = HttpRequestBuilder::new(Method::POST, "/v1/json")
+    let request = new_builder(Method::POST, "/v1/json")
         .header(CONTENT_TYPE.as_str(), "application/vnd.test+json")
         .expect("custom content-type header should be valid")
         .json_body(&serde_json::json!({ "ok": true }))
@@ -217,7 +273,7 @@ fn test_request_builder_json_body_preserves_existing_content_type() {
 
 #[test]
 fn test_request_builder_json_body_serialization_failure_returns_decode_error() {
-    let error = HttpRequestBuilder::new(Method::POST, "/v1/json")
+    let error = new_builder(Method::POST, "/v1/json")
         .json_body(&FailingSerialize)
         .expect_err("failing serializer should return decode error");
 
@@ -227,7 +283,7 @@ fn test_request_builder_json_body_serialization_failure_returns_decode_error() {
 
 #[test]
 fn test_request_builder_retry_override_options() {
-    let request = HttpRequestBuilder::new(Method::POST, "/v1/retry")
+    let request = new_builder(Method::POST, "/v1/retry")
         .force_retry()
         .retry_method_policy(HttpRetryMethodPolicy::AllMethods)
         .honor_retry_after(true)
@@ -244,7 +300,7 @@ fn test_request_builder_retry_override_options() {
 
 #[test]
 fn test_request_builder_disable_retry_override() {
-    let request = HttpRequestBuilder::new(http::Method::POST, "/v1/retry-disable")
+    let request = new_builder(http::Method::POST, "/v1/retry-disable")
         .disable_retry()
         .honor_retry_after(false)
         .build();
@@ -257,7 +313,7 @@ fn test_request_builder_disable_retry_override() {
 #[test]
 fn test_request_builder_sets_cancellation_token() {
     let token = CancellationToken::new();
-    let request = HttpRequestBuilder::new(Method::GET, "/v1/cancel")
+    let request = new_builder(Method::GET, "/v1/cancel")
         .cancellation_token(token.clone())
         .build();
 
@@ -271,7 +327,7 @@ fn test_request_builder_sets_cancellation_token() {
 
 #[test]
 fn test_request_builder_form_body_sets_content_type_and_encodes_fields() {
-    let request = HttpRequestBuilder::new(Method::POST, "/v1/form")
+    let request = new_builder(Method::POST, "/v1/form")
         .form_body([("name", "alice bob"), ("city", "shanghai")])
         .build();
 
@@ -294,7 +350,7 @@ fn test_request_builder_form_body_sets_content_type_and_encodes_fields() {
 
 #[test]
 fn test_request_builder_form_body_preserves_existing_content_type() {
-    let request = HttpRequestBuilder::new(Method::POST, "/v1/form")
+    let request = new_builder(Method::POST, "/v1/form")
         .header(CONTENT_TYPE.as_str(), "application/custom-form")
         .expect("custom content-type header should be valid")
         .form_body([("a", "1")])
@@ -311,7 +367,7 @@ fn test_request_builder_form_body_preserves_existing_content_type() {
 
 #[test]
 fn test_request_builder_multipart_body_sets_content_type_with_boundary() {
-    let request = HttpRequestBuilder::new(Method::POST, "/v1/multipart")
+    let request = new_builder(Method::POST, "/v1/multipart")
         .multipart_body(Bytes::from_static(b"--abc\r\n..."), "abc")
         .expect("multipart body should be built")
         .build();
@@ -331,7 +387,7 @@ fn test_request_builder_multipart_body_sets_content_type_with_boundary() {
 
 #[test]
 fn test_request_builder_multipart_body_rejects_empty_boundary() {
-    let error = HttpRequestBuilder::new(Method::POST, "/v1/multipart")
+    let error = new_builder(Method::POST, "/v1/multipart")
         .multipart_body(Bytes::from_static(b"payload"), "")
         .expect_err("empty boundary should fail");
 
@@ -341,7 +397,7 @@ fn test_request_builder_multipart_body_rejects_empty_boundary() {
 
 #[test]
 fn test_request_builder_multipart_body_rejects_invalid_boundary_header_value() {
-    let error = HttpRequestBuilder::new(Method::POST, "/v1/multipart")
+    let error = new_builder(Method::POST, "/v1/multipart")
         .multipart_body(Bytes::from_static(b"payload"), "bad\r\nboundary")
         .expect_err("boundary with control chars should fail");
 
@@ -351,7 +407,7 @@ fn test_request_builder_multipart_body_rejects_invalid_boundary_header_value() {
 
 #[test]
 fn test_request_builder_multipart_body_preserves_existing_content_type() {
-    let request = HttpRequestBuilder::new(Method::POST, "/v1/multipart")
+    let request = new_builder(Method::POST, "/v1/multipart")
         .header(CONTENT_TYPE.as_str(), "multipart/mixed")
         .expect("custom content-type header should be valid")
         .multipart_body(Bytes::from_static(b"payload"), "abc")
@@ -374,7 +430,7 @@ fn test_request_builder_ndjson_body_sets_content_type_and_serializes_lines() {
         id: i32,
     }
 
-    let request = HttpRequestBuilder::new(Method::POST, "/v1/ndjson")
+    let request = new_builder(Method::POST, "/v1/ndjson")
         .ndjson_body(&[Record { id: 1 }, Record { id: 2 }])
         .expect("ndjson should be encoded")
         .build();
@@ -398,7 +454,7 @@ fn test_request_builder_ndjson_body_sets_content_type_and_serializes_lines() {
 #[test]
 fn test_request_builder_ndjson_body_serialization_failure_returns_decode_error() {
     let records = [FailingSerialize];
-    let error = HttpRequestBuilder::new(Method::POST, "/v1/ndjson")
+    let error = new_builder(Method::POST, "/v1/ndjson")
         .ndjson_body(&records)
         .expect_err("failing serializer should return decode error");
 
@@ -413,7 +469,7 @@ fn test_request_builder_ndjson_body_preserves_existing_content_type() {
         id: i32,
     }
 
-    let request = HttpRequestBuilder::new(Method::POST, "/v1/ndjson")
+    let request = new_builder(Method::POST, "/v1/ndjson")
         .header(CONTENT_TYPE.as_str(), "application/custom-ndjson")
         .expect("custom content-type header should be valid")
         .ndjson_body(&[Record { id: 9 }])
@@ -437,7 +493,7 @@ fn test_request_builder_ndjson_body_allows_empty_records() {
     }
 
     let records: [Record; 0] = [];
-    let request = HttpRequestBuilder::new(Method::POST, "/v1/ndjson")
+    let request = new_builder(Method::POST, "/v1/ndjson")
         .ndjson_body(&records)
         .expect("empty ndjson records should be encoded")
         .build();

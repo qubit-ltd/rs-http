@@ -137,9 +137,9 @@ impl HttpClientFactory {
             builder = builder.no_proxy();
         }
 
-        let client = builder.build().map_err(HttpError::from)?;
+        let backend = builder.build().map_err(HttpError::from)?;
 
-        Ok(HttpClient::new(client, options))
+        Ok(HttpClient::new(backend, options))
     }
 
     /// Loads [`HttpClientOptions`] from `config`, validates them, then calls
