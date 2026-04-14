@@ -34,6 +34,10 @@ fn test_factory_create_with_options_preserves_options() {
     let factory = HttpClientFactory::new();
     let mut options = HttpClientOptions::default();
     options.timeouts.request_timeout = Some(Duration::from_secs(2));
+    options.user_agent = Some("qubit-http-tests/1.0".to_string());
+    options.max_redirects = Some(5);
+    options.pool_idle_timeout = Some(Duration::from_secs(20));
+    options.pool_max_idle_per_host = Some(24);
     let client = factory
         .create_with_options(options)
         .expect("explicit options should create client");
@@ -41,6 +45,13 @@ fn test_factory_create_with_options_preserves_options() {
         client.options().timeouts.request_timeout,
         Some(Duration::from_secs(2))
     );
+    assert_eq!(
+        client.options().user_agent.as_deref(),
+        Some("qubit-http-tests/1.0")
+    );
+    assert_eq!(client.options().max_redirects, Some(5));
+    assert_eq!(client.options().pool_idle_timeout, Some(Duration::from_secs(20)));
+    assert_eq!(client.options().pool_max_idle_per_host, Some(24));
 }
 
 #[test]
@@ -208,6 +219,18 @@ fn test_factory_create_from_config_full() {
     config
         .set("svc.logging.body_size_limit", 4096usize)
         .expect("test config should set logging.body_size_limit");
+    config
+        .set("svc.user_agent", "qubit-http-tests/1.0".to_string())
+        .expect("test config should set user_agent");
+    config
+        .set("svc.max_redirects", 4_usize)
+        .expect("test config should set max_redirects");
+    config
+        .set("svc.pool_idle_timeout", Duration::from_secs(10))
+        .expect("test config should set pool_idle_timeout");
+    config
+        .set("svc.pool_max_idle_per_host", 16_usize)
+        .expect("test config should set pool_max_idle_per_host");
 
     let factory = HttpClientFactory::new();
     let svc = config.prefix_view("svc");
@@ -223,6 +246,13 @@ fn test_factory_create_from_config_full() {
         Duration::from_secs(30)
     );
     assert_eq!(client.options().logging.body_size_limit, 4096);
+    assert_eq!(
+        client.options().user_agent.as_deref(),
+        Some("qubit-http-tests/1.0")
+    );
+    assert_eq!(client.options().max_redirects, Some(4));
+    assert_eq!(client.options().pool_idle_timeout, Some(Duration::from_secs(10)));
+    assert_eq!(client.options().pool_max_idle_per_host, Some(16));
 }
 
 #[test]
@@ -329,6 +359,19 @@ fn test_factory_create_with_options_rejects_invalid_retry_options() {
 
     assert_eq!(error.kind, HttpErrorKind::Other);
     assert!(error.message.contains("retry.max_attempts"));
+}
+
+#[test]
+fn test_factory_create_with_options_rejects_blank_user_agent() {
+    let mut options = HttpClientOptions::default();
+    options.user_agent = Some("   ".to_string());
+
+    let error = HttpClientFactory::new()
+        .create_with_options(options)
+        .expect_err("blank user_agent should fail");
+
+    assert_eq!(error.kind, HttpErrorKind::Other);
+    assert!(error.message.contains("user_agent"));
 }
 
 #[test]

@@ -8,8 +8,10 @@
  ******************************************************************************/
 
 use std::collections::HashMap;
+use std::time::Duration;
 
 use http::HeaderMap;
+use http::HeaderValue;
 use qubit_config::{ConfigReader, ConfigResult};
 use url::Url;
 
@@ -45,6 +47,14 @@ pub struct HttpClientOptions {
     pub logging: HttpLoggingOptions,
     /// Maximum bytes captured into `HttpError.response_body_preview` for non-success responses.
     pub error_response_preview_limit: usize,
+    /// Optional default `User-Agent` header sent by reqwest.
+    pub user_agent: Option<String>,
+    /// Optional redirect limit applied by reqwest.
+    pub max_redirects: Option<usize>,
+    /// Optional connection pool idle-time timeout.
+    pub pool_idle_timeout: Option<Duration>,
+    /// Optional maximum idle connections per host.
+    pub pool_max_idle_per_host: Option<usize>,
     /// Retry options.
     pub retry: HttpRetryOptions,
     /// Sensitive headers for masking.
@@ -74,6 +84,10 @@ impl Default for HttpClientOptions {
             proxy: ProxyOptions::default(),
             logging: HttpLoggingOptions::default(),
             error_response_preview_limit: DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES,
+            user_agent: None,
+            max_redirects: None,
+            pool_idle_timeout: None,
+            pool_max_idle_per_host: None,
             retry: HttpRetryOptions::default(),
             sensitive_headers: SensitiveHeaders::default(),
             ipv4_only: false,
@@ -89,6 +103,10 @@ struct HttpClientRootConfigInput {
     base_url: Option<String>,
     ipv4_only: Option<bool>,
     error_response_preview_limit: Option<usize>,
+    user_agent: Option<String>,
+    max_redirects: Option<usize>,
+    pool_idle_timeout: Option<Duration>,
+    pool_max_idle_per_host: Option<usize>,
     sensitive_headers: Option<Vec<String>>,
 }
 
@@ -120,6 +138,10 @@ impl HttpClientOptions {
             base_url: config.get_optional_string("base_url")?,
             ipv4_only: config.get_optional("ipv4_only")?,
             error_response_preview_limit: config.get_optional("error_response_preview_limit")?,
+            user_agent: config.get_optional_string("user_agent")?,
+            max_redirects: config.get_optional("max_redirects")?,
+            pool_idle_timeout: config.get_optional("pool_idle_timeout")?,
+            pool_max_idle_per_host: config.get_optional("pool_max_idle_per_host")?,
             sensitive_headers: config.get_optional_string_list("sensitive_headers")?,
         })
     }
@@ -251,6 +273,18 @@ impl HttpClientOptions {
                 Self::validate_positive_limit("error_response_preview_limit", limit)
                     .map_err(|e| Self::resolve_config_error(config, e))?;
         }
+        if let Some(user_agent) = root.user_agent {
+            opts.user_agent = Some(user_agent.trim().to_string());
+        }
+        if let Some(max_redirects) = root.max_redirects {
+            opts.max_redirects = Some(max_redirects);
+        }
+        if let Some(pool_idle_timeout) = root.pool_idle_timeout {
+            opts.pool_idle_timeout = Some(pool_idle_timeout);
+        }
+        if let Some(pool_max_idle_per_host) = root.pool_max_idle_per_host {
+            opts.pool_max_idle_per_host = Some(pool_max_idle_per_host);
+        }
 
         // timeouts
         if config.contains_prefix("timeouts") {
@@ -359,6 +393,20 @@ impl HttpClientOptions {
             "error_response_preview_limit",
             self.error_response_preview_limit,
         )?;
+        if let Some(user_agent) = self.user_agent.as_deref() {
+            if user_agent.trim().is_empty() {
+                return Err(HttpConfigError::invalid_value(
+                    "user_agent",
+                    "Value cannot be empty",
+                ));
+            }
+            HeaderValue::from_str(user_agent).map_err(|error| {
+                HttpConfigError::invalid_value(
+                    "user_agent",
+                    format!("Invalid header value: {error}"),
+                )
+            })?;
+        }
         Self::validate_positive_limit("sse.max_line_bytes", self.sse_max_line_bytes)?;
         Self::validate_positive_limit("sse.max_frame_bytes", self.sse_max_frame_bytes)?;
         Ok(())

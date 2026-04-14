@@ -11,6 +11,7 @@
 use std::net::{IpAddr, SocketAddr};
 
 use reqwest::dns::{Addrs, Name, Resolve, Resolving};
+use reqwest::redirect::Policy;
 
 use crate::HttpConfigError;
 use crate::{HttpClient, HttpClientOptions, HttpError, HttpResult};
@@ -86,6 +87,18 @@ impl HttpClientFactory {
         builder = builder.connect_timeout(options.timeouts.connect_timeout);
         if let Some(request_timeout) = options.timeouts.request_timeout {
             builder = builder.timeout(request_timeout);
+        }
+        if let Some(user_agent) = options.user_agent.as_deref() {
+            builder = builder.user_agent(user_agent);
+        }
+        if let Some(max_redirects) = options.max_redirects {
+            builder = builder.redirect(Policy::limited(max_redirects));
+        }
+        if let Some(pool_idle_timeout) = options.pool_idle_timeout {
+            builder = builder.pool_idle_timeout(pool_idle_timeout);
+        }
+        if let Some(pool_max_idle_per_host) = options.pool_max_idle_per_host {
+            builder = builder.pool_max_idle_per_host(pool_max_idle_per_host);
         }
         if options.ipv4_only {
             builder = builder.dns_resolver(Ipv4OnlyResolver);

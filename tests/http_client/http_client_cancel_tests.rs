@@ -98,6 +98,48 @@ async fn test_execute_request_can_be_cancelled_while_reading_response_body() {
 }
 
 #[tokio::test]
+async fn test_execute_request_can_be_cancelled_while_sending() {
+    let server = spawn_one_shot_server(ResponsePlan::DelayedStart {
+        delay: Duration::from_secs(2),
+        status: 200,
+        headers: vec![],
+        body: b"ok".to_vec(),
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.write_timeout = Duration::from_secs(5);
+    options.timeouts.read_timeout = Duration::from_secs(5);
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .expect("client should be created");
+
+    let token = CancellationToken::new();
+    let token_for_task = token.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        token_for_task.cancel();
+    });
+
+    let request = client
+        .request(Method::GET, "/cancel-sending")
+        .cancellation_token(token)
+        .build();
+    let error = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .expect_err("request should be cancelled while sending");
+    assert_eq!(error.kind, HttpErrorKind::Cancelled);
+    assert!(error.message.contains("sending"));
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.target, "/cancel-sending");
+}
+
+#[tokio::test]
 async fn test_execute_stream_can_be_cancelled_after_first_chunk() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
