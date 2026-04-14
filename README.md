@@ -194,7 +194,7 @@ async fn consume_raw_stream(client: &qubit_http::HttpClient) -> qubit_http::Http
 
 ```rust
 use futures_util::StreamExt;
-use qubit_http::sse::{decode_json_chunks, DoneMarkerPolicy, SseChunk};
+use qubit_http::sse::{DoneMarkerPolicy, SseChunk};
 
 #[derive(Debug, serde::Deserialize)]
 struct StreamChunk {
@@ -206,10 +206,7 @@ async fn consume_sse_json(client: &qubit_http::HttpClient) -> qubit_http::HttpRe
         .execute_stream(client.request(http::Method::GET, "/v1/stream").build())
         .await?;
 
-    let mut chunks = decode_json_chunks::<StreamChunk>(
-        response,
-        DoneMarkerPolicy::DefaultDone,
-    );
+    let mut chunks = response.decode_json_chunks::<StreamChunk>(DoneMarkerPolicy::DefaultDone);
 
     while let Some(item) = chunks.next().await {
         match item? {
@@ -221,9 +218,113 @@ async fn consume_sse_json(client: &qubit_http::HttpClient) -> qubit_http::HttpRe
 }
 ```
 
-Use `decode_json_chunks_with_mode(..., SseJsonMode::Strict)` when malformed JSON should fail immediately.
+Use `response.decode_json_chunks_with_mode(..., SseJsonMode::Strict)` when malformed JSON should fail immediately.
 
-### 6) Create client from config
+### 6) OpenAI SSE quick examples (`chat.completions` vs `responses`)
+
+The examples below focus on request + decoding only.
+OpenAI payload schemas evolve; refer to the latest API docs:
+
+- Chat Completions streaming events:
+  `https://developers.openai.com/api/reference/resources/chat/subresources/completions/streaming-events`
+- Responses streaming:
+  `https://developers.openai.com/api/reference/resources/responses/methods/create`
+
+```rust
+use futures_util::StreamExt;
+use http::Method;
+use qubit_http::sse::{DoneMarkerPolicy, SseChunk};
+use serde_json::json;
+
+// Define these structs in your project according to OpenAI docs:
+// - ChatCompletionChunk:
+//   https://developers.openai.com/api/reference/resources/chat/subresources/completions/streaming-events
+// - ResponseOutputTextDeltaEvent:
+//   https://developers.openai.com/api/reference/resources/responses/methods/create
+
+/// Parse OpenAI Chat Completions stream:
+/// - data: { "object":"chat.completion.chunk", ... }
+/// - data: [DONE]
+async fn stream_openai_chat_completions(
+    client: &qubit_http::HttpClient,
+    api_key: &str,
+) -> qubit_http::HttpResult<()> {
+    let request = client
+        .request(Method::POST, "/v1/chat/completions")
+        .header("authorization", &format!("Bearer {api_key}"))?
+        .header("accept", "text/event-stream")?
+        .json_body(&json!({
+            "model": "gpt-4.1-mini",
+            "messages": [{"role": "user", "content": "Say hello in Chinese."}],
+            "stream": true
+        }))?
+        .build();
+
+    let response = client.execute_stream(request).await?;
+    let mut chunks =
+        response.decode_json_chunks::<ChatCompletionChunk>(DoneMarkerPolicy::DefaultDone);
+
+    while let Some(item) = chunks.next().await {
+        match item? {
+            SseChunk::Data(chunk) => {
+                if let Some(text) = chunk
+                    .choices
+                    .first()
+                    .and_then(|choice| choice.delta.content.as_deref())
+                {
+                    print!("{text}");
+                }
+            }
+            SseChunk::Done => break,
+        }
+    }
+    Ok(())
+}
+
+/// Parse OpenAI Responses stream:
+/// - event: response.output_text.delta
+///   data: { ... "delta": "..." ... }
+/// - event: response.completed
+async fn stream_openai_responses(
+    client: &qubit_http::HttpClient,
+    api_key: &str,
+) -> qubit_http::HttpResult<()> {
+    let request = client
+        .request(Method::POST, "/v1/responses")
+        .header("authorization", &format!("Bearer {api_key}"))?
+        .header("accept", "text/event-stream")?
+        .json_body(&json!({
+            "model": "gpt-4.1-mini",
+            "input": "Give one Rust tip.",
+            "stream": true
+        }))?
+        .build();
+
+    let response = client.execute_stream(request).await?;
+    let mut events = response.decode_events();
+
+    while let Some(item) = events.next().await {
+        let event = item?;
+        match event.event.as_deref() {
+            Some("response.output_text.delta") => {
+                let data: ResponseOutputTextDeltaEvent = event.decode_json()?;
+                print!("{}", data.delta);
+            }
+            Some("response.completed") => break,
+            Some("response.error") => {
+                return Err(qubit_http::HttpError::other(format!(
+                    "responses error event: {}",
+                    event.data
+                )));
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+```
+
+### 7) Create client from config
 
 ```rust
 use std::time::Duration;
