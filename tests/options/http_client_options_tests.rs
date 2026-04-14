@@ -54,6 +54,10 @@ fn test_http_client_options_defaults() {
         options.error_response_preview_limit,
         DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES
     );
+    assert_eq!(options.user_agent, None);
+    assert_eq!(options.max_redirects, None);
+    assert_eq!(options.pool_idle_timeout, None);
+    assert_eq!(options.pool_max_idle_per_host, None);
     assert_eq!(options.retry, HttpRetryOptions::default());
     assert!(!options.retry.enabled);
     assert_eq!(options.retry.max_attempts, 3);
@@ -80,6 +84,13 @@ fn test_http_client_options_new_matches_default() {
     assert_eq!(
         options.error_response_preview_limit,
         defaults.error_response_preview_limit
+    );
+    assert_eq!(options.user_agent, defaults.user_agent);
+    assert_eq!(options.max_redirects, defaults.max_redirects);
+    assert_eq!(options.pool_idle_timeout, defaults.pool_idle_timeout);
+    assert_eq!(
+        options.pool_max_idle_per_host,
+        defaults.pool_max_idle_per_host
     );
     assert_eq!(options.retry, defaults.retry);
     assert_eq!(options.sensitive_headers, defaults.sensitive_headers);
@@ -154,6 +165,30 @@ fn test_http_client_options_ipv4_only() {
     config.set("ipv4_only", true).unwrap();
     let opts = HttpClientOptions::from_config(&config).unwrap();
     assert!(opts.ipv4_only);
+}
+
+#[test]
+fn test_http_client_options_reqwest_extra_fields_from_config() {
+    let mut config = Config::new();
+    config
+        .set("http.user_agent", "qubit-http-tests/1.0".to_string())
+        .unwrap();
+    config.set("http.max_redirects", 7_usize).unwrap();
+    config
+        .set("http.pool_idle_timeout", Duration::from_secs(15))
+        .unwrap();
+    config
+        .set("http.pool_max_idle_per_host", 32_usize)
+        .unwrap();
+
+    let opts = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap();
+    assert_eq!(
+        opts.user_agent.as_deref(),
+        Some("qubit-http-tests/1.0")
+    );
+    assert_eq!(opts.max_redirects, Some(7));
+    assert_eq!(opts.pool_idle_timeout, Some(Duration::from_secs(15)));
+    assert_eq!(opts.pool_max_idle_per_host, Some(32));
 }
 
 #[test]
@@ -610,6 +645,26 @@ fn test_http_client_options_validate_rejects_zero_error_response_preview_limit()
     let err = opts.validate().unwrap_err();
     assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
     assert_eq!(err.path, "error_response_preview_limit");
+}
+
+#[test]
+fn test_http_client_options_validate_rejects_blank_user_agent() {
+    let mut opts = HttpClientOptions::default();
+    opts.user_agent = Some("   ".to_string());
+
+    let err = opts.validate().unwrap_err();
+    assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
+    assert_eq!(err.path, "user_agent");
+}
+
+#[test]
+fn test_http_client_options_validate_rejects_invalid_user_agent() {
+    let mut opts = HttpClientOptions::default();
+    opts.user_agent = Some("line1\nline2".to_string());
+
+    let err = opts.validate().unwrap_err();
+    assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
+    assert_eq!(err.path, "user_agent");
 }
 
 #[test]

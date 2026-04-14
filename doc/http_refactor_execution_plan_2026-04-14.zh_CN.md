@@ -36,13 +36,13 @@
 
 - [x] A6（对应“优先改进 #1”）移除阻塞等待（`std::thread::sleep`），替换为异步友好机制。
   - 验收：重试等待不阻塞 Tokio worker，行为与策略一致。
-  - Commit: `refactor(retry): replace blocking retry-after wait with async sleep`
+  - Commit: `bfd1138` (`refactor(retry): replace blocking retry-after wait with async sleep`)
 
 ### B. 可增加的实用特性（按要求顺序）
 
-- [ ] B1（对应“实用特性 #1”）扩展 `HttpClientOptions`，覆盖更多常用 reqwest 选项。
+- [x] B1（对应“实用特性 #1”）扩展 `HttpClientOptions`，覆盖更多常用 reqwest 选项。
   - 验收：新增选项可从代码与配置加载并生效。
-  - Commit: _pending_
+  - Commit: `feat(options): add common reqwest client settings`
 
 - [ ] B2（对应“实用特性 #3”）新增 request/response 拦截器能力。
   - 验收：支持前后置拦截，顺序可控，错误可短路。
