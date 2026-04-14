@@ -6,7 +6,7 @@
  *    All rights reserved.
  *
  ******************************************************************************/
-//! Integration tests for `src/retry_hint.rs`.
+//! Integration tests for `src/error/retry_hint.rs`.
 
 use http::StatusCode;
 use qubit_http::{HttpError, RetryHint};

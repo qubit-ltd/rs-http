@@ -36,11 +36,10 @@ mod http_response;
 mod http_stream_response;
 mod options;
 mod request;
-mod retry_hint;
 pub mod sse;
 
 pub use constants::DEFAULT_SENSITIVE_HEADER_NAMES;
-pub use error::{HttpError, HttpErrorKind, HttpResult};
+pub use error::{HttpError, HttpErrorKind, HttpResult, RetryHint};
 pub use http_byte_stream::HttpByteStream;
 pub use http_client::HttpClient;
 pub use http_client_factory::HttpClientFactory;
@@ -57,5 +56,4 @@ pub use request::{
     AsyncHeaderInjector, HeaderInjector, HttpRequest, HttpRequestBody, HttpRequestBuilder,
     HttpRequestRetryOverride,
 };
-pub use retry_hint::RetryHint;
 pub use tokio_util::sync::CancellationToken;

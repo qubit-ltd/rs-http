@@ -15,7 +15,7 @@ use http::{Method, StatusCode};
 use thiserror::Error;
 use url::Url;
 
-use crate::RetryHint;
+use super::RetryHint;
 use qubit_common::BoxError;
 
 use super::HttpErrorKind;
