@@ -20,8 +20,12 @@ use super::proxy_options::ProxyOptions;
 use super::sensitive_headers::SensitiveHeaders;
 use super::timeout_options::TimeoutOptions;
 use super::HttpConfigError;
-use crate::request::parse_header;
-use crate::HttpResult;
+use crate::{
+    constants::{DEFAULT_SSE_MAX_FRAME_BYTES, DEFAULT_SSE_MAX_LINE_BYTES},
+    request::parse_header,
+    sse::SseJsonMode,
+    HttpResult,
+};
 
 /// Aggregated settings for [`crate::HttpClient`] and [`crate::HttpClientFactory`].
 #[derive(Debug, Clone)]
@@ -42,11 +46,18 @@ pub struct HttpClientOptions {
     pub sensitive_headers: SensitiveHeaders,
     /// Whether IPv4-only DNS behavior is requested.
     pub ipv4_only: bool,
+    /// Default JSON handling mode used by [`crate::HttpStreamResponse::decode_json_chunks`].
+    pub sse_json_mode: SseJsonMode,
+    /// Default maximum bytes for one SSE line.
+    pub sse_max_line_bytes: usize,
+    /// Default maximum bytes for one SSE frame.
+    pub sse_max_frame_bytes: usize,
 }
 
 impl Default for HttpClientOptions {
     /// Default: no base URL, empty headers, default timeouts/proxy/logging,
-    /// default sensitive headers, IPv4-only off.
+    /// default sensitive headers, IPv4-only off, lenient SSE JSON mode with
+    /// crate default SSE line/frame limits.
     ///
     /// # Returns
     /// Default [`HttpClientOptions`].
@@ -60,6 +71,9 @@ impl Default for HttpClientOptions {
             retry: HttpRetryOptions::default(),
             sensitive_headers: SensitiveHeaders::default(),
             ipv4_only: false,
+            sse_json_mode: SseJsonMode::Lenient,
+            sse_max_line_bytes: DEFAULT_SSE_MAX_LINE_BYTES,
+            sse_max_frame_bytes: DEFAULT_SSE_MAX_FRAME_BYTES,
         }
     }
 }
@@ -69,6 +83,13 @@ struct HttpClientRootConfigInput {
     base_url: Option<String>,
     ipv4_only: Option<bool>,
     sensitive_headers: Option<Vec<String>>,
+}
+
+/// SSE scalar keys read from `sse.*`.
+struct HttpClientSseConfigInput {
+    json_mode: Option<String>,
+    max_line_bytes: Option<usize>,
+    max_frame_bytes: Option<usize>,
 }
 
 impl HttpClientOptions {
@@ -95,10 +116,43 @@ impl HttpClientOptions {
         })
     }
 
+    fn read_sse_config<R>(config: &R) -> ConfigResult<HttpClientSseConfigInput>
+    where
+        R: ConfigReader + ?Sized,
+    {
+        Ok(HttpClientSseConfigInput {
+            json_mode: config.get_optional_string("json_mode")?,
+            max_line_bytes: config.get_optional("max_line_bytes")?,
+            max_frame_bytes: config.get_optional("max_frame_bytes")?,
+        })
+    }
+
     fn parse_base_url(base_url: &str) -> Result<Url, HttpConfigError> {
         Url::parse(base_url).map_err(|error| {
             HttpConfigError::invalid_value("base_url", format!("Invalid URL: {error}"))
         })
+    }
+
+    fn parse_sse_json_mode(value: &str) -> Result<SseJsonMode, HttpConfigError> {
+        let normalized = value.trim().to_ascii_uppercase().replace('-', "_");
+        match normalized.as_str() {
+            "LENIENT" => Ok(SseJsonMode::Lenient),
+            "STRICT" => Ok(SseJsonMode::Strict),
+            _ => Err(HttpConfigError::invalid_value(
+                "json_mode",
+                format!("Unsupported SSE JSON mode: {value}"),
+            )),
+        }
+    }
+
+    fn validate_sse_limit(path: &str, value: usize) -> Result<usize, HttpConfigError> {
+        if value == 0 {
+            return Err(HttpConfigError::invalid_value(
+                path,
+                "Value must be greater than 0",
+            ));
+        }
+        Ok(value)
     }
 
     /// Same as [`HttpClientOptions::default`].
@@ -212,6 +266,27 @@ impl HttpClientOptions {
                 .map_err(|e| Self::resolve_config_error(&retry_config, e))?;
         }
 
+        if config.contains_prefix("sse") {
+            let sse_config = config.prefix_view("sse");
+            let sse = Self::read_sse_config(&sse_config)
+                .map_err(HttpConfigError::from)
+                .map_err(|e| Self::resolve_config_error(&sse_config, e))?;
+            if let Some(mode) = sse.json_mode.as_deref() {
+                opts.sse_json_mode = Self::parse_sse_json_mode(mode)
+                    .map_err(|e| Self::resolve_config_error(&sse_config, e))?;
+            }
+            if let Some(max_line_bytes) = sse.max_line_bytes {
+                opts.sse_max_line_bytes =
+                    Self::validate_sse_limit("max_line_bytes", max_line_bytes)
+                        .map_err(|e| Self::resolve_config_error(&sse_config, e))?;
+            }
+            if let Some(max_frame_bytes) = sse.max_frame_bytes {
+                opts.sse_max_frame_bytes =
+                    Self::validate_sse_limit("max_frame_bytes", max_frame_bytes)
+                        .map_err(|e| Self::resolve_config_error(&sse_config, e))?;
+            }
+        }
+
         // default_headers – sub-key form: default_headers.<name> = <value>
         let headers_prefix = "default_headers";
         let full_headers_prefix = "default_headers.";
@@ -253,7 +328,8 @@ impl HttpClientOptions {
         Ok(opts)
     }
 
-    /// Runs [`ProxyOptions::validate`] and [`HttpLoggingOptions::validate`].
+    /// Runs [`ProxyOptions::validate`], [`HttpLoggingOptions::validate`], retry validation,
+    /// and SSE limit validation.
     ///
     /// # Returns
     /// `Ok(())` or the first sub-validator error.
@@ -263,6 +339,8 @@ impl HttpClientOptions {
         self.retry
             .validate()
             .map_err(|e| e.prepend_path_prefix("retry"))?;
+        Self::validate_sse_limit("sse.max_line_bytes", self.sse_max_line_bytes)?;
+        Self::validate_sse_limit("sse.max_frame_bytes", self.sse_max_frame_bytes)?;
         Ok(())
     }
 }

@@ -71,3 +71,21 @@ async fn test_decode_frames_rejects_frame_exceeding_max_bytes() {
     assert_eq!(error.kind, qubit_http::HttpErrorKind::SseProtocol);
     assert!(error.message.contains("max_frame_bytes"));
 }
+
+#[tokio::test]
+async fn test_decode_frames_ignores_comment_lines() {
+    let response = stream_response_from_chunks(vec![": heartbeat\n", "data: hello\n", "\n"]);
+    let events = collect_results(response.decode_events_with_limits(128, 64)).await;
+
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].data, "hello");
+}
+
+#[tokio::test]
+async fn test_decode_frames_emits_last_event_without_trailing_blank_line() {
+    let response = stream_response_from_chunks(vec!["data: final"]);
+    let events = collect_results(response.decode_events()).await;
+
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].data, "final");
+}

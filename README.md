@@ -11,6 +11,9 @@
 
 - one client model for request/response and streaming
 - explicit timeout, retry, proxy, and logging controls
+- request-level retry overrides and cancellation (`CancellationToken`)
+- sync/async header injector chains with deterministic precedence
+- built-in JSON/form/multipart/NDJSON request body helpers
 - built-in SSE event and JSON chunk decoding
 - unified error model (`HttpError`, `HttpErrorKind`, `RetryHint`)
 
@@ -58,12 +61,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## Core Types
 
 - `HttpClientFactory`: creates clients from defaults, explicit options, or config.
-- `HttpClientOptions`: base URL, default headers, timeouts, proxy, retry, logging, sensitive headers.
-- `HttpClient`: executes requests with unified behavior.
-- `HttpRequestBuilder`: builds request path/query/headers/body/timeout.
+- `HttpClientOptions`: base URL, default headers, timeouts, proxy, retry, logging, sensitive headers, and SSE decoding defaults.
+- `HttpClient`: executes requests with unified behavior, supports sync/async header injectors.
+- `HttpRequestBuilder`: builds request path/query/headers/body/timeout, request-level retry override, cancellation token.
 - `HttpResponse`: buffered response (`status`, `headers`, `body`, `text()`, `json()`).
-- `HttpStreamResponse`: metadata + streaming body (`into_stream()`).
+- `HttpStreamResponse`: metadata + streaming body (`into_stream()`), SSE decoding with configurable size limits.
 - `qubit_http::sse`: SSE event parsing and JSON chunk decoding.
+
+## Why This Crate (vs `http` and `reqwest`)
+
+Note: Rust does not ship an HTTP client in the standard library. In practice:
+- `http` crate = HTTP types only (`Request`/`Response`/`Method`/`Header`)
+- `reqwest` = general-purpose HTTP client
+- `qubit-http` = team-oriented HTTP infrastructure built on top of `reqwest`
+
+| Dimension | `http` crate | `reqwest` | `qubit-http` |
+| --- | --- | --- | --- |
+| Primary role | Type definitions | Generic HTTP client | Unified HTTP infrastructure layer |
+| Sends requests | No | Yes | Yes |
+| Retry & timeout model | No | Basic capabilities | Unified defaults + request-level override |
+| Error semantics | No | `reqwest::Error` centered | `HttpError` + `HttpErrorKind` + `RetryHint` |
+| Config consistency | No | App-defined | `HttpClientOptions` + factory + validation |
+| Streaming/SSE | No | Raw byte stream | SSE event/json decoding + safety limits |
+| Observability & safety | No | App-defined | Masking, bounded previews, stable logging behavior |
+| Cross-service consistency | Low | Medium | High |
+
+Use `qubit-http` when you want behavior to be consistent across services, not re-implemented per project.
 
 ## Common Usage
 
@@ -107,11 +130,11 @@ async fn create_message() -> Result<(), Box<dyn std::error::Error>> {
 
 Header precedence is:
 
-`default headers` -> `header injectors` -> `request headers` (highest priority)
+`default headers` -> `sync header injectors` -> `async header injectors` -> `request headers` (highest priority)
 
 ```rust
 use http::HeaderValue;
-use qubit_http::{HeaderInjector, HttpClientFactory};
+use qubit_http::{AsyncHeaderInjector, HeaderInjector, HttpClientFactory};
 
 fn with_auth_injector() -> qubit_http::HttpResult<qubit_http::HttpClient> {
     let token = "secret-token".to_string();
@@ -123,6 +146,15 @@ fn with_auth_injector() -> qubit_http::HttpResult<qubit_http::HttpClient> {
             .map_err(|e| qubit_http::HttpError::other(format!("invalid auth header: {e}")))?;
         headers.insert(http::header::AUTHORIZATION, bearer);
         Ok(())
+    }));
+    client.add_async_header_injector(AsyncHeaderInjector::new(|headers| {
+        Box::pin(async move {
+            headers.insert(
+                "x-auth-source",
+                HeaderValue::from_static("async-refresh"),
+            );
+            Ok(())
+        })
     }));
 
     Ok(client)
@@ -171,7 +203,89 @@ Retry applies when:
 - method is allowed by `method_policy`
 - error is retryable (`timeout`, `transport`, `429`, `5xx`)
 
-### 4) Stream response body bytes
+### 4) Per-request retry override (`force/disable/method/Retry-After`)
+
+```rust
+use http::Method;
+use qubit_http::HttpRetryMethodPolicy;
+
+async fn post_with_request_retry_override(
+    client: &qubit_http::HttpClient,
+) -> qubit_http::HttpResult<()> {
+    let request = client
+        .request(Method::POST, "/v1/jobs")
+        .force_retry()
+        .retry_method_policy(HttpRetryMethodPolicy::AllMethods)
+        .honor_retry_after(true)
+        .json_body(&serde_json::json!({"name": "daily-sync"}))?
+        .build();
+
+    let _ = client.execute(request).await?;
+    Ok(())
+}
+```
+
+### 5) Request cancellation (`CancellationToken`)
+
+```rust
+use http::Method;
+use qubit_http::CancellationToken;
+
+async fn execute_with_cancellation(client: &qubit_http::HttpClient) -> qubit_http::HttpResult<()> {
+    let token = CancellationToken::new();
+    let token_for_task = token.clone();
+
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        token_for_task.cancel();
+    });
+
+    let request = client
+        .request(Method::GET, "/v1/slow-stream")
+        .cancellation_token(token)
+        .build();
+    let _ = client.execute_stream(request).await?;
+    Ok(())
+}
+```
+
+### 6) Form / multipart / NDJSON request body
+
+```rust
+use http::Method;
+use serde::Serialize;
+
+#[derive(Serialize)]
+struct Record {
+    id: u64,
+}
+
+fn build_body_requests(client: &qubit_http::HttpClient) -> qubit_http::HttpResult<()> {
+    let _form = client
+        .request(Method::POST, "/v1/form")
+        .form_body([("name", "alice"), ("city", "shanghai")])
+        .build();
+
+    let boundary = "----qubit-boundary";
+    let multipart_payload = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"hello.txt\"\r\n\
+         Content-Type: text/plain\r\n\r\nhello\r\n--{boundary}--\r\n"
+    );
+    let _multipart = client
+        .request(Method::POST, "/v1/upload")
+        .multipart_body(multipart_payload.into_bytes(), boundary)?
+        .build();
+
+    let _ndjson = client
+        .request(Method::POST, "/v1/bulk")
+        .ndjson_body(&[Record { id: 1 }, Record { id: 2 }])?
+        .build();
+
+    Ok(())
+}
+```
+
+### 7) Stream response body bytes
 
 ```rust
 use futures_util::StreamExt;
@@ -190,7 +304,7 @@ async fn consume_raw_stream(client: &qubit_http::HttpClient) -> qubit_http::Http
 }
 ```
 
-### 5) Decode SSE JSON chunks
+### 8) Decode SSE JSON chunks
 
 ```rust
 use futures_util::StreamExt;
@@ -218,9 +332,31 @@ async fn consume_sse_json(client: &qubit_http::HttpClient) -> qubit_http::HttpRe
 }
 ```
 
-Use `response.decode_json_chunks_with_mode(..., SseJsonMode::Strict)` when malformed JSON should fail immediately.
+You can set client-level SSE defaults via `HttpClientOptions`:
 
-### 6) OpenAI SSE quick examples (`chat.completions` vs `responses`)
+```rust
+use qubit_http::sse::SseJsonMode;
+
+options.sse_json_mode = SseJsonMode::Strict;
+options.sse_max_line_bytes = 64 * 1024;
+options.sse_max_frame_bytes = 1024 * 1024;
+```
+
+You can still override per request with `response.decode_json_chunks_with_mode(...)`
+or `decode_json_chunks_with_mode_and_limits(...)`:
+
+```rust
+use qubit_http::sse::{DoneMarkerPolicy, SseJsonMode};
+
+let chunks = response.decode_json_chunks_with_mode_and_limits::<MyChunk>(
+    DoneMarkerPolicy::DefaultDone,
+    SseJsonMode::Lenient,
+    64 * 1024,   // max_line_bytes
+    1024 * 1024, // max_frame_bytes
+);
+```
+
+### 9) OpenAI SSE quick examples (`chat.completions` vs `responses`)
 
 The examples below focus on request + decoding only.
 OpenAI payload schemas evolve; refer to the latest API docs:
@@ -324,7 +460,7 @@ async fn stream_openai_responses(
 }
 ```
 
-### 7) Create client from config
+### 10) Create client from config
 
 ```rust
 use std::time::Duration;
@@ -343,6 +479,11 @@ fn build_client_from_config() -> Result<qubit_http::HttpClient, qubit_http::Http
     config.set("http.proxy.enabled", false).unwrap();
     config.set("http.retry.enabled", true).unwrap();
     config.set("http.retry.max_attempts", 3_u32).unwrap();
+    config.set("http.sse.json_mode", "STRICT".to_string()).unwrap();
+    config.set("http.sse.max_line_bytes", 64 * 1024usize).unwrap();
+    config
+        .set("http.sse.max_frame_bytes", 1024 * 1024usize)
+        .unwrap();
 
     HttpClientFactory::new().create_from_config(&config.prefix_view("http"))
 }
@@ -356,6 +497,7 @@ fn build_client_from_config() -> Result<qubit_http::HttpClient, qubit_http::Http
 - transport/timeout failures
 - non-success HTTP status (`HttpErrorKind::Status`)
 - decode/SSE failures
+- cancellation (`HttpErrorKind::Cancelled`)
 
 You can inspect `error.kind` and `error.retry_hint()`:
 
@@ -371,6 +513,7 @@ fn handle_error(error: &qubit_http::HttpError) {
         | HttpErrorKind::RequestTimeout => {
             eprintln!("timeout: {}", error)
         }
+        HttpErrorKind::Cancelled => eprintln!("request cancelled: {}", error),
         _ => eprintln!("http error: {}", error),
     }
 
@@ -379,6 +522,9 @@ fn handle_error(error: &qubit_http::HttpError) {
 
     if let Some(preview) = &error.response_body_preview {
         eprintln!("response preview={preview}");
+    }
+    if let Some(retry_after) = error.retry_after {
+        eprintln!("retry-after={retry_after:?}");
     }
 }
 ```
@@ -402,6 +548,9 @@ fn handle_error(error: &qubit_http::HttpError) {
 | `retry.jitter_factor` | `0.1` |
 | `retry.method_policy` | `IdempotentOnly` |
 | `ipv4_only` | `false` |
+| `sse.json_mode` | `Lenient` |
+| `sse.max_line_bytes` | `64 * 1024` bytes |
+| `sse.max_frame_bytes` | `1024 * 1024` bytes |
 
 ## Notes
 
@@ -411,6 +560,7 @@ fn handle_error(error: &qubit_http::HttpError) {
 - Binary or non-UTF8 bodies are printed as binary summaries instead of raw bytes.
 - `proxy.enabled = false` disables environment proxy inheritance.
 - `ipv4_only` enforces IPv4 DNS resolution and rejects IPv6 literal target/proxy hosts.
+- `create_with_options(...)` always runs `HttpClientOptions::validate()` and fails fast on invalid options.
 - Streaming retry covers failures before `HttpStreamResponse` is returned. Errors after streaming starts are surfaced to the caller.
 
 ## License

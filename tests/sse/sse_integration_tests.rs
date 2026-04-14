@@ -13,11 +13,17 @@ use bytes::Bytes;
 use futures_util::StreamExt;
 use http::{HeaderMap, Method, StatusCode};
 use qubit_http::{
+    sse::{DoneMarkerPolicy, SseChunk, SseJsonMode},
     HttpClientFactory, HttpClientOptions, HttpError, HttpErrorKind, HttpStreamResponse,
 };
 use tokio::time::timeout;
 
 use crate::common::{spawn_one_shot_server, ResponseChunk, ResponsePlan};
+
+#[derive(Debug, serde::Deserialize, PartialEq, Eq)]
+struct TestChunk {
+    value: i32,
+}
 
 fn stream_response_from_chunks(chunks: Vec<Vec<u8>>) -> HttpStreamResponse {
     let stream = futures_util::stream::iter(
@@ -157,4 +163,74 @@ async fn test_execute_stream_decode_events_reports_read_timeout_when_interrupted
 
     let error = events.next().await.unwrap().unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::ReadTimeout);
+}
+
+#[tokio::test]
+async fn test_execute_stream_decode_json_chunks_uses_client_default_strict_mode() {
+    let server = spawn_one_shot_server(ResponsePlan::Chunked {
+        status: 200,
+        headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+        chunks: vec![
+            ResponseChunk {
+                delay: Duration::from_millis(0),
+                bytes: b"data: {\"value\":1}\n\n".to_vec(),
+            },
+            ResponseChunk {
+                delay: Duration::from_millis(0),
+                bytes: b"data: malformed-json\n\n".to_vec(),
+            },
+        ],
+        finish: true,
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.sse_json_mode = SseJsonMode::Strict;
+    options.timeouts.read_timeout = Duration::from_secs(2);
+    options.timeouts.write_timeout = Duration::from_secs(2);
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
+
+    let request = client.request(Method::GET, "/sse-strict").build();
+    let stream_response = client.execute_stream(request).await.unwrap();
+    let mut chunks = stream_response.decode_json_chunks::<TestChunk>(DoneMarkerPolicy::DefaultDone);
+
+    let first = chunks.next().await.unwrap().unwrap();
+    assert_eq!(first, SseChunk::Data(TestChunk { value: 1 }));
+
+    let error = chunks.next().await.unwrap().unwrap_err();
+    assert_eq!(error.kind, HttpErrorKind::SseDecode);
+}
+
+#[tokio::test]
+async fn test_execute_stream_decode_events_uses_client_default_sse_limits() {
+    let server = spawn_one_shot_server(ResponsePlan::Chunked {
+        status: 200,
+        headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+        chunks: vec![ResponseChunk {
+            delay: Duration::from_millis(0),
+            bytes: b"data: {\"value\":1}\ndata: {\"value\":2}\n\n".to_vec(),
+        }],
+        finish: true,
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.sse_max_frame_bytes = 16;
+    options.timeouts.read_timeout = Duration::from_secs(2);
+    options.timeouts.write_timeout = Duration::from_secs(2);
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
+
+    let request = client.request(Method::GET, "/sse-limits").build();
+    let stream_response = client.execute_stream(request).await.unwrap();
+    let mut events = stream_response.decode_events();
+
+    let error = events.next().await.unwrap().unwrap_err();
+    assert_eq!(error.kind, HttpErrorKind::SseProtocol);
+    assert!(error.message.contains("max_frame_bytes"));
 }

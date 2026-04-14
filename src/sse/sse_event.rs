@@ -16,6 +16,7 @@
 
 use serde::de::DeserializeOwned;
 
+use super::SseJsonMode;
 use crate::{HttpError, HttpResult};
 
 /// One Server-Sent Events dispatch after frame reassembly (`data:` lines joined with `\n`).
@@ -53,5 +54,40 @@ impl SseEvent {
                 self.event, self.id, error
             ))
         })
+    }
+
+    /// Decodes the current event's `data` payload as JSON with configurable strictness.
+    ///
+    /// # Parameters
+    /// - `mode`: JSON decoding strictness.
+    ///
+    /// # Type parameters
+    /// - `T`: Target type deserialized from [`SseEvent::data`].
+    ///
+    /// # Returns
+    /// - `Ok(Some(T))` when `data` is valid JSON for `T`.
+    /// - `Ok(None)` in lenient mode when JSON parsing fails.
+    ///
+    /// # Errors
+    /// Returns [`HttpError::sse_decode`] in strict mode when JSON parsing fails.
+    pub fn decode_json_with_mode<T>(&self, mode: SseJsonMode) -> HttpResult<Option<T>>
+    where
+        T: DeserializeOwned,
+    {
+        match mode {
+            SseJsonMode::Strict => self.decode_json::<T>().map(Some),
+            SseJsonMode::Lenient => match serde_json::from_str::<T>(&self.data) {
+                Ok(value) => Ok(Some(value)),
+                Err(error) => {
+                    tracing::debug!(
+                        "Skipping malformed SSE event JSON in lenient mode (event={:?}, id={:?}): {}",
+                        self.event,
+                        self.id,
+                        error
+                    );
+                    Ok(None)
+                }
+            },
+        }
     }
 }

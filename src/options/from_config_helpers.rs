@@ -20,6 +20,10 @@
 //! timeouts.*                 – nested timeouts (via `prefix_view("timeouts")`)
 //! proxy.*                    – nested proxy
 //! logging.*                  – nested logging
+//! retry.*                    – nested retry
+//! sse.json_mode              – String (`LENIENT` / `STRICT`)
+//! sse.max_line_bytes         – usize
+//! sse.max_frame_bytes        – usize
 //!
 //! default_headers.*          – String (sub-key form)
 //! sensitive_headers          – Vec<String>

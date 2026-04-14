@@ -49,3 +49,14 @@ fn test_sensitive_headers_iter_returns_normalized_names() {
     let names: Vec<_> = headers.iter().collect();
     assert_eq!(names, vec!["content-type", "x-custom"]);
 }
+
+#[test]
+fn test_sensitive_headers_insert_ignores_empty_or_whitespace_values() {
+    let mut headers = SensitiveHeaders::new();
+    headers.insert("");
+    headers.insert("   ");
+    headers.insert("Authorization");
+
+    assert_eq!(headers.len(), 1);
+    assert!(headers.contains("authorization"));
+}

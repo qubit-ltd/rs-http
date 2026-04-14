@@ -73,6 +73,8 @@ mod http_client_async_injector_tests;
 mod http_client_behavior_tests;
 #[path = "http_client/http_client_cancel_tests.rs"]
 mod http_client_cancel_tests;
+#[path = "http_client/http_client_error_paths_tests.rs"]
+mod http_client_error_paths_tests;
 #[path = "http_client/http_client_request_body_tests.rs"]
 mod http_client_request_body_tests;
 #[path = "http_client/http_client_retry_override_tests.rs"]
