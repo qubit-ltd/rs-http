@@ -123,6 +123,39 @@ async fn test_execute_ignores_invalid_retry_after_for_service_unavailable() {
 }
 
 #[tokio::test]
+async fn test_execute_ignores_blank_retry_after_for_service_unavailable() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 503,
+        headers: vec![("Retry-After".to_string(), "   ".to_string())],
+        body: b"service unavailable".to_vec(),
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .expect("client should be created");
+    let request = client
+        .request(Method::GET, "/service-unavailable-blank-retry-after")
+        .build();
+
+    let error = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .expect_err("response status 503 should fail");
+
+    assert_eq!(error.kind, HttpErrorKind::Status);
+    assert_eq!(error.status, Some(StatusCode::SERVICE_UNAVAILABLE));
+    assert_eq!(error.retry_after, None);
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.target, "/service-unavailable-blank-retry-after");
+}
+
+#[tokio::test]
 async fn test_execute_rejects_ipv6_url_when_ipv4_only() {
     let mut options = HttpClientOptions::default();
     options.ipv4_only = true;
