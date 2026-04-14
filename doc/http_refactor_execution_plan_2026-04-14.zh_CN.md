@@ -46,11 +46,11 @@
 
 - [x] B2（对应“实用特性 #3”）新增 request/response 拦截器能力。
   - 验收：支持前后置拦截，顺序可控，错误可短路。
-  - Commit: `feat(interceptor): add request and response interceptors`
+  - Commit: `7fc6a9c` (`feat(interceptor): add request and response interceptors`)
 
-- [ ] B3（对应“实用特性 #4”）支持流式上传请求体。
+- [x] B3（对应“实用特性 #4”）支持流式上传请求体。
   - 验收：可发送流式 body，保留现有 body API 兼容性。
-  - Commit: _pending_
+  - Commit: `feat(request): add streaming upload body support`
 
 - [ ] B4（对应“实用特性 #2”）增加细粒度重试策略（按状态码/错误类型等）。
   - 验收：策略可配置，行为有明确测试覆盖。

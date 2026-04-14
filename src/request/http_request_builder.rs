@@ -135,6 +135,22 @@ impl HttpRequestBuilder {
         self
     }
 
+    /// Sets the body to an ordered chunk stream for incremental upload.
+    ///
+    /// # Parameters
+    /// - `chunks`: Iterator of chunks in send order.
+    ///
+    /// # Returns
+    /// `self` for chaining.
+    pub fn stream_body<I, B>(mut self, chunks: I) -> Self
+    where
+        I: IntoIterator<Item = B>,
+        B: Into<Bytes>,
+    {
+        self.body = HttpRequestBody::Stream(chunks.into_iter().map(Into::into).collect());
+        self
+    }
+
     /// Sets a UTF-8 text body and adds `text/plain; charset=utf-8` if `Content-Type` is absent.
     ///
     /// # Parameters
