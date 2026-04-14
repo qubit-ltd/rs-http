@@ -13,6 +13,7 @@ use std::time::Duration;
 use http::{HeaderMap, Method};
 
 use super::http_request_body::HttpRequestBody;
+use super::http_request_retry_override::HttpRequestRetryOverride;
 
 /// Immutable snapshot of a single HTTP call produced by [`crate::HttpRequestBuilder`].
 #[derive(Debug, Clone)]
@@ -29,4 +30,6 @@ pub struct HttpRequest {
     pub body: HttpRequestBody,
     /// Overrides client-wide request timeout when set; otherwise client default applies.
     pub request_timeout: Option<Duration>,
+    /// Per-request retry override (enable/disable/method-policy/Retry-After behavior).
+    pub retry_override: HttpRequestRetryOverride,
 }

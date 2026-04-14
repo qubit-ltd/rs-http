@@ -15,10 +15,11 @@ use http::header::CONTENT_TYPE;
 use http::{HeaderMap, HeaderValue, Method};
 use serde::Serialize;
 
-use crate::{HttpError, HttpResult};
+use crate::{HttpError, HttpResult, HttpRetryMethodPolicy};
 
 use super::http_request::HttpRequest;
 use super::http_request_body::HttpRequestBody;
+use super::http_request_retry_override::HttpRequestRetryOverride;
 use super::parse_header;
 
 /// Builder for [`HttpRequest`](super::http_request::HttpRequest).
@@ -36,6 +37,8 @@ pub struct HttpRequestBuilder {
     body: HttpRequestBody,
     /// Per-request timeout; if unset, the client default applies.
     request_timeout: Option<Duration>,
+    /// Per-request retry override for one-off retry behavior customization.
+    retry_override: HttpRequestRetryOverride,
 }
 
 impl HttpRequestBuilder {
@@ -55,6 +58,7 @@ impl HttpRequestBuilder {
             headers: HeaderMap::new(),
             body: HttpRequestBody::Empty,
             request_timeout: None,
+            retry_override: HttpRequestRetryOverride::default(),
         }
     }
 
@@ -177,6 +181,48 @@ impl HttpRequestBuilder {
         self
     }
 
+    /// Forces retry enabled for this request even if client-level retry is disabled.
+    ///
+    /// # Returns
+    /// `self` for chaining.
+    pub fn force_retry(mut self) -> Self {
+        self.retry_override = self.retry_override.force_enable();
+        self
+    }
+
+    /// Disables retry for this request even if client-level retry is enabled.
+    ///
+    /// # Returns
+    /// `self` for chaining.
+    pub fn disable_retry(mut self) -> Self {
+        self.retry_override = self.retry_override.force_disable();
+        self
+    }
+
+    /// Overrides retryable-method policy for this request.
+    ///
+    /// # Parameters
+    /// - `policy`: Method policy to apply on this request only.
+    ///
+    /// # Returns
+    /// `self` for chaining.
+    pub fn retry_method_policy(mut self, policy: HttpRetryMethodPolicy) -> Self {
+        self.retry_override = self.retry_override.with_method_policy(policy);
+        self
+    }
+
+    /// Enables or disables honoring `Retry-After` for this request.
+    ///
+    /// # Parameters
+    /// - `enabled`: `true` to honor `Retry-After` on `429 Too Many Requests`.
+    ///
+    /// # Returns
+    /// `self` for chaining.
+    pub fn honor_retry_after(mut self, enabled: bool) -> Self {
+        self.retry_override = self.retry_override.with_honor_retry_after(enabled);
+        self
+    }
+
     /// Consumes the builder into a frozen [`HttpRequest`].
     ///
     /// # Returns
@@ -189,6 +235,7 @@ impl HttpRequestBuilder {
             headers: self.headers,
             body: self.body,
             request_timeout: self.request_timeout,
+            retry_override: self.retry_override,
         }
     }
 }

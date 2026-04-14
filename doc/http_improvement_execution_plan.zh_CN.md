@@ -82,7 +82,7 @@
 
 ### 阶段 B：实用特性
 
-- [ ] B1. 请求级重试覆盖策略（override）
+- [x] B1. 请求级重试覆盖策略（override）
   - 实现要点：
     - 在 `HttpRequest`/builder 增加请求级 retry policy；
     - 支持禁用、强制启用、方法策略覆盖、可选 `Retry-After` 支持。
@@ -92,7 +92,7 @@
   - 验收命令：
     - `cargo test`
     - `./coverage.sh text`
-  - Commit: `TBD`
+  - Commit: `feat(retry): add request-level retry override with optional Retry-After honoring`
 
 - [ ] B2. 取消能力（`CancellationToken`）
   - 实现要点：

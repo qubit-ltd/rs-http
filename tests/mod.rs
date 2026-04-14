@@ -53,6 +53,8 @@ mod masker_tests;
 
 #[path = "request/http_request_builder_tests.rs"]
 mod http_request_builder_tests;
+#[path = "request/http_request_retry_override_tests.rs"]
+mod http_request_retry_override_tests;
 
 #[path = "sse/done_marker_policy_tests.rs"]
 mod done_marker_policy_tests;
@@ -67,6 +69,8 @@ mod sse_mod_tests;
 mod http_client_behavior_tests;
 #[path = "http_client/http_client_cancel_tests.rs"]
 mod http_client_cancel_tests;
+#[path = "http_client/http_client_retry_override_tests.rs"]
+mod http_client_retry_override_tests;
 #[path = "http_client/http_client_tests.rs"]
 mod http_client_tests;
 #[path = "http_client/http_client_timeout_tests.rs"]

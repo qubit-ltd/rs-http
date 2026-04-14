@@ -12,7 +12,7 @@ use std::time::Duration;
 use bytes::Bytes;
 use http::header::CONTENT_TYPE;
 use http::{HeaderMap, HeaderValue, Method};
-use qubit_http::{HttpErrorKind, HttpRequestBody, HttpRequestBuilder};
+use qubit_http::{HttpErrorKind, HttpRequestBody, HttpRequestBuilder, HttpRetryMethodPolicy};
 use serde::ser::{Error as _, Serializer};
 
 struct FailingSerialize;
@@ -200,4 +200,21 @@ fn test_request_builder_json_body_serialization_failure_returns_decode_error() {
 
     assert_eq!(error.kind, HttpErrorKind::Decode);
     assert!(error.message.contains("Failed to encode JSON body"));
+}
+
+#[test]
+fn test_request_builder_retry_override_options() {
+    let request = HttpRequestBuilder::new(Method::POST, "/v1/retry")
+        .force_retry()
+        .retry_method_policy(HttpRetryMethodPolicy::AllMethods)
+        .honor_retry_after(true)
+        .build();
+
+    assert!(request.retry_override.is_force_enable());
+    assert!(!request.retry_override.is_force_disable());
+    assert_eq!(
+        request.retry_override.method_policy(),
+        Some(HttpRetryMethodPolicy::AllMethods)
+    );
+    assert!(request.retry_override.should_honor_retry_after());
 }

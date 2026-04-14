@@ -14,10 +14,13 @@
 //!
 //! Haixing Hu
 
+use std::time::Duration;
+
 use async_stream::stream;
 use bytes::Bytes;
 use futures_util::StreamExt;
-use http::HeaderMap;
+use http::header::RETRY_AFTER;
+use http::{HeaderMap, StatusCode};
 use qubit_function::MutatingFunction;
 use qubit_retry::{
     AttemptFailure, Jitter, RetryDecision, RetryError, RetryExecutor, RetryOptions, RetryResult,
@@ -28,7 +31,8 @@ use url::Url;
 
 use crate::{
     HeaderInjector, HttpClientOptions, HttpError, HttpErrorKind, HttpLogger, HttpRequest,
-    HttpRequestBody, HttpRequestBuilder, HttpResponse, HttpResult, HttpStreamResponse, RetryHint,
+    HttpRequestBody, HttpRequestBuilder, HttpResponse, HttpResult, HttpRetryOptions,
+    HttpStreamResponse, RetryHint,
 };
 
 /// High-level HTTP client that applies options, header injection, logging, and
@@ -180,10 +184,13 @@ impl HttpClient {
     /// - `Err(HttpError)` on URL/header errors, transport failure, timeout, or
     ///   non-success status.
     pub async fn execute(&self, request: HttpRequest) -> HttpResult<HttpResponse> {
-        if !self.should_retry_request(&request) {
+        let retry_options = self.resolve_retry_options(&request);
+        let honor_retry_after = request.retry_override.should_honor_retry_after();
+        if !self.should_retry_request(&request, &retry_options) {
             return self.execute_once(request).await;
         }
-        self.execute_with_retry(request).await
+        self.execute_with_retry(request, retry_options, honor_retry_after)
+            .await
     }
 
     /// Performs one non-retrying execution: resolve URL, merge headers, log the
@@ -234,6 +241,7 @@ impl HttpClient {
 
         if !response.status().is_success() {
             let status = response.status();
+            let retry_after = parse_retry_after(status, response.headers());
             let error = response.error_for_status_ref().expect_err(
                 "non-success HTTP status must produce reqwest status error via error_for_status_ref",
             );
@@ -250,6 +258,9 @@ impl HttpClient {
             )
             .with_status(status)
             .with_response_body_preview(body_preview);
+            if let Some(retry_after) = retry_after {
+                mapped = mapped.with_retry_after(retry_after);
+            }
             mapped.message = message;
             return Err(mapped);
         }
@@ -284,10 +295,13 @@ impl HttpClient {
     /// - `Err(HttpError)` before the stream starts (same cases as
     ///   [`HttpClient::execute`] for the initial response).
     pub async fn execute_stream(&self, request: HttpRequest) -> HttpResult<HttpStreamResponse> {
-        if !self.should_retry_request(&request) {
+        let retry_options = self.resolve_retry_options(&request);
+        let honor_retry_after = request.retry_override.should_honor_retry_after();
+        if !self.should_retry_request(&request, &retry_options) {
             return self.execute_stream_once(request).await;
         }
-        self.execute_stream_with_retry(request).await
+        self.execute_stream_with_retry(request, retry_options, honor_retry_after)
+            .await
     }
 
     /// Performs one non-retrying streaming execution: same setup as
@@ -338,6 +352,7 @@ impl HttpClient {
 
         if !response.status().is_success() {
             let status = response.status();
+            let retry_after = parse_retry_after(status, response.headers());
             let error = response.error_for_status_ref().expect_err(
                 "non-success HTTP status must produce reqwest status error via error_for_status_ref",
             );
@@ -354,6 +369,9 @@ impl HttpClient {
             )
             .with_status(status)
             .with_response_body_preview(body_preview);
+            if let Some(retry_after) = retry_after {
+                mapped = mapped.with_retry_after(retry_after);
+            }
             mapped.message = message;
             return Err(mapped);
         }
@@ -415,26 +433,55 @@ impl HttpClient {
     /// # Parameters
     /// - `request`: Request whose HTTP method is checked against the configured
     ///   retry policy.
-    fn should_retry_request(&self, request: &HttpRequest) -> bool {
-        self.options.retry.max_attempts > 1 && self.options.retry.allows_method(&request.method)
+    /// - `retry_options`: Effective retry options after applying request-level overrides.
+    fn should_retry_request(
+        &self,
+        request: &HttpRequest,
+        retry_options: &HttpRetryOptions,
+    ) -> bool {
+        retry_options.max_attempts > 1 && retry_options.allows_method(&request.method)
     }
 
-    /// Builds a [`RetryExecutor`] from client retry options and classifies
+    /// Resolves request-level retry override against client-level retry options.
+    ///
+    /// # Parameters
+    /// - `request`: Request whose override is applied.
+    ///
+    /// # Returns
+    /// Effective retry options for this request.
+    fn resolve_retry_options(&self, request: &HttpRequest) -> HttpRetryOptions {
+        let mut options = self.options.retry.clone();
+        options.enabled = request.retry_override.resolve_enabled(options.enabled);
+        options.method_policy = request
+            .retry_override
+            .resolve_method_policy(options.method_policy);
+        options
+    }
+
+    /// Builds a [`RetryExecutor`] from effective retry options and classifies
     /// [`HttpError`] values using [`RetryHint`].
+    ///
+    /// # Parameters
+    /// - `retry_options`: Effective retry options for this request.
+    /// - `honor_retry_after`: Whether to honor `Retry-After` on `429`.
     ///
     /// # Returns
     /// Configured executor or [`HttpError`] if retry options or executor
     /// configuration is invalid.
-    fn build_retry_executor(&self) -> HttpResult<RetryExecutor<HttpError>> {
+    fn build_retry_executor(
+        &self,
+        retry_options: &HttpRetryOptions,
+        honor_retry_after: bool,
+    ) -> HttpResult<RetryExecutor<HttpError>> {
         let options = RetryOptions::new(
-            self.options.retry.max_attempts,
-            self.options.retry.max_duration,
-            self.options.retry.delay_strategy.clone(),
-            Jitter::factor(self.options.retry.jitter_factor),
+            retry_options.max_attempts,
+            retry_options.max_duration,
+            retry_options.delay_strategy.clone(),
+            Jitter::factor(retry_options.jitter_factor),
         )
         .map_err(|error| HttpError::other(format!("Invalid HTTP retry options: {error}")))?;
 
-        RetryExecutor::<HttpError>::builder()
+        let mut builder = RetryExecutor::<HttpError>::builder()
             .options(options)
             .classify_error(|error: &HttpError, _| {
                 if matches!(error.retry_hint(), RetryHint::Retryable) {
@@ -442,7 +489,21 @@ impl HttpClient {
                 } else {
                     RetryDecision::Abort
                 }
-            })
+            });
+        if honor_retry_after {
+            builder = builder.on_retry(|context, failure| {
+                let AttemptFailure::Error(error) = failure else {
+                    return;
+                };
+                let Some(retry_after) = error.retry_after else {
+                    return;
+                };
+                if retry_after > context.next_delay {
+                    std::thread::sleep(retry_after - context.next_delay);
+                }
+            });
+        }
+        builder
             .build()
             .map_err(|error| HttpError::other(format!("Invalid HTTP retry executor: {error}")))
     }
@@ -452,12 +513,19 @@ impl HttpClient {
     /// # Parameters
     /// - `request`: Built request passed to each [`HttpClient::execute_once`]
     ///   attempt.
+    /// - `retry_options`: Effective retry options for this request.
+    /// - `honor_retry_after`: Whether to honor `Retry-After` on `429`.
     ///
     /// # Returns
     /// Same as a successful single attempt, or a mapped [`HttpError`] when
     /// retries abort or limits are exceeded.
-    async fn execute_with_retry(&self, request: HttpRequest) -> HttpResult<HttpResponse> {
-        let policy = self.build_retry_executor()?;
+    async fn execute_with_retry(
+        &self,
+        request: HttpRequest,
+        retry_options: HttpRetryOptions,
+        honor_retry_after: bool,
+    ) -> HttpResult<HttpResponse> {
+        let policy = self.build_retry_executor(&retry_options, honor_retry_after)?;
         let client = self.clone();
         let result = policy
             .run_async(move || {
@@ -475,6 +543,8 @@ impl HttpClient {
     /// # Parameters
     /// - `request`: Built request passed to each
     ///   [`HttpClient::execute_stream_once`] attempt.
+    /// - `retry_options`: Effective retry options for this request.
+    /// - `honor_retry_after`: Whether to honor `Retry-After` on `429`.
     ///
     /// # Returns
     /// Same as a successful single streaming attempt, or a mapped [`HttpError`]
@@ -482,8 +552,10 @@ impl HttpClient {
     async fn execute_stream_with_retry(
         &self,
         request: HttpRequest,
+        retry_options: HttpRetryOptions,
+        honor_retry_after: bool,
     ) -> HttpResult<HttpStreamResponse> {
-        let policy = self.build_retry_executor()?;
+        let policy = self.build_retry_executor(&retry_options, honor_retry_after)?;
         let client = self.clone();
         let result = policy
             .run_async(move || {
@@ -818,6 +890,37 @@ fn classify_reqwest_timeout_kind(error: &reqwest::Error) -> HttpErrorKind {
     } else {
         HttpErrorKind::RequestTimeout
     }
+}
+
+/// Parses `Retry-After` from response headers for `429 Too Many Requests`.
+///
+/// # Parameters
+/// - `status`: HTTP status code.
+/// - `headers`: Response headers.
+///
+/// # Returns
+/// Parsed retry delay when `status` is `429` and `Retry-After` is an integer
+/// number of seconds.
+fn parse_retry_after(status: StatusCode, headers: &HeaderMap) -> Option<Duration> {
+    if status != StatusCode::TOO_MANY_REQUESTS {
+        return None;
+    }
+    headers
+        .get(RETRY_AFTER)
+        .and_then(|value| value.to_str().ok())
+        .and_then(parse_retry_after_value)
+}
+
+/// Parses a `Retry-After` header value as integer seconds.
+///
+/// # Parameters
+/// - `value`: Raw `Retry-After` header value.
+///
+/// # Returns
+/// Parsed duration, or `None` when value is not a non-negative integer.
+fn parse_retry_after_value(value: &str) -> Option<Duration> {
+    let seconds = value.trim().parse::<u64>().ok()?;
+    Some(Duration::from_secs(seconds))
 }
 
 /// Renders a human-readable error-body preview from raw bytes.

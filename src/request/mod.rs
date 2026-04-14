@@ -22,6 +22,7 @@ mod header_injector;
 mod http_request;
 mod http_request_body;
 mod http_request_builder;
+mod http_request_retry_override;
 
 pub(crate) fn parse_header(name: &str, value: &str) -> HttpResult<(HeaderName, HeaderValue)> {
     let header_name = HeaderName::from_bytes(name.as_bytes())
@@ -36,3 +37,4 @@ pub use header_injector::HeaderInjector;
 pub use http_request::HttpRequest;
 pub use http_request_body::HttpRequestBody;
 pub use http_request_builder::HttpRequestBuilder;
+pub use http_request_retry_override::HttpRequestRetryOverride;

@@ -9,6 +9,7 @@
 //! Unified [`HttpError`] type.
 
 use std::error::Error;
+use std::time::Duration;
 
 use http::{Method, StatusCode};
 use thiserror::Error;
@@ -35,6 +36,8 @@ pub struct HttpError {
     pub message: String,
     /// Optional preview of non-success response body.
     pub response_body_preview: Option<String>,
+    /// Optional `Retry-After` duration parsed from a non-success response.
+    pub retry_after: Option<Duration>,
     /// Optional source error.
     #[source]
     pub source: Option<BoxError>,
@@ -57,6 +60,7 @@ impl HttpError {
             status: None,
             message: message.into(),
             response_body_preview: None,
+            retry_after: None,
             source: None,
         }
     }
@@ -121,6 +125,18 @@ impl HttpError {
     /// `self` for chaining.
     pub fn with_response_body_preview(mut self, preview: impl Into<String>) -> Self {
         self.response_body_preview = Some(preview.into());
+        self
+    }
+
+    /// Attaches parsed `Retry-After` duration from a non-success response.
+    ///
+    /// # Parameters
+    /// - `retry_after`: Parsed retry delay.
+    ///
+    /// # Returns
+    /// `self` for chaining.
+    pub fn with_retry_after(mut self, retry_after: Duration) -> Self {
+        self.retry_after = Some(retry_after);
         self
     }
 
