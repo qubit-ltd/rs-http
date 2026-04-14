@@ -12,7 +12,6 @@ use std::time::Duration;
 use bytes::Bytes;
 use futures_util::StreamExt;
 use http::{HeaderMap, Method, StatusCode};
-use qubit_http::sse::decode_events;
 use qubit_http::{
     HttpClientFactory, HttpClientOptions, HttpError, HttpErrorKind, HttpStreamResponse,
 };
@@ -37,7 +36,7 @@ fn stream_response_from_chunks(chunks: Vec<Vec<u8>>) -> HttpStreamResponse {
 #[tokio::test]
 async fn test_decode_events_reports_sse_protocol_error_on_non_utf8_line() {
     let response = stream_response_from_chunks(vec![vec![0xFF, b'\n']]);
-    let mut events = decode_events(response);
+    let mut events = response.decode_events();
     let error = events.next().await.unwrap().unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::SseProtocol);
 }
@@ -50,7 +49,7 @@ async fn test_decode_events_handles_chunk_boundaries_and_trailing_flush() {
         b"\n".to_vec(),
         b"data: {\"value\":2}".to_vec(),
     ]);
-    let mut events = decode_events(response);
+    let mut events = response.decode_events();
 
     let first = events.next().await.unwrap().unwrap();
     assert_eq!(first.data, "{\"value\":1}");
@@ -71,7 +70,7 @@ async fn test_decode_events_propagates_upstream_stream_error() {
         Box::pin(stream),
     );
 
-    let mut events = decode_events(response);
+    let mut events = response.decode_events();
     let error = events.next().await.unwrap().unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::Transport);
 }
@@ -108,7 +107,7 @@ async fn test_execute_stream_with_decode_events_end_to_end() {
         .await
         .expect("execute_stream timed out")
         .unwrap();
-    let mut events = decode_events(stream_response);
+    let mut events = stream_response.decode_events();
 
     let first = events.next().await.unwrap().unwrap();
     assert_eq!(first.data, "{\"value\":1}");
@@ -151,7 +150,7 @@ async fn test_execute_stream_decode_events_reports_read_timeout_when_interrupted
 
     let request = client.request(Method::GET, "/sse-timeout").build();
     let stream_response = client.execute_stream(request).await.unwrap();
-    let mut events = decode_events(stream_response);
+    let mut events = stream_response.decode_events();
 
     let first = events.next().await.unwrap().unwrap();
     assert_eq!(first.data, "{\"value\":1}");

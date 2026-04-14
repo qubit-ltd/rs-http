@@ -12,7 +12,6 @@
 use bytes::Bytes;
 use futures_util::StreamExt as _;
 use http::HeaderMap;
-use qubit_http::sse::decode_events;
 use qubit_http::{HttpResult, HttpStreamResponse};
 
 async fn collect_results<T>(stream: impl futures_util::Stream<Item = HttpResult<T>>) -> Vec<T> {
@@ -41,7 +40,7 @@ async fn test_decode_events_parses_fields_and_multiline_data() {
     let response = stream_response_from_chunks(vec![
         "event: message\r\nid: evt-1\r\ndata: line-1\r\ndata: line-2\r\nretry: 123\r\n\r\n",
     ]);
-    let events = collect_results(decode_events(response)).await;
+    let events = collect_results(response.decode_events()).await;
 
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].event.as_deref(), Some("message"));
@@ -54,7 +53,7 @@ async fn test_decode_events_parses_fields_and_multiline_data() {
 async fn test_decode_events_ignores_comment_lines() {
     let response =
         stream_response_from_chunks(vec![": keep-alive\n", "data: {\"value\": 7}\n", "\n"]);
-    let events = collect_results(decode_events(response)).await;
+    let events = collect_results(response.decode_events()).await;
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].data, "{\"value\": 7}");
 }

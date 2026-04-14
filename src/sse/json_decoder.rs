@@ -20,28 +20,7 @@ use serde::de::DeserializeOwned;
 
 use crate::{HttpError, HttpStreamResponse};
 
-use super::{decode_events, DoneMarkerPolicy, SseChunk, SseChunkStream, SseJsonMode};
-
-/// Parses SSE JSON payloads in [`SseJsonMode::Lenient`] (same as [`decode_json_chunks_with_mode`] with lenient mode).
-///
-/// # Parameters
-/// - `stream`: SSE HTTP stream response.
-/// - `done_policy`: How to detect terminal markers in `data:` text.
-///
-/// # Type parameters
-/// - `T`: JSON type to deserialize.
-///
-/// # Returns
-/// Stream of data chunks and optional [`SseChunk::Done`].
-pub fn decode_json_chunks<T>(
-    stream: HttpStreamResponse,
-    done_policy: DoneMarkerPolicy,
-) -> SseChunkStream<T>
-where
-    T: DeserializeOwned + Send + 'static,
-{
-    decode_json_chunks_with_mode(stream, done_policy, SseJsonMode::Lenient)
-}
+use super::{decode_events_from_response, DoneMarkerPolicy, SseChunk, SseChunkStream, SseJsonMode};
 
 /// Parses SSE JSON payloads with selectable strictness for malformed lines.
 ///
@@ -55,7 +34,7 @@ where
 ///
 /// # Returns
 /// Stream of [`SseChunk::Data`] or [`SseChunk::Done`], or errors from upstream/SSE/JSON.
-pub fn decode_json_chunks_with_mode<T>(
+pub(crate) fn decode_json_chunks_from_response<T>(
     stream: HttpStreamResponse,
     done_policy: DoneMarkerPolicy,
     mode: SseJsonMode,
@@ -63,7 +42,7 @@ pub fn decode_json_chunks_with_mode<T>(
 where
     T: DeserializeOwned + Send + 'static,
 {
-    let mut events = decode_events(stream);
+    let mut events = decode_events_from_response(stream);
 
     let output = stream! {
         while let Some(item) = events.next().await {

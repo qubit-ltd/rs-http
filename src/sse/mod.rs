@@ -27,12 +27,13 @@ mod sse_json_mode;
 use crate::HttpStreamResponse;
 
 pub use done_marker_policy::DoneMarkerPolicy;
-pub use json_decoder::{decode_json_chunks, decode_json_chunks_with_mode};
 pub use sse_chunk::SseChunk;
 pub use sse_chunk_stream::SseChunkStream;
 pub use sse_event::SseEvent;
 pub use sse_event_stream::SseEventStream;
 pub use sse_json_mode::SseJsonMode;
+
+pub(crate) use json_decoder::decode_json_chunks_from_response;
 
 /// Parses SSE frames from a streaming HTTP response (UTF-8 lines → events).
 ///
@@ -41,7 +42,7 @@ pub use sse_json_mode::SseJsonMode;
 ///
 /// # Returns
 /// Stream yielding [`SseEvent`] values or protocol/transport errors.
-pub fn decode_events(stream: HttpStreamResponse) -> SseEventStream {
+pub(crate) fn decode_events_from_response(stream: HttpStreamResponse) -> SseEventStream {
     let lines = line_decoder::decode_lines(stream.into_stream());
     frame_decoder::decode_frames(lines)
 }

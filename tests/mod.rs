@@ -58,6 +58,8 @@ mod http_request_builder_tests;
 mod done_marker_policy_tests;
 #[path = "sse/json_decoder_tests.rs"]
 mod json_decoder_tests;
+#[path = "sse/sse_event_tests.rs"]
+mod sse_event_tests;
 #[path = "sse/mod_tests.rs"]
 mod sse_mod_tests;
 

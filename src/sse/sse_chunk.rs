@@ -17,6 +17,7 @@
 pub enum SseChunk<T> {
     /// Successfully deserialized JSON object.
     Data(T),
-    /// Synthetic item emitted when [`DoneMarkerPolicy`](crate::sse::DoneMarkerPolicy) matches (then stream ends).
+    /// Synthetic item emitted when [`DoneMarkerPolicy`](crate::sse::DoneMarkerPolicy)
+    /// matches (then stream ends).
     Done,
 }

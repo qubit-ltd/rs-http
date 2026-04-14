@@ -11,9 +11,7 @@
 use bytes::Bytes;
 use futures_util::StreamExt;
 use http::HeaderMap;
-use qubit_http::sse::{
-    decode_json_chunks, decode_json_chunks_with_mode, DoneMarkerPolicy, SseChunk, SseJsonMode,
-};
+use qubit_http::sse::{DoneMarkerPolicy, SseChunk, SseJsonMode};
 use qubit_http::{HttpResult, HttpStreamResponse};
 
 #[derive(Debug, serde::Deserialize, PartialEq, Eq)]
@@ -50,11 +48,9 @@ async fn test_decode_json_chunks_lenient_skips_bad_json_and_respects_done() {
         "data: [DONE]\n\n",
         "data: {\"value\": 9}\n\n",
     ]);
-    let chunks = collect_results(decode_json_chunks::<TestChunk>(
-        response,
-        DoneMarkerPolicy::DefaultDone,
-    ))
-    .await;
+    let chunks =
+        collect_results(response.decode_json_chunks::<TestChunk>(DoneMarkerPolicy::DefaultDone))
+            .await;
 
     assert_eq!(chunks.len(), 2);
     assert_eq!(chunks[0], SseChunk::Data(TestChunk { value: 1 }));
@@ -65,8 +61,7 @@ async fn test_decode_json_chunks_lenient_skips_bad_json_and_respects_done() {
 async fn test_decode_json_chunks_strict_fails_on_bad_json() {
     let response =
         stream_response_from_chunks(vec!["data: {\"value\": 1}\n\n", "data: malformed-json\n\n"]);
-    let mut stream = decode_json_chunks_with_mode::<TestChunk>(
-        response,
+    let mut stream = response.decode_json_chunks_with_mode::<TestChunk>(
         DoneMarkerPolicy::DefaultDone,
         SseJsonMode::Strict,
     );
@@ -82,10 +77,9 @@ async fn test_decode_json_chunks_strict_fails_on_bad_json() {
 #[tokio::test]
 async fn test_decode_json_chunks_with_custom_done_marker() {
     let response = stream_response_from_chunks(vec!["data: {\"value\": 2}\n\n", "data: <END>\n\n"]);
-    let chunks = collect_results(decode_json_chunks::<TestChunk>(
-        response,
-        DoneMarkerPolicy::Custom("<END>".to_string()),
-    ))
+    let chunks = collect_results(
+        response.decode_json_chunks::<TestChunk>(DoneMarkerPolicy::Custom("<END>".to_string())),
+    )
     .await;
 
     assert_eq!(chunks.len(), 2);
