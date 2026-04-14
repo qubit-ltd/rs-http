@@ -15,17 +15,15 @@ use url::Url;
 
 use crate::{HttpError, HttpResult};
 
+use super::HttpResponseMeta;
+
 /// Complete HTTP response after the body has been read into memory.
 #[derive(Debug, Clone)]
 pub struct HttpResponse {
-    /// Response status code.
-    pub status: StatusCode,
-    /// Response headers.
-    pub headers: HeaderMap,
+    /// Response metadata (status, headers, final URL).
+    pub meta: HttpResponseMeta,
     /// Response body bytes.
     pub body: Bytes,
-    /// Final resolved URL.
-    pub url: Url,
 }
 
 impl HttpResponse {
@@ -40,11 +38,21 @@ impl HttpResponse {
     /// # Returns
     /// New [`HttpResponse`].
     pub fn new(status: StatusCode, headers: HeaderMap, body: Bytes, url: Url) -> Self {
+        Self::new_with_meta(HttpResponseMeta::new(status, headers, url), body)
+    }
+
+    /// Assembles a response from metadata and buffered body bytes.
+    ///
+    /// # Parameters
+    /// - `meta`: Response metadata.
+    /// - `body`: Full body bytes.
+    ///
+    /// # Returns
+    /// New [`HttpResponse`].
+    pub fn new_with_meta(meta: HttpResponseMeta, body: Bytes) -> Self {
         Self {
-            status,
-            headers,
+            meta,
             body,
-            url,
         }
     }
 
@@ -53,7 +61,7 @@ impl HttpResponse {
     /// # Returns
     /// `true` for 2xx responses.
     pub fn is_success(&self) -> bool {
-        self.status.is_success()
+        self.meta.status.is_success()
     }
 
     /// Interprets [`HttpResponse::body`] as UTF-8 text.
@@ -66,8 +74,8 @@ impl HttpResponse {
                 "Failed to decode response body as UTF-8: {}",
                 error
             ))
-            .with_status(self.status)
-            .with_url(self.url.clone())
+            .with_status(self.meta.status)
+            .with_url(self.meta.url.clone())
         })
     }
 
@@ -84,8 +92,8 @@ impl HttpResponse {
     {
         serde_json::from_slice(&self.body).map_err(|error| {
             HttpError::decode(format!("Failed to decode response JSON: {}", error))
-                .with_status(self.status)
-                .with_url(self.url.clone())
+                .with_status(self.meta.status)
+                .with_url(self.meta.url.clone())
         })
     }
 }

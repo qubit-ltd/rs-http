@@ -222,7 +222,7 @@ async fn test_socks5_proxy_forwards_http_request() {
         .await
         .expect("execute timed out")
         .unwrap();
-    assert_eq!(response.status.as_u16(), 200);
+    assert_eq!(response.meta.status.as_u16(), 200);
     assert_eq!(response.text().unwrap(), "ok-through-socks");
 
     let target = timeout(Duration::from_secs(5), socks.finish())

@@ -54,7 +54,7 @@ async fn test_request_retry_override_force_enable_and_all_methods_for_post() {
         .await
         .expect("execute timed out")
         .expect("request should succeed after retry");
-    assert_eq!(response.status, StatusCode::OK);
+    assert_eq!(response.meta.status, StatusCode::OK);
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
@@ -133,7 +133,7 @@ async fn test_request_retry_override_method_policy_allows_post_without_global_ov
         .await
         .expect("execute timed out")
         .expect("request should succeed after retry");
-    assert_eq!(response.status, StatusCode::OK);
+    assert_eq!(response.meta.status, StatusCode::OK);
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
@@ -176,7 +176,7 @@ async fn test_request_retry_override_honor_retry_after_waits_before_retrying() {
         .expect("execute timed out")
         .expect("request should succeed after retry");
     let elapsed = start.elapsed();
-    assert_eq!(response.status, StatusCode::OK);
+    assert_eq!(response.meta.status, StatusCode::OK);
     assert!(
         elapsed >= Duration::from_millis(900),
         "elapsed={elapsed:?} should reflect Retry-After waiting"
@@ -223,7 +223,7 @@ async fn test_request_retry_override_honor_retry_after_waits_before_retrying_on_
         .expect("execute timed out")
         .expect("request should succeed after retry");
     let elapsed = start.elapsed();
-    assert_eq!(response.status, StatusCode::OK);
+    assert_eq!(response.meta.status, StatusCode::OK);
     assert!(
         elapsed >= Duration::from_millis(900),
         "elapsed={elapsed:?} should reflect Retry-After waiting on 503"
@@ -328,7 +328,7 @@ async fn test_request_retry_override_honor_retry_after_without_header_does_not_a
         .expect("execute timed out")
         .expect("request should succeed after retry");
     let elapsed = start.elapsed();
-    assert_eq!(response.status, StatusCode::OK);
+    assert_eq!(response.meta.status, StatusCode::OK);
     assert!(
         elapsed < Duration::from_millis(700),
         "elapsed={elapsed:?} should not include extra Retry-After delay when header is missing"
@@ -384,7 +384,7 @@ async fn test_request_retry_override_honor_retry_after_does_not_block_runtime_th
         .await
         .expect("execute timed out")
         .expect("request should succeed after retry");
-    assert_eq!(response.status, StatusCode::OK);
+    assert_eq!(response.meta.status, StatusCode::OK);
 
     stop_ticker.store(true, Ordering::Relaxed);
     timeout(Duration::from_secs(2), ticker)

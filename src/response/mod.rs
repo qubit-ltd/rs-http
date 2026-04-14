@@ -10,10 +10,12 @@
 
 mod http_byte_stream;
 mod http_response;
+mod http_response_meta;
 mod http_stream_response;
 mod response_interceptor;
 
 pub use http_byte_stream::HttpByteStream;
 pub use http_response::HttpResponse;
+pub use http_response_meta::HttpResponseMeta;
 pub use http_stream_response::HttpStreamResponse;
 pub use response_interceptor::ResponseInterceptor;

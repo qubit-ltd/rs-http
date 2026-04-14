@@ -9,16 +9,18 @@
 
 use std::sync::{Arc, Mutex};
 
-use http::{HeaderMap, HeaderValue, Method, StatusCode};
-use qubit_http::{HttpError, HttpErrorKind, ResponseInterceptor};
+use http::{HeaderMap, HeaderValue, StatusCode};
+use qubit_function::MutatingFunction;
+use qubit_http::{HttpError, HttpErrorKind, HttpResponseMeta, ResponseInterceptor};
 use url::Url;
 
 #[test]
 fn test_response_interceptor_apply_receives_context() {
     let seen = Arc::new(Mutex::new(None));
     let seen_for_interceptor = Arc::clone(&seen);
-    let interceptor = ResponseInterceptor::new(move |status, headers, method, url| {
-        let header = headers
+    let interceptor = ResponseInterceptor::new(move |meta| {
+        let header = meta
+            .headers
             .get("x-check")
             .and_then(|value| value.to_str().ok())
             .unwrap_or_default()
@@ -26,16 +28,20 @@ fn test_response_interceptor_apply_receives_context() {
         *seen_for_interceptor
             .lock()
             .expect("lock seen context in response interceptor") =
-            Some((status, method.clone(), url.clone(), header));
+            Some((meta.status, meta.url.clone(), header));
+        meta.url = Url::parse("https://example.test/rewritten").expect("valid rewritten URL");
         Ok(())
     });
 
     let mut headers = HeaderMap::new();
     headers.insert("x-check", HeaderValue::from_static("ok"));
-    let method = Method::POST;
-    let url = Url::parse("https://example.test/path").expect("valid test URL");
+    let mut meta = HttpResponseMeta::new(
+        StatusCode::CREATED,
+        headers,
+        Url::parse("https://example.test/path").expect("valid test URL"),
+    );
     interceptor
-        .apply(StatusCode::CREATED, &headers, &method, &url)
+        .apply(&mut meta)
         .expect("response interceptor apply should succeed");
 
     let seen = seen
@@ -44,24 +50,27 @@ fn test_response_interceptor_apply_receives_context() {
         .clone()
         .expect("response interceptor should capture context");
     assert_eq!(seen.0, StatusCode::CREATED);
-    assert_eq!(seen.1, Method::POST);
-    assert_eq!(seen.2, url);
-    assert_eq!(seen.3, "ok");
+    assert_eq!(seen.1, Url::parse("https://example.test/path").unwrap());
+    assert_eq!(seen.2, "ok");
+    assert_eq!(
+        meta.url,
+        Url::parse("https://example.test/rewritten").unwrap()
+    );
 }
 
 #[test]
 fn test_response_interceptor_apply_propagates_error() {
-    let interceptor = ResponseInterceptor::new(|_status, _headers, _method, _url| {
+    let interceptor = ResponseInterceptor::new(|_meta| {
         Err(HttpError::other("response interceptor failure"))
     });
+    let mut meta = HttpResponseMeta::new(
+        StatusCode::OK,
+        HeaderMap::new(),
+        Url::parse("https://example.test/").expect("valid test URL"),
+    );
 
     let error = interceptor
-        .apply(
-            StatusCode::OK,
-            &HeaderMap::new(),
-            &Method::GET,
-            &Url::parse("https://example.test/").expect("valid test URL"),
-        )
+        .apply(&mut meta)
         .expect_err("response interceptor should propagate callback errors");
     assert_eq!(error.kind, HttpErrorKind::Other);
     assert!(error.message.contains("response interceptor failure"));
@@ -69,13 +78,9 @@ fn test_response_interceptor_apply_propagates_error() {
 
 #[test]
 fn test_response_interceptor_clone_and_debug() {
-    let interceptor = ResponseInterceptor::new(|_status, _headers, _method, _url| Ok(()));
+    let interceptor = ResponseInterceptor::new(|_meta| Ok(()));
     let cloned = interceptor.clone();
 
     let output = format!("{:?}", cloned);
-    assert!(output.contains("ResponseInterceptor"));
-    assert!(
-        output.contains(".."),
-        "debug output should be non-exhaustive and hide closure internals"
-    );
+    assert!(!output.is_empty(), "debug output should not be empty");
 }

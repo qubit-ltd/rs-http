@@ -58,7 +58,7 @@ async fn test_absolute_url_request_bypasses_base_url_join() {
         .await
         .expect("execute timed out")
         .unwrap();
-    assert_eq!(response.status.as_u16(), 200);
+    assert_eq!(response.meta.status.as_u16(), 200);
 
     let captured = timeout(Duration::from_secs(3), target_server.finish())
         .await
@@ -284,7 +284,7 @@ async fn test_response_interceptor_order_is_stable_and_short_circuits() {
     let events = Arc::new(Mutex::new(Vec::new()));
     let first_events = Arc::clone(&events);
     client.add_response_interceptor(ResponseInterceptor::new(
-        move |_status, _headers, _method, _url| {
+        move |_meta| {
             first_events
                 .lock()
                 .expect("lock response interceptor events for first")
@@ -294,7 +294,7 @@ async fn test_response_interceptor_order_is_stable_and_short_circuits() {
     ));
     let second_events = Arc::clone(&events);
     client.add_response_interceptor(ResponseInterceptor::new(
-        move |_status, _headers, _method, _url| {
+        move |_meta| {
             second_events
                 .lock()
                 .expect("lock response interceptor events for second")
@@ -332,13 +332,13 @@ async fn test_clear_response_interceptors_restores_success_path() {
         .create_with_options(options)
         .unwrap();
     client.add_response_interceptor(ResponseInterceptor::new(
-        |_status, _headers, _method, _url| Err(HttpError::other("should be cleared")),
+        |_meta| Err(HttpError::other("should be cleared")),
     ));
     client.clear_response_interceptors();
 
     let request = client.request(Method::GET, "/response-clear").build();
     let response = client.execute(request).await.unwrap();
-    assert_eq!(response.status.as_u16(), 200);
+    assert_eq!(response.meta.status.as_u16(), 200);
 }
 
 #[tokio::test]
@@ -358,7 +358,7 @@ async fn test_execute_stream_applies_response_interceptor() {
     let called = Arc::new(AtomicUsize::new(0));
     let called_for_interceptor = Arc::clone(&called);
     client.add_response_interceptor(ResponseInterceptor::new(
-        move |_status, _headers, _method, _url| {
+        move |_meta| {
             called_for_interceptor.fetch_add(1, Ordering::Relaxed);
             Ok(())
         },
