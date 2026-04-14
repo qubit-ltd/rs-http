@@ -15,9 +15,10 @@ use http::header::CONTENT_TYPE;
 use http::{HeaderMap, HeaderValue, Method};
 use serde::Serialize;
 use tokio_util::sync::CancellationToken;
+use url::Url;
 use url::form_urlencoded;
 
-use crate::{HttpError, HttpResult, HttpRetryMethodPolicy};
+use crate::{HttpClientOptions, HttpError, HttpResult, HttpRetryMethodPolicy};
 
 use super::http_request::HttpRequest;
 use super::http_request_body::HttpRequestBody;
@@ -39,6 +40,10 @@ pub struct HttpRequestBuilder {
     body: HttpRequestBody,
     /// Per-request timeout; if unset, the client default applies.
     request_timeout: Option<Duration>,
+    /// Base URL copied from client options and used by [`HttpRequest::resolve_url`].
+    base_url: Option<Url>,
+    /// Whether IPv6 literal hosts are rejected during URL resolution.
+    ipv4_only: bool,
     /// Optional cancellation token for this request.
     cancellation_token: Option<CancellationToken>,
     /// Per-request retry override for one-off retry behavior customization.
@@ -46,22 +51,25 @@ pub struct HttpRequestBuilder {
 }
 
 impl HttpRequestBuilder {
-    /// Starts a builder with method and path; body empty, no query, no extra headers.
+    /// Starts a builder with method/path and copies supported defaults from client options.
     ///
     /// # Parameters
     /// - `method`: HTTP verb.
     /// - `path`: URL or relative path string.
+    /// - `options`: Client options whose relevant defaults are copied into this builder.
     ///
     /// # Returns
     /// New [`HttpRequestBuilder`].
-    pub fn new(method: Method, path: &str) -> Self {
+    pub fn new(method: Method, path: &str, options: &HttpClientOptions) -> Self {
         Self {
             method,
             path: path.to_string(),
             query: Vec::new(),
             headers: HeaderMap::new(),
             body: HttpRequestBody::Empty,
-            request_timeout: None,
+            request_timeout: options.timeouts.request_timeout,
+            base_url: options.base_url.clone(),
+            ipv4_only: options.ipv4_only,
             cancellation_token: None,
             retry_override: HttpRequestRetryOverride::default(),
         }
@@ -290,6 +298,39 @@ impl HttpRequestBuilder {
         self
     }
 
+    /// Overrides the client default base URL for this request.
+    ///
+    /// # Parameters
+    /// - `base_url`: Base URL used when resolving relative request paths.
+    ///
+    /// # Returns
+    /// `self` for chaining.
+    pub fn base_url(mut self, base_url: Url) -> Self {
+        self.base_url = Some(base_url);
+        self
+    }
+
+    /// Clears the base URL for this request.
+    ///
+    /// # Returns
+    /// `self` for chaining.
+    pub fn clear_base_url(mut self) -> Self {
+        self.base_url = None;
+        self
+    }
+
+    /// Overrides whether this request enforces IPv4-only literal-host validation.
+    ///
+    /// # Parameters
+    /// - `enabled`: `true` to reject IPv6 literal hosts, `false` to allow them.
+    ///
+    /// # Returns
+    /// `self` for chaining.
+    pub fn ipv4_only(mut self, enabled: bool) -> Self {
+        self.ipv4_only = enabled;
+        self
+    }
+
     /// Binds a [`CancellationToken`] to this request.
     ///
     /// # Parameters
@@ -357,6 +398,8 @@ impl HttpRequestBuilder {
             headers: self.headers,
             body: self.body,
             request_timeout: self.request_timeout,
+            base_url: self.base_url,
+            ipv4_only: self.ipv4_only,
             cancellation_token: self.cancellation_token,
             retry_override: self.retry_override,
         }

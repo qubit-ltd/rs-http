@@ -18,7 +18,6 @@ use async_stream::stream;
 use futures_util::StreamExt;
 use http::{HeaderMap, StatusCode};
 use qubit_function::MutatingFunction;
-use url::Host;
 use url::Url;
 
 use super::error_mapper::{map_reqwest_error, ReqwestErrorPhase};
@@ -35,8 +34,8 @@ use crate::{
 /// High-level HTTP client that applies options, header injection, logging, and timeouts.
 #[derive(Clone)]
 pub struct HttpClient {
-    /// Low-level HTTP client used to send requests.
-    pub(super) client: reqwest::Client,
+    /// Pluggable low-level HTTP stack used to send requests (currently reqwest).
+    pub(super) backend: reqwest::Client,
     /// Timeouts, proxy, logging, default headers, and related settings.
     pub(super) options: HttpClientOptions,
     /// Header injectors applied to every outgoing request after default
@@ -55,15 +54,15 @@ impl HttpClient {
     /// injector list.
     ///
     /// # Parameters
-    /// - `client`: Configured reqwest client used for I/O.
+    /// - `backend`: Configured low-level HTTP client used for I/O.
     /// - `options`: Client-wide timeouts, headers, proxy, logging, etc.
     ///
     /// # Returns
     /// A new [`HttpClient`] with no injectors until
     /// [`HttpClient::add_header_injector`] is called.
-    pub(crate) fn new(client: reqwest::Client, options: HttpClientOptions) -> Self {
+    pub(crate) fn new(backend: reqwest::Client, options: HttpClientOptions) -> Self {
         Self {
-            client,
+            backend,
             options,
             injectors: Vec::new(),
             async_injectors: Vec::new(),
@@ -198,7 +197,7 @@ impl HttpClient {
     /// A fresh [`HttpRequestBuilder`] not yet tied to this client until
     /// [`HttpRequestBuilder::build`] and [`HttpClient::execute`].
     pub fn request(&self, method: http::Method, path: &str) -> HttpRequestBuilder {
-        HttpRequestBuilder::new(method, path)
+        HttpRequestBuilder::new(method, path, &self.options)
     }
 
     /// Sends the request, reads the full response body, logs per options, and
@@ -571,60 +570,11 @@ impl HttpClient {
         retry_controller.run_stream(self, request).await
     }
 
-    /// Parses `request.path` as a URL or joins it to `base_url` when relative.
-    ///
-    /// # Parameters
-    /// - `request`: Request whose `path` and implied base are used.
-    ///
-    /// # Returns
-    /// Resolved [`Url`] or [`HttpError::invalid_url`] if resolution fails.
-    pub(super) fn resolve_url(&self, request: &HttpRequest) -> HttpResult<Url> {
-        if let Ok(url) = Url::parse(&request.path) {
-            self.validate_resolved_url_host(&url)?;
-            return Ok(url);
-        }
-
-        let base = self.options.base_url.as_ref().ok_or_else(|| {
-            HttpError::invalid_url(format!(
-                "Cannot resolve relative path '{}' without base_url",
-                request.path
-            ))
-        })?;
-
-        let url = base.join(&request.path).map_err(|error| {
-            HttpError::invalid_url(format!(
-                "Failed to resolve path '{}' against base URL '{}': {}",
-                request.path, base, error
-            ))
-        })?;
-        self.validate_resolved_url_host(&url)?;
-        Ok(url)
-    }
-
-    /// Validates host constraints for a resolved URL under current client options.
-    ///
-    /// # Parameters
-    /// - `url`: Fully resolved request URL.
-    ///
-    /// # Returns
-    /// `Ok(())` when host is allowed by options.
-    ///
-    /// # Errors
-    /// Returns [`HttpError::invalid_url`] when `ipv4_only=true` and `url` uses an IPv6 literal host.
-    fn validate_resolved_url_host(&self, url: &Url) -> HttpResult<()> {
-        if self.options.ipv4_only && matches!(url.host(), Some(Host::Ipv6(_))) {
-            return Err(HttpError::invalid_url(format!(
-                "IPv6 literal host is not allowed when ipv4_only=true: {}",
-                url
-            )));
-        }
-        Ok(())
-    }
 }
 
 impl std::fmt::Debug for HttpClient {
     /// Formats the client for debugging (exposes options and injectors; omits
-    /// the reqwest client).
+    /// the backend client).
     ///
     /// # Parameters
     /// - `f`: Destination formatter.

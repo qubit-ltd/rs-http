@@ -140,6 +140,56 @@ async fn test_execute_relative_path_without_base_url_returns_invalid_url() {
     assert_eq!(error.kind, HttpErrorKind::InvalidUrl);
 }
 
+#[test]
+fn test_request_builder_inherits_client_default_options() {
+    let mut options = HttpClientOptions::default();
+    options
+        .set_base_url("https://api.example.com/v1/")
+        .expect("base url should be valid");
+    options.ipv4_only = true;
+    options.timeouts.request_timeout = Some(Duration::from_secs(2));
+
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .expect("client should be created");
+    let request = client.request(Method::GET, "/timeout-default").build();
+
+    assert_eq!(
+        request.base_url.as_ref().map(url::Url::as_str),
+        Some("https://api.example.com/v1/")
+    );
+    assert!(request.ipv4_only);
+    assert_eq!(request.request_timeout, Some(Duration::from_secs(2)));
+}
+
+#[test]
+fn test_request_builder_methods_override_client_default_options() {
+    let mut options = HttpClientOptions::default();
+    options
+        .set_base_url("https://api.example.com/v1/")
+        .expect("base url should be valid");
+    options.ipv4_only = true;
+    options.timeouts.request_timeout = Some(Duration::from_secs(2));
+
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .expect("client should be created");
+
+    let request = client
+        .request(Method::GET, "/override")
+        .base_url(url::Url::parse("https://override.example.com/root/").unwrap())
+        .ipv4_only(false)
+        .timeout(Duration::from_secs(5))
+        .build();
+
+    assert_eq!(
+        request.base_url.as_ref().map(url::Url::as_str),
+        Some("https://override.example.com/root/")
+    );
+    assert!(!request.ipv4_only);
+    assert_eq!(request.request_timeout, Some(Duration::from_secs(5)));
+}
+
 #[tokio::test]
 async fn test_execute_write_timeout() {
     let server = spawn_one_shot_server(ResponsePlan::DelayedStart {

@@ -88,10 +88,11 @@ async fn test_proxy_disabled_does_not_use_environment_proxy() {
     options.timeouts.write_timeout = Duration::from_secs(2);
     options.timeouts.read_timeout = Duration::from_secs(2);
 
-    let result = HttpClientFactory::new()
+    let client = HttpClientFactory::new()
         .create_with_options(options)
-        .unwrap()
-        .execute(qubit_http::HttpRequestBuilder::new(Method::GET, "/direct").build())
+        .unwrap();
+    let result = client
+        .execute(client.request(Method::GET, "/direct").build())
         .await;
 
     std::env::remove_var("HTTP_PROXY");
