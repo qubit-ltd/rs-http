@@ -155,11 +155,11 @@ fn test_request_builder_inherits_client_default_options() {
     let request = client.request(Method::GET, "/timeout-default").build();
 
     assert_eq!(
-        request.base_url.as_ref().map(url::Url::as_str),
+        request.base_url().map(url::Url::as_str),
         Some("https://api.example.com/v1/")
     );
-    assert!(request.ipv4_only);
-    assert_eq!(request.request_timeout, Some(Duration::from_secs(2)));
+    assert!(request.ipv4_only());
+    assert_eq!(request.request_timeout(), Some(Duration::from_secs(2)));
 }
 
 #[test]
@@ -183,11 +183,11 @@ fn test_request_builder_methods_override_client_default_options() {
         .build();
 
     assert_eq!(
-        request.base_url.as_ref().map(url::Url::as_str),
+        request.base_url().map(url::Url::as_str),
         Some("https://override.example.com/root/")
     );
-    assert!(!request.ipv4_only);
-    assert_eq!(request.request_timeout, Some(Duration::from_secs(5)));
+    assert!(!request.ipv4_only());
+    assert_eq!(request.request_timeout(), Some(Duration::from_secs(5)));
 }
 
 #[tokio::test]

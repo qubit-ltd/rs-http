@@ -10,8 +10,6 @@
 
 use bytes::Bytes;
 use futures_util::stream as futures_stream;
-use http::HeaderMap;
-use qubit_function::MutatingFunction;
 use reqwest::Response;
 use tokio_util::sync::CancellationToken;
 use url::Url;
@@ -65,17 +63,18 @@ impl<'a> RequestPipeline<'a> {
         request: HttpRequest,
         cancellation_message: &str,
     ) -> HttpResult<PreparedRequestSend> {
+        let mut request = request;
         let url = request.resolve_url()?;
-        let method = request.method.clone();
-        let cancellation_token = request.cancellation_token.clone();
+        let method = request.method().clone();
+        let cancellation_token = request.cancellation_token().cloned();
         if let Some(error) = request.cancelled_error_if_needed(&url, cancellation_message) {
             return Err(error);
         }
-        let headers = self.build_headers(&request).await?;
+        let headers = request.build_headers().await?;
 
         let logger = HttpLogger::new(&self.client.options);
         let body_for_log = if logger.should_log_request_body() {
-            Self::clone_request_body_for_log(&request.body)
+            Self::clone_request_body_for_log(request.body())
         } else {
             None
         };
@@ -83,13 +82,13 @@ impl<'a> RequestPipeline<'a> {
 
         let mut builder = self.client.backend.request(method.clone(), url.clone());
         builder = builder.headers(headers);
-        if !request.query.is_empty() {
-            builder = builder.query(&request.query);
+        if !request.query().is_empty() {
+            builder = builder.query(request.query());
         }
-        if let Some(timeout) = request.request_timeout {
+        if let Some(timeout) = request.request_timeout() {
             builder = builder.timeout(timeout);
         }
-        builder = Self::apply_request_body(builder, request.body);
+        builder = Self::apply_request_body(builder, request.take_body());
 
         let response = self
             .send_with_write_timeout(
@@ -200,28 +199,6 @@ impl<'a> RequestPipeline<'a> {
             .with_method(method)
             .with_url(url)),
         }
-    }
-
-    /// Merges default headers, injector output, and per-request headers (later
-    /// wins on duplicates).
-    ///
-    /// # Parameters
-    /// - `request`: Request supplying extra headers.
-    ///
-    /// # Returns
-    /// Final [`HeaderMap`] or error if an injector fails.
-    async fn build_headers(&self, request: &HttpRequest) -> HttpResult<HeaderMap> {
-        let mut headers = self.client.options.default_headers.clone();
-
-        for injector in &self.client.injectors {
-            injector.apply(&mut headers)?;
-        }
-        for injector in &self.client.async_injectors {
-            injector.apply(&mut headers).await?;
-        }
-
-        headers.extend(request.headers.clone());
-        Ok(headers)
     }
 
     /// Sends the built request with a write-phase timeout (time to finish
