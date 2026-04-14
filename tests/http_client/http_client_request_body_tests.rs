@@ -158,3 +158,81 @@ async fn test_execute_with_ndjson_body_and_query_headers_timeout() {
         "{\"id\":1,\"name\":\"alpha\"}\n{\"id\":2,\"name\":\"beta\"}\n"
     );
 }
+
+#[tokio::test]
+async fn test_execute_with_stream_body_uses_chunked_transfer_encoding() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 200,
+        headers: vec![],
+        body: b"ok".to_vec(),
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .expect("client should be created");
+
+    let request = client
+        .request(Method::POST, "/stream-upload")
+        .query_param("kind", "stream")
+        .stream_body([
+            Bytes::from_static(b"first-"),
+            Bytes::from_static(b"second-"),
+            Bytes::from_static(b"third"),
+        ])
+        .timeout(Duration::from_secs(1))
+        .build();
+    let response = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .expect("stream body request should succeed");
+    assert_eq!(response.status.as_u16(), 200);
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.target, "/stream-upload?kind=stream");
+    assert_eq!(
+        captured.headers.get("transfer-encoding"),
+        Some(&"chunked".to_string())
+    );
+}
+
+#[tokio::test]
+async fn test_execute_stream_with_stream_body_uses_chunked_transfer_encoding() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 200,
+        headers: vec![],
+        body: b"ok".to_vec(),
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .expect("client should be created");
+
+    let request = client
+        .request(Method::POST, "/stream-upload-streaming")
+        .query_param("kind", "stream-body")
+        .stream_body([Bytes::from_static(b"a"), Bytes::from_static(b"b")])
+        .timeout(Duration::from_secs(1))
+        .build();
+    let response = timeout(Duration::from_secs(3), client.execute_stream(request))
+        .await
+        .expect("execute_stream timed out")
+        .expect("stream body request should succeed");
+    assert_eq!(response.status.as_u16(), 200);
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.target, "/stream-upload-streaming?kind=stream-body");
+    assert_eq!(
+        captured.headers.get("transfer-encoding"),
+        Some(&"chunked".to_string())
+    );
+}

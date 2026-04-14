@@ -19,7 +19,7 @@ use std::time::{Duration, SystemTime};
 
 use async_stream::stream;
 use bytes::Bytes;
-use futures_util::StreamExt;
+use futures_util::{stream as futures_stream, StreamExt};
 use http::header::RETRY_AFTER;
 use http::{HeaderMap, StatusCode};
 use httpdate::parse_http_date;
@@ -1047,6 +1047,7 @@ fn clone_request_body_for_log(body: &HttpRequestBody) -> Option<Bytes> {
         | HttpRequestBody::Multipart(bytes)
         | HttpRequestBody::Ndjson(bytes) => Some(bytes.clone()),
         HttpRequestBody::Text(text) => Some(Bytes::from(text.clone())),
+        HttpRequestBody::Stream(_) => None,
         HttpRequestBody::Empty => None,
     }
 }
@@ -1070,6 +1071,11 @@ fn apply_request_body(
         | HttpRequestBody::Form(bytes)
         | HttpRequestBody::Multipart(bytes)
         | HttpRequestBody::Ndjson(bytes) => builder.body(bytes),
+        HttpRequestBody::Stream(chunks) => {
+            let body_stream =
+                futures_stream::iter(chunks.into_iter().map(Result::<Bytes, std::io::Error>::Ok));
+            builder.body(reqwest::Body::wrap_stream(body_stream))
+        }
         HttpRequestBody::Text(text) => builder.body(text),
     }
 }

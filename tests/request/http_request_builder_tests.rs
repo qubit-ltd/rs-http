@@ -124,6 +124,27 @@ fn test_request_builder_bytes_body_and_timeout() {
 }
 
 #[test]
+fn test_request_builder_stream_body_preserves_chunk_order() {
+    let request = HttpRequestBuilder::new(Method::PUT, "/v1/stream")
+        .stream_body([
+            Bytes::from_static(b"alpha"),
+            Bytes::from_static(b"-"),
+            Bytes::from_static(b"beta"),
+        ])
+        .build();
+
+    match request.body {
+        HttpRequestBody::Stream(chunks) => {
+            assert_eq!(chunks.len(), 3);
+            assert_eq!(chunks[0], Bytes::from_static(b"alpha"));
+            assert_eq!(chunks[1], Bytes::from_static(b"-"));
+            assert_eq!(chunks[2], Bytes::from_static(b"beta"));
+        }
+        _ => panic!("expected stream body"),
+    }
+}
+
+#[test]
 fn test_request_builder_query_params_headers_and_text_body_preserve_existing_content_type() {
     let mut headers = HeaderMap::new();
     headers.insert(

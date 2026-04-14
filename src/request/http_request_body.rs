@@ -28,4 +28,8 @@ pub enum HttpRequestBody {
     Multipart(Bytes),
     /// NDJSON bytes (`\n`-delimited JSON objects); builders may set `application/x-ndjson`.
     Ndjson(Bytes),
+    /// Chunked upload payload represented as ordered byte chunks.
+    ///
+    /// The client sends this variant through reqwest streaming body support.
+    Stream(Vec<Bytes>),
 }
