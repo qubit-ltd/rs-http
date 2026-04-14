@@ -87,8 +87,8 @@ mod http_client_tests;
 mod http_client_timeout_tests;
 #[path = "response/http_response_tests.rs"]
 mod http_response_tests;
-#[path = "response/http_stream_response_tests.rs"]
-mod http_stream_response_tests;
+#[path = "response/streaming_http_response_tests.rs"]
+mod streaming_http_response_tests;
 
 #[path = "proxy/proxy_tests.rs"]
 mod proxy_tests;

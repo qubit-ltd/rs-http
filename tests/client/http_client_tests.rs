@@ -287,9 +287,9 @@ async fn test_execute_stream_success_reads_all_chunks() {
         .await
         .expect("execute_stream timed out")
         .unwrap();
-    assert_eq!(stream_response.status, StatusCode::OK);
+    assert_eq!(stream_response.status(), StatusCode::OK);
     assert_eq!(
-        stream_response.headers.get(CONTENT_TYPE).unwrap(),
+        stream_response.headers().get(CONTENT_TYPE).unwrap(),
         "text/plain"
     );
 

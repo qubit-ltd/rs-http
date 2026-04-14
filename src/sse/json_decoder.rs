@@ -18,7 +18,7 @@ use async_stream::stream;
 use futures_util::StreamExt;
 use serde::de::DeserializeOwned;
 
-use crate::{HttpError, HttpStreamResponse};
+use crate::{HttpError, StreamingHttpResponse};
 
 use super::{
     decode_events_from_response_with_limits, DoneMarkerPolicy, SseChunk, SseChunkStream,
@@ -40,7 +40,7 @@ use super::{
 /// # Returns
 /// Stream of [`SseChunk::Data`] or [`SseChunk::Done`], or errors from upstream/SSE/JSON.
 pub(crate) fn decode_json_chunks_from_response_with_limits<T>(
-    stream: HttpStreamResponse,
+    stream: StreamingHttpResponse,
     done_policy: DoneMarkerPolicy,
     mode: SseJsonMode,
     max_line_bytes: usize,

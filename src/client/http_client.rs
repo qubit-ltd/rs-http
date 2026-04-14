@@ -25,9 +25,10 @@ use super::retry_controller::RetryController;
 use super::sse_reconnect::SseReconnectRunner;
 use crate::{
     sse::{SseEventStream, SseReconnectOptions},
-    AsyncHeaderInjector, HeaderInjector, HttpClientOptions, HttpError, HttpErrorKind, HttpLogger,
-    HttpRequest, HttpRequestBuilder, HttpResponse, HttpResponseMeta, HttpResult, HttpRetryOptions,
-    HttpStreamResponse, RequestInterceptor, ResponseInterceptor,
+    AsyncHeaderInjector, BufferedHttpResponse, HeaderInjector, HttpClientOptions, HttpError,
+    HttpErrorKind, HttpLogger, HttpRequest, HttpRequestBuilder, HttpResponseMeta, HttpResult,
+    HttpRetryOptions, RequestInterceptor, ResponseInterceptor, SseDecodeOptions,
+    StreamingHttpResponse,
 };
 
 /// High-level HTTP client that applies options, header injection, logging, and timeouts.
@@ -212,18 +213,18 @@ impl HttpClient {
     }
 
     /// Sends the request, reads the full response body, logs per options, and
-    /// returns a buffered [`HttpResponse`].
+    /// returns a buffered [`BufferedHttpResponse`].
     ///
     /// # Parameters
     /// - `request`: Built request (URL resolved against `base_url` if path is
     ///   not absolute).
     ///
     /// # Returns
-    /// - `Ok(HttpResponse)` when the HTTP status is success
+    /// - `Ok(BufferedHttpResponse)` when the HTTP status is success
     ///   ([`http::StatusCode::is_success`]).
     /// - `Err(HttpError)` on URL/header errors, transport failure, timeout, or
     ///   non-success status.
-    pub async fn execute(&self, request: HttpRequest) -> HttpResult<HttpResponse> {
+    pub async fn execute(&self, request: HttpRequest) -> HttpResult<BufferedHttpResponse> {
         let retry_options = self.resolve_retry_options(&request);
         let honor_retry_after = request.retry_override().should_honor_retry_after();
         if self.should_retry_request(&request, &retry_options) {
@@ -241,11 +242,14 @@ impl HttpClient {
     /// - `request`: Same as [`HttpClient::execute`].
     ///
     /// # Returns
-    /// - `Ok(HttpStreamResponse)` with a stream that applies read timeout per
+    /// - `Ok(StreamingHttpResponse)` with a stream that applies read timeout per
     ///   options.
     /// - `Err(HttpError)` before the stream starts (same cases as
     ///   [`HttpClient::execute`] for the initial response).
-    pub async fn execute_stream(&self, request: HttpRequest) -> HttpResult<HttpStreamResponse> {
+    pub async fn execute_stream(
+        &self,
+        request: HttpRequest,
+    ) -> HttpResult<StreamingHttpResponse> {
         let retry_options = self.resolve_retry_options(&request);
         let honor_retry_after = request.retry_override().should_honor_retry_after();
         if self.should_retry_request(&request, &retry_options) {
@@ -294,8 +298,11 @@ impl HttpClient {
     ///   [`HttpClient::execute`]).
     ///
     /// # Returns
-    /// Buffered [`HttpResponse`] or [`HttpError`].
-    pub(super) async fn execute_once(&self, request: HttpRequest) -> HttpResult<HttpResponse> {
+    /// Buffered [`BufferedHttpResponse`] or [`HttpError`].
+    pub(super) async fn execute_once(
+        &self,
+        request: HttpRequest,
+    ) -> HttpResult<BufferedHttpResponse> {
         let mut request = request;
         self.apply_request_interceptors(&mut request)?;
         let pipeline = RequestPipeline::new(self);
@@ -336,7 +343,7 @@ impl HttpClient {
             &body,
         );
 
-        Ok(HttpResponse::new_with_meta(response_meta, body))
+        Ok(BufferedHttpResponse::new_with_meta(response_meta, body))
     }
 
     /// Performs one non-retrying streaming execution: same setup as
@@ -348,11 +355,11 @@ impl HttpClient {
     ///   [`HttpClient::execute_stream`]).
     ///
     /// # Returns
-    /// [`HttpStreamResponse`] or [`HttpError`].
+    /// [`StreamingHttpResponse`] or [`HttpError`].
     pub(super) async fn execute_stream_once(
         &self,
         request: HttpRequest,
-    ) -> HttpResult<HttpStreamResponse> {
+    ) -> HttpResult<StreamingHttpResponse> {
         let mut request = request;
         self.apply_request_interceptors(&mut request)?;
         let pipeline = RequestPipeline::new(self);
@@ -432,14 +439,16 @@ impl HttpClient {
             }
         };
 
-        Ok(HttpStreamResponse::new_with_sse_options(
+        Ok(StreamingHttpResponse::new_with_sse_decode_options(
             response_meta.status,
             response_meta.headers,
             response_meta.url,
             Box::pin(wrapped),
-            self.options.sse_json_mode,
-            self.options.sse_max_line_bytes,
-            self.options.sse_max_frame_bytes,
+            SseDecodeOptions::new(
+                self.options.sse_json_mode,
+                self.options.sse_max_line_bytes,
+                self.options.sse_max_frame_bytes,
+            ),
         ))
     }
 
@@ -559,7 +568,7 @@ impl HttpClient {
         request: HttpRequest,
         retry_options: HttpRetryOptions,
         honor_retry_after: bool,
-    ) -> HttpResult<HttpResponse> {
+    ) -> HttpResult<BufferedHttpResponse> {
         let retry_controller = RetryController::new(&retry_options, honor_retry_after)?;
         retry_controller.run_response(self, request).await
     }
@@ -582,7 +591,7 @@ impl HttpClient {
         request: HttpRequest,
         retry_options: HttpRetryOptions,
         honor_retry_after: bool,
-    ) -> HttpResult<HttpStreamResponse> {
+    ) -> HttpResult<StreamingHttpResponse> {
         let retry_controller = RetryController::new(&retry_options, honor_retry_after)?;
         retry_controller.run_stream(self, request).await
     }
