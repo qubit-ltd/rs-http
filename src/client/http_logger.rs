@@ -22,7 +22,7 @@ use crate::constants::{
     SENSITIVE_HEADER_MASK_EDGE_CHARS, SENSITIVE_HEADER_MASK_PLACEHOLDER,
     SENSITIVE_HEADER_MASK_SHORT_LEN,
 };
-use crate::{HttpLoggingOptions, SensitiveHeaders};
+use crate::{HttpClientOptions, HttpLoggingOptions, SensitiveHeaders};
 
 /// HTTP logger bound to one pair of logging options and sensitive header policy.
 #[derive(Debug, Clone, Copy)]
@@ -32,18 +32,18 @@ pub struct HttpLogger<'a> {
 }
 
 impl<'a> HttpLogger<'a> {
-    /// Creates a logger view over logging options and sensitive header rules.
+    /// Creates a logger view from one client option object.
     ///
     /// # Parameters
-    /// - `options`: Logging switches and body size limits.
-    /// - `sensitive_headers`: Header names requiring masking.
+    /// - `options`: Client options that carry logging switches and sensitive
+    ///   header policies.
     ///
     /// # Returns
-    /// A logger that emits TRACE records according to `options`.
-    pub fn new(options: &'a HttpLoggingOptions, sensitive_headers: &'a SensitiveHeaders) -> Self {
+    /// A logger that emits TRACE records according to the provided options.
+    pub fn new(options: &'a HttpClientOptions) -> Self {
         Self {
-            options,
-            sensitive_headers,
+            options: &options.logging,
+            sensitive_headers: &options.sensitive_headers,
         }
     }
 
@@ -145,7 +145,7 @@ impl<'a> HttpLogger<'a> {
     ///
     /// # Returns
     /// `true` when logging is enabled and TRACE is active.
-    fn is_trace_enabled(&self) -> bool {
+    pub fn is_trace_enabled(&self) -> bool {
         self.options.enabled && tracing::enabled!(tracing::Level::TRACE)
     }
 

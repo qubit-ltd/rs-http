@@ -10,7 +10,7 @@
 use bytes::Bytes;
 use http::header::{AUTHORIZATION, CONTENT_TYPE, SET_COOKIE};
 use http::{HeaderMap, HeaderValue, Method, StatusCode};
-use qubit_http::{HttpLogger, HttpLoggingOptions, SensitiveHeaders};
+use qubit_http::{HttpClientOptions, HttpLogger, HttpLoggingOptions, SensitiveHeaders};
 use url::Url;
 
 use crate::common::capture_trace_logs;
@@ -22,7 +22,10 @@ fn test_log_request_disabled_emits_nothing() {
     let mut headers = HeaderMap::new();
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
     let sensitive_headers = SensitiveHeaders::default();
-    let logger = HttpLogger::new(&options, &sensitive_headers);
+    let mut client_options = HttpClientOptions::default();
+    client_options.logging = options;
+    client_options.sensitive_headers = sensitive_headers;
+    let logger = HttpLogger::new(&client_options);
 
     let logs = capture_trace_logs(|| {
         logger.log_request(
@@ -44,7 +47,10 @@ fn test_log_request_toggles_header_and_body() {
     let mut headers = HeaderMap::new();
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
     let sensitive_headers = SensitiveHeaders::default();
-    let logger = HttpLogger::new(&options, &sensitive_headers);
+    let mut client_options = HttpClientOptions::default();
+    client_options.logging = options;
+    client_options.sensitive_headers = sensitive_headers;
+    let logger = HttpLogger::new(&client_options);
 
     let logs = capture_trace_logs(|| {
         logger.log_request(
@@ -69,7 +75,10 @@ fn test_log_response_masks_sensitive_headers() {
     );
     let options = HttpLoggingOptions::default();
     let sensitive_headers = SensitiveHeaders::default();
-    let logger = HttpLogger::new(&options, &sensitive_headers);
+    let mut client_options = HttpClientOptions::default();
+    client_options.logging = options;
+    client_options.sensitive_headers = sensitive_headers;
+    let logger = HttpLogger::new(&client_options);
 
     let logs = capture_trace_logs(|| {
         logger.log_response(
@@ -91,7 +100,10 @@ fn test_log_response_binary_body_and_truncation() {
     };
     let headers = HeaderMap::new();
     let sensitive_headers = SensitiveHeaders::default();
-    let logger = HttpLogger::new(&options, &sensitive_headers);
+    let mut client_options = HttpClientOptions::default();
+    client_options.logging = options;
+    client_options.sensitive_headers = sensitive_headers;
+    let logger = HttpLogger::new(&client_options);
 
     let logs = capture_trace_logs(|| {
         logger.log_response(
@@ -111,7 +123,10 @@ fn test_log_stream_response_headers_respects_toggle() {
     let mut headers = HeaderMap::new();
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("text/event-stream"));
     let sensitive_headers = SensitiveHeaders::default();
-    let logger = HttpLogger::new(&options, &sensitive_headers);
+    let mut client_options = HttpClientOptions::default();
+    client_options.logging = options;
+    client_options.sensitive_headers = sensitive_headers;
+    let logger = HttpLogger::new(&client_options);
 
     let logs = capture_trace_logs(|| {
         logger.log_stream_response_headers(
