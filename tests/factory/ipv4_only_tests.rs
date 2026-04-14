@@ -53,7 +53,7 @@ async fn test_ipv4_only_with_localhost_request_is_accessible() {
         .await
         .expect("execute timed out")
         .unwrap();
-    assert_eq!(response.status.as_u16(), 200);
+    assert_eq!(response.meta.status.as_u16(), 200);
     assert_eq!(response.text().unwrap(), "ipv4-only-ok");
 }
 

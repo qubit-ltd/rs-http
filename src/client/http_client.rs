@@ -16,7 +16,6 @@
 
 use async_stream::stream;
 use futures_util::StreamExt;
-use http::{HeaderMap, StatusCode};
 use qubit_function::MutatingFunction;
 use url::Url;
 
@@ -27,7 +26,7 @@ use super::sse_reconnect::SseReconnectRunner;
 use crate::{
     sse::{SseEventStream, SseReconnectOptions},
     AsyncHeaderInjector, HeaderInjector, HttpClientOptions, HttpError, HttpErrorKind, HttpLogger,
-    HttpRequest, HttpRequestBuilder, HttpResponse, HttpResult, HttpRetryOptions,
+    HttpRequest, HttpRequestBuilder, HttpResponse, HttpResponseMeta, HttpResult, HttpRetryOptions,
     HttpStreamResponse, RequestInterceptor, ResponseInterceptor,
 };
 
@@ -313,29 +312,31 @@ impl HttpClient {
             .ensure_success_response(response, &method, &url, "HTTP request failed")
             .await?;
 
-        let status = response.status();
-        let response_url = response.url().clone();
-        let response_headers = response.headers().clone();
-        self.apply_response_interceptors(status, &response_headers, &method, &response_url)?;
+        let mut response_meta = HttpResponseMeta::new(
+            response.status(),
+            response.headers().clone(),
+            response.url().clone(),
+        );
+        self.apply_response_interceptors(&mut response_meta, &method)?;
 
         let body = pipeline
             .read_body_with_timeout(
                 response,
                 method.clone(),
-                response_url.clone(),
+                response_meta.url.clone(),
                 cancellation_token.as_ref(),
             )
             .await?;
 
         let logger = HttpLogger::new(&self.options);
-        logger.log_response(status, &response_url, &response_headers, &body);
+        logger.log_response(
+            response_meta.status,
+            &response_meta.url,
+            &response_meta.headers,
+            &body,
+        );
 
-        Ok(HttpResponse::new(
-            status,
-            response_headers,
-            body,
-            response_url,
-        ))
+        Ok(HttpResponse::new_with_meta(response_meta, body))
     }
 
     /// Performs one non-retrying streaming execution: same setup as
@@ -368,17 +369,23 @@ impl HttpClient {
             .ensure_success_response(response, &method, &url, "HTTP streaming request failed")
             .await?;
 
-        let status = response.status();
-        let response_url = response.url().clone();
-        let response_headers = response.headers().clone();
-        self.apply_response_interceptors(status, &response_headers, &method, &response_url)?;
+        let mut response_meta = HttpResponseMeta::new(
+            response.status(),
+            response.headers().clone(),
+            response.url().clone(),
+        );
+        self.apply_response_interceptors(&mut response_meta, &method)?;
 
         let logger = HttpLogger::new(&self.options);
-        logger.log_stream_response_headers(status, &response_url, &response_headers);
+        logger.log_stream_response_headers(
+            response_meta.status,
+            &response_meta.url,
+            &response_meta.headers,
+        );
 
         let read_timeout = self.options.timeouts.read_timeout;
         let method_for_err = method.clone();
-        let url_for_err = response_url.clone();
+        let url_for_err = response_meta.url.clone();
         let cancellation_token_for_stream = cancellation_token.clone();
 
         let mut stream = response.bytes_stream();
@@ -426,9 +433,9 @@ impl HttpClient {
         };
 
         Ok(HttpStreamResponse::new_with_sse_options(
-            status,
-            response_headers,
-            response_url,
+            response_meta.status,
+            response_meta.headers,
+            response_meta.url,
             Box::pin(wrapped),
             self.options.sse_json_mode,
             self.options.sse_max_line_bytes,
@@ -514,27 +521,23 @@ impl HttpClient {
     /// status/method/URL context when missing.
     fn apply_response_interceptors(
         &self,
-        status: StatusCode,
-        headers: &HeaderMap,
+        response_meta: &mut HttpResponseMeta,
         method: &http::Method,
-        url: &Url,
     ) -> HttpResult<()> {
         for interceptor in &self.response_interceptors {
-            interceptor
-                .apply(status, headers, method, url)
-                .map_err(|error| {
-                    let mut mapped = error;
-                    if mapped.status.is_none() {
-                        mapped = mapped.with_status(status);
-                    }
-                    if mapped.method.is_none() {
-                        mapped = mapped.with_method(method.clone());
-                    }
-                    if mapped.url.is_none() {
-                        mapped = mapped.with_url(url.clone());
-                    }
-                    mapped
-                })?;
+            interceptor.apply(response_meta).map_err(|error| {
+                let mut mapped = error;
+                if mapped.status.is_none() {
+                    mapped = mapped.with_status(response_meta.status);
+                }
+                if mapped.method.is_none() {
+                    mapped = mapped.with_method(method.clone());
+                }
+                if mapped.url.is_none() {
+                    mapped = mapped.with_url(response_meta.url.clone());
+                }
+                mapped
+            })?;
         }
         Ok(())
     }

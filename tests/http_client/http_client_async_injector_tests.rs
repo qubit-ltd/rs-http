@@ -60,7 +60,7 @@ async fn test_async_header_injector_runs_after_sync_injector_with_stable_order()
         .await
         .expect("execute timed out")
         .expect("request should succeed");
-    assert_eq!(response.status, StatusCode::OK);
+    assert_eq!(response.meta.status, StatusCode::OK);
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
@@ -129,7 +129,7 @@ async fn test_clear_async_header_injectors_removes_async_mutation() {
         .await
         .expect("execute timed out")
         .expect("request should succeed");
-    assert_eq!(response.status, StatusCode::OK);
+    assert_eq!(response.meta.status, StatusCode::OK);
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
