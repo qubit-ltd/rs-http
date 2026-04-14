@@ -20,11 +20,11 @@
 
 - [x] A2（对应“优先改进 #5”）收紧配置校验（重点：timeout/proxy 等边界）。
   - 验收：非法配置可在构建前被明确拒绝，并含清晰路径。
-  - Commit: `refactor(validation): tighten timeout and proxy boundary checks`
+  - Commit: `37bacfd` (`refactor(validation): tighten timeout and proxy boundary checks`)
 
-- [ ] A3（对应“优先改进 #6”）将错误响应体预览限制与日志 body 限制解耦。
+- [x] A3（对应“优先改进 #6”）将错误响应体预览限制与日志 body 限制解耦。
   - 验收：错误预览不再受 `logging.body_size_limit` 直接耦合影响。
-  - Commit: _pending_
+  - Commit: `refactor(error): decouple error preview limit from logging body limit`
 
 - [ ] A4（对应“优先改进 #3”）将 timeout 分类改为阶段驱动，去除字符串启发式分类。
   - 验收：`connect/read/write/request` 分类稳定且测试可复现。

@@ -578,7 +578,7 @@ async fn test_execute_non_success_error_body_preview_is_truncated_by_limit() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    options.logging.body_size_limit = 8;
+    options.error_response_preview_limit = 8;
 
     let client = HttpClientFactory::new()
         .create_with_options(options)
@@ -594,6 +594,34 @@ async fn test_execute_non_success_error_body_preview_is_truncated_by_limit() {
 }
 
 #[tokio::test]
+async fn test_execute_error_body_preview_limit_is_decoupled_from_logging_limit() {
+    let body = "abcdefghijklmnopqrstuvwxyz";
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 500,
+        headers: vec![],
+        body: body.as_bytes().to_vec(),
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.logging.body_size_limit = 4;
+    options.error_response_preview_limit = 12;
+
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
+    let request = client.request(Method::GET, "/status-decoupled-limit").build();
+    let error = client.execute(request).await.unwrap_err();
+
+    assert_eq!(error.kind, HttpErrorKind::Status);
+    assert_eq!(
+        error.response_body_preview.as_deref(),
+        Some("abcdefghijkl...<truncated>")
+    );
+}
+
+#[tokio::test]
 async fn test_execute_non_success_error_body_preview_for_binary_body() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 500,
@@ -604,7 +632,7 @@ async fn test_execute_non_success_error_body_preview_for_binary_body() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    options.logging.body_size_limit = 16;
+    options.error_response_preview_limit = 16;
 
     let client = HttpClientFactory::new()
         .create_with_options(options)

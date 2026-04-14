@@ -815,7 +815,7 @@ impl HttpClient {
     /// Rendered preview text. On preview read failure, returns a descriptive placeholder.
     async fn read_error_response_preview(&self, mut response: Response) -> String {
         let read_timeout = self.options.timeouts.read_timeout;
-        let max_bytes = self.options.logging.body_size_limit.max(1);
+        let max_bytes = self.options.error_response_preview_limit.max(1);
         let mut preview = Vec::new();
         let mut truncated = false;
 
