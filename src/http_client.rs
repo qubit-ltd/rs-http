@@ -35,7 +35,7 @@ use url::Url;
 use crate::{
     AsyncHeaderInjector, HeaderInjector, HttpClientOptions, HttpError, HttpErrorKind, HttpLogger,
     HttpRequest, HttpRequestBody, HttpRequestBuilder, HttpResponse, HttpResult, HttpRetryOptions,
-    HttpStreamResponse, RequestInterceptor, ResponseInterceptor, RetryHint,
+    HttpStreamResponse, RequestInterceptor, ResponseInterceptor,
 };
 
 /// High-level HTTP client that applies options, header injection, logging, and
@@ -665,10 +665,18 @@ impl HttpClient {
         )
         .map_err(|error| HttpError::other(format!("Invalid HTTP retry options: {error}")))?;
 
+        let retry_options_clone = retry_options.clone();
         let mut builder = RetryExecutor::<HttpError>::builder()
             .options(options)
-            .classify_error(|error: &HttpError, _| {
-                if matches!(error.retry_hint(), RetryHint::Retryable) {
+            .classify_error(move |error: &HttpError, _| {
+                let retryable = if error.kind == HttpErrorKind::Status {
+                    error.status.is_some_and(|status| {
+                        retry_options_clone.is_retryable_status(status)
+                    })
+                } else {
+                    retry_options_clone.is_retryable_error_kind(error.kind)
+                };
+                if retryable {
                     RetryDecision::Retry
                 } else {
                     RetryDecision::Abort

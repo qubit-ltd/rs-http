@@ -13,7 +13,7 @@ use std::sync::{
 };
 use std::time::Duration;
 
-use http::{HeaderMap, HeaderName, HeaderValue, Method};
+use http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode};
 use qubit_http::{
     HeaderInjector, HttpClientFactory, HttpClientOptions, HttpError, HttpErrorKind,
     RequestInterceptor, ResponseInterceptor,
@@ -374,6 +374,96 @@ async fn test_execute_stream_applies_response_interceptor() {
     let response = client.execute_stream(request).await.unwrap();
     assert_eq!(response.status.as_u16(), 200);
     assert_eq!(called.load(Ordering::Relaxed), 1);
+}
+
+#[tokio::test]
+async fn test_retry_status_code_allowlist_can_disable_retry_for_503() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: StatusCode::SERVICE_UNAVAILABLE.as_u16(),
+        headers: vec![],
+        body: b"retry later".to_vec(),
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.logging.enabled = false;
+    options.retry.enabled = true;
+    options.retry.max_attempts = 3;
+    options.retry.retry_status_codes = Some(vec![StatusCode::TOO_MANY_REQUESTS]);
+    let mut client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let attempts_for_interceptor = Arc::clone(&attempts);
+    client.add_request_interceptor(RequestInterceptor::new(move |_request| {
+        attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+    }));
+
+    let request = client.request(Method::GET, "/retry-status-filter").build();
+    let error = client.execute(request).await.unwrap_err();
+    assert_eq!(error.kind, HttpErrorKind::Status);
+    assert_eq!(error.status, Some(StatusCode::SERVICE_UNAVAILABLE));
+    assert_eq!(attempts.load(Ordering::Relaxed), 1);
+}
+
+#[tokio::test]
+async fn test_retry_status_code_allowlist_can_enable_retry_for_503() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: StatusCode::SERVICE_UNAVAILABLE.as_u16(),
+        headers: vec![],
+        body: b"retry later".to_vec(),
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.logging.enabled = false;
+    options.retry.enabled = true;
+    options.retry.max_attempts = 3;
+    options.retry.retry_status_codes = Some(vec![StatusCode::SERVICE_UNAVAILABLE]);
+    options.retry.retry_error_kinds = Some(vec![HttpErrorKind::Status]);
+    let mut client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let attempts_for_interceptor = Arc::clone(&attempts);
+    client.add_request_interceptor(RequestInterceptor::new(move |_request| {
+        attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+    }));
+
+    let request = client.request(Method::GET, "/retry-status-allow").build();
+    let error = client.execute(request).await.unwrap_err();
+    assert_eq!(error.kind, HttpErrorKind::Transport);
+    assert_eq!(attempts.load(Ordering::Relaxed), 2);
+}
+
+#[tokio::test]
+async fn test_retry_error_kind_allowlist_can_disable_transport_retry() {
+    let mut options = HttpClientOptions::default();
+    options.logging.enabled = false;
+    options.retry.enabled = true;
+    options.retry.max_attempts = 3;
+    options.retry.retry_error_kinds = Some(vec![HttpErrorKind::ReadTimeout]);
+    let mut client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let attempts_for_interceptor = Arc::clone(&attempts);
+    client.add_request_interceptor(RequestInterceptor::new(move |_request| {
+        attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+    }));
+
+    let request = client
+        .request(Method::GET, "http://127.0.0.1:9/retry-kind-filter")
+        .build();
+    let error = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .unwrap_err();
+    assert_eq!(error.kind, HttpErrorKind::Transport);
+    assert_eq!(attempts.load(Ordering::Relaxed), 1);
 }
 
 #[tokio::test]

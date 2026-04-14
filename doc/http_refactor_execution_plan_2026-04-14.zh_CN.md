@@ -50,11 +50,11 @@
 
 - [x] B3（对应“实用特性 #4”）支持流式上传请求体。
   - 验收：可发送流式 body，保留现有 body API 兼容性。
-  - Commit: `feat(request): add streaming upload body support`
+  - Commit: `49c2732` (`feat(request): add streaming upload body support`)
 
-- [ ] B4（对应“实用特性 #2”）增加细粒度重试策略（按状态码/错误类型等）。
+- [x] B4（对应“实用特性 #2”）增加细粒度重试策略（按状态码/错误类型等）。
   - 验收：策略可配置，行为有明确测试覆盖。
-  - Commit: _pending_
+  - Commit: `feat(retry): add status and error-kind retry filters`
 
 - [ ] B5（对应“实用特性 #5”）SSE 自动重连与 `Last-Event-ID` 支持。
   - 验收：断线重连策略可控，事件 ID 透传并可恢复。
