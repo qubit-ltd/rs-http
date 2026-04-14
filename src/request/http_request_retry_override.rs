@@ -16,7 +16,8 @@ use crate::HttpRetryMethodPolicy;
 /// - force-enable retry even when client-level retry is disabled;
 /// - force-disable retry for one request;
 /// - override the retryable-method policy for one request;
-/// - optionally honor `Retry-After` on `429 Too Many Requests`.
+/// - optionally honor `Retry-After` on retryable status responses (`429` and
+///   `5xx`).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct HttpRequestRetryOverride {
     /// Force retry on for this request (unless explicitly force-disabled).
@@ -25,7 +26,7 @@ pub struct HttpRequestRetryOverride {
     force_disable: bool,
     /// Optional method-policy override for this request.
     method_policy: Option<HttpRetryMethodPolicy>,
-    /// Whether to honor `Retry-After` on `429` responses.
+    /// Whether to honor `Retry-After` on retryable status responses.
     honor_retry_after: bool,
 }
 
@@ -73,7 +74,8 @@ impl HttpRequestRetryOverride {
     /// Enables or disables honoring `Retry-After` for this request.
     ///
     /// # Parameters
-    /// - `enabled`: `true` to honor `Retry-After` on `429` responses.
+    /// - `enabled`: `true` to honor `Retry-After` on retryable status
+    ///   responses (`429` and `5xx`).
     ///
     /// # Returns
     /// Updated override for chaining.
@@ -109,7 +111,8 @@ impl HttpRequestRetryOverride {
     /// Returns whether `Retry-After` should be honored for this request.
     ///
     /// # Returns
-    /// `true` when this request should honor `Retry-After` on `429`.
+    /// `true` when this request should honor `Retry-After` on retryable status
+    /// responses (`429` and `5xx`).
     pub fn should_honor_retry_after(&self) -> bool {
         self.honor_retry_after
     }
