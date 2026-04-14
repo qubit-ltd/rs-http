@@ -21,7 +21,10 @@ use super::sensitive_headers::SensitiveHeaders;
 use super::timeout_options::TimeoutOptions;
 use super::HttpConfigError;
 use crate::{
-    constants::{DEFAULT_SSE_MAX_FRAME_BYTES, DEFAULT_SSE_MAX_LINE_BYTES},
+    constants::{
+        DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES, DEFAULT_SSE_MAX_FRAME_BYTES,
+        DEFAULT_SSE_MAX_LINE_BYTES,
+    },
     request::parse_header,
     sse::SseJsonMode,
     HttpResult,
@@ -40,6 +43,8 @@ pub struct HttpClientOptions {
     pub proxy: ProxyOptions,
     /// Logging options.
     pub logging: HttpLoggingOptions,
+    /// Maximum bytes captured into `HttpError.response_body_preview` for non-success responses.
+    pub error_response_preview_limit: usize,
     /// Retry options.
     pub retry: HttpRetryOptions,
     /// Sensitive headers for masking.
@@ -68,6 +73,7 @@ impl Default for HttpClientOptions {
             timeouts: TimeoutOptions::default(),
             proxy: ProxyOptions::default(),
             logging: HttpLoggingOptions::default(),
+            error_response_preview_limit: DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES,
             retry: HttpRetryOptions::default(),
             sensitive_headers: SensitiveHeaders::default(),
             ipv4_only: false,
@@ -82,6 +88,7 @@ impl Default for HttpClientOptions {
 struct HttpClientRootConfigInput {
     base_url: Option<String>,
     ipv4_only: Option<bool>,
+    error_response_preview_limit: Option<usize>,
     sensitive_headers: Option<Vec<String>>,
 }
 
@@ -112,6 +119,7 @@ impl HttpClientOptions {
         Ok(HttpClientRootConfigInput {
             base_url: config.get_optional_string("base_url")?,
             ipv4_only: config.get_optional("ipv4_only")?,
+            error_response_preview_limit: config.get_optional("error_response_preview_limit")?,
             sensitive_headers: config.get_optional_string_list("sensitive_headers")?,
         })
     }
@@ -145,7 +153,7 @@ impl HttpClientOptions {
         }
     }
 
-    fn validate_sse_limit(path: &str, value: usize) -> Result<usize, HttpConfigError> {
+    fn validate_positive_limit(path: &str, value: usize) -> Result<usize, HttpConfigError> {
         if value == 0 {
             return Err(HttpConfigError::invalid_value(
                 path,
@@ -238,6 +246,11 @@ impl HttpClientOptions {
         if let Some(v) = root.ipv4_only {
             opts.ipv4_only = v;
         }
+        if let Some(limit) = root.error_response_preview_limit {
+            opts.error_response_preview_limit =
+                Self::validate_positive_limit("error_response_preview_limit", limit)
+                    .map_err(|e| Self::resolve_config_error(config, e))?;
+        }
 
         // timeouts
         if config.contains_prefix("timeouts") {
@@ -277,12 +290,12 @@ impl HttpClientOptions {
             }
             if let Some(max_line_bytes) = sse.max_line_bytes {
                 opts.sse_max_line_bytes =
-                    Self::validate_sse_limit("max_line_bytes", max_line_bytes)
+                    Self::validate_positive_limit("max_line_bytes", max_line_bytes)
                         .map_err(|e| Self::resolve_config_error(&sse_config, e))?;
             }
             if let Some(max_frame_bytes) = sse.max_frame_bytes {
                 opts.sse_max_frame_bytes =
-                    Self::validate_sse_limit("max_frame_bytes", max_frame_bytes)
+                    Self::validate_positive_limit("max_frame_bytes", max_frame_bytes)
                         .map_err(|e| Self::resolve_config_error(&sse_config, e))?;
             }
         }
@@ -342,8 +355,12 @@ impl HttpClientOptions {
         self.retry
             .validate()
             .map_err(|e| e.prepend_path_prefix("retry"))?;
-        Self::validate_sse_limit("sse.max_line_bytes", self.sse_max_line_bytes)?;
-        Self::validate_sse_limit("sse.max_frame_bytes", self.sse_max_frame_bytes)?;
+        Self::validate_positive_limit(
+            "error_response_preview_limit",
+            self.error_response_preview_limit,
+        )?;
+        Self::validate_positive_limit("sse.max_line_bytes", self.sse_max_line_bytes)?;
+        Self::validate_positive_limit("sse.max_frame_bytes", self.sse_max_frame_bytes)?;
         Ok(())
     }
 }

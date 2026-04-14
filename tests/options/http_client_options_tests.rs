@@ -12,8 +12,9 @@ use std::time::Duration;
 use qubit_config::Config;
 use qubit_http::{
     constants::{
-        DEFAULT_CONNECT_TIMEOUT_SECS, DEFAULT_LOG_BODY_SIZE_LIMIT_BYTES, DEFAULT_READ_TIMEOUT_SECS,
-        DEFAULT_SSE_MAX_FRAME_BYTES, DEFAULT_SSE_MAX_LINE_BYTES, DEFAULT_WRITE_TIMEOUT_SECS,
+        DEFAULT_CONNECT_TIMEOUT_SECS, DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES,
+        DEFAULT_LOG_BODY_SIZE_LIMIT_BYTES, DEFAULT_READ_TIMEOUT_SECS, DEFAULT_SSE_MAX_FRAME_BYTES,
+        DEFAULT_SSE_MAX_LINE_BYTES, DEFAULT_WRITE_TIMEOUT_SECS,
     },
     sse::SseJsonMode,
     Delay, HttpClientOptions, HttpConfigErrorKind, HttpErrorKind, HttpRetryMethodPolicy,
@@ -49,6 +50,10 @@ fn test_http_client_options_defaults() {
         options.logging.body_size_limit,
         DEFAULT_LOG_BODY_SIZE_LIMIT_BYTES
     );
+    assert_eq!(
+        options.error_response_preview_limit,
+        DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES
+    );
     assert_eq!(options.retry, HttpRetryOptions::default());
     assert!(!options.retry.enabled);
     assert_eq!(options.retry.max_attempts, 3);
@@ -72,6 +77,10 @@ fn test_http_client_options_new_matches_default() {
     assert_eq!(options.timeouts, defaults.timeouts);
     assert_eq!(options.proxy, defaults.proxy);
     assert_eq!(options.logging, defaults.logging);
+    assert_eq!(
+        options.error_response_preview_limit,
+        defaults.error_response_preview_limit
+    );
     assert_eq!(options.retry, defaults.retry);
     assert_eq!(options.sensitive_headers, defaults.sensitive_headers);
     assert_eq!(options.ipv4_only, defaults.ipv4_only);
@@ -324,6 +333,17 @@ fn test_http_client_options_logging_section() {
     let opts = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap();
     assert!(!opts.logging.enabled);
     assert_eq!(opts.logging.body_size_limit, 8192);
+}
+
+#[test]
+fn test_http_client_options_error_response_preview_limit_from_config() {
+    let mut config = Config::new();
+    config
+        .set("http.error_response_preview_limit", 512usize)
+        .expect("test config should set error_response_preview_limit");
+
+    let opts = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap();
+    assert_eq!(opts.error_response_preview_limit, 512);
 }
 
 #[test]
@@ -583,6 +603,16 @@ fn test_http_client_options_validate_propagates_retry_error() {
 }
 
 #[test]
+fn test_http_client_options_validate_rejects_zero_error_response_preview_limit() {
+    let mut opts = HttpClientOptions::default();
+    opts.error_response_preview_limit = 0;
+
+    let err = opts.validate().unwrap_err();
+    assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
+    assert_eq!(err.path, "error_response_preview_limit");
+}
+
+#[test]
 fn test_http_client_options_validate_propagates_timeout_error() {
     let mut opts = HttpClientOptions::default();
     opts.timeouts.connect_timeout = Duration::ZERO;
@@ -612,6 +642,18 @@ fn test_http_client_options_validate_rejects_zero_sse_frame_limit() {
     let err = opts.validate().unwrap_err();
     assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
     assert_eq!(err.path, "sse.max_frame_bytes");
+}
+
+#[test]
+fn test_http_client_options_error_response_preview_limit_zero_is_prefixed() {
+    let mut config = Config::new();
+    config
+        .set("http.error_response_preview_limit", 0usize)
+        .expect("test config should set error_response_preview_limit");
+
+    let err = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap_err();
+    assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
+    assert_eq!(err.path, "http.error_response_preview_limit");
 }
 
 #[test]

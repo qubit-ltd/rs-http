@@ -56,6 +56,9 @@ pub const DEFAULT_WRITE_TIMEOUT_SECS: u64 = 120;
 /// Default maximum body bytes included in TRACE log previews.
 pub const DEFAULT_LOG_BODY_SIZE_LIMIT_BYTES: usize = 16 * 1024;
 
+/// Default maximum bytes included in non-success response body previews on [`crate::HttpError`].
+pub const DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES: usize = 16 * 1024;
+
 // ---------------------------------------------------------------------------
 // SSE decode safety limits
 // ---------------------------------------------------------------------------
