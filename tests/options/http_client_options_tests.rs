@@ -177,15 +177,10 @@ fn test_http_client_options_reqwest_extra_fields_from_config() {
     config
         .set("http.pool_idle_timeout", Duration::from_secs(15))
         .unwrap();
-    config
-        .set("http.pool_max_idle_per_host", 32_usize)
-        .unwrap();
+    config.set("http.pool_max_idle_per_host", 32_usize).unwrap();
 
     let opts = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap();
-    assert_eq!(
-        opts.user_agent.as_deref(),
-        Some("qubit-http-tests/1.0")
-    );
+    assert_eq!(opts.user_agent.as_deref(), Some("qubit-http-tests/1.0"));
     assert_eq!(opts.max_redirects, Some(7));
     assert_eq!(opts.pool_idle_timeout, Some(Duration::from_secs(15)));
     assert_eq!(opts.pool_max_idle_per_host, Some(32));

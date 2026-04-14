@@ -126,7 +126,9 @@ async fn test_request_timeout_during_body_read_is_classified_as_read_timeout() {
     let client = HttpClientFactory::new()
         .create_with_options(options)
         .unwrap();
-    let request = client.request(Method::GET, "/request-timeout-read-phase").build();
+    let request = client
+        .request(Method::GET, "/request-timeout-read-phase")
+        .build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")

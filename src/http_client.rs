@@ -35,7 +35,7 @@ use url::Url;
 use crate::{
     AsyncHeaderInjector, HeaderInjector, HttpClientOptions, HttpError, HttpErrorKind, HttpLogger,
     HttpRequest, HttpRequestBody, HttpRequestBuilder, HttpResponse, HttpResult, HttpRetryOptions,
-    HttpStreamResponse, RetryHint,
+    HttpStreamResponse, RequestInterceptor, ResponseInterceptor, RetryHint,
 };
 
 /// High-level HTTP client that applies options, header injection, logging, and
@@ -51,6 +51,10 @@ pub struct HttpClient {
     injectors: Vec<HeaderInjector>,
     /// Async header injectors applied after sync injectors and before request-level headers.
     async_injectors: Vec<AsyncHeaderInjector>,
+    /// Request interceptors applied before request send for each attempt.
+    request_interceptors: Vec<RequestInterceptor>,
+    /// Response interceptors applied on successful responses before return.
+    response_interceptors: Vec<ResponseInterceptor>,
 }
 
 /// Shared pre-send outcome for one HTTP attempt.
@@ -86,6 +90,8 @@ impl std::fmt::Debug for HttpClient {
             .field("options", &self.options)
             .field("injectors", &self.injectors)
             .field("async_injectors", &self.async_injectors)
+            .field("request_interceptors", &self.request_interceptors)
+            .field("response_interceptors", &self.response_interceptors)
             .finish_non_exhaustive()
     }
 }
@@ -107,6 +113,8 @@ impl HttpClient {
             options,
             injectors: Vec::new(),
             async_injectors: Vec::new(),
+            request_interceptors: Vec::new(),
+            response_interceptors: Vec::new(),
         }
     }
 
@@ -140,6 +148,22 @@ impl HttpClient {
     /// Nothing.
     pub fn add_async_header_injector(&mut self, injector: AsyncHeaderInjector) {
         self.async_injectors.push(injector);
+    }
+
+    /// Appends a request interceptor applied before each request attempt.
+    ///
+    /// # Parameters
+    /// - `interceptor`: Request interceptor to append (order is preserved).
+    pub fn add_request_interceptor(&mut self, interceptor: RequestInterceptor) {
+        self.request_interceptors.push(interceptor);
+    }
+
+    /// Appends a response interceptor applied on successful responses.
+    ///
+    /// # Parameters
+    /// - `interceptor`: Response interceptor to append (order is preserved).
+    pub fn add_response_interceptor(&mut self, interceptor: ResponseInterceptor) {
+        self.response_interceptors.push(interceptor);
     }
 
     /// Validates and adds one client-level default header.
@@ -198,6 +222,16 @@ impl HttpClient {
         self.async_injectors.clear();
     }
 
+    /// Removes all registered request interceptors.
+    pub fn clear_request_interceptors(&mut self) {
+        self.request_interceptors.clear();
+    }
+
+    /// Removes all registered response interceptors.
+    pub fn clear_response_interceptors(&mut self) {
+        self.response_interceptors.clear();
+    }
+
     /// Starts building an [`HttpRequest`] with the given method and path
     /// (relative or absolute URL string).
     ///
@@ -246,6 +280,8 @@ impl HttpClient {
     /// # Returns
     /// Buffered [`HttpResponse`] or [`HttpError`].
     async fn execute_once(&self, request: HttpRequest) -> HttpResult<HttpResponse> {
+        let mut request = request;
+        self.apply_request_interceptors(&mut request)?;
         let PreparedRequestSend {
             method,
             url,
@@ -262,6 +298,7 @@ impl HttpClient {
         let status = response.status();
         let response_url = response.url().clone();
         let response_headers = response.headers().clone();
+        self.apply_response_interceptors(status, &response_headers, &method, &response_url)?;
 
         let body = self
             .read_body_with_timeout(
@@ -315,6 +352,8 @@ impl HttpClient {
     /// # Returns
     /// [`HttpStreamResponse`] or [`HttpError`].
     async fn execute_stream_once(&self, request: HttpRequest) -> HttpResult<HttpStreamResponse> {
+        let mut request = request;
+        self.apply_request_interceptors(&mut request)?;
         let PreparedRequestSend {
             method,
             url,
@@ -325,17 +364,13 @@ impl HttpClient {
             .await?;
 
         let response = self
-            .ensure_success_response(
-                response,
-                &method,
-                &url,
-                "HTTP streaming request failed",
-            )
+            .ensure_success_response(response, &method, &url, "HTTP streaming request failed")
             .await?;
 
         let status = response.status();
         let response_url = response.url().clone();
         let response_headers = response.headers().clone();
+        self.apply_response_interceptors(status, &response_headers, &method, &response_url)?;
 
         let logger = HttpLogger::new(&self.options.logging, &self.options.sensitive_headers);
         logger.log_stream_response_headers(status, &response_url, &response_headers);
@@ -534,6 +569,76 @@ impl HttpClient {
             .retry_override
             .resolve_method_policy(options.method_policy);
         options
+    }
+
+    /// Applies registered request interceptors in insertion order.
+    ///
+    /// # Parameters
+    /// - `request`: Request snapshot to mutate before URL resolution and send.
+    ///
+    /// # Returns
+    /// `Ok(())` when all interceptors succeed.
+    ///
+    /// # Errors
+    /// Returns the first interceptor error and enriches it with method/URL
+    /// context when missing.
+    fn apply_request_interceptors(&self, request: &mut HttpRequest) -> HttpResult<()> {
+        for interceptor in &self.request_interceptors {
+            interceptor.apply(request).map_err(|error| {
+                let mut mapped = error;
+                if mapped.method.is_none() {
+                    mapped = mapped.with_method(request.method.clone());
+                }
+                if mapped.url.is_none() {
+                    if let Ok(parsed_url) = Url::parse(&request.path) {
+                        mapped = mapped.with_url(parsed_url);
+                    }
+                }
+                mapped
+            })?;
+        }
+        Ok(())
+    }
+
+    /// Applies registered response interceptors in insertion order.
+    ///
+    /// # Parameters
+    /// - `status`: Response status code.
+    /// - `headers`: Response headers.
+    /// - `method`: Request method.
+    /// - `url`: Response URL.
+    ///
+    /// # Returns
+    /// `Ok(())` when all interceptors accept the response.
+    ///
+    /// # Errors
+    /// Returns the first interceptor error and enriches it with
+    /// status/method/URL context when missing.
+    fn apply_response_interceptors(
+        &self,
+        status: StatusCode,
+        headers: &HeaderMap,
+        method: &http::Method,
+        url: &Url,
+    ) -> HttpResult<()> {
+        for interceptor in &self.response_interceptors {
+            interceptor
+                .apply(status, headers, method, url)
+                .map_err(|error| {
+                    let mut mapped = error;
+                    if mapped.status.is_none() {
+                        mapped = mapped.with_status(status);
+                    }
+                    if mapped.method.is_none() {
+                        mapped = mapped.with_method(method.clone());
+                    }
+                    if mapped.url.is_none() {
+                        mapped = mapped.with_url(url.clone());
+                    }
+                    mapped
+                })?;
+        }
+        Ok(())
     }
 
     /// Builds a [`RetryExecutor`] from effective retry options and classifies

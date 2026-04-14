@@ -42,11 +42,11 @@
 
 - [x] B1（对应“实用特性 #1”）扩展 `HttpClientOptions`，覆盖更多常用 reqwest 选项。
   - 验收：新增选项可从代码与配置加载并生效。
-  - Commit: `feat(options): add common reqwest client settings`
+  - Commit: `9044f7f` (`feat(options): add common reqwest client settings`)
 
-- [ ] B2（对应“实用特性 #3”）新增 request/response 拦截器能力。
+- [x] B2（对应“实用特性 #3”）新增 request/response 拦截器能力。
   - 验收：支持前后置拦截，顺序可控，错误可短路。
-  - Commit: _pending_
+  - Commit: `feat(interceptor): add request and response interceptors`
 
 - [ ] B3（对应“实用特性 #4”）支持流式上传请求体。
   - 验收：可发送流式 body，保留现有 body API 兼容性。
