@@ -469,11 +469,14 @@ impl HttpClient {
             }
         };
 
-        Ok(HttpStreamResponse::new(
+        Ok(HttpStreamResponse::new_with_sse_options(
             status,
             response_headers,
             response_url,
             Box::pin(wrapped),
+            self.options.sse_json_mode,
+            self.options.sse_max_line_bytes,
+            self.options.sse_max_frame_bytes,
         ))
     }
 

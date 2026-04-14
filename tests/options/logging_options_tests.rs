@@ -107,3 +107,14 @@ fn test_logging_options_from_config_can_disable_individual_flags() {
     assert!(!opts.log_response_body);
     assert_eq!(opts.body_size_limit, DEFAULT_LOG_BODY_SIZE_LIMIT_BYTES);
 }
+
+#[test]
+fn test_logging_options_invalid_body_size_type_is_prefixed() {
+    let mut config = Config::new();
+    config.set("l.body_size_limit", "invalid-size").unwrap();
+
+    let err = HttpLoggingOptions::from_config(&config.prefix_view("l")).unwrap_err();
+
+    assert_eq!(err.kind, HttpConfigErrorKind::TypeError);
+    assert_eq!(err.path, "l.body_size_limit");
+}

@@ -222,6 +222,18 @@ fn test_request_builder_retry_override_options() {
 }
 
 #[test]
+fn test_request_builder_disable_retry_override() {
+    let request = HttpRequestBuilder::new(http::Method::POST, "/v1/retry-disable")
+        .disable_retry()
+        .honor_retry_after(false)
+        .build();
+
+    assert!(request.retry_override.is_force_disable());
+    assert!(!request.retry_override.should_honor_retry_after());
+    assert!(request.retry_override.method_policy().is_none());
+}
+
+#[test]
 fn test_request_builder_sets_cancellation_token() {
     let token = CancellationToken::new();
     let request = HttpRequestBuilder::new(Method::GET, "/v1/cancel")

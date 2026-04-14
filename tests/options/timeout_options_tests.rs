@@ -65,3 +65,13 @@ fn test_timeout_options_no_request_timeout() {
     let opts = TimeoutOptions::from_config(&config.prefix_view("t")).unwrap();
     assert_eq!(opts.request_timeout, None);
 }
+
+#[test]
+fn test_timeout_options_invalid_type_is_prefixed() {
+    let mut config = Config::new();
+    config.set("t.connect_timeout", "invalid").unwrap();
+
+    let err = TimeoutOptions::from_config(&config.prefix_view("t")).unwrap_err();
+
+    assert_eq!(err.path, "t.connect_timeout");
+}

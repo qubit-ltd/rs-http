@@ -11,6 +11,9 @@
 
 - 用统一的客户端模型处理普通请求和流式请求
 - 显式配置超时、重试、代理、日志
+- 支持请求级重试覆盖与取消能力（`CancellationToken`）
+- 支持同步/异步 Header Injector 链并保证优先级顺序
+- 内置 JSON / form / multipart / NDJSON 请求体构建
 - 内置 SSE 事件解析和 JSON chunk 解码
 - 统一错误模型（`HttpError`、`HttpErrorKind`、`RetryHint`）
 
@@ -58,12 +61,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## 核心类型
 
 - `HttpClientFactory`：通过默认配置、显式配置或配置中心创建客户端。
-- `HttpClientOptions`：管理 `base_url`、默认 Header、超时、代理、重试、日志、敏感头。
-- `HttpClient`：执行请求，提供一致的运行时行为。
-- `HttpRequestBuilder`：构建路径、查询参数、Header、Body、请求级超时。
+- `HttpClientOptions`：管理 `base_url`、默认 Header、超时、代理、重试、日志、敏感头和 SSE 解码默认项。
+- `HttpClient`：执行请求，提供一致的运行时行为，支持同步/异步 Header Injector。
+- `HttpRequestBuilder`：构建路径、查询参数、Header、Body、请求级超时、请求级重试覆盖和取消 token。
 - `HttpResponse`：完整缓冲响应（`status`、`headers`、`body`、`text()`、`json()`）。
-- `HttpStreamResponse`：响应元数据 + 字节流（`into_stream()`）。
+- `HttpStreamResponse`：响应元数据 + 字节流（`into_stream()`），支持可配置 SSE 行/帧大小限制。
 - `qubit_http::sse`：SSE 事件解析和 JSON chunk 解码工具。
+
+## 为什么使用本库（对比 `http` 与 `reqwest`）
+
+先说明：Rust 标准库本身不提供 HTTP 客户端。通常：
+- `http` crate：只提供 HTTP 类型（`Request`/`Response`/`Method`/`Header`）
+- `reqwest`：通用 HTTP 客户端
+- `qubit-http`：基于 `reqwest` 的团队级 HTTP 基础设施层
+
+| 维度 | `http` crate | `reqwest` | `qubit-http` |
+| --- | --- | --- | --- |
+| 核心定位 | 类型定义 | 通用 HTTP 客户端 | 统一 HTTP 基础设施层 |
+| 是否发请求 | 否 | 是 | 是 |
+| 重试/超时模型 | 无 | 基础能力 | 统一默认策略 + 请求级覆盖 |
+| 错误语义 | 无 | 以 `reqwest::Error` 为主 | `HttpError` + `HttpErrorKind` + `RetryHint` |
+| 配置一致性 | 无 | 业务自行组织 | `HttpClientOptions` + 工厂 + 校验 |
+| 流式/SSE | 无 | 原始字节流 | SSE 事件/JSON 解码 + 安全限制 |
+| 可观测性与安全 | 无 | 业务自行处理 | 脱敏、限长预览、统一日志行为 |
+| 跨服务一致性 | 低 | 中 | 高 |
+
+当你希望“多服务保持一致行为”，而不是“每个项目重复造一套 HTTP 规范”时，优先使用 `qubit-http`。
 
 ## 常见用法
 
@@ -107,11 +130,11 @@ async fn create_message() -> Result<(), Box<dyn std::error::Error>> {
 
 Header 合并优先级为：
 
-`默认 headers` -> `header injector` -> `请求级 headers（最高优先级）`
+`默认 headers` -> `同步 header injector` -> `异步 header injector` -> `请求级 headers（最高优先级）`
 
 ```rust
 use http::HeaderValue;
-use qubit_http::{HeaderInjector, HttpClientFactory};
+use qubit_http::{AsyncHeaderInjector, HeaderInjector, HttpClientFactory};
 
 fn with_auth_injector() -> qubit_http::HttpResult<qubit_http::HttpClient> {
     let token = "secret-token".to_string();
@@ -123,6 +146,15 @@ fn with_auth_injector() -> qubit_http::HttpResult<qubit_http::HttpClient> {
             .map_err(|e| qubit_http::HttpError::other(format!("invalid auth header: {e}")))?;
         headers.insert(http::header::AUTHORIZATION, bearer);
         Ok(())
+    }));
+    client.add_async_header_injector(AsyncHeaderInjector::new(|headers| {
+        Box::pin(async move {
+            headers.insert(
+                "x-auth-source",
+                HeaderValue::from_static("async-refresh"),
+            );
+            Ok(())
+        })
     }));
 
     Ok(client)
@@ -171,7 +203,89 @@ async fn request_with_retry() -> Result<(), Box<dyn std::error::Error>> {
 - HTTP 方法被 `method_policy` 允许
 - 错误属于可重试类型（`timeout`、`transport`、`429`、`5xx`）
 
-### 4）消费流式字节响应
+### 4）请求级重试覆盖（force/disable/method/Retry-After）
+
+```rust
+use http::Method;
+use qubit_http::HttpRetryMethodPolicy;
+
+async fn post_with_request_retry_override(
+    client: &qubit_http::HttpClient,
+) -> qubit_http::HttpResult<()> {
+    let request = client
+        .request(Method::POST, "/v1/jobs")
+        .force_retry()
+        .retry_method_policy(HttpRetryMethodPolicy::AllMethods)
+        .honor_retry_after(true)
+        .json_body(&serde_json::json!({"name": "daily-sync"}))?
+        .build();
+
+    let _ = client.execute(request).await?;
+    Ok(())
+}
+```
+
+### 5）请求取消（`CancellationToken`）
+
+```rust
+use http::Method;
+use qubit_http::CancellationToken;
+
+async fn execute_with_cancellation(client: &qubit_http::HttpClient) -> qubit_http::HttpResult<()> {
+    let token = CancellationToken::new();
+    let token_for_task = token.clone();
+
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        token_for_task.cancel();
+    });
+
+    let request = client
+        .request(Method::GET, "/v1/slow-stream")
+        .cancellation_token(token)
+        .build();
+    let _ = client.execute_stream(request).await?;
+    Ok(())
+}
+```
+
+### 6）form / multipart / NDJSON 请求体
+
+```rust
+use http::Method;
+use serde::Serialize;
+
+#[derive(Serialize)]
+struct Record {
+    id: u64,
+}
+
+fn build_body_requests(client: &qubit_http::HttpClient) -> qubit_http::HttpResult<()> {
+    let _form = client
+        .request(Method::POST, "/v1/form")
+        .form_body([("name", "alice"), ("city", "shanghai")])
+        .build();
+
+    let boundary = "----qubit-boundary";
+    let multipart_payload = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"hello.txt\"\r\n\
+         Content-Type: text/plain\r\n\r\nhello\r\n--{boundary}--\r\n"
+    );
+    let _multipart = client
+        .request(Method::POST, "/v1/upload")
+        .multipart_body(multipart_payload.into_bytes(), boundary)?
+        .build();
+
+    let _ndjson = client
+        .request(Method::POST, "/v1/bulk")
+        .ndjson_body(&[Record { id: 1 }, Record { id: 2 }])?
+        .build();
+
+    Ok(())
+}
+```
+
+### 7）消费流式字节响应
 
 ```rust
 use futures_util::StreamExt;
@@ -190,7 +304,7 @@ async fn consume_raw_stream(client: &qubit_http::HttpClient) -> qubit_http::Http
 }
 ```
 
-### 5）解码 SSE JSON chunk
+### 8）解码 SSE JSON chunk
 
 ```rust
 use futures_util::StreamExt;
@@ -218,9 +332,31 @@ async fn consume_sse_json(client: &qubit_http::HttpClient) -> qubit_http::HttpRe
 }
 ```
 
-若你希望坏 JSON 立即失败，可使用 `response.decode_json_chunks_with_mode(..., SseJsonMode::Strict)`。
+你可以通过 `HttpClientOptions` 配置客户端级 SSE 默认值：
 
-### 6）OpenAI SSE 简化示例（`chat.completions` 与 `responses`）
+```rust
+use qubit_http::sse::SseJsonMode;
+
+options.sse_json_mode = SseJsonMode::Strict;
+options.sse_max_line_bytes = 64 * 1024;
+options.sse_max_frame_bytes = 1024 * 1024;
+```
+
+你仍可按请求覆盖：使用 `response.decode_json_chunks_with_mode(...)`
+或 `decode_json_chunks_with_mode_and_limits(...)`：
+
+```rust
+use qubit_http::sse::{DoneMarkerPolicy, SseJsonMode};
+
+let chunks = response.decode_json_chunks_with_mode_and_limits::<MyChunk>(
+    DoneMarkerPolicy::DefaultDone,
+    SseJsonMode::Lenient,
+    64 * 1024,   // max_line_bytes
+    1024 * 1024, // max_frame_bytes
+);
+```
+
+### 9）OpenAI SSE 简化示例（`chat.completions` 与 `responses`）
 
 下面只展示“请求 + 解码”主流程。
 OpenAI 的字段细节以最新 API 文档为准：
@@ -324,7 +460,7 @@ async fn stream_openai_responses(
 }
 ```
 
-### 7）从配置创建客户端
+### 10）从配置创建客户端
 
 ```rust
 use std::time::Duration;
@@ -343,6 +479,11 @@ fn build_client_from_config() -> Result<qubit_http::HttpClient, qubit_http::Http
     config.set("http.proxy.enabled", false).unwrap();
     config.set("http.retry.enabled", true).unwrap();
     config.set("http.retry.max_attempts", 3_u32).unwrap();
+    config.set("http.sse.json_mode", "STRICT".to_string()).unwrap();
+    config.set("http.sse.max_line_bytes", 64 * 1024usize).unwrap();
+    config
+        .set("http.sse.max_frame_bytes", 1024 * 1024usize)
+        .unwrap();
 
     HttpClientFactory::new().create_from_config(&config.prefix_view("http"))
 }
@@ -356,6 +497,7 @@ fn build_client_from_config() -> Result<qubit_http::HttpClient, qubit_http::Http
 - 传输错误或超时
 - HTTP 状态码非 2xx（`HttpErrorKind::Status`）
 - 响应解码或 SSE 解码失败
+- 请求被取消（`HttpErrorKind::Cancelled`）
 
 可以通过 `error.kind` 和 `error.retry_hint()` 分流处理：
 
@@ -371,6 +513,7 @@ fn handle_error(error: &qubit_http::HttpError) {
         | HttpErrorKind::RequestTimeout => {
             eprintln!("timeout: {}", error)
         }
+        HttpErrorKind::Cancelled => eprintln!("request cancelled: {}", error),
         _ => eprintln!("http error: {}", error),
     }
 
@@ -379,6 +522,9 @@ fn handle_error(error: &qubit_http::HttpError) {
 
     if let Some(preview) = &error.response_body_preview {
         eprintln!("response preview={preview}");
+    }
+    if let Some(retry_after) = error.retry_after {
+        eprintln!("retry-after={retry_after:?}");
     }
 }
 ```
@@ -402,6 +548,9 @@ fn handle_error(error: &qubit_http::HttpError) {
 | `retry.jitter_factor` | `0.1` |
 | `retry.method_policy` | `IdempotentOnly` |
 | `ipv4_only` | `false` |
+| `sse.json_mode` | `Lenient` |
+| `sse.max_line_bytes` | `64 * 1024` 字节 |
+| `sse.max_frame_bytes` | `1024 * 1024` 字节 |
 
 ## 说明
 
@@ -411,6 +560,7 @@ fn handle_error(error: &qubit_http::HttpError) {
 - 二进制或非 UTF-8 的 Body 不会按原文打印，而是输出摘要。
 - `proxy.enabled = false` 时，不继承环境变量代理。
 - `ipv4_only` 会强制 DNS 仅使用 IPv4 地址，并拒绝 IPv6 字面量目标/代理主机。
+- `create_with_options(...)` 总会执行 `HttpClientOptions::validate()`，非法配置会快速失败。
 - 流式重试仅覆盖返回 `HttpStreamResponse` 之前的失败；流开始后的错误由调用方处理。
 
 ## 许可证

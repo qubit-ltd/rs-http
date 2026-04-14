@@ -13,8 +13,9 @@ use qubit_config::Config;
 use qubit_http::{
     constants::{
         DEFAULT_CONNECT_TIMEOUT_SECS, DEFAULT_LOG_BODY_SIZE_LIMIT_BYTES, DEFAULT_READ_TIMEOUT_SECS,
-        DEFAULT_WRITE_TIMEOUT_SECS,
+        DEFAULT_SSE_MAX_FRAME_BYTES, DEFAULT_SSE_MAX_LINE_BYTES, DEFAULT_WRITE_TIMEOUT_SECS,
     },
+    sse::SseJsonMode,
     Delay, HttpClientOptions, HttpConfigErrorKind, HttpErrorKind, HttpRetryMethodPolicy,
     HttpRetryOptions, ProxyType,
 };
@@ -56,6 +57,9 @@ fn test_http_client_options_defaults() {
         HttpRetryMethodPolicy::IdempotentOnly
     );
     assert!(!options.ipv4_only);
+    assert_eq!(options.sse_json_mode, SseJsonMode::Lenient);
+    assert_eq!(options.sse_max_line_bytes, DEFAULT_SSE_MAX_LINE_BYTES);
+    assert_eq!(options.sse_max_frame_bytes, DEFAULT_SSE_MAX_FRAME_BYTES);
 }
 
 #[test]
@@ -71,6 +75,9 @@ fn test_http_client_options_new_matches_default() {
     assert_eq!(options.retry, defaults.retry);
     assert_eq!(options.sensitive_headers, defaults.sensitive_headers);
     assert_eq!(options.ipv4_only, defaults.ipv4_only);
+    assert_eq!(options.sse_json_mode, defaults.sse_json_mode);
+    assert_eq!(options.sse_max_line_bytes, defaults.sse_max_line_bytes);
+    assert_eq!(options.sse_max_frame_bytes, defaults.sse_max_frame_bytes);
 }
 
 #[test]
@@ -471,6 +478,46 @@ fn test_http_client_options_retry_section_invalid_value_is_prefixed() {
 }
 
 #[test]
+fn test_http_client_options_sse_section() {
+    let mut config = Config::new();
+    config
+        .set("http.sse.json_mode", "strict".to_string())
+        .unwrap();
+    config.set("http.sse.max_line_bytes", 8192usize).unwrap();
+    config.set("http.sse.max_frame_bytes", 65536usize).unwrap();
+
+    let opts = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap();
+
+    assert_eq!(opts.sse_json_mode, SseJsonMode::Strict);
+    assert_eq!(opts.sse_max_line_bytes, 8192);
+    assert_eq!(opts.sse_max_frame_bytes, 65536);
+}
+
+#[test]
+fn test_http_client_options_sse_json_mode_invalid_value_is_prefixed() {
+    let mut config = Config::new();
+    config
+        .set("http.sse.json_mode", "fail-fast".to_string())
+        .unwrap();
+
+    let err = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap_err();
+
+    assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
+    assert_eq!(err.path, "http.sse.json_mode");
+}
+
+#[test]
+fn test_http_client_options_sse_limits_zero_is_prefixed() {
+    let mut config = Config::new();
+    config.set("http.sse.max_line_bytes", 0usize).unwrap();
+
+    let err = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap_err();
+
+    assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
+    assert_eq!(err.path, "http.sse.max_line_bytes");
+}
+
+#[test]
 fn test_http_retry_options_validate_rejects_invalid_values() {
     let mut options = HttpRetryOptions::default();
     options.max_attempts = 0;
@@ -536,6 +583,16 @@ fn test_http_client_options_validate_propagates_retry_error() {
 }
 
 #[test]
+fn test_http_client_options_validate_rejects_zero_sse_frame_limit() {
+    let mut opts = HttpClientOptions::default();
+    opts.sse_max_frame_bytes = 0;
+
+    let err = opts.validate().unwrap_err();
+    assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
+    assert_eq!(err.path, "sse.max_frame_bytes");
+}
+
+#[test]
 fn test_from_config_empty_prefix() {
     let mut config = Config::new();
     config
@@ -546,4 +603,33 @@ fn test_from_config_empty_prefix() {
     let opts = HttpClientOptions::from_config(&config).unwrap();
     assert!(opts.base_url.is_some());
     assert!(opts.ipv4_only);
+}
+
+#[test]
+fn test_http_client_options_sensitive_headers_invalid_type_is_prefixed() {
+    let mut config = Config::new();
+    config.set("http.sensitive_headers", 123_i32).unwrap();
+
+    let err = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap_err();
+
+    assert_eq!(err.kind, HttpConfigErrorKind::TypeError);
+    assert_eq!(err.path, "http.sensitive_headers");
+}
+
+#[test]
+fn test_http_client_options_default_headers_prefers_subkey_form_over_invalid_json_form() {
+    let mut config = Config::new();
+    config
+        .set("http.default_headers", "not-json".to_string())
+        .unwrap();
+    config
+        .set("http.default_headers.x-api-key", "from-subkey".to_string())
+        .unwrap();
+
+    let opts = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap();
+    assert_eq!(opts.default_headers.len(), 1);
+    assert_eq!(
+        opts.default_headers.get("x-api-key").unwrap(),
+        "from-subkey"
+    );
 }

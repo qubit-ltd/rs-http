@@ -107,3 +107,16 @@ fn test_http_config_error_from_type_mismatch_maps_to_type_error() {
     assert_eq!(error.kind, HttpConfigErrorKind::TypeError);
     assert_eq!(error.path, "svc.retries");
 }
+
+#[test]
+fn test_http_config_error_new() {
+    let error = HttpConfigError::new(
+        HttpConfigErrorKind::ConfigError,
+        "service.timeout",
+        "value out of range",
+    );
+
+    assert_eq!(error.kind, HttpConfigErrorKind::ConfigError);
+    assert_eq!(error.path, "service.timeout");
+    assert_eq!(error.message, "value out of range");
+}
