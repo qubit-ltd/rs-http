@@ -54,11 +54,11 @@
 
 - [x] B4（对应“实用特性 #2”）增加细粒度重试策略（按状态码/错误类型等）。
   - 验收：策略可配置，行为有明确测试覆盖。
-  - Commit: `feat(retry): add status and error-kind retry filters`
+  - Commit: `0aa303c` (`feat(retry): add status and error-kind retry filters`)
 
-- [ ] B5（对应“实用特性 #5”）SSE 自动重连与 `Last-Event-ID` 支持。
+- [x] B5（对应“实用特性 #5”）SSE 自动重连与 `Last-Event-ID` 支持。
   - 验收：断线重连策略可控，事件 ID 透传并可恢复。
-  - Commit: _pending_
+  - Commit: `feat(sse): add auto reconnect and last-event-id resume support`
 
 ## 每项执行模板
 

@@ -12,7 +12,7 @@
 use bytes::Bytes;
 use futures_util::StreamExt as _;
 use http::HeaderMap;
-use qubit_http::{HttpResult, HttpStreamResponse};
+use qubit_http::{sse::SseReconnectOptions, HttpResult, HttpStreamResponse};
 
 async fn collect_results<T>(stream: impl futures_util::Stream<Item = HttpResult<T>>) -> Vec<T> {
     stream
@@ -56,4 +56,9 @@ async fn test_decode_events_ignores_comment_lines() {
     let events = collect_results(response.decode_events()).await;
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].data, "{\"value\": 7}");
+}
+
+#[test]
+fn test_sse_reconnect_options_new_matches_default() {
+    assert_eq!(SseReconnectOptions::new(), SseReconnectOptions::default());
 }
