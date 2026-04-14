@@ -14,13 +14,14 @@
 //!
 //! Haixing Hu
 
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use async_stream::stream;
 use bytes::Bytes;
 use futures_util::StreamExt;
 use http::header::RETRY_AFTER;
 use http::{HeaderMap, StatusCode};
+use httpdate::parse_http_date;
 use qubit_function::MutatingFunction;
 use qubit_retry::{
     AttemptFailure, Jitter, RetryDecision, RetryError, RetryExecutor, RetryOptions, RetryResult,
@@ -535,7 +536,8 @@ impl HttpClient {
     ///
     /// # Parameters
     /// - `retry_options`: Effective retry options for this request.
-    /// - `honor_retry_after`: Whether to honor `Retry-After` on `429`.
+    /// - `honor_retry_after`: Whether to honor `Retry-After` on retryable
+    ///   status responses (`429` and `5xx`).
     ///
     /// # Returns
     /// Configured executor or [`HttpError`] if retry options or executor
@@ -586,7 +588,8 @@ impl HttpClient {
     /// - `request`: Built request passed to each [`HttpClient::execute_once`]
     ///   attempt.
     /// - `retry_options`: Effective retry options for this request.
-    /// - `honor_retry_after`: Whether to honor `Retry-After` on `429`.
+    /// - `honor_retry_after`: Whether to honor `Retry-After` on retryable
+    ///   status responses (`429` and `5xx`).
     ///
     /// # Returns
     /// Same as a successful single attempt, or a mapped [`HttpError`] when
@@ -616,7 +619,8 @@ impl HttpClient {
     /// - `request`: Built request passed to each
     ///   [`HttpClient::execute_stream_once`] attempt.
     /// - `retry_options`: Effective retry options for this request.
-    /// - `honor_retry_after`: Whether to honor `Retry-After` on `429`.
+    /// - `honor_retry_after`: Whether to honor `Retry-After` on retryable
+    ///   status responses (`429` and `5xx`).
     ///
     /// # Returns
     /// Same as a successful single streaming attempt, or a mapped [`HttpError`]
@@ -1089,17 +1093,17 @@ fn classify_reqwest_timeout_kind(
     }
 }
 
-/// Parses `Retry-After` from response headers for `429 Too Many Requests`.
+/// Parses `Retry-After` from response headers when status is retryable.
 ///
 /// # Parameters
 /// - `status`: HTTP status code.
 /// - `headers`: Response headers.
 ///
 /// # Returns
-/// Parsed retry delay when `status` is `429` and `Retry-After` is an integer
-/// number of seconds.
+/// Parsed retry delay when `status` is `429` or `5xx` and `Retry-After` is
+/// present in `delta-seconds` or HTTP-date format.
 fn parse_retry_after(status: StatusCode, headers: &HeaderMap) -> Option<Duration> {
-    if status != StatusCode::TOO_MANY_REQUESTS {
+    if !is_retry_after_applicable_status(status) {
         return None;
     }
     headers
@@ -1108,16 +1112,40 @@ fn parse_retry_after(status: StatusCode, headers: &HeaderMap) -> Option<Duration
         .and_then(parse_retry_after_value)
 }
 
-/// Parses a `Retry-After` header value as integer seconds.
+/// Returns whether a status code should honor `Retry-After`.
+///
+/// # Parameters
+/// - `status`: HTTP status code.
+///
+/// # Returns
+/// `true` for `429` and `5xx` statuses; otherwise `false`.
+fn is_retry_after_applicable_status(status: StatusCode) -> bool {
+    status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error()
+}
+
+/// Parses a `Retry-After` header value as delta-seconds or HTTP-date.
 ///
 /// # Parameters
 /// - `value`: Raw `Retry-After` header value.
 ///
 /// # Returns
-/// Parsed duration, or `None` when value is not a non-negative integer.
+/// Parsed duration, or `None` when value is neither valid delta-seconds nor a
+/// valid HTTP-date.
 fn parse_retry_after_value(value: &str) -> Option<Duration> {
-    let seconds = value.trim().parse::<u64>().ok()?;
-    Some(Duration::from_secs(seconds))
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if let Ok(seconds) = trimmed.parse::<u64>() {
+        return Some(Duration::from_secs(seconds));
+    }
+    let retry_at = parse_http_date(trimmed).ok()?;
+    let now = SystemTime::now();
+    Some(
+        retry_at
+            .duration_since(now)
+            .unwrap_or_else(|_| Duration::from_secs(0)),
+    )
 }
 
 /// Renders a human-readable error-body preview from raw bytes.

@@ -319,7 +319,8 @@ impl HttpRequestBuilder {
     /// Enables or disables honoring `Retry-After` for this request.
     ///
     /// # Parameters
-    /// - `enabled`: `true` to honor `Retry-After` on `429 Too Many Requests`.
+    /// - `enabled`: `true` to honor `Retry-After` on retryable status
+    ///   responses (`429` and `5xx`).
     ///
     /// # Returns
     /// `self` for chaining.

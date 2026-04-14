@@ -28,11 +28,11 @@
 
 - [x] A4（对应“优先改进 #3”）将 timeout 分类改为阶段驱动，去除字符串启发式分类。
   - 验收：`connect/read/write/request` 分类稳定且测试可复现。
-  - Commit: `refactor(timeout): classify reqwest timeouts by execution phase`
+  - Commit: `efa309a` (`refactor(timeout): classify reqwest timeouts by execution phase`)
 
-- [ ] A5（对应“优先改进 #2”）增强 `Retry-After` 解析范围（支持 HTTP-date，并扩展适用状态码）。
+- [x] A5（对应“优先改进 #2”）增强 `Retry-After` 解析范围（支持 HTTP-date，并扩展适用状态码）。
   - 验收：`Retry-After` 秒数/日期格式解析正确，重试等待逻辑可验证。
-  - Commit: _pending_
+  - Commit: `refactor(retry): support HTTP-date Retry-After on retryable statuses`
 
 - [ ] A6（对应“优先改进 #1”）移除阻塞等待（`std::thread::sleep`），替换为异步友好机制。
   - 验收：重试等待不阻塞 Tokio worker，行为与策略一致。
