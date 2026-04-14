@@ -20,29 +20,37 @@ use serde::de::DeserializeOwned;
 
 use crate::{HttpError, HttpStreamResponse};
 
-use super::{decode_events_from_response, DoneMarkerPolicy, SseChunk, SseChunkStream, SseJsonMode};
+use super::{
+    decode_events_from_response_with_limits, DoneMarkerPolicy, SseChunk, SseChunkStream,
+    SseJsonMode,
+};
 
-/// Parses SSE JSON payloads with selectable strictness for malformed lines.
+/// Parses SSE JSON payloads with selectable strictness and explicit line/frame size limits.
 ///
 /// # Parameters
 /// - `stream`: SSE HTTP stream response.
 /// - `done_policy`: Terminal marker detection.
 /// - `mode`: Lenient vs strict JSON parsing.
+/// - `max_line_bytes`: Maximum allowed bytes for one SSE line.
+/// - `max_frame_bytes`: Maximum allowed bytes for one SSE frame.
 ///
 /// # Type parameters
 /// - `T`: JSON type to deserialize.
 ///
 /// # Returns
 /// Stream of [`SseChunk::Data`] or [`SseChunk::Done`], or errors from upstream/SSE/JSON.
-pub(crate) fn decode_json_chunks_from_response<T>(
+pub(crate) fn decode_json_chunks_from_response_with_limits<T>(
     stream: HttpStreamResponse,
     done_policy: DoneMarkerPolicy,
     mode: SseJsonMode,
+    max_line_bytes: usize,
+    max_frame_bytes: usize,
 ) -> SseChunkStream<T>
 where
     T: DeserializeOwned + Send + 'static,
 {
-    let mut events = decode_events_from_response(stream);
+    let mut events =
+        decode_events_from_response_with_limits(stream, max_line_bytes, max_frame_bytes);
 
     let output = stream! {
         while let Some(item) = events.next().await {

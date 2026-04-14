@@ -24,16 +24,19 @@ use super::{SseEvent, SseEventStream};
 ///
 /// # Parameters
 /// - `lines`: Stream of SSE text lines from [`super::line_decoder::decode_lines`].
+/// - `max_frame_bytes`: Maximum allowed bytes for one SSE frame.
 ///
 /// # Returns
 /// Stream of events or forwarded transport/protocol errors.
-pub fn decode_frames(mut lines: SseLineStream) -> SseEventStream {
+pub fn decode_frames(mut lines: SseLineStream, max_frame_bytes: usize) -> SseEventStream {
     let output = stream! {
+        let max_frame_bytes = max_frame_bytes.max(1);
         let mut current_event: Option<String> = None;
         let mut current_id: Option<String> = None;
         let mut current_retry: Option<u64> = None;
         let mut current_data: Vec<String> = Vec::new();
         let mut has_fields = false;
+        let mut current_frame_bytes = 0usize;
 
         while let Some(item) = lines.next().await {
             let line = match item {
@@ -54,12 +57,21 @@ pub fn decode_frames(mut lines: SseLineStream) -> SseEventStream {
                     });
                     current_data.clear();
                     has_fields = false;
+                    current_frame_bytes = 0;
                 }
                 continue;
             }
 
             if line.starts_with(':') {
                 continue;
+            }
+
+            current_frame_bytes += line.len();
+            if current_frame_bytes > max_frame_bytes {
+                yield Err(crate::HttpError::sse_protocol(format!(
+                    "SSE frame exceeds max_frame_bytes ({max_frame_bytes})"
+                )));
+                return;
             }
 
             let (field, value) = split_field_value(&line);

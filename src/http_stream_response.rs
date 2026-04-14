@@ -13,6 +13,7 @@ use serde::de::DeserializeOwned;
 use url::Url;
 
 use crate::{
+    constants::{DEFAULT_SSE_MAX_FRAME_BYTES, DEFAULT_SSE_MAX_LINE_BYTES},
     sse::{DoneMarkerPolicy, SseChunkStream, SseEventStream, SseJsonMode},
     HttpByteStream,
 };
@@ -92,7 +93,26 @@ impl HttpStreamResponse {
     /// - transport/read errors forwarded from the underlying HTTP stream;
     /// - [`crate::HttpError::sse_protocol`] when SSE line UTF-8 decoding fails.
     pub fn decode_events(self) -> SseEventStream {
-        crate::sse::decode_events_from_response(self)
+        self.decode_events_with_limits(DEFAULT_SSE_MAX_LINE_BYTES, DEFAULT_SSE_MAX_FRAME_BYTES)
+    }
+
+    /// Decodes current stream body as SSE events with explicit line/frame size limits.
+    ///
+    /// # Parameters
+    /// - `max_line_bytes`: Maximum allowed bytes for one SSE line.
+    /// - `max_frame_bytes`: Maximum allowed bytes for one SSE frame.
+    ///
+    /// # Returns
+    /// Stream yielding parsed SSE events.
+    ///
+    /// # Errors
+    /// Each emitted item may contain transport/read/protocol errors and limit violations.
+    pub fn decode_events_with_limits(
+        self,
+        max_line_bytes: usize,
+        max_frame_bytes: usize,
+    ) -> SseEventStream {
+        crate::sse::decode_events_from_response_with_limits(self, max_line_bytes, max_frame_bytes)
     }
 
     /// Decodes SSE `data:` payloads as JSON chunks in lenient mode.
@@ -141,6 +161,44 @@ impl HttpStreamResponse {
     where
         T: DeserializeOwned + Send + 'static,
     {
-        crate::sse::decode_json_chunks_from_response(self, done_policy, mode)
+        self.decode_json_chunks_with_mode_and_limits(
+            done_policy,
+            mode,
+            DEFAULT_SSE_MAX_LINE_BYTES,
+            DEFAULT_SSE_MAX_FRAME_BYTES,
+        )
+    }
+
+    /// Decodes SSE `data:` payloads as JSON chunks with configurable strictness and limits.
+    ///
+    /// # Parameters
+    /// - `done_policy`: Done marker policy (for example `[DONE]`).
+    /// - `mode`: JSON decoding strictness for malformed payloads.
+    /// - `max_line_bytes`: Maximum allowed bytes for one SSE line.
+    /// - `max_frame_bytes`: Maximum allowed bytes for one SSE frame.
+    ///
+    /// # Type parameters
+    /// - `T`: Target chunk type deserialized from each `data:` payload.
+    ///
+    /// # Returns
+    /// Stream yielding [`crate::sse::SseChunk::Data`] and optional
+    /// [`crate::sse::SseChunk::Done`].
+    pub fn decode_json_chunks_with_mode_and_limits<T>(
+        self,
+        done_policy: DoneMarkerPolicy,
+        mode: SseJsonMode,
+        max_line_bytes: usize,
+        max_frame_bytes: usize,
+    ) -> SseChunkStream<T>
+    where
+        T: DeserializeOwned + Send + 'static,
+    {
+        crate::sse::decode_json_chunks_from_response_with_limits(
+            self,
+            done_policy,
+            mode,
+            max_line_bytes,
+            max_frame_bytes,
+        )
     }
 }

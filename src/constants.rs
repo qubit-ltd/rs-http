@@ -57,6 +57,16 @@ pub const DEFAULT_WRITE_TIMEOUT_SECS: u64 = 120;
 pub const DEFAULT_LOG_BODY_SIZE_LIMIT_BYTES: usize = 16 * 1024;
 
 // ---------------------------------------------------------------------------
+// SSE decode safety limits
+// ---------------------------------------------------------------------------
+
+/// Default maximum bytes allowed for a single SSE line before raising a protocol error.
+pub const DEFAULT_SSE_MAX_LINE_BYTES: usize = 64 * 1024;
+
+/// Default maximum bytes allowed for one SSE frame (between blank lines) before raising a protocol error.
+pub const DEFAULT_SSE_MAX_FRAME_BYTES: usize = 1024 * 1024;
+
+// ---------------------------------------------------------------------------
 // Sensitive header value masking rules used by [`crate::HttpLogger`]
 // ---------------------------------------------------------------------------
 

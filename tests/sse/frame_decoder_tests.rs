@@ -61,3 +61,13 @@ async fn test_decode_frames_ignores_unknown_field_name() {
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].data, "value");
 }
+
+#[tokio::test]
+async fn test_decode_frames_rejects_frame_exceeding_max_bytes() {
+    let response = stream_response_from_chunks(vec!["data: 12345\n", "data: 67890\n", "\n"]);
+    let mut events = response.decode_events_with_limits(128, 12);
+    let error = events.next().await.unwrap().unwrap_err();
+
+    assert_eq!(error.kind, qubit_http::HttpErrorKind::SseProtocol);
+    assert!(error.message.contains("max_frame_bytes"));
+}

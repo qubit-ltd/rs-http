@@ -67,7 +67,7 @@
     - `./coverage.sh text`
   - Commit: `refactor(factory): validate options at entry and keep proxy mapping`
 
-- [ ] A5. SSE 行/帧大小上限保护
+- [x] A5. SSE 行/帧大小上限保护
   - 实现要点：
     - 增加 `max_line_bytes`、`max_frame_bytes`（含默认值）；
     - 超限时返回明确 `HttpError::sse_protocol`。
@@ -78,7 +78,7 @@
   - 验收命令：
     - `cargo test`
     - `./coverage.sh text`
-  - Commit: `TBD`
+  - Commit: `feat(sse): enforce line and frame size limits for decoding`
 
 ### 阶段 B：实用特性
 

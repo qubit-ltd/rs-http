@@ -86,3 +86,22 @@ async fn test_decode_json_chunks_with_custom_done_marker() {
     assert_eq!(chunks[0], SseChunk::Data(TestChunk { value: 2 }));
     assert_eq!(chunks[1], SseChunk::Done);
 }
+
+#[tokio::test]
+async fn test_decode_json_chunks_with_limits_reports_sse_protocol_error() {
+    let response = stream_response_from_chunks(vec![
+        "data: {\"value\": 1}\n",
+        "data: {\"value\": 2}\n",
+        "\n",
+    ]);
+    let mut stream = response.decode_json_chunks_with_mode_and_limits::<TestChunk>(
+        DoneMarkerPolicy::DefaultDone,
+        SseJsonMode::Strict,
+        256,
+        16,
+    );
+
+    let error = stream.next().await.unwrap().unwrap_err();
+    assert_eq!(error.kind, qubit_http::HttpErrorKind::SseProtocol);
+    assert!(error.message.contains("max_frame_bytes"));
+}

@@ -86,5 +86,7 @@ mod retry_hint_tests;
 
 #[path = "sse/frame_decoder_tests.rs"]
 mod frame_decoder_tests;
+#[path = "sse/line_decoder_tests.rs"]
+mod line_decoder_tests;
 #[path = "sse/sse_integration_tests.rs"]
 mod sse_integration_tests;

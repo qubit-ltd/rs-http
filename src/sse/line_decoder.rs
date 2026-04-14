@@ -29,11 +29,13 @@ pub type SseLineStream = Pin<Box<dyn Stream<Item = HttpResult<String>> + Send>>;
 ///
 /// # Parameters
 /// - `stream`: Raw byte stream from [`crate::HttpStreamResponse::into_stream`].
+/// - `max_line_bytes`: Maximum allowed bytes for one SSE line.
 ///
 /// # Returns
 /// Stream of lines or [`HttpError::sse_protocol`] on invalid UTF-8.
-pub fn decode_lines(mut stream: HttpByteStream) -> SseLineStream {
+pub fn decode_lines(mut stream: HttpByteStream, max_line_bytes: usize) -> SseLineStream {
     let output = stream! {
+        let max_line_bytes = max_line_bytes.max(1);
         let mut buffer = BytesMut::new();
 
         while let Some(item) = stream.next().await {
@@ -41,6 +43,12 @@ pub fn decode_lines(mut stream: HttpByteStream) -> SseLineStream {
                 Ok(chunk) => {
                     buffer.extend_from_slice(&chunk);
                     while let Some(index) = buffer.iter().position(|&byte| byte == b'\n') {
+                        if index > max_line_bytes {
+                            yield Err(HttpError::sse_protocol(format!(
+                                "SSE line exceeds max_line_bytes ({max_line_bytes})"
+                            )));
+                            return;
+                        }
                         let mut line = buffer.split_to(index + 1).to_vec();
                         if line.last() == Some(&b'\n') {
                             line.pop();
@@ -59,6 +67,12 @@ pub fn decode_lines(mut stream: HttpByteStream) -> SseLineStream {
                                 return;
                             }
                         }
+                    }
+                    if buffer.len() > max_line_bytes {
+                        yield Err(HttpError::sse_protocol(format!(
+                            "SSE line exceeds max_line_bytes ({max_line_bytes})"
+                        )));
+                        return;
                     }
                 }
                 Err(error) => {

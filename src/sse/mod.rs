@@ -33,16 +33,22 @@ pub use sse_event::SseEvent;
 pub use sse_event_stream::SseEventStream;
 pub use sse_json_mode::SseJsonMode;
 
-pub(crate) use json_decoder::decode_json_chunks_from_response;
+pub(crate) use json_decoder::decode_json_chunks_from_response_with_limits;
 
-/// Parses SSE frames from a streaming HTTP response (UTF-8 lines → events).
+/// Parses SSE frames from a streaming HTTP response with explicit line/frame size limits.
 ///
 /// # Parameters
 /// - `stream`: Streaming response whose body is SSE text.
+/// - `max_line_bytes`: Maximum allowed bytes for one SSE line.
+/// - `max_frame_bytes`: Maximum allowed bytes for one SSE frame.
 ///
 /// # Returns
 /// Stream yielding [`SseEvent`] values or protocol/transport errors.
-pub(crate) fn decode_events_from_response(stream: HttpStreamResponse) -> SseEventStream {
-    let lines = line_decoder::decode_lines(stream.into_stream());
-    frame_decoder::decode_frames(lines)
+pub(crate) fn decode_events_from_response_with_limits(
+    stream: HttpStreamResponse,
+    max_line_bytes: usize,
+    max_frame_bytes: usize,
+) -> SseEventStream {
+    let lines = line_decoder::decode_lines(stream.into_stream(), max_line_bytes);
+    frame_decoder::decode_frames(lines, max_frame_bytes)
 }
