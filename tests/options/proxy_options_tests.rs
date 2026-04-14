@@ -155,6 +155,32 @@ fn test_proxy_validate_password_without_username() {
 }
 
 #[test]
+fn test_proxy_validate_enabled_blank_host() {
+    let opts = ProxyOptions {
+        enabled: true,
+        host: Some("   ".to_string()),
+        port: Some(8080),
+        ..Default::default()
+    };
+
+    let err = opts.validate().unwrap_err();
+    assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
+    assert_eq!(err.path, "proxy.host");
+}
+
+#[test]
+fn test_proxy_validate_rejects_blank_username() {
+    let opts = ProxyOptions {
+        username: Some("  ".to_string()),
+        ..Default::default()
+    };
+
+    let err = opts.validate().unwrap_err();
+    assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
+    assert_eq!(err.path, "proxy.username");
+}
+
+#[test]
 fn test_proxy_validate_full_valid_config() {
     let opts = ProxyOptions {
         enabled: true,
