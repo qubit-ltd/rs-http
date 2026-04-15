@@ -44,7 +44,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     options.set_base_url("https://httpbin.org")?;
     options.add_header("x-client-id", "demo")?;
 
-    let client = HttpClientFactory::new().create_with_options(options)?;
+    let client = HttpClientFactory::new().create(options)?;
 
     let request = client
         .request(Method::GET, "/anything")
@@ -107,7 +107,7 @@ async fn create_message() -> Result<(), Box<dyn std::error::Error>> {
     let mut options = HttpClientOptions::new();
     options.set_base_url("https://api.example.com")?;
 
-    let client = HttpClientFactory::new().create_with_options(options)?;
+    let client = HttpClientFactory::new().create(options)?;
 
     let body = CreateMessageRequest {
         role: "user".to_string(),
@@ -144,7 +144,7 @@ use qubit_http::{
 
 fn with_auth_injector() -> qubit_http::HttpResult<qubit_http::HttpClient> {
     let token = "secret-token".to_string();
-    let mut client = HttpClientFactory::new().create()?;
+    let mut client = HttpClientFactory::new().create_default()?;
 
     client.add_header("x-client", "my-app")?;
     client.add_header_injector(HttpHeaderInjector::new(move |headers| {
@@ -205,7 +205,7 @@ async fn request_with_retry() -> Result<(), Box<dyn std::error::Error>> {
     };
     options.retry.method_policy = HttpRetryMethodPolicy::IdempotentOnly;
 
-    let client = HttpClientFactory::new().create_with_options(options)?;
+    let client = HttpClientFactory::new().create(options)?;
     let request = client.request(Method::GET, "/v1/items").build();
     let _ = client.execute(request).await?;
     Ok(())
@@ -527,7 +527,7 @@ fn handle_error(error: &qubit_http::HttpError) {
 - 二进制或非 UTF-8 的 Body 不会按原文打印，而是输出摘要。
 - `proxy.enabled = false` 时，不继承环境变量代理。
 - `ipv4_only` 会强制 DNS 仅使用 IPv4 地址，并拒绝 IPv6 字面量目标/代理主机。
-- `create_with_options(...)` 总会执行 `HttpClientOptions::validate()`，非法配置会快速失败。
+- `create(...)` 总会执行 `HttpClientOptions::validate()`，非法配置会快速失败。
 - `execute(...)` 在成功响应头返回后结束，响应体默认惰性读取；如果开启 TRACE 响应体日志，则会提前缓冲响应体。
 - 内置请求重试只覆盖返回 `HttpResponse` 之前的失败；返回后的响应体读取或流式错误会交给调用方处理。SSE 场景可使用 `execute_sse_with_reconnect(...)` 获得自动重连。
 

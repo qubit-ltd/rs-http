@@ -39,7 +39,7 @@ async fn main() -> qubit_http::HttpResult<()> {
     options.set_base_url("https://api.example.com")?;
     options.add_header("x-app", "demo")?;
 
-    let client = HttpClientFactory::new().create_with_options(options)?;
+    let client = HttpClientFactory::new().create(options)?;
     let request = client
         .request(Method::GET, "/users/42")
         .query_param("expand", "profile")
@@ -59,7 +59,7 @@ async fn main() -> qubit_http::HttpResult<()> {
 ### Default Client
 
 ```rust
-let client = qubit_http::HttpClientFactory::new().create()?;
+let client = qubit_http::HttpClientFactory::new().create_default()?;
 ```
 
 Default behavior:
@@ -105,10 +105,10 @@ options.retry.delay_strategy = Delay::Exponential {
 };
 options.retry.method_policy = HttpRetryMethodPolicy::IdempotentOnly;
 
-let client = HttpClientFactory::new().create_with_options(options)?;
+let client = HttpClientFactory::new().create(options)?;
 ```
 
-`create_with_options` validates options before building the client. Validation includes: all timeout values must be greater than zero; enabled proxies require a non-empty host and non-zero port; a proxy password requires a username; `logging.body_size_limit` must be greater than zero when request or response body logging is enabled; `user_agent` must be non-empty and a valid header value; SSE line and frame limits must be greater than zero.
+`create` validates options before building the client. Validation includes: all timeout values must be greater than zero; enabled proxies require a non-empty host and non-zero port; a proxy password requires a username; `logging.body_size_limit` must be greater than zero when request or response body logging is enabled; `user_agent` must be non-empty and a valid header value; SSE line and frame limits must be greater than zero.
 
 ### Loading From qubit-config
 
@@ -304,14 +304,12 @@ Body APIs:
 
 | Method | Behavior |
 | --- | --- |
-| `bytes_body()` | Lazily reads full body bytes and caches them for later calls |
-| `text()` | Decodes the full body as UTF-8 |
-| `json<T>()` | Deserializes the full body as JSON |
-| `stream_body()` | Returns `HttpByteStream`; consumes the backend stream if the body is not already cached |
-| `buffered_body()` | Checks whether the full body is already cached |
-| `into_error_body_preview(max_bytes)` | Consumes the response and renders a bounded error body preview |
+| `bytes_body()` | Lazily reads the full body on the first `await`, caches it, then reuses the cache |
+| `text()` | Full-body UTF-8 decode via `bytes_body()` |
+| `json<T>()` | Full-body JSON via `bytes_body()` |
+| `stream_body()` | Returns `HttpByteStream`; if the body is cached, yields a one-chunk in-memory stream. Otherwise the call does **not** eagerly read the entire body: it hands the backend response to the returned stream, and bytes are read **while that stream is polled** |
 
-The backend response body can only be consumed once. Calling `bytes_body`, `text`, or `json` caches the complete body; after that, `stream_body` returns a one-chunk stream from the cache. If you call `stream_body` first and the body was not cached, later full-body reads no longer have the original backend response to read from.
+There is only one consumption path for the underlying `reqwest` body on a given `HttpResponse`. After `bytes_body`, `text`, or `json`, the full payload is buffered and `stream_body` becomes a one-chunk stream over that cache. If you call `stream_body` first while the body is not cached, the backend handle moves into that stream—you must finish reading there; a later `bytes_body` / `text` / `json` will not re-read from the network (you get an empty body), so do not mix “stream first, then full-body read” on the same response.
 
 `retry_after_hint()` returns a delay when the response status is 429 or 5xx and the response has a valid `Retry-After` header. It supports both `delta-seconds` and HTTP-date formats; HTTP dates in the past resolve to 0 seconds. `HttpResponseMeta` exposes the same method, so response interceptors can read the hint from metadata.
 

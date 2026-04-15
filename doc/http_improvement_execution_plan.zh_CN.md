@@ -55,12 +55,12 @@
     - `./coverage.sh text`
   - Commit: `feat(error): attach bounded response body preview for non-2xx`
 
-- [x] A4. `create_with_options` 统一执行 `validate()`
+- [x] A4. `create` 统一执行 `validate()`
   - 实现要点：
     - 保证 from_config 与 direct options 路径行为一致；
     - 错误类型与路径语义保持可理解。
   - 测试要点：
-    - 直接调用 `create_with_options` 时校验失败可被阻止；
+    - 直接调用 `create` 时校验失败可被阻止；
     - 合法配置不受影响。
   - 验收命令：
     - `cargo test`

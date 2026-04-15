@@ -44,7 +44,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     options.set_base_url("https://httpbin.org")?;
     options.add_header("x-client-id", "demo")?;
 
-    let client = HttpClientFactory::new().create_with_options(options)?;
+    let client = HttpClientFactory::new().create(options)?;
 
     let request = client
         .request(Method::GET, "/anything")
@@ -107,7 +107,7 @@ async fn create_message() -> Result<(), Box<dyn std::error::Error>> {
     let mut options = HttpClientOptions::new();
     options.set_base_url("https://api.example.com")?;
 
-    let client = HttpClientFactory::new().create_with_options(options)?;
+    let client = HttpClientFactory::new().create(options)?;
 
     let body = CreateMessageRequest {
         role: "user".to_string(),
@@ -144,7 +144,7 @@ use qubit_http::{
 
 fn with_auth_injector() -> qubit_http::HttpResult<qubit_http::HttpClient> {
     let token = "secret-token".to_string();
-    let mut client = HttpClientFactory::new().create()?;
+    let mut client = HttpClientFactory::new().create_default()?;
 
     client.add_header("x-client", "my-app")?;
     client.add_header_injector(HttpHeaderInjector::new(move |headers| {
@@ -205,7 +205,7 @@ async fn request_with_retry() -> Result<(), Box<dyn std::error::Error>> {
     };
     options.retry.method_policy = HttpRetryMethodPolicy::IdempotentOnly;
 
-    let client = HttpClientFactory::new().create_with_options(options)?;
+    let client = HttpClientFactory::new().create(options)?;
     let request = client.request(Method::GET, "/v1/items").build();
     let _ = client.execute(request).await?;
     Ok(())
@@ -527,7 +527,7 @@ fn handle_error(error: &qubit_http::HttpError) {
 - Binary or non-UTF8 bodies are printed as binary summaries instead of raw bytes.
 - `proxy.enabled = false` disables environment proxy inheritance.
 - `ipv4_only` enforces IPv4 DNS resolution and rejects IPv6 literal target/proxy hosts.
-- `create_with_options(...)` always runs `HttpClientOptions::validate()` and fails fast on invalid options.
+- `create(...)` always runs `HttpClientOptions::validate()` and fails fast on invalid options.
 - `execute(...)` returns after successful response headers and keeps the body lazy unless TRACE response-body logging is enabled.
 - Built-in request retry covers failures before `HttpResponse` is returned. Body-read or stream errors after return are surfaced to the caller; use `execute_sse_with_reconnect(...)` for SSE reconnect behavior.
 

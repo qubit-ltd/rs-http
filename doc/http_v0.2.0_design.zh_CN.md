@@ -104,8 +104,8 @@ impl HttpLoggingOptions {
 
 ```rust
 impl HttpClientFactory {
-    pub fn create(&self) -> Result<HttpClient, HttpError>;
-    pub fn create_with_options(
+    pub fn create_default(&self) -> Result<HttpClient, HttpError>;
+    pub fn create(
         &self,
         options: HttpClientOptions,
     ) -> Result<HttpClient, HttpError>;
