@@ -20,7 +20,7 @@ use crate::constants::{
     SENSITIVE_HEADER_MASK_SHORT_LEN,
 };
 use crate::{
-    BufferedHttpResponse, HttpClientOptions, HttpLoggingOptions, HttpRequest, HttpRequestBody,
+    HttpClientOptions, HttpLoggingOptions, HttpRequest, HttpRequestBody, HttpResponse,
     HttpResponseMeta,
     SensitiveHeaders,
 };
@@ -90,11 +90,11 @@ impl<'a> HttpLogger<'a> {
     /// Emits TRACE logs for a completed response (headers and optional body preview).
     ///
     /// # Parameters
-    /// - `response`: Buffered response (status/url/headers/body) for logging.
+    /// - `response`: Response object (status/url/headers/body cache).
     ///
     /// # Returns
     /// Nothing; no-op when disabled or TRACE off.
-    pub fn log_response(&self, response: &BufferedHttpResponse) {
+    pub fn log_response(&self, response: &HttpResponse) {
         if !self.is_trace_enabled() {
             return;
         }
@@ -110,7 +110,8 @@ impl<'a> HttpLogger<'a> {
         }
 
         if self.options.log_response_body {
-            tracing::trace!("Response body: {}", self.render_body(&response.body));
+            let body = response.buffered_body().cloned().unwrap_or_default();
+            tracing::trace!("Response body: {}", self.render_body(&body));
         }
     }
 

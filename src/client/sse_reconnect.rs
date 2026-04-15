@@ -70,7 +70,7 @@ impl SseReconnectRunner {
                     }
                 }
 
-                let response = match client.execute_stream(attempt_request).await {
+                let response = match client.execute(attempt_request).await {
                     Ok(response) => response,
                     Err(error) => {
                         if should_reconnect_sse_error(&error)
@@ -84,7 +84,7 @@ impl SseReconnectRunner {
                     }
                 };
 
-                let mut events = response.decode_events();
+                let mut events = response.decode_sse_events();
                 let mut stream_error: Option<HttpError> = None;
                 while let Some(item) = events.next().await {
                     match item {

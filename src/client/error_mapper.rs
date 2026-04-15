@@ -152,22 +152,3 @@ fn parse_retry_after_value(value: &str) -> Option<Duration> {
     )
 }
 
-/// Renders a human-readable error-body preview from raw bytes.
-///
-/// # Parameters
-/// - `bytes`: Captured body bytes (already size-limited).
-/// - `truncated`: Whether additional bytes were omitted.
-///
-/// # Returns
-/// UTF-8 text preview or binary placeholder with truncation suffix when needed.
-pub(super) fn render_error_body_preview(bytes: &[u8], truncated: bool) -> String {
-    if bytes.is_empty() {
-        return "<empty>".to_string();
-    }
-
-    let suffix = if truncated { "...<truncated>" } else { "" };
-    match std::str::from_utf8(bytes) {
-        Ok(text) => format!("{text}{suffix}"),
-        Err(_) => format!("<binary {} bytes>{suffix}", bytes.len()),
-    }
-}
