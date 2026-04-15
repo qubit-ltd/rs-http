@@ -19,7 +19,7 @@ use futures_util::StreamExt;
 use http::{HeaderMap, Method, StatusCode};
 use qubit_http::{
     sse::{DoneMarkerPolicy, SseChunk, SseJsonMode, SseReconnectOptions},
-    HttpClientFactory, HttpClientOptions, HttpErrorKind, HttpResponse, RequestInterceptor,
+    HttpClientFactory, HttpClientOptions, HttpErrorKind, HttpRequestInterceptor, HttpResponse,
 };
 use tokio::time::timeout;
 
@@ -370,7 +370,7 @@ async fn test_execute_sse_with_reconnect_does_not_retry_non_retryable_protocol_e
         .unwrap();
     let attempts = Arc::new(AtomicUsize::new(0));
     let attempts_for_interceptor = Arc::clone(&attempts);
-    client.add_request_interceptor(RequestInterceptor::new(move |_request| {
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request| {
         attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }));

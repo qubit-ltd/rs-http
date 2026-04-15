@@ -15,8 +15,8 @@ use std::time::Duration;
 
 use http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode};
 use qubit_http::{
-    HeaderInjector, HttpClientFactory, HttpClientOptions, HttpError, HttpErrorKind,
-    RequestInterceptor, ResponseInterceptor,
+    HttpClientFactory, HttpClientOptions, HttpError, HttpErrorKind, HttpHeaderInjector,
+    HttpRequestInterceptor, HttpResponseInterceptor,
 };
 use tokio::time::timeout;
 
@@ -27,7 +27,7 @@ fn test_http_client_debug_includes_options_and_injectors() {
     let mut client = HttpClientFactory::new()
         .create()
         .expect("default options should create client");
-    client.add_header_injector(HeaderInjector::new(|_headers: &mut HeaderMap| Ok(())));
+    client.add_header_injector(HttpHeaderInjector::new(|_headers: &mut HeaderMap| Ok(())));
 
     let output = format!("{:?}", client);
 
@@ -101,14 +101,14 @@ async fn test_header_injector_order_is_stable_and_clear_works() {
     let mut client = HttpClientFactory::new()
         .create_with_options(options)
         .unwrap();
-    client.add_header_injector(HeaderInjector::new(|headers: &mut HeaderMap| {
+    client.add_header_injector(HttpHeaderInjector::new(|headers: &mut HeaderMap| {
         headers.insert(
             HeaderName::from_static("x-seq"),
             HeaderValue::from_static("A"),
         );
         Ok(())
     }));
-    client.add_header_injector(HeaderInjector::new(|headers: &mut HeaderMap| {
+    client.add_header_injector(HttpHeaderInjector::new(|headers: &mut HeaderMap| {
         headers.insert(
             HeaderName::from_static("x-seq"),
             HeaderValue::from_static("B"),
@@ -132,7 +132,7 @@ async fn test_header_injector_order_is_stable_and_clear_works() {
     let mut client2 = HttpClientFactory::new()
         .create_with_options(options2)
         .unwrap();
-    client2.add_header_injector(HeaderInjector::new(|headers: &mut HeaderMap| {
+    client2.add_header_injector(HttpHeaderInjector::new(|headers: &mut HeaderMap| {
         headers.insert(
             HeaderName::from_static("x-seq"),
             HeaderValue::from_static("A"),
@@ -159,7 +159,7 @@ async fn test_failing_header_injector_short_circuits_request() {
     let mut client = HttpClientFactory::new()
         .create_with_options(options)
         .unwrap();
-    client.add_header_injector(HeaderInjector::new(|_headers: &mut HeaderMap| {
+    client.add_header_injector(HttpHeaderInjector::new(|_headers: &mut HeaderMap| {
         Err(HttpError::other("inject failed"))
     }));
 
@@ -182,7 +182,7 @@ async fn test_request_interceptor_order_is_stable_and_clear_works() {
     let mut client = HttpClientFactory::new()
         .create_with_options(options)
         .unwrap();
-    client.add_request_interceptor(RequestInterceptor::new(|request| {
+    client.add_request_interceptor(HttpRequestInterceptor::new(|request| {
         request.set_typed_header(
             HeaderName::from_static("x-request-seq"),
             HeaderValue::from_static("A"),
@@ -190,7 +190,7 @@ async fn test_request_interceptor_order_is_stable_and_clear_works() {
         request.add_query_param("request_interceptor", "first");
         Ok(())
     }));
-    client.add_request_interceptor(RequestInterceptor::new(|request| {
+    client.add_request_interceptor(HttpRequestInterceptor::new(|request| {
         request.set_typed_header(
             HeaderName::from_static("x-request-seq"),
             HeaderValue::from_static("B"),
@@ -224,7 +224,7 @@ async fn test_request_interceptor_order_is_stable_and_clear_works() {
     let mut client2 = HttpClientFactory::new()
         .create_with_options(options2)
         .unwrap();
-    client2.add_request_interceptor(RequestInterceptor::new(|request| {
+    client2.add_request_interceptor(HttpRequestInterceptor::new(|request| {
         request.set_typed_header(
             HeaderName::from_static("x-request-cleared"),
             HeaderValue::from_static("yes"),
@@ -244,7 +244,7 @@ async fn test_failing_request_interceptor_short_circuits_before_url_resolution()
     let mut client = HttpClientFactory::new()
         .create()
         .expect("default options should create client");
-    client.add_request_interceptor(RequestInterceptor::new(|_request| {
+    client.add_request_interceptor(HttpRequestInterceptor::new(|_request| {
         Err(HttpError::other("request blocked by interceptor"))
     }));
 
@@ -283,7 +283,7 @@ async fn test_response_interceptor_order_is_stable_and_short_circuits() {
 
     let events = Arc::new(Mutex::new(Vec::new()));
     let first_events = Arc::clone(&events);
-    client.add_response_interceptor(ResponseInterceptor::new(move |_meta| {
+    client.add_response_interceptor(HttpResponseInterceptor::new(move |_meta| {
         first_events
             .lock()
             .expect("lock response interceptor events for first")
@@ -291,7 +291,7 @@ async fn test_response_interceptor_order_is_stable_and_short_circuits() {
         Ok(())
     }));
     let second_events = Arc::clone(&events);
-    client.add_response_interceptor(ResponseInterceptor::new(move |_meta| {
+    client.add_response_interceptor(HttpResponseInterceptor::new(move |_meta| {
         second_events
             .lock()
             .expect("lock response interceptor events for second")
@@ -327,7 +327,7 @@ async fn test_clear_response_interceptors_restores_success_path() {
     let mut client = HttpClientFactory::new()
         .create_with_options(options)
         .unwrap();
-    client.add_response_interceptor(ResponseInterceptor::new(|_meta| {
+    client.add_response_interceptor(HttpResponseInterceptor::new(|_meta| {
         Err(HttpError::other("should be cleared"))
     }));
     client.clear_response_interceptors();
@@ -353,7 +353,7 @@ async fn test_execute_applies_response_interceptor_for_unconsumed_body() {
         .unwrap();
     let called = Arc::new(AtomicUsize::new(0));
     let called_for_interceptor = Arc::clone(&called);
-    client.add_response_interceptor(ResponseInterceptor::new(move |_meta| {
+    client.add_response_interceptor(HttpResponseInterceptor::new(move |_meta| {
         called_for_interceptor.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }));
@@ -382,7 +382,7 @@ async fn test_request_url_can_differ_from_response_meta_url() {
     let rewritten_url = url::Url::parse("https://interceptor.example/rewritten")
         .expect("static interceptor URL should parse");
     let rewritten_url_for_interceptor = rewritten_url.clone();
-    client.add_response_interceptor(ResponseInterceptor::new(move |meta| {
+    client.add_response_interceptor(HttpResponseInterceptor::new(move |meta| {
         meta.url = rewritten_url_for_interceptor.clone();
         Ok(())
     }));
@@ -436,7 +436,7 @@ async fn test_request_url_is_used_in_buffered_read_error() {
         .join("context-url-timeout")
         .expect("request URL should join");
     let expected_url_for_interceptor = interceptor_url.clone();
-    client.add_response_interceptor(ResponseInterceptor::new(move |meta| {
+    client.add_response_interceptor(HttpResponseInterceptor::new(move |meta| {
         meta.url = expected_url_for_interceptor.clone();
         Ok(())
     }));
@@ -473,7 +473,7 @@ async fn test_retry_status_code_allowlist_can_disable_retry_for_503() {
         .unwrap();
     let attempts = Arc::new(AtomicUsize::new(0));
     let attempts_for_interceptor = Arc::clone(&attempts);
-    client.add_request_interceptor(RequestInterceptor::new(move |_request| {
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request| {
         attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }));
@@ -505,7 +505,7 @@ async fn test_retry_status_code_allowlist_can_enable_retry_for_503() {
         .unwrap();
     let attempts = Arc::new(AtomicUsize::new(0));
     let attempts_for_interceptor = Arc::clone(&attempts);
-    client.add_request_interceptor(RequestInterceptor::new(move |_request| {
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request| {
         attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }));
@@ -528,7 +528,7 @@ async fn test_retry_error_kind_allowlist_can_disable_transport_retry() {
         .unwrap();
     let attempts = Arc::new(AtomicUsize::new(0));
     let attempts_for_interceptor = Arc::clone(&attempts);
-    client.add_request_interceptor(RequestInterceptor::new(move |_request| {
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request| {
         attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }));
@@ -674,7 +674,7 @@ async fn test_add_header_injector_still_overrides_client_default_header() {
         .create_with_options(options)
         .unwrap();
     client.add_header("x-order", "client").unwrap();
-    client.add_header_injector(HeaderInjector::new(|headers: &mut HeaderMap| {
+    client.add_header_injector(HttpHeaderInjector::new(|headers: &mut HeaderMap| {
         headers.insert(
             HeaderName::from_static("x-order"),
             HeaderValue::from_static("injector"),

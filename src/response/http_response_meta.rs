@@ -8,7 +8,11 @@
  ******************************************************************************/
 //! Shared HTTP response metadata (status, headers, URL, request method).
 
+use std::time::{Duration, SystemTime};
+
+use http::header::RETRY_AFTER;
 use http::{HeaderMap, Method, StatusCode};
+use httpdate::parse_http_date;
 use url::Url;
 
 /// HTTP response metadata available before body buffering/stream consumption.
@@ -34,4 +38,39 @@ impl HttpResponseMeta {
             method,
         }
     }
+
+    /// Returns parsed `Retry-After` when this response status should honor it.
+    ///
+    /// Applicable statuses are `429` and `5xx`, and header value can be
+    /// `delta-seconds` or HTTP-date.
+    pub fn retry_after_hint(&self) -> Option<Duration> {
+        if !is_retry_after_applicable_status(self.status) {
+            return None;
+        }
+        self.headers
+            .get(RETRY_AFTER)
+            .and_then(|value| value.to_str().ok())
+            .and_then(parse_retry_after_value)
+    }
+}
+
+fn is_retry_after_applicable_status(status: StatusCode) -> bool {
+    status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error()
+}
+
+fn parse_retry_after_value(value: &str) -> Option<Duration> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if let Ok(seconds) = trimmed.parse::<u64>() {
+        return Some(Duration::from_secs(seconds));
+    }
+    let retry_at = parse_http_date(trimmed).ok()?;
+    let now = SystemTime::now();
+    Some(
+        retry_at
+            .duration_since(now)
+            .unwrap_or_else(|_| Duration::from_secs(0)),
+    )
 }

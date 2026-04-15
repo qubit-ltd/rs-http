@@ -35,10 +35,10 @@ pub(crate) fn parse_header(name: &str, value: &str) -> HttpResult<(HeaderName, H
     Ok((header_name, header_value))
 }
 
-pub use async_header_injector::AsyncHeaderInjector;
-pub use header_injector::HeaderInjector;
+pub use async_header_injector::AsyncHttpHeaderInjector;
+pub use header_injector::HttpHeaderInjector;
 pub use http_request::HttpRequest;
 pub use http_request_body::HttpRequestBody;
 pub use http_request_builder::HttpRequestBuilder;
 pub use http_request_retry_override::HttpRequestRetryOverride;
-pub use request_interceptor::RequestInterceptor;
+pub use request_interceptor::{HttpRequestInterceptor, HttpRequestInterceptors};

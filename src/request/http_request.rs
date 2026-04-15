@@ -21,12 +21,44 @@ use url::Host;
 use url::Url;
 
 use crate::client::error_mapper::{map_reqwest_error, ReqwestErrorPhase};
-use crate::{AsyncHeaderInjector, HeaderInjector, HttpError, HttpErrorKind, HttpResult};
+use crate::{
+    AsyncHttpHeaderInjector, HttpError, HttpErrorKind, HttpHeaderInjector, HttpLogger, HttpResult,
+};
 
 use super::http_request_body::HttpRequestBody;
 use super::http_request_builder::HttpRequestBuilder;
 use super::http_request_retry_override::HttpRequestRetryOverride;
 use super::parse_header;
+
+/// Request execution options (timeouts, cancellation, and retry override).
+#[derive(Debug, Clone)]
+struct HttpRequestExecutionOptions {
+    /// Overrides client-wide request timeout when set; otherwise client default applies.
+    request_timeout: Option<Duration>,
+    /// Per-request write timeout used during request sending.
+    write_timeout: Duration,
+    /// Per-request read timeout used during response body reads.
+    read_timeout: Duration,
+    /// Optional cancellation token checked before send and during I/O phases.
+    cancellation_token: Option<CancellationToken>,
+    /// Per-request retry override (enable/disable/method-policy/Retry-After behavior).
+    retry_override: HttpRequestRetryOverride,
+}
+
+/// Request context captured from the originating client.
+#[derive(Debug, Clone)]
+struct HttpRequestContext {
+    /// Base URL copied from client options, used to resolve relative `path`.
+    base_url: Option<Url>,
+    /// Whether resolved URLs must avoid IPv6 literal hosts.
+    ipv4_only: bool,
+    /// Client default headers snapshot captured when this request builder was created.
+    default_headers: HeaderMap,
+    /// Client sync header injectors snapshot captured when this request builder was created.
+    injectors: Vec<HttpHeaderInjector>,
+    /// Client async header injectors snapshot captured when this request builder was created.
+    async_injectors: Vec<AsyncHttpHeaderInjector>,
+}
 
 /// Immutable snapshot of a single HTTP call produced by
 /// [`crate::HttpRequestBuilder`].
@@ -43,36 +75,15 @@ pub struct HttpRequest {
     headers: HeaderMap,
     /// Serialized body variant.
     body: HttpRequestBody,
-    /// Overrides client-wide request timeout when set; otherwise client default
-    /// applies.
-    request_timeout: Option<Duration>,
-    /// Per-request write timeout used during request sending.
-    write_timeout: Duration,
-    /// Per-request read timeout used during response body reads.
-    read_timeout: Duration,
-    /// Base URL copied from client options, used to resolve relative `path`.
-    base_url: Option<Url>,
     /// Lazily maintained cache for the currently resolved URL.
     resolved_url: RwLock<Option<Url>>,
     /// Attempt-scoped cache of merged outbound headers after applying
     /// defaults/injectors/request-local headers.
     effective_headers: Option<HeaderMap>,
-    /// Whether resolved URLs must avoid IPv6 literal hosts.
-    ipv4_only: bool,
-    /// Optional cancellation token checked before send and during I/O phases.
-    cancellation_token: Option<CancellationToken>,
-    /// Per-request retry override (enable/disable/method-policy/Retry-After
-    /// behavior).
-    retry_override: HttpRequestRetryOverride,
-    /// Client default headers snapshot captured when this request builder was
-    /// created.
-    default_headers: HeaderMap,
-    /// Client sync header injectors snapshot captured when this request builder
-    /// was created.
-    injectors: Vec<HeaderInjector>,
-    /// Client async header injectors snapshot captured when this request
-    /// builder was created.
-    async_injectors: Vec<AsyncHeaderInjector>,
+    /// Request execution options and runtime controls.
+    execution_options: HttpRequestExecutionOptions,
+    /// Client-derived context for URL and header resolution.
+    context: HttpRequestContext,
 }
 
 impl HttpRequest {
@@ -91,18 +102,22 @@ impl HttpRequest {
             query: builder.query,
             headers: builder.headers,
             body: builder.body,
-            request_timeout: builder.request_timeout,
-            write_timeout: builder.write_timeout,
-            read_timeout: builder.read_timeout,
-            base_url: builder.base_url,
             resolved_url: RwLock::new(None),
             effective_headers: None,
-            ipv4_only: builder.ipv4_only,
-            cancellation_token: builder.cancellation_token,
-            retry_override: builder.retry_override,
-            default_headers: builder.default_headers,
-            injectors: builder.injectors,
-            async_injectors: builder.async_injectors,
+            execution_options: HttpRequestExecutionOptions {
+                request_timeout: builder.request_timeout,
+                write_timeout: builder.write_timeout,
+                read_timeout: builder.read_timeout,
+                cancellation_token: builder.cancellation_token,
+                retry_override: builder.retry_override,
+            },
+            context: HttpRequestContext {
+                base_url: builder.base_url,
+                ipv4_only: builder.ipv4_only,
+                default_headers: builder.default_headers,
+                injectors: builder.injectors,
+                async_injectors: builder.async_injectors,
+            },
         };
         request.refresh_resolved_url_cache();
         request
@@ -279,7 +294,7 @@ impl HttpRequest {
     /// `Some(duration)` when a request-specific timeout overrides the client
     /// default; otherwise `None`.
     pub fn request_timeout(&self) -> Option<Duration> {
-        self.request_timeout
+        self.execution_options.request_timeout
     }
 
     /// Sets a per-request total timeout that overrides the client default for
@@ -292,7 +307,7 @@ impl HttpRequest {
     /// # Returns
     /// `self` for method chaining.
     pub fn set_request_timeout(&mut self, timeout: Duration) -> &mut Self {
-        self.request_timeout = Some(timeout);
+        self.execution_options.request_timeout = Some(timeout);
         self
     }
 
@@ -301,29 +316,29 @@ impl HttpRequest {
     /// # Returns
     /// `self` for method chaining.
     pub fn clear_request_timeout(&mut self) -> &mut Self {
-        self.request_timeout = None;
+        self.execution_options.request_timeout = None;
         self
     }
 
     /// Returns the write-phase timeout used while sending the request.
     pub fn write_timeout(&self) -> Duration {
-        self.write_timeout
+        self.execution_options.write_timeout
     }
 
     /// Sets the write-phase timeout used while sending the request.
     pub fn set_write_timeout(&mut self, timeout: Duration) -> &mut Self {
-        self.write_timeout = timeout;
+        self.execution_options.write_timeout = timeout;
         self
     }
 
     /// Returns the read-phase timeout used while reading response body bytes.
     pub fn read_timeout(&self) -> Duration {
-        self.read_timeout
+        self.execution_options.read_timeout
     }
 
     /// Sets the read-phase timeout used while reading response body bytes.
     pub fn set_read_timeout(&mut self, timeout: Duration) -> &mut Self {
-        self.read_timeout = timeout;
+        self.execution_options.read_timeout = timeout;
         self
     }
 
@@ -334,7 +349,7 @@ impl HttpRequest {
     /// `Some` when a base is configured; `None` when only absolute URLs in
     /// `path` are valid.
     pub fn base_url(&self) -> Option<&Url> {
-        self.base_url.as_ref()
+        self.context.base_url.as_ref()
     }
 
     /// Sets the base URL used by [`Self::resolved_url`] when `path` is not
@@ -346,7 +361,7 @@ impl HttpRequest {
     /// # Returns
     /// `self` for method chaining.
     pub fn set_base_url(&mut self, base_url: Url) -> &mut Self {
-        self.base_url = Some(base_url);
+        self.context.base_url = Some(base_url);
         self.refresh_resolved_url_cache();
         self
     }
@@ -357,7 +372,7 @@ impl HttpRequest {
     /// # Returns
     /// `self` for method chaining.
     pub fn clear_base_url(&mut self) -> &mut Self {
-        self.base_url = None;
+        self.context.base_url = None;
         self.refresh_resolved_url_cache();
         self
     }
@@ -368,7 +383,7 @@ impl HttpRequest {
     /// `true` when a resolved URL whose host is an IPv6 literal must be
     /// rejected with [`HttpError::invalid_url`].
     pub fn ipv4_only(&self) -> bool {
-        self.ipv4_only
+        self.context.ipv4_only
     }
 
     /// Enables or disables IPv6 literal host rejection for resolved URLs.
@@ -380,7 +395,7 @@ impl HttpRequest {
     /// # Returns
     /// `self` for method chaining.
     pub fn set_ipv4_only(&mut self, enabled: bool) -> &mut Self {
-        self.ipv4_only = enabled;
+        self.context.ipv4_only = enabled;
         self.refresh_resolved_url_cache();
         self
     }
@@ -391,7 +406,7 @@ impl HttpRequest {
     /// `Some` token checked before send and during I/O; `None` when
     /// cancellation is not wired.
     pub fn cancellation_token(&self) -> Option<&CancellationToken> {
-        self.cancellation_token.as_ref()
+        self.execution_options.cancellation_token.as_ref()
     }
 
     /// Attaches a [`CancellationToken`] that can abort this request
@@ -403,7 +418,7 @@ impl HttpRequest {
     /// # Returns
     /// `self` for method chaining.
     pub fn set_cancellation_token(&mut self, token: CancellationToken) -> &mut Self {
-        self.cancellation_token = Some(token);
+        self.execution_options.cancellation_token = Some(token);
         self
     }
 
@@ -412,7 +427,7 @@ impl HttpRequest {
     /// # Returns
     /// `self` for method chaining.
     pub fn clear_cancellation_token(&mut self) -> &mut Self {
-        self.cancellation_token = None;
+        self.execution_options.cancellation_token = None;
         self
     }
 
@@ -421,7 +436,7 @@ impl HttpRequest {
     /// # Returns
     /// Borrowed [`HttpRequestRetryOverride`].
     pub fn retry_override(&self) -> &HttpRequestRetryOverride {
-        &self.retry_override
+        &self.execution_options.retry_override
     }
 
     /// Replaces the retry override for this single request.
@@ -432,7 +447,7 @@ impl HttpRequest {
     /// # Returns
     /// `self` for method chaining.
     pub fn set_retry_override(&mut self, retry_override: HttpRequestRetryOverride) -> &mut Self {
-        self.retry_override = retry_override;
+        self.execution_options.retry_override = retry_override;
         self
     }
 
@@ -451,12 +466,15 @@ impl HttpRequest {
     /// Assembles a reqwest [`RequestBuilder`](reqwest::RequestBuilder), applies
     /// this snapshot's body, then sends with a bounded write phase.
     ///
-    /// Centralizes query/timeout/body wiring plus cooperative cancellation and
-    /// write-timeout handling; higher-level retry, logging, and interceptors
-    /// stay in [`crate::HttpClient`].
+    /// Centralizes send-attempt preparation and transport wiring:
+    /// - invalidates and recomputes effective headers for each attempt;
+    /// - emits request TRACE logs via the provided logger;
+    /// - applies query/timeout/body wiring plus cooperative cancellation and
+    ///   write-timeout handling.
     ///
     /// # Parameters
     /// - `backend`: Shared reqwest client.
+    /// - `logger`: Attempt-scoped request logger.
     ///
     /// # Returns
     /// The successful [`Response`] or a mapped [`HttpError`].
@@ -466,22 +484,33 @@ impl HttpRequest {
     /// - Transport failures mapped from reqwest.
     /// - Write timeout when the send future does not complete within
     ///   `write_timeout`.
-    pub(crate) async fn send_impl(&mut self, backend: &reqwest::Client) -> HttpResult<Response> {
-        let method = self.method.clone();
-        let url = self.resolved_url()?;
+    pub(crate) async fn send_impl(
+        &mut self,
+        backend: &reqwest::Client,
+        logger: &HttpLogger<'_>,
+    ) -> HttpResult<Response> {
+        // Effective headers are cached on the request. Each send attempt must
+        // invalidate and recompute them so injector output and request mutations
+        // are refreshed instead of reusing stale headers from prior attempts.
+        self.invalidate_effective_headers_cache();
         let headers = self.effective_headers().await?.clone();
+        // Log the request after computing effective headers so TRACE logs
+        logger.log_request(self);
+
+        let method = self.method().clone();
+        let url = self.resolved_url()?;
         let mut builder = backend.request(method.clone(), url.clone());
         builder = builder.headers(headers);
         if !self.query.is_empty() {
             builder = builder.query(self.query.as_slice());
         }
-        if let Some(timeout) = self.request_timeout {
+        if let Some(timeout) = self.execution_options.request_timeout {
             builder = builder.timeout(timeout);
         }
         builder = Self::apply_request_body(builder, self.take_body());
 
-        let send_future = tokio::time::timeout(self.write_timeout, builder.send());
-        let next = if let Some(token) = self.cancellation_token.as_ref() {
+        let send_future = tokio::time::timeout(self.execution_options.write_timeout, builder.send());
+        let next = if let Some(token) = self.execution_options.cancellation_token.as_ref() {
             tokio::select! {
                 _ = token.cancelled() => {
                     return Err(HttpError::cancelled("Request cancelled while sending")
@@ -505,7 +534,7 @@ impl HttpRequest {
             )),
             Err(_) => Err(HttpError::write_timeout(format!(
                 "Write timeout after {:?} while sending request",
-                self.write_timeout
+                self.execution_options.write_timeout
             ))
             .with_method(&method)
             .with_url(&url)),
@@ -562,7 +591,7 @@ impl HttpRequest {
             return Ok(url);
         }
 
-        let base = self.base_url.as_ref().ok_or_else(|| {
+        let base = self.context.base_url.as_ref().ok_or_else(|| {
             HttpError::invalid_url(format!(
                 "Cannot resolve relative path '{}' without base_url",
                 self.path
@@ -591,7 +620,7 @@ impl HttpRequest {
     /// [`HttpError::invalid_url`] when `ipv4_only` is `true` and the host is an
     /// IPv6 literal.
     fn validate_resolved_url_host(&self, url: &Url) -> Result<(), HttpError> {
-        if self.ipv4_only && matches!(url.host(), Some(Host::Ipv6(_))) {
+        if self.context.ipv4_only && matches!(url.host(), Some(Host::Ipv6(_))) {
             return Err(HttpError::invalid_url(format!(
                 "IPv6 literal host is not allowed when ipv4_only=true: {}",
                 url
@@ -606,6 +635,11 @@ impl HttpRequest {
     /// replaying defaults/injectors/request-local headers and stores them in
     /// [`Self::effective_headers`]. Later calls in the same attempt return the
     /// cached map.
+    ///
+    /// Why this API is async:
+    /// - async injectors are part of header assembly and may perform awaitable
+    ///   work (for example token refresh or other I/O-backed value resolution).
+    /// - therefore header materialization cannot be fully synchronous.
     ///
     /// Merge order (later wins on duplicates):
     /// 1. Client default headers snapshot captured when the builder was
@@ -655,12 +689,12 @@ impl HttpRequest {
 
     /// Computes merged outbound headers without touching the cache.
     async fn compute_effective_headers(&self) -> HttpResult<HeaderMap> {
-        let mut headers = self.default_headers.clone();
+        let mut headers = self.context.default_headers.clone();
 
-        for injector in &self.injectors {
+        for injector in &self.context.injectors {
             injector.apply(&mut headers)?;
         }
-        for injector in &self.async_injectors {
+        for injector in &self.context.async_injectors {
             injector.apply(&mut headers).await?;
         }
 
@@ -680,6 +714,7 @@ impl HttpRequest {
     /// `None`.
     pub(crate) fn cancelled_error_if_needed(&self, message: &str) -> Option<HttpError> {
         if self
+            .execution_options
             .cancellation_token
             .as_ref()
             .is_some_and(CancellationToken::is_cancelled)
@@ -735,18 +770,10 @@ impl Clone for HttpRequest {
             query: self.query.clone(),
             headers: self.headers.clone(),
             body: self.body.clone(),
-            request_timeout: self.request_timeout,
-            write_timeout: self.write_timeout,
-            read_timeout: self.read_timeout,
-            base_url: self.base_url.clone(),
             resolved_url: RwLock::new(self.resolved_url_cached()),
             effective_headers: self.effective_headers.clone(),
-            ipv4_only: self.ipv4_only,
-            cancellation_token: self.cancellation_token.clone(),
-            retry_override: self.retry_override.clone(),
-            default_headers: self.default_headers.clone(),
-            injectors: self.injectors.clone(),
-            async_injectors: self.async_injectors.clone(),
+            execution_options: self.execution_options.clone(),
+            context: self.context.clone(),
         }
     }
 }

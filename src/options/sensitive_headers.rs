@@ -13,16 +13,17 @@ use crate::constants::DEFAULT_SENSITIVE_HEADER_NAMES;
 
 /// Case-insensitive set of HTTP header names whose values should be masked in logs.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SensitiveHeaders {
+pub struct SensitiveHttpHeaders {
     /// Normalized lowercase header names.
     headers: BTreeSet<String>,
 }
 
-impl SensitiveHeaders {
+impl SensitiveHttpHeaders {
     /// Creates an empty set (no names marked sensitive).
     ///
     /// # Returns
-    /// New [`SensitiveHeaders`] without default names; prefer [`SensitiveHeaders::default`] for built-ins.
+    /// New [`SensitiveHttpHeaders`] without default names; prefer
+    /// [`SensitiveHttpHeaders::default`] for built-ins.
     pub fn new() -> Self {
         Self {
             headers: BTreeSet::new(),
@@ -51,7 +52,7 @@ impl SensitiveHeaders {
         }
     }
 
-    /// Inserts each header from the iterator via [`SensitiveHeaders::insert`].
+    /// Inserts each header from the iterator via [`SensitiveHttpHeaders::insert`].
     ///
     /// # Parameters
     /// - `headers`: Iterator of header name-like values.
@@ -81,7 +82,7 @@ impl SensitiveHeaders {
     /// Returns whether no sensitive names are registered.
     ///
     /// # Returns
-    /// `true` if [`SensitiveHeaders::len`] is zero.
+    /// `true` if [`SensitiveHttpHeaders::len`] is zero.
     pub fn is_empty(&self) -> bool {
         self.headers.is_empty()
     }
@@ -95,13 +96,13 @@ impl SensitiveHeaders {
     }
 }
 
-impl Default for SensitiveHeaders {
+impl Default for SensitiveHttpHeaders {
     /// Starts with [`crate::DEFAULT_SENSITIVE_HEADER_NAMES`] pre-registered.
     ///
     /// # Returns
-    /// Non-empty [`SensitiveHeaders`].
+    /// Non-empty [`SensitiveHttpHeaders`].
     fn default() -> Self {
-        let mut result = SensitiveHeaders::new();
+        let mut result = SensitiveHttpHeaders::new();
         result.extend(DEFAULT_SENSITIVE_HEADER_NAMES);
         result
     }

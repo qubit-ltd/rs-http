@@ -12,7 +12,9 @@ use std::time::Duration;
 
 use http::header::HeaderName;
 use http::{HeaderValue, Method, StatusCode};
-use qubit_http::{AsyncHeaderInjector, HeaderInjector, HttpClientFactory, HttpClientOptions};
+use qubit_http::{
+    AsyncHttpHeaderInjector, HttpClientFactory, HttpClientOptions, HttpHeaderInjector,
+};
 use tokio::time::timeout;
 
 use crate::common::{spawn_multi_shot_server, spawn_one_shot_server, ResponsePlan};
@@ -35,7 +37,7 @@ async fn test_async_header_injector_runs_after_sync_injector_with_stable_order()
     let mut client = HttpClientFactory::new()
         .create_with_options(options)
         .expect("client should be created");
-    client.add_header_injector(HeaderInjector::new(move |headers| {
+    client.add_header_injector(HttpHeaderInjector::new(move |headers| {
         sync_order.lock().unwrap().push("sync".to_string());
         headers.insert(
             HeaderName::from_static("x-flow"),
@@ -43,7 +45,7 @@ async fn test_async_header_injector_runs_after_sync_injector_with_stable_order()
         );
         Ok(())
     }));
-    client.add_async_header_injector(AsyncHeaderInjector::new(move |headers| {
+    client.add_async_header_injector(AsyncHttpHeaderInjector::new(move |headers| {
         let async_order = async_order.clone();
         Box::pin(async move {
             async_order.lock().unwrap().push("async".to_string());
@@ -81,7 +83,7 @@ async fn test_async_header_injector_failure_short_circuits_request() {
     let mut client = HttpClientFactory::new()
         .create_with_options(options)
         .expect("client should be created");
-    client.add_async_header_injector(AsyncHeaderInjector::new(|_headers| {
+    client.add_async_header_injector(AsyncHttpHeaderInjector::new(|_headers| {
         Box::pin(async move { Err(qubit_http::HttpError::other("async injector failed")) })
     }));
 
@@ -113,7 +115,7 @@ async fn test_clear_async_header_injectors_removes_async_mutation() {
     let mut client = HttpClientFactory::new()
         .create_with_options(options)
         .expect("client should be created");
-    client.add_async_header_injector(AsyncHeaderInjector::new(|headers| {
+    client.add_async_header_injector(AsyncHttpHeaderInjector::new(|headers| {
         Box::pin(async move {
             headers.insert(
                 HeaderName::from_static("x-removed"),

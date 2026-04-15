@@ -9,11 +9,11 @@
 
 use http::HeaderMap;
 use http::HeaderValue;
-use qubit_http::AsyncHeaderInjector;
+use qubit_http::AsyncHttpHeaderInjector;
 
 #[tokio::test]
 async fn test_async_header_injector_apply_updates_header_map() {
-    let injector = AsyncHeaderInjector::new(|headers| {
+    let injector = AsyncHttpHeaderInjector::new(|headers| {
         Box::pin(async move {
             headers.insert("x-async", HeaderValue::from_static("ok"));
             Ok(())
@@ -36,7 +36,7 @@ async fn test_async_header_injector_apply_updates_header_map() {
 
 #[tokio::test]
 async fn test_async_header_injector_apply_propagates_error() {
-    let injector = AsyncHeaderInjector::new(|_headers| {
+    let injector = AsyncHttpHeaderInjector::new(|_headers| {
         Box::pin(async move { Err(qubit_http::HttpError::other("injector failed")) })
     });
 
@@ -51,7 +51,7 @@ async fn test_async_header_injector_apply_propagates_error() {
 
 #[tokio::test]
 async fn test_async_header_injector_clone_keeps_same_behavior() {
-    let injector = AsyncHeaderInjector::new(|headers| {
+    let injector = AsyncHttpHeaderInjector::new(|headers| {
         Box::pin(async move {
             headers.insert("x-clone", HeaderValue::from_static("ok"));
             Ok(())
@@ -74,7 +74,7 @@ async fn test_async_header_injector_clone_keeps_same_behavior() {
 
 #[test]
 fn test_async_header_injector_debug_output_contains_type_name() {
-    let injector = AsyncHeaderInjector::new(|_headers| Box::pin(async move { Ok(()) }));
+    let injector = AsyncHttpHeaderInjector::new(|_headers| Box::pin(async move { Ok(()) }));
     let output = format!("{injector:?}");
-    assert!(output.contains("AsyncHeaderInjector"));
+    assert!(output.contains("AsyncHttpHeaderInjector"));
 }

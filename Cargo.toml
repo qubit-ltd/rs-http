@@ -44,7 +44,7 @@ futures-util = "0.3"
 qubit-common = "0.5"
 qubit-config = "0.8"
 qubit-concurrent = "0.3"
-qubit-function = "0.8"
+qubit-function = { path = "../rs-function" }
 qubit-retry = "0.3"
 
 [dev-dependencies]

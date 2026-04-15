@@ -17,5 +17,5 @@ use crate::HttpResult;
 ///
 /// This alias keeps the HTTP-domain name while directly reusing
 /// [`ArcMutatingFunction`], so callers can construct injectors with
-/// `HeaderInjector::new(...)`.
-pub type HeaderInjector = ArcMutatingFunction<HeaderMap, HttpResult<()>>;
+/// `HttpHeaderInjector::new(...)`.
+pub type HttpHeaderInjector = ArcMutatingFunction<HeaderMap, HttpResult<()>>;

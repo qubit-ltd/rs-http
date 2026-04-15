@@ -10,7 +10,7 @@
 use http::header::{HeaderName, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use http::{HeaderMap, Method};
 use qubit_http::{
-    HttpClientFactory, HttpClientOptions, HttpLogger, HttpLoggingOptions, SensitiveHeaders,
+    HttpClientFactory, HttpClientOptions, HttpLogger, HttpLoggingOptions, SensitiveHttpHeaders,
 };
 
 use crate::common::capture_trace_logs;
@@ -21,7 +21,7 @@ fn capture_request_header_logs(name: HeaderName, value: HeaderValue) -> String {
         log_request_body: false,
         ..HttpLoggingOptions::default()
     };
-    let sensitive_headers = SensitiveHeaders::default();
+    let sensitive_headers = SensitiveHttpHeaders::default();
     let mut client_options = HttpClientOptions::default();
     client_options.logging = options;
     client_options.sensitive_headers = sensitive_headers;

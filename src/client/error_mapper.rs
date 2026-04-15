@@ -8,11 +8,6 @@
  ******************************************************************************/
 //! Reqwest/HTTP error mapping helpers used by `HttpClient` internals.
 
-use std::time::{Duration, SystemTime};
-
-use http::header::RETRY_AFTER;
-use http::{HeaderMap, StatusCode};
-use httpdate::parse_http_date;
 use url::Url;
 
 use crate::{HttpError, HttpErrorKind};
@@ -97,57 +92,3 @@ fn classify_reqwest_timeout_kind(
     }
 }
 
-/// Parses `Retry-After` from response headers when status is retryable.
-///
-/// # Parameters
-/// - `status`: HTTP status code.
-/// - `headers`: Response headers.
-///
-/// # Returns
-/// Parsed retry delay when `status` is `429` or `5xx` and `Retry-After` is
-/// present in `delta-seconds` or HTTP-date format.
-pub(super) fn parse_retry_after(status: StatusCode, headers: &HeaderMap) -> Option<Duration> {
-    if !is_retry_after_applicable_status(status) {
-        return None;
-    }
-    headers
-        .get(RETRY_AFTER)
-        .and_then(|value| value.to_str().ok())
-        .and_then(parse_retry_after_value)
-}
-
-/// Returns whether a status code should honor `Retry-After`.
-///
-/// # Parameters
-/// - `status`: HTTP status code.
-///
-/// # Returns
-/// `true` for `429` and `5xx` statuses; otherwise `false`.
-fn is_retry_after_applicable_status(status: StatusCode) -> bool {
-    status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error()
-}
-
-/// Parses a `Retry-After` header value as delta-seconds or HTTP-date.
-///
-/// # Parameters
-/// - `value`: Raw `Retry-After` header value.
-///
-/// # Returns
-/// Parsed duration, or `None` when value is neither valid delta-seconds nor a
-/// valid HTTP-date.
-fn parse_retry_after_value(value: &str) -> Option<Duration> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-    if let Ok(seconds) = trimmed.parse::<u64>() {
-        return Some(Duration::from_secs(seconds));
-    }
-    let retry_at = parse_http_date(trimmed).ok()?;
-    let now = SystemTime::now();
-    Some(
-        retry_at
-            .duration_since(now)
-            .unwrap_or_else(|_| Duration::from_secs(0)),
-    )
-}

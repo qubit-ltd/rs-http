@@ -12,7 +12,7 @@ use http::header::{AUTHORIZATION, CONTENT_TYPE, SET_COOKIE};
 use http::{HeaderMap, HeaderValue, Method, StatusCode};
 use qubit_http::{
     HttpClientFactory, HttpClientOptions, HttpLogger, HttpLoggingOptions, HttpRequest,
-    HttpRequestBody, HttpResponse, HttpResponseMeta, SensitiveHeaders,
+    HttpRequestBody, HttpResponse, HttpResponseMeta, SensitiveHttpHeaders,
 };
 use url::Url;
 
@@ -45,7 +45,7 @@ fn test_log_request_disabled_emits_nothing() {
     options.enabled = false;
     let mut headers = HeaderMap::new();
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-    let sensitive_headers = SensitiveHeaders::default();
+    let sensitive_headers = SensitiveHttpHeaders::default();
     let mut client_options = HttpClientOptions::default();
     client_options.logging = options;
     client_options.sensitive_headers = sensitive_headers;
@@ -71,7 +71,7 @@ fn test_log_request_toggles_header_and_body() {
 
     let mut headers = HeaderMap::new();
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-    let sensitive_headers = SensitiveHeaders::default();
+    let sensitive_headers = SensitiveHttpHeaders::default();
     let mut client_options = HttpClientOptions::default();
     client_options.logging = options;
     client_options.sensitive_headers = sensitive_headers;
@@ -100,21 +100,27 @@ fn test_log_response_masks_sensitive_headers() {
         HeaderValue::from_static("Bearer very-secret-token"),
     );
     let options = HttpLoggingOptions::default();
-    let sensitive_headers = SensitiveHeaders::default();
+    let sensitive_headers = SensitiveHttpHeaders::default();
     let mut client_options = HttpClientOptions::default();
     client_options.logging = options;
     client_options.sensitive_headers = sensitive_headers;
     let logger = HttpLogger::new(&client_options);
 
     let logs = capture_trace_logs(|| {
-        let response = HttpResponse::new(
+        let mut response = HttpResponse::new(
             StatusCode::OK,
             headers.clone(),
             Bytes::from_static(b"ok"),
             Url::parse("https://example.com/data").unwrap(),
             Method::GET,
         );
-        logger.log_response(&response);
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("failed to build tokio runtime");
+        runtime
+            .block_on(async { logger.log_response(&mut response).await })
+            .expect("response logging should succeed");
     });
     assert!(logs.contains("set-cookie: se****ue"));
     assert!(logs.contains("authorization: Be****en"));
@@ -127,21 +133,27 @@ fn test_log_response_binary_body_and_truncation() {
         ..HttpLoggingOptions::default()
     };
     let headers = HeaderMap::new();
-    let sensitive_headers = SensitiveHeaders::default();
+    let sensitive_headers = SensitiveHttpHeaders::default();
     let mut client_options = HttpClientOptions::default();
     client_options.logging = options;
     client_options.sensitive_headers = sensitive_headers;
     let logger = HttpLogger::new(&client_options);
 
     let logs = capture_trace_logs(|| {
-        let response = HttpResponse::new(
+        let mut response = HttpResponse::new(
             StatusCode::OK,
             headers.clone(),
             Bytes::from_static(&[0xFF, 0xFE, 0xFD, 0xFC, 0xFB]),
             Url::parse("https://example.com/bin").unwrap(),
             Method::GET,
         );
-        logger.log_response(&response);
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("failed to build tokio runtime");
+        runtime
+            .block_on(async { logger.log_response(&mut response).await })
+            .expect("response logging should succeed");
     });
     assert!(logs.contains("Response body: <binary 5 bytes>...<truncated 1 bytes>"));
 }
@@ -152,7 +164,7 @@ fn test_log_stream_response_headers_respects_toggle() {
     options.log_response_header = false;
     let mut headers = HeaderMap::new();
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("text/event-stream"));
-    let sensitive_headers = SensitiveHeaders::default();
+    let sensitive_headers = SensitiveHttpHeaders::default();
     let mut client_options = HttpClientOptions::default();
     client_options.logging = options;
     client_options.sensitive_headers = sensitive_headers;
@@ -175,7 +187,7 @@ fn test_log_stream_response_headers_respects_toggle() {
 fn test_log_request_text_body() {
     let options = HttpLoggingOptions::default();
     let headers = HeaderMap::new();
-    let sensitive_headers = SensitiveHeaders::default();
+    let sensitive_headers = SensitiveHttpHeaders::default();
     let mut client_options = HttpClientOptions::default();
     client_options.logging = options;
     client_options.sensitive_headers = sensitive_headers;
@@ -198,7 +210,7 @@ fn test_log_request_text_body() {
 fn test_log_request_stream_body_logged_as_empty() {
     let options = HttpLoggingOptions::default();
     let headers = HeaderMap::new();
-    let sensitive_headers = SensitiveHeaders::default();
+    let sensitive_headers = SensitiveHttpHeaders::default();
     let mut client_options = HttpClientOptions::default();
     client_options.logging = options;
     client_options.sensitive_headers = sensitive_headers;

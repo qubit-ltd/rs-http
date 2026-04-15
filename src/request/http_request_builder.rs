@@ -19,7 +19,8 @@ use url::form_urlencoded;
 use url::Url;
 
 use crate::{
-    AsyncHeaderInjector, HeaderInjector, HttpClient, HttpError, HttpResult, HttpRetryMethodPolicy,
+    AsyncHttpHeaderInjector, HttpClient, HttpError, HttpHeaderInjector, HttpResult,
+    HttpRetryMethodPolicy,
 };
 
 use super::http_request::HttpRequest;
@@ -57,9 +58,9 @@ pub struct HttpRequestBuilder {
     /// Default headers snapshot from the originating client.
     pub(super) default_headers: HeaderMap,
     /// Sync header injectors snapshot from the originating client.
-    pub(super) injectors: Vec<HeaderInjector>,
+    pub(super) injectors: Vec<HttpHeaderInjector>,
     /// Async header injectors snapshot from the originating client.
-    pub(super) async_injectors: Vec<AsyncHeaderInjector>,
+    pub(super) async_injectors: Vec<AsyncHttpHeaderInjector>,
 }
 
 impl HttpRequestBuilder {

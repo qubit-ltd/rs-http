@@ -12,7 +12,8 @@
 // Sensitive headers (log masking)
 // ---------------------------------------------------------------------------
 
-/// Built-in header names preloaded into [`crate::SensitiveHeaders::default`] for log masking.
+/// Built-in header names preloaded into [`crate::SensitiveHttpHeaders::default`]
+/// for log masking.
 pub const DEFAULT_SENSITIVE_HEADER_NAMES: [&str; 20] = [
     "Authorization",
     "Api-Key",
@@ -37,7 +38,7 @@ pub const DEFAULT_SENSITIVE_HEADER_NAMES: [&str; 20] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Timeouts ([`crate::TimeoutOptions::default`])
+// Timeouts ([`crate::HttpTimeoutOptions::default`])
 // ---------------------------------------------------------------------------
 
 /// Default connect timeout in seconds.
