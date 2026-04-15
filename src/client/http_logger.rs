@@ -14,16 +14,15 @@
 //!
 //! Haixing Hu
 
-use bytes::Bytes;
 use crate::constants::{
     SENSITIVE_HEADER_MASK_EDGE_CHARS, SENSITIVE_HEADER_MASK_PLACEHOLDER,
     SENSITIVE_HEADER_MASK_SHORT_LEN,
 };
 use crate::{
     HttpClientOptions, HttpLoggingOptions, HttpRequest, HttpRequestBody, HttpResponse,
-    HttpResponseMeta,
-    SensitiveHeaders,
+    HttpResponseMeta, SensitiveHeaders,
 };
+use bytes::Bytes;
 
 /// HTTP logger bound to one pair of logging options and sensitive header policy.
 #[derive(Debug, Clone, Copy)]

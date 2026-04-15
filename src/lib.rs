@@ -36,9 +36,9 @@ pub mod sse;
 
 pub use client::http_logger::HttpLogger;
 pub use client::HttpClient;
+pub use client::HttpClientFactory;
 pub use constants::DEFAULT_SENSITIVE_HEADER_NAMES;
 pub use error::{HttpError, HttpErrorKind, HttpResult, RetryHint};
-pub use client::HttpClientFactory;
 pub use options::{
     HttpClientOptions, HttpConfigError, HttpConfigErrorKind, HttpLoggingOptions,
     HttpRetryMethodPolicy, HttpRetryOptions, ProxyOptions, ProxyType, SensitiveHeaders,
@@ -49,7 +49,5 @@ pub use request::{
     AsyncHeaderInjector, HeaderInjector, HttpRequest, HttpRequestBody, HttpRequestBuilder,
     HttpRequestRetryOverride, RequestInterceptor,
 };
-pub use response::{
-    HttpByteStream, HttpResponse, HttpResponseMeta, ResponseInterceptor,
-};
+pub use response::{HttpByteStream, HttpResponse, HttpResponseMeta, ResponseInterceptor};
 pub use tokio_util::sync::CancellationToken;

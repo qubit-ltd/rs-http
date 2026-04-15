@@ -281,16 +281,13 @@ impl HttpClient {
             .ensure_success_response(&request, response, "HTTP request failed")
             .await?;
 
-        let method = request.method().clone();
         let mut meta = HttpResponseMeta::new(
             response.status(),
             response.headers().clone(),
             response.url().clone(),
-            method,
+            request.method().clone(),
         );
         self.apply_response_interceptors(&mut meta)?;
-        let request_url = request.resolved_url()?;
-
         let sse_decode_options = SseDecodeOptions::new(
             self.options.sse_json_mode,
             self.options.sse_max_line_bytes,
@@ -301,7 +298,7 @@ impl HttpClient {
             response,
             request.read_timeout(),
             request.cancellation_token().cloned(),
-            request_url,
+            request.resolved_url()?,
             sse_decode_options,
         );
         let logger = HttpLogger::new(&self.options);
@@ -386,10 +383,7 @@ impl HttpClient {
     /// # Errors
     /// Returns the first interceptor error and enriches it with
     /// status/method/URL context when missing.
-    fn apply_response_interceptors(
-        &self,
-        response_meta: &mut HttpResponseMeta,
-    ) -> HttpResult<()> {
+    fn apply_response_interceptors(&self, response_meta: &mut HttpResponseMeta) -> HttpResult<()> {
         for interceptor in &self.response_interceptors {
             interceptor.apply(response_meta).map_err(|error| {
                 let mut mapped = error;
