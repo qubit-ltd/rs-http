@@ -1,6 +1,6 @@
 [package]
 name = "qubit-http"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2021"
 rust-version = "1.70"
 authors = ["Haixing Hu <starfish.hu@gmail.com>"]
@@ -27,27 +27,28 @@ name = "qubit_http"
 doctest = false
 
 [dependencies]
-thiserror = "2.0.17"
+thiserror = "2.0"
 tracing = "0.1"
-reqwest = { version = "0.13.2", features = ["json", "stream", "query", "socks"] }
-http = "1.1"
+reqwest = { version = "0.13", features = ["json", "stream", "query", "socks"] }
+http = "1.4"
 httpdate = "1.0"
 url = "2.5"
-bytes = "1.7"
+bytes = "1.11"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-tokio = { version = "1.0", features = ["time", "net", "macros"] }
+tokio = { version = "1.52", features = ["time", "net", "macros"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 async-stream = "0.3"
 futures-util = "0.3"
-qubit-common = "0.5.3"
-qubit-config = "0.8.3"
-qubit-concurrent = "0.2.3"
-qubit-function = "0.8.1"
-qubit-retry = "0.3.0"
+
+qubit-common = "0.5"
+qubit-config = "0.8"
+qubit-concurrent = "0.3"
+qubit-function = "0.8"
+qubit-retry = "0.3"
 
 [dev-dependencies]
-tokio = { version = "1.0", features = ["full", "test-util"] }
+tokio = { version = "1.52", features = ["full", "test-util"] }
 tracing-subscriber = { version = "0.3", features = ["fmt"] }
 
 [package.metadata.docs.rs]

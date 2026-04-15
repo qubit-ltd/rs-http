@@ -104,9 +104,9 @@ dependencies = [
 
 [[package]]
 name = "bitflags"
-version = "2.11.0"
+version = "2.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "843867be96c8daad0d758b57df9392b6d8d271134fce549de6ce169ff98a92af"
+checksum = "c4512299f36f043ab09a583e57bceb5a5aab7a73db1805848e8fef3c9e8c78b3"
 
 [[package]]
 name = "bumpalo"
@@ -519,9 +519,9 @@ dependencies = [
 
 [[package]]
 name = "hyper-rustls"
-version = "0.27.8"
+version = "0.27.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c2b52f86d1d4bc0d6b4e6826d960b1b333217e07d36b882dca570a5e1c48895b"
+checksum = "33ca68d021ef39cf6463ab54c1d0f5daf03377b70561305bb89a8f83aab66e0f"
 dependencies = [
  "http",
  "hyper",
@@ -938,12 +938,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "paste"
-version = "1.0.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
-
-[[package]]
 name = "pastey"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1006,9 +1000,9 @@ checksum = "a4796e65c2e33a278db608c15ec55e6eff949c6b0093e527538c30e87f13c7ea"
 
 [[package]]
 name = "qubit-common"
-version = "0.5.3"
+version = "0.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f85f9e2729c599959f67672c3251988128a010c3e0be339ad52225650cf18d6"
+checksum = "7ef67f8870b181dfe212f1ea9f465fc1f6bc313fb630750685630622ebe1c42a"
 dependencies = [
  "bigdecimal",
  "chrono",
@@ -1023,24 +1017,24 @@ dependencies = [
 
 [[package]]
 name = "qubit-concurrent"
-version = "0.2.3"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "553b9dfdab3b2ee49872f384ac40ac8f30cd78d85efbbc416210b5eb594d25cb"
+checksum = "ef5f8294522861a458c7611eaef446bfdc204f3a711cc2d26c6242383be70a8e"
 dependencies = [
  "log",
  "parking_lot",
  "qubit-atomic",
  "qubit-common",
- "qubit-function 0.7.3",
+ "qubit-function",
  "thiserror 2.0.18",
  "tokio",
 ]
 
 [[package]]
 name = "qubit-config"
-version = "0.8.3"
+version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c18e9c52d65e70890f0f66f14ff8fd34303243f8beaffcfd0894684d1bcb6c79"
+checksum = "c145bd4b140c98dfe839a87c2fe458fef6250fe6ccce1c3f9f6bae2f5d4f3600"
 dependencies = [
  "bigdecimal",
  "chrono",
@@ -1060,19 +1054,9 @@ dependencies = [
 
 [[package]]
 name = "qubit-function"
-version = "0.7.3"
+version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cfc2e7b88c03c88fa33f654c12454be0dfbc81f6f452ed930edf33fa1fc6ab3e"
-dependencies = [
- "parking_lot",
- "paste",
-]
-
-[[package]]
-name = "qubit-function"
-version = "0.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0eaa85b2dcd3fe9d7c29a61b9f972c549379dbaeb3ca3d11c16ded58b616769e"
+checksum = "6f29c43790c143fc8f2a7aec97f625ed775387b530ad10a800c99d80e61605a3"
 dependencies = [
  "parking_lot",
  "pastey",
@@ -1080,7 +1064,7 @@ dependencies = [
 
 [[package]]
 name = "qubit-http"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "async-stream",
  "bytes",
@@ -1090,7 +1074,7 @@ dependencies = [
  "qubit-common",
  "qubit-concurrent",
  "qubit-config",
- "qubit-function 0.8.1",
+ "qubit-function",
  "qubit-retry",
  "reqwest",
  "serde",
@@ -1105,14 +1089,14 @@ dependencies = [
 
 [[package]]
 name = "qubit-retry"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "88f76b1d36bb88248ea428a916c9d797ec20c618112055b7a0b0c9ae63d4571a"
+checksum = "3df37ec026315a258604bd72f44f5bd0977769d8b0879e95f2581c0ccdfeaf20"
 dependencies = [
  "chrono",
  "qubit-common",
  "qubit-config",
- "qubit-function 0.8.1",
+ "qubit-function",
  "rand 0.10.1",
  "serde",
  "serde_json",
@@ -1123,9 +1107,9 @@ dependencies = [
 
 [[package]]
 name = "qubit-value"
-version = "0.3.3"
+version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77adf775f1bdac68654b1de4df2d4894e3ccab87e1a00e21d1cb8ac343e69d29"
+checksum = "b2329c5b0b1400c73d42e202767f2650b0260bf1f3e011536bed5d49d4c311e7"
 dependencies = [
  "bigdecimal",
  "chrono",
@@ -1430,9 +1414,9 @@ checksum = "f87165f0995f63a9fbeea62b64d10b4d9d8e78ec6d7d51fb2125fda7bb36788f"
 
 [[package]]
 name = "rustls-webpki"
-version = "0.103.11"
+version = "0.103.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20a6af516fea4b20eccceaf166e8aa666ac996208e8a644ce3ef5aa783bc7cd4"
+checksum = "8279bb85272c9f10811ae6a6c547ff594d6a7f3c6c6b02ee9726d1d0dcfcdd06"
 dependencies = [
  "aws-lc-rs",
  "ring",
@@ -1769,9 +1753,9 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
-version = "1.51.1"
+version = "1.52.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f66bf9585cda4b724d3e78ab34b73fb2bbaba9011b9bfdf69dc836382ea13b8c"
+checksum = "a91135f59b1cbf38c91e73cf3386fca9bb77915c45ce2771460c9d92f0f3d776"
 dependencies = [
  "bytes",
  "libc",
