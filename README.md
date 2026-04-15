@@ -64,9 +64,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 - `HttpClientOptions`: base URL, default headers, timeouts, proxy, retry, logging, sensitive headers, error previews, redirects, connection pool settings, and SSE decoding defaults.
 - `HttpClient`: executes requests with unified behavior, supports sync/async header injectors, request interceptors, response interceptors, and SSE reconnect.
 - `HttpRequestBuilder`: builds request path/query/headers/body/timeout, request-level retry override, cancellation token, per-request base URL, and IPv4-only override.
-- `HttpResponse`: unified response metadata plus a lazily consumed body (`bytes_body().await`, `text().await`, `json().await`, `stream_body()`, `decode_sse_events()`, `decode_sse_json_chunks(...)`).
+- `HttpResponse`: unified response metadata plus a lazily consumed body (`bytes().await`, `text().await`, `json().await`, `stream()`, `sse_events()`, `sse_chunks::<T>()`).
 - `HttpResponseMeta`: response status, headers, final URL, and request method passed to response interceptors.
-- `HttpByteStream`: boxed async byte stream returned by `HttpResponse::stream_body()`.
+- `HttpByteStream`: boxed async byte stream returned by `HttpResponse::stream()`.
 - `qubit_http::sse`: SSE event parsing, JSON chunk decoding, done marker policies, JSON strict/lenient modes, and reconnect options.
 
 ## Why This Crate (vs `http` and `reqwest`)
@@ -311,7 +311,7 @@ async fn consume_raw_stream(client: &qubit_http::HttpClient) -> qubit_http::Http
     let request = client.request(Method::GET, "/v1/stream-bytes").build();
     let mut response = client.execute(request).await?;
 
-    let mut stream = response.stream_body()?;
+    let mut stream = response.stream()?;
     while let Some(item) = stream.next().await {
         let bytes = item?;
         println!("chunk size = {}", bytes.len());
@@ -324,7 +324,7 @@ async fn consume_raw_stream(client: &qubit_http::HttpClient) -> qubit_http::Http
 
 ```rust
 use futures_util::StreamExt;
-use qubit_http::sse::{DoneMarkerPolicy, SseChunk};
+use qubit_http::sse::SseChunk;
 
 #[derive(Debug, serde::Deserialize)]
 struct StreamChunk {
@@ -336,8 +336,7 @@ async fn consume_sse_json(client: &qubit_http::HttpClient) -> qubit_http::HttpRe
         .execute(client.request(http::Method::GET, "/v1/stream").build())
         .await?;
 
-    let mut chunks =
-        response.decode_sse_json_chunks::<StreamChunk>(DoneMarkerPolicy::DefaultDone);
+    let mut chunks = response.sse_chunks::<StreamChunk>();
 
     while let Some(item) = chunks.next().await {
         match item? {
@@ -352,25 +351,28 @@ async fn consume_sse_json(client: &qubit_http::HttpClient) -> qubit_http::HttpRe
 You can set client-level SSE defaults via `HttpClientOptions`:
 
 ```rust
-use qubit_http::sse::SseJsonMode;
+use qubit_http::sse::{DoneMarkerPolicy, SseJsonMode};
 
 options.sse_json_mode = SseJsonMode::Strict;
+options.sse_done_marker_policy = DoneMarkerPolicy::DefaultDone;
 options.sse_max_line_bytes = 64 * 1024;
 options.sse_max_frame_bytes = 1024 * 1024;
 ```
 
-You can still override per response with `response.decode_sse_json_chunks_with_mode(...)`
-or `decode_sse_json_chunks_with_mode_and_limits(...)`:
+You can still override per response by chaining `sse_json_mode`, `sse_done_marker_policy`,
+`sse_max_line_bytes`, and `sse_max_frame_bytes` (each returns `Self` for chaining) with
+`sse_chunks` on the same `HttpResponse`:
 
 ```rust
 use qubit_http::sse::{DoneMarkerPolicy, SseJsonMode};
 
-let chunks = response.decode_sse_json_chunks_with_mode_and_limits::<MyChunk>(
-    DoneMarkerPolicy::DefaultDone,
-    SseJsonMode::Lenient,
-    64 * 1024,   // max_line_bytes
-    1024 * 1024, // max_frame_bytes
-);
+let response = /* ... */;
+let chunks = response
+    .sse_json_mode(SseJsonMode::Lenient)
+    .sse_done_marker_policy(DoneMarkerPolicy::DefaultDone)
+    .sse_max_line_bytes(64 * 1024)
+    .sse_max_frame_bytes(1024 * 1024)
+    .sse_chunks::<MyChunk>();
 ```
 
 ### 9) SSE reconnect
