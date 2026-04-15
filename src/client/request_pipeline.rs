@@ -10,9 +10,7 @@
 
 use reqwest::Response;
 
-use crate::client::error_mapper::{
-    map_reqwest_error, parse_retry_after,
-};
+use crate::client::error_mapper::{map_reqwest_error, parse_retry_after};
 use crate::{HttpClient, HttpErrorKind, HttpLogger, HttpRequest, HttpResponse, HttpResult};
 
 /// Pipeline object that encapsulates one-attempt request setup and response
@@ -125,5 +123,4 @@ impl<'a> RequestPipeline<'a> {
         let max_bytes = self.client.options.error_response_preview_limit.max(1);
         HttpResponse::read_error_body_preview(response, read_timeout, max_bytes).await
     }
-
 }

@@ -466,10 +466,7 @@ impl HttpRequest {
     /// - Transport failures mapped from reqwest.
     /// - Write timeout when the send future does not complete within
     ///   `write_timeout`.
-    pub(crate) async fn send_impl(
-        &mut self,
-        backend: &reqwest::Client,
-    ) -> HttpResult<Response> {
+    pub(crate) async fn send_impl(&mut self, backend: &reqwest::Client) -> HttpResult<Response> {
         let method = self.method.clone();
         let url = self.resolved_url()?;
         let headers = self.effective_headers().await?.clone();

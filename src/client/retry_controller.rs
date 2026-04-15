@@ -145,7 +145,6 @@ impl RetryController {
             .await;
         map_retry_result(result)
     }
-
 }
 
 /// Stores the extra `Retry-After` delay that should be applied before the next

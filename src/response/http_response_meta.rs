@@ -26,12 +26,7 @@ pub struct HttpResponseMeta {
 
 impl HttpResponseMeta {
     /// Creates response metadata from status/headers/url/method parts.
-    pub fn new(
-        status: StatusCode,
-        headers: HeaderMap,
-        url: Url,
-        method: Method,
-    ) -> Self {
+    pub fn new(status: StatusCode, headers: HeaderMap, url: Url, method: Method) -> Self {
         Self {
             status,
             headers,
