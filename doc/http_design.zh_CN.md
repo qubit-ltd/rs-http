@@ -85,14 +85,14 @@
 pub struct HttpClientOptions {
     pub base_url: Option<url::Url>,
     pub default_headers: http::HeaderMap,
-    pub timeouts: TimeoutOptions,
+    pub timeouts: HttpTimeoutOptions,
     pub proxy: ProxyOptions,
     pub logging: HttpLoggingOptions,
-    pub sensitive_headers: SensitiveHeaders,
+    pub sensitive_headers: SensitiveHttpHeaders,
     pub ipv4_only: bool,
 }
 
-pub struct TimeoutOptions {
+pub struct HttpTimeoutOptions {
     pub connect_timeout: std::time::Duration,
     pub read_timeout: std::time::Duration,
     pub write_timeout: std::time::Duration,
@@ -155,14 +155,14 @@ impl HttpClient {
 ### 5.4 Header 注入机制
 
 ```rust
-pub type HeaderInjector =
+pub type HttpHeaderInjector =
     ArcMutatingFunction<http::HeaderMap, Result<(), HttpError>>;
 ```
 
 注入顺序：
 
 1. `options.default_headers`
-2. `HeaderInjector`（认证头、租户/组织头等，由调用方通过闭包定义策略）
+2. `HttpHeaderInjector`（认证头、租户/组织头等，由调用方通过闭包定义策略）
 3. 请求级 headers（最后覆盖）
 
 ### 5.5 SSE 子模块（`rust-http::sse`）
@@ -441,8 +441,8 @@ rust-common/rs-http/
 
 1. 定义客户端选项结构：`HttpClientOptions` + 子配置对象。
 2. 定义基于 `reqwest` 的客户端工厂：`HttpClientFactory`。
-3. 定义 header 注入和脱敏策略：`HeaderInjector` + `SensitiveHeaders`。
-4. 定义统一 timeout 和 proxy 配置：`TimeoutOptions` + `ProxyOptions`。
+3. 定义 header 注入和脱敏策略：`HttpHeaderInjector` + `SensitiveHttpHeaders`。
+4. 定义统一 timeout 和 proxy 配置：`HttpTimeoutOptions` + `ProxyOptions`。
 5. 定义统一 HTTP error 类型：`HttpError/HttpErrorKind`。
 6. 预留与 `qubit-retry` 衔接点：`RetryHint` + `HttpError::retry_hint()`。
 7. 在 `rust-http::sse` 内提供 SSE 解码能力：`SseEvent`、`DoneMarkerPolicy`、`SseChunk`/`SseJsonMode`、行/帧解码与 `decode_json_chunks` 系列函数。

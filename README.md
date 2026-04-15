@@ -9,12 +9,12 @@
 
 `qubit-http` is a Rust HTTP infrastructure crate for building API clients with consistent behavior:
 
-- one client model for request/response and streaming
-- explicit timeout, retry, proxy, and logging controls
-- request-level retry overrides and cancellation (`CancellationToken`)
-- sync/async header injector chains with deterministic precedence
-- built-in JSON/form/multipart/NDJSON request body helpers
-- built-in SSE event and JSON chunk decoding
+- one `execute(...)` flow for buffered, lazy, and streaming response bodies
+- explicit timeout, retry, proxy, redirect, connection pool, and logging controls
+- request-level retry overrides, timeout overrides, base URL overrides, IPv4-only overrides, and cancellation (`CancellationToken`)
+- default headers, sync/async header injectors, request interceptors, and response interceptors
+- built-in bytes/text/JSON/form/multipart/NDJSON request body helpers
+- built-in SSE event decoding, JSON chunk decoding, and reconnect support
 - unified error model (`HttpError`, `HttpErrorKind`, `RetryHint`)
 
 If this is your first time using the crate, start with **Quick Start**, then jump to the scenario you need.
@@ -23,7 +23,7 @@ If this is your first time using the crate, start with **Quick Start**, then jum
 
 ```toml
 [dependencies]
-qubit-http = "0.2.0"
+qubit-http = "0.3.1"
 http = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -51,9 +51,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .query_param("from", "readme")
         .build();
 
-    let response = client.execute(request).await?;
-    println!("status = {}", response.status);
-    println!("text = {}", response.text()?);
+    let mut response = client.execute(request).await?;
+    println!("status = {}", response.status());
+    println!("text = {}", response.text().await?);
     Ok(())
 }
 ```
@@ -61,12 +61,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## Core Types
 
 - `HttpClientFactory`: creates clients from defaults, explicit options, or config.
-- `HttpClientOptions`: base URL, default headers, timeouts, proxy, retry, logging, sensitive headers, and SSE decoding defaults.
-- `HttpClient`: executes requests with unified behavior, supports sync/async header injectors.
-- `HttpRequestBuilder`: builds request path/query/headers/body/timeout, request-level retry override, cancellation token.
-- `HttpResponse`: buffered response (`status`, `headers`, `body`, `text()`, `json()`).
-- `HttpStreamResponse`: metadata + streaming body (`into_stream()`), SSE decoding with configurable size limits.
-- `qubit_http::sse`: SSE event parsing and JSON chunk decoding.
+- `HttpClientOptions`: base URL, default headers, timeouts, proxy, retry, logging, sensitive headers, error previews, redirects, connection pool settings, and SSE decoding defaults.
+- `HttpClient`: executes requests with unified behavior, supports sync/async header injectors, request interceptors, response interceptors, and SSE reconnect.
+- `HttpRequestBuilder`: builds request path/query/headers/body/timeout, request-level retry override, cancellation token, per-request base URL, and IPv4-only override.
+- `HttpResponse`: unified response metadata plus a lazily consumed body (`bytes_body().await`, `text().await`, `json().await`, `stream_body()`, `decode_sse_events()`, `decode_sse_json_chunks(...)`).
+- `HttpResponseMeta`: response status, headers, final URL, and request method passed to response interceptors.
+- `HttpByteStream`: boxed async byte stream returned by `HttpResponse::stream_body()`.
+- `qubit_http::sse`: SSE event parsing, JSON chunk decoding, done marker policies, JSON strict/lenient modes, and reconnect options.
 
 ## Why This Crate (vs `http` and `reqwest`)
 
@@ -82,7 +83,7 @@ Note: Rust does not ship an HTTP client in the standard library. In practice:
 | Retry & timeout model | No | Basic capabilities | Unified defaults + request-level override |
 | Error semantics | No | `reqwest::Error` centered | `HttpError` + `HttpErrorKind` + `RetryHint` |
 | Config consistency | No | App-defined | `HttpClientOptions` + factory + validation |
-| Streaming/SSE | No | Raw byte stream | SSE event/json decoding + safety limits |
+| Streaming/SSE | No | Raw byte stream | Unified response body stream + SSE event/json decoding + reconnect |
 | Observability & safety | No | App-defined | Masking, bounded previews, stable logging behavior |
 | Cross-service consistency | Low | Medium | High |
 
@@ -121,33 +122,38 @@ async fn create_message() -> Result<(), Box<dyn std::error::Error>> {
         .build();
 
     let response = client.execute(request).await?;
-    println!("status={}", response.status);
+    println!("status={}", response.status());
     Ok(())
 }
 ```
 
-### 2) Header injection and precedence
+### 2) Header injection, interceptors, and precedence
 
 Header precedence is:
 
 `default headers` -> `sync header injectors` -> `async header injectors` -> `request headers` (highest priority)
 
+Request interceptors run before each send attempt and may mutate the request path, query, headers, body, timeouts, or retry override. Response interceptors run on successful HTTP responses before the `HttpResponse` is returned.
+
 ```rust
-use http::HeaderValue;
-use qubit_http::{AsyncHeaderInjector, HeaderInjector, HttpClientFactory};
+use http::{HeaderValue, StatusCode};
+use qubit_http::{
+    AsyncHttpHeaderInjector, HttpClientFactory, HttpHeaderInjector, HttpRequestInterceptor,
+    HttpResponseInterceptor,
+};
 
 fn with_auth_injector() -> qubit_http::HttpResult<qubit_http::HttpClient> {
     let token = "secret-token".to_string();
     let mut client = HttpClientFactory::new().create()?;
 
     client.add_header("x-client", "my-app")?;
-    client.add_header_injector(HeaderInjector::new(move |headers| {
+    client.add_header_injector(HttpHeaderInjector::new(move |headers| {
         let bearer = HeaderValue::from_str(&format!("Bearer {token}"))
             .map_err(|e| qubit_http::HttpError::other(format!("invalid auth header: {e}")))?;
         headers.insert(http::header::AUTHORIZATION, bearer);
         Ok(())
     }));
-    client.add_async_header_injector(AsyncHeaderInjector::new(|headers| {
+    client.add_async_header_injector(AsyncHttpHeaderInjector::new(|headers| {
         Box::pin(async move {
             headers.insert(
                 "x-auth-source",
@@ -155,6 +161,16 @@ fn with_auth_injector() -> qubit_http::HttpResult<qubit_http::HttpClient> {
             );
             Ok(())
         })
+    }));
+    client.add_request_interceptor(HttpRequestInterceptor::new(|request| {
+        request.add_query_param("client", "rs-http");
+        Ok(())
+    }));
+    client.add_response_interceptor(HttpResponseInterceptor::new(|meta| {
+        if meta.status == StatusCode::NO_CONTENT {
+            return Err(qubit_http::HttpError::other("empty response is not accepted"));
+        }
+        Ok(())
     }));
 
     Ok(client)
@@ -244,7 +260,7 @@ async fn execute_with_cancellation(client: &qubit_http::HttpClient) -> qubit_htt
         .request(Method::GET, "/v1/slow-stream")
         .cancellation_token(token)
         .build();
-    let _ = client.execute_stream(request).await?;
+    let _ = client.execute(request).await?;
     Ok(())
 }
 ```
@@ -293,9 +309,9 @@ use http::Method;
 
 async fn consume_raw_stream(client: &qubit_http::HttpClient) -> qubit_http::HttpResult<()> {
     let request = client.request(Method::GET, "/v1/stream-bytes").build();
-    let response = client.execute_stream(request).await?;
+    let mut response = client.execute(request).await?;
 
-    let mut stream = response.into_stream();
+    let mut stream = response.stream_body()?;
     while let Some(item) = stream.next().await {
         let bytes = item?;
         println!("chunk size = {}", bytes.len());
@@ -317,10 +333,11 @@ struct StreamChunk {
 
 async fn consume_sse_json(client: &qubit_http::HttpClient) -> qubit_http::HttpResult<()> {
     let response = client
-        .execute_stream(client.request(http::Method::GET, "/v1/stream").build())
+        .execute(client.request(http::Method::GET, "/v1/stream").build())
         .await?;
 
-    let mut chunks = response.decode_json_chunks::<StreamChunk>(DoneMarkerPolicy::DefaultDone);
+    let mut chunks =
+        response.decode_sse_json_chunks::<StreamChunk>(DoneMarkerPolicy::DefaultDone);
 
     while let Some(item) = chunks.next().await {
         match item? {
@@ -342,13 +359,13 @@ options.sse_max_line_bytes = 64 * 1024;
 options.sse_max_frame_bytes = 1024 * 1024;
 ```
 
-You can still override per request with `response.decode_json_chunks_with_mode(...)`
-or `decode_json_chunks_with_mode_and_limits(...)`:
+You can still override per response with `response.decode_sse_json_chunks_with_mode(...)`
+or `decode_sse_json_chunks_with_mode_and_limits(...)`:
 
 ```rust
 use qubit_http::sse::{DoneMarkerPolicy, SseJsonMode};
 
-let chunks = response.decode_json_chunks_with_mode_and_limits::<MyChunk>(
+let chunks = response.decode_sse_json_chunks_with_mode_and_limits::<MyChunk>(
     DoneMarkerPolicy::DefaultDone,
     SseJsonMode::Lenient,
     64 * 1024,   // max_line_bytes
@@ -356,109 +373,46 @@ let chunks = response.decode_json_chunks_with_mode_and_limits::<MyChunk>(
 );
 ```
 
-### 9) OpenAI SSE quick examples (`chat.completions` vs `responses`)
-
-The examples below focus on request + decoding only.
-OpenAI payload schemas evolve; refer to the latest API docs:
-
-- Chat Completions streaming events:
-  `https://developers.openai.com/api/reference/resources/chat/subresources/completions/streaming-events`
-- Responses streaming:
-  `https://developers.openai.com/api/reference/resources/responses/methods/create`
+### 9) SSE reconnect
 
 ```rust
 use futures_util::StreamExt;
 use http::Method;
-use qubit_http::sse::{DoneMarkerPolicy, SseChunk};
-use serde_json::json;
+use qubit_http::sse::SseReconnectOptions;
 
-// Define these structs in your project according to OpenAI docs:
-// - ChatCompletionChunk:
-//   https://developers.openai.com/api/reference/resources/chat/subresources/completions/streaming-events
-// - ResponseOutputTextDeltaEvent:
-//   https://developers.openai.com/api/reference/resources/responses/methods/create
-
-/// Parse OpenAI Chat Completions stream:
-/// - data: { "object":"chat.completion.chunk", ... }
-/// - data: [DONE]
-async fn stream_openai_chat_completions(
-    client: &qubit_http::HttpClient,
-    api_key: &str,
-) -> qubit_http::HttpResult<()> {
+async fn consume_sse_with_reconnect(client: &qubit_http::HttpClient) -> qubit_http::HttpResult<()> {
     let request = client
-        .request(Method::POST, "/v1/chat/completions")
-        .header("authorization", &format!("Bearer {api_key}"))?
+        .request(Method::GET, "/v1/events")
         .header("accept", "text/event-stream")?
-        .json_body(&json!({
-            "model": "gpt-4.1-mini",
-            "messages": [{"role": "user", "content": "Say hello in Chinese."}],
-            "stream": true
-        }))?
         .build();
 
-    let response = client.execute_stream(request).await?;
-    let mut chunks =
-        response.decode_json_chunks::<ChatCompletionChunk>(DoneMarkerPolicy::DefaultDone);
-
-    while let Some(item) = chunks.next().await {
-        match item? {
-            SseChunk::Data(chunk) => {
-                if let Some(text) = chunk
-                    .choices
-                    .first()
-                    .and_then(|choice| choice.delta.content.as_deref())
-                {
-                    print!("{text}");
-                }
-            }
-            SseChunk::Done => break,
-        }
-    }
-    Ok(())
-}
-
-/// Parse OpenAI Responses stream:
-/// - event: response.output_text.delta
-///   data: { ... "delta": "..." ... }
-/// - event: response.completed
-async fn stream_openai_responses(
-    client: &qubit_http::HttpClient,
-    api_key: &str,
-) -> qubit_http::HttpResult<()> {
-    let request = client
-        .request(Method::POST, "/v1/responses")
-        .header("authorization", &format!("Bearer {api_key}"))?
-        .header("accept", "text/event-stream")?
-        .json_body(&json!({
-            "model": "gpt-4.1-mini",
-            "input": "Give one Rust tip.",
-            "stream": true
-        }))?
-        .build();
-
-    let response = client.execute_stream(request).await?;
-    let mut events = response.decode_events();
+    let mut events = client.execute_sse_with_reconnect(
+        request,
+        SseReconnectOptions {
+            max_reconnects: 5,
+            reconnect_delay: std::time::Duration::from_secs(1),
+            reconnect_on_eof: true,
+            honor_server_retry: true,
+        },
+    );
 
     while let Some(item) = events.next().await {
         let event = item?;
-        match event.event.as_deref() {
-            Some("response.output_text.delta") => {
-                let data: ResponseOutputTextDeltaEvent = event.decode_json()?;
-                print!("{}", data.delta);
-            }
-            Some("response.completed") => break,
-            Some("response.error") => {
-                return Err(qubit_http::HttpError::other(format!(
-                    "responses error event: {}",
-                    event.data
-                )));
-            }
-            _ => {}
+        if let Some(event_name) = event.event.as_deref() {
+            println!("event={event_name}");
         }
+        println!("data={}", event.data);
     }
     Ok(())
 }
 ```
+
+Reconnect behavior:
+
+- reconnects on retryable transport/read failures
+- optionally reconnects on EOF
+- sends `Last-Event-ID` from the latest parsed SSE `id:` field
+- optionally honors SSE `retry:` as the next reconnect delay
 
 ### 10) Create client from config
 
@@ -477,8 +431,13 @@ fn build_client_from_config() -> Result<qubit_http::HttpClient, qubit_http::Http
         .set("http.timeouts.connect_timeout", Duration::from_secs(3))
         .unwrap();
     config.set("http.proxy.enabled", false).unwrap();
+    config.set("http.user_agent", "my-service/1.0".to_string()).unwrap();
+    config.set("http.max_redirects", 10usize).unwrap();
     config.set("http.retry.enabled", true).unwrap();
     config.set("http.retry.max_attempts", 3_u32).unwrap();
+    config
+        .set("http.retry.status_codes", vec!["429".to_string(), "503".to_string()])
+        .unwrap();
     config.set("http.sse.json_mode", "STRICT".to_string()).unwrap();
     config.set("http.sse.max_line_bytes", 64 * 1024usize).unwrap();
     config
@@ -491,7 +450,7 @@ fn build_client_from_config() -> Result<qubit_http::HttpClient, qubit_http::Http
 
 ## Error Handling
 
-`execute(...)` and `execute_stream(...)` return `Err(HttpError)` for:
+`execute(...)`, response body readers, and SSE streams return `Err(HttpError)` for:
 
 - invalid URL resolution
 - transport/timeout failures
@@ -539,14 +498,22 @@ fn handle_error(error: &qubit_http::HttpError) {
 | `request_timeout` | `None` |
 | `proxy.enabled` | `false` |
 | `proxy.proxy_type` | `http` |
+| `error_response_preview_limit` | `16 * 1024` bytes |
+| `user_agent` | `None` |
+| `max_redirects` | `None` |
+| `pool_idle_timeout` | `None` |
+| `pool_max_idle_per_host` | `None` |
 | `logging.enabled` | `true` |
 | `logging.*` header/body toggles | all `true` |
 | `logging.body_size_limit` | `16 * 1024` bytes |
 | `retry.enabled` | `false` |
 | `retry.max_attempts` | `3` |
+| `retry.max_duration` | `None` |
 | `retry.delay_strategy` | exponential (`200ms`, `5s`, `2.0`) |
 | `retry.jitter_factor` | `0.1` |
 | `retry.method_policy` | `IdempotentOnly` |
+| `retry.status_codes` | `None` (defaults to `429` and `5xx`) |
+| `retry.error_kinds` | `None` (defaults to timeout and transport errors) |
 | `ipv4_only` | `false` |
 | `sse.json_mode` | `Lenient` |
 | `sse.max_line_bytes` | `64 * 1024` bytes |
@@ -561,7 +528,8 @@ fn handle_error(error: &qubit_http::HttpError) {
 - `proxy.enabled = false` disables environment proxy inheritance.
 - `ipv4_only` enforces IPv4 DNS resolution and rejects IPv6 literal target/proxy hosts.
 - `create_with_options(...)` always runs `HttpClientOptions::validate()` and fails fast on invalid options.
-- Streaming retry covers failures before `HttpStreamResponse` is returned. Errors after streaming starts are surfaced to the caller.
+- `execute(...)` returns after successful response headers and keeps the body lazy unless TRACE response-body logging is enabled.
+- Built-in request retry covers failures before `HttpResponse` is returned. Body-read or stream errors after return are surfaced to the caller; use `execute_sse_with_reconnect(...)` for SSE reconnect behavior.
 
 ## License
 

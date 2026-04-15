@@ -38,7 +38,7 @@
 
 ### 3.1 不把 `Config` 作为 `HttpClientOptions` 的底层实现
 
-`HttpClientOptions`、`TimeoutOptions`、`ProxyOptions`、`HttpLoggingOptions` 继续保留当前公开 struct 设计。
+`HttpClientOptions`、`HttpTimeoutOptions`、`ProxyOptions`、`HttpLoggingOptions` 继续保留当前公开 struct 设计。
 
 原因：
 
@@ -52,7 +52,7 @@
 `v0.2.0` 增加的能力是：
 
 1. `Config -> HttpClientOptions`
-2. `Config -> TimeoutOptions`
+2. `Config -> HttpTimeoutOptions`
 3. `Config -> ProxyOptions`
 4. `Config -> HttpLoggingOptions`
 
@@ -84,7 +84,7 @@ impl HttpClientOptions {
     pub fn validate(&self) -> Result<(), HttpConfigError>;
 }
 
-impl TimeoutOptions {
+impl HttpTimeoutOptions {
     pub fn from_config(config: &qubit_config::Config, prefix: &str)
         -> Result<Self, HttpConfigError>;
 }

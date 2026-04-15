@@ -335,7 +335,7 @@ let request = request.clone();
 async move { client.execute_once(request).await }
 ```
 
-`reqwest::Client` 可 clone，`HttpClientOptions` 和 `HeaderInjector` 当前也支持 clone，所以该方案可行。
+`reqwest::Client` 可 clone，`HttpClientOptions` 和 `HttpHeaderInjector` 当前也支持 clone，所以该方案可行。
 
 ### 7.5 最终错误映射
 

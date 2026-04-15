@@ -9,12 +9,12 @@
 
 `qubit-http` 是一个 Rust HTTP 基础设施库，用于构建行为一致的 API 客户端，核心能力包括：
 
-- 用统一的客户端模型处理普通请求和流式请求
-- 显式配置超时、重试、代理、日志
-- 支持请求级重试覆盖与取消能力（`CancellationToken`）
-- 支持同步/异步 Header Injector 链并保证优先级顺序
-- 内置 JSON / form / multipart / NDJSON 请求体构建
-- 内置 SSE 事件解析和 JSON chunk 解码
+- 用统一的 `execute(...)` 流程处理缓冲、惰性读取和流式响应体
+- 显式配置超时、重试、代理、重定向、连接池和日志
+- 支持请求级重试覆盖、超时覆盖、base URL 覆盖、IPv4-only 覆盖与取消能力（`CancellationToken`）
+- 支持默认 Header、同步/异步 Header Injector、请求拦截器和响应拦截器
+- 内置 bytes / text / JSON / form / multipart / NDJSON 请求体构建
+- 内置 SSE 事件解析、JSON chunk 解码和自动重连
 - 统一错误模型（`HttpError`、`HttpErrorKind`、`RetryHint`）
 
 如果你是第一次接触本库，建议先看 **快速开始**，再跳到对应场景示例。
@@ -23,7 +23,7 @@
 
 ```toml
 [dependencies]
-qubit-http = "0.2.0"
+qubit-http = "0.3.1"
 http = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -51,9 +51,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .query_param("from", "readme")
         .build();
 
-    let response = client.execute(request).await?;
-    println!("status = {}", response.status);
-    println!("text = {}", response.text()?);
+    let mut response = client.execute(request).await?;
+    println!("status = {}", response.status());
+    println!("text = {}", response.text().await?);
     Ok(())
 }
 ```
@@ -61,12 +61,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## 核心类型
 
 - `HttpClientFactory`：通过默认配置、显式配置或配置中心创建客户端。
-- `HttpClientOptions`：管理 `base_url`、默认 Header、超时、代理、重试、日志、敏感头和 SSE 解码默认项。
-- `HttpClient`：执行请求，提供一致的运行时行为，支持同步/异步 Header Injector。
-- `HttpRequestBuilder`：构建路径、查询参数、Header、Body、请求级超时、请求级重试覆盖和取消 token。
-- `HttpResponse`：完整缓冲响应（`status`、`headers`、`body`、`text()`、`json()`）。
-- `HttpStreamResponse`：响应元数据 + 字节流（`into_stream()`），支持可配置 SSE 行/帧大小限制。
-- `qubit_http::sse`：SSE 事件解析和 JSON chunk 解码工具。
+- `HttpClientOptions`：管理 `base_url`、默认 Header、超时、代理、重试、日志、敏感头、错误响应预览、重定向、连接池和 SSE 解码默认项。
+- `HttpClient`：执行请求，提供一致的运行时行为，支持同步/异步 Header Injector、请求拦截器、响应拦截器和 SSE 自动重连。
+- `HttpRequestBuilder`：构建路径、查询参数、Header、Body、请求级超时、请求级重试覆盖、取消 token、请求级 base URL 和 IPv4-only 覆盖。
+- `HttpResponse`：统一响应元数据与惰性读取响应体（`bytes_body().await`、`text().await`、`json().await`、`stream_body()`、`decode_sse_events()`、`decode_sse_json_chunks(...)`）。
+- `HttpResponseMeta`：响应状态码、Header、最终 URL 和请求方法，会传递给响应拦截器。
+- `HttpByteStream`：`HttpResponse::stream_body()` 返回的 boxed 异步字节流。
+- `qubit_http::sse`：SSE 事件解析、JSON chunk 解码、done marker 策略、JSON 严格/宽松模式和重连配置。
 
 ## 为什么使用本库（对比 `http` 与 `reqwest`）
 
@@ -82,7 +83,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 | 重试/超时模型 | 无 | 基础能力 | 统一默认策略 + 请求级覆盖 |
 | 错误语义 | 无 | 以 `reqwest::Error` 为主 | `HttpError` + `HttpErrorKind` + `RetryHint` |
 | 配置一致性 | 无 | 业务自行组织 | `HttpClientOptions` + 工厂 + 校验 |
-| 流式/SSE | 无 | 原始字节流 | SSE 事件/JSON 解码 + 安全限制 |
+| 流式/SSE | 无 | 原始字节流 | 统一响应体字节流 + SSE 事件/JSON 解码 + 自动重连 |
 | 可观测性与安全 | 无 | 业务自行处理 | 脱敏、限长预览、统一日志行为 |
 | 跨服务一致性 | 低 | 中 | 高 |
 
@@ -121,33 +122,38 @@ async fn create_message() -> Result<(), Box<dyn std::error::Error>> {
         .build();
 
     let response = client.execute(request).await?;
-    println!("status={}", response.status);
+    println!("status={}", response.status());
     Ok(())
 }
 ```
 
-### 2）Header 注入与优先级
+### 2）Header 注入、拦截器与优先级
 
 Header 合并优先级为：
 
 `默认 headers` -> `同步 header injector` -> `异步 header injector` -> `请求级 headers（最高优先级）`
 
+请求拦截器会在每次发送尝试前运行，可修改请求路径、查询参数、Header、Body、超时或重试覆盖。响应拦截器会在 HTTP 成功响应返回给调用方之前运行。
+
 ```rust
-use http::HeaderValue;
-use qubit_http::{AsyncHeaderInjector, HeaderInjector, HttpClientFactory};
+use http::{HeaderValue, StatusCode};
+use qubit_http::{
+    AsyncHttpHeaderInjector, HttpClientFactory, HttpHeaderInjector, HttpRequestInterceptor,
+    HttpResponseInterceptor,
+};
 
 fn with_auth_injector() -> qubit_http::HttpResult<qubit_http::HttpClient> {
     let token = "secret-token".to_string();
     let mut client = HttpClientFactory::new().create()?;
 
     client.add_header("x-client", "my-app")?;
-    client.add_header_injector(HeaderInjector::new(move |headers| {
+    client.add_header_injector(HttpHeaderInjector::new(move |headers| {
         let bearer = HeaderValue::from_str(&format!("Bearer {token}"))
             .map_err(|e| qubit_http::HttpError::other(format!("invalid auth header: {e}")))?;
         headers.insert(http::header::AUTHORIZATION, bearer);
         Ok(())
     }));
-    client.add_async_header_injector(AsyncHeaderInjector::new(|headers| {
+    client.add_async_header_injector(AsyncHttpHeaderInjector::new(|headers| {
         Box::pin(async move {
             headers.insert(
                 "x-auth-source",
@@ -155,6 +161,16 @@ fn with_auth_injector() -> qubit_http::HttpResult<qubit_http::HttpClient> {
             );
             Ok(())
         })
+    }));
+    client.add_request_interceptor(HttpRequestInterceptor::new(|request| {
+        request.add_query_param("client", "rs-http");
+        Ok(())
+    }));
+    client.add_response_interceptor(HttpResponseInterceptor::new(|meta| {
+        if meta.status == StatusCode::NO_CONTENT {
+            return Err(qubit_http::HttpError::other("empty response is not accepted"));
+        }
+        Ok(())
     }));
 
     Ok(client)
@@ -244,7 +260,7 @@ async fn execute_with_cancellation(client: &qubit_http::HttpClient) -> qubit_htt
         .request(Method::GET, "/v1/slow-stream")
         .cancellation_token(token)
         .build();
-    let _ = client.execute_stream(request).await?;
+    let _ = client.execute(request).await?;
     Ok(())
 }
 ```
@@ -293,9 +309,9 @@ use http::Method;
 
 async fn consume_raw_stream(client: &qubit_http::HttpClient) -> qubit_http::HttpResult<()> {
     let request = client.request(Method::GET, "/v1/stream-bytes").build();
-    let response = client.execute_stream(request).await?;
+    let mut response = client.execute(request).await?;
 
-    let mut stream = response.into_stream();
+    let mut stream = response.stream_body()?;
     while let Some(item) = stream.next().await {
         let bytes = item?;
         println!("chunk size = {}", bytes.len());
@@ -317,10 +333,11 @@ struct StreamChunk {
 
 async fn consume_sse_json(client: &qubit_http::HttpClient) -> qubit_http::HttpResult<()> {
     let response = client
-        .execute_stream(client.request(http::Method::GET, "/v1/stream").build())
+        .execute(client.request(http::Method::GET, "/v1/stream").build())
         .await?;
 
-    let mut chunks = response.decode_json_chunks::<StreamChunk>(DoneMarkerPolicy::DefaultDone);
+    let mut chunks =
+        response.decode_sse_json_chunks::<StreamChunk>(DoneMarkerPolicy::DefaultDone);
 
     while let Some(item) = chunks.next().await {
         match item? {
@@ -342,13 +359,13 @@ options.sse_max_line_bytes = 64 * 1024;
 options.sse_max_frame_bytes = 1024 * 1024;
 ```
 
-你仍可按请求覆盖：使用 `response.decode_json_chunks_with_mode(...)`
-或 `decode_json_chunks_with_mode_and_limits(...)`：
+你仍可按响应覆盖：使用 `response.decode_sse_json_chunks_with_mode(...)`
+或 `decode_sse_json_chunks_with_mode_and_limits(...)`：
 
 ```rust
 use qubit_http::sse::{DoneMarkerPolicy, SseJsonMode};
 
-let chunks = response.decode_json_chunks_with_mode_and_limits::<MyChunk>(
+let chunks = response.decode_sse_json_chunks_with_mode_and_limits::<MyChunk>(
     DoneMarkerPolicy::DefaultDone,
     SseJsonMode::Lenient,
     64 * 1024,   // max_line_bytes
@@ -356,109 +373,46 @@ let chunks = response.decode_json_chunks_with_mode_and_limits::<MyChunk>(
 );
 ```
 
-### 9）OpenAI SSE 简化示例（`chat.completions` 与 `responses`）
-
-下面只展示“请求 + 解码”主流程。
-OpenAI 的字段细节以最新 API 文档为准：
-
-- Chat Completions 流式事件：
-  `https://developers.openai.com/api/reference/resources/chat/subresources/completions/streaming-events`
-- Responses 流式事件：
-  `https://developers.openai.com/api/reference/resources/responses/methods/create`
+### 9）SSE 自动重连
 
 ```rust
 use futures_util::StreamExt;
 use http::Method;
-use qubit_http::sse::{DoneMarkerPolicy, SseChunk};
-use serde_json::json;
+use qubit_http::sse::SseReconnectOptions;
 
-// 请按 OpenAI 官方文档在你的项目中定义这些结构体：
-// - ChatCompletionChunk：
-//   https://developers.openai.com/api/reference/resources/chat/subresources/completions/streaming-events
-// - ResponseOutputTextDeltaEvent：
-//   https://developers.openai.com/api/reference/resources/responses/methods/create
-
-/// 解析 OpenAI Chat Completions 流：
-/// - data: { "object":"chat.completion.chunk", ... }
-/// - data: [DONE]
-async fn stream_openai_chat_completions(
-    client: &qubit_http::HttpClient,
-    api_key: &str,
-) -> qubit_http::HttpResult<()> {
+async fn consume_sse_with_reconnect(client: &qubit_http::HttpClient) -> qubit_http::HttpResult<()> {
     let request = client
-        .request(Method::POST, "/v1/chat/completions")
-        .header("authorization", &format!("Bearer {api_key}"))?
+        .request(Method::GET, "/v1/events")
         .header("accept", "text/event-stream")?
-        .json_body(&json!({
-            "model": "gpt-4.1-mini",
-            "messages": [{"role": "user", "content": "请用一句话打招呼"}],
-            "stream": true
-        }))?
         .build();
 
-    let response = client.execute_stream(request).await?;
-    let mut chunks =
-        response.decode_json_chunks::<ChatCompletionChunk>(DoneMarkerPolicy::DefaultDone);
-
-    while let Some(item) = chunks.next().await {
-        match item? {
-            SseChunk::Data(chunk) => {
-                if let Some(text) = chunk
-                    .choices
-                    .first()
-                    .and_then(|choice| choice.delta.content.as_deref())
-                {
-                    print!("{text}");
-                }
-            }
-            SseChunk::Done => break,
-        }
-    }
-    Ok(())
-}
-
-/// 解析 OpenAI Responses 流：
-/// - event: response.output_text.delta
-///   data: { ... "delta": "..." ... }
-/// - event: response.completed
-async fn stream_openai_responses(
-    client: &qubit_http::HttpClient,
-    api_key: &str,
-) -> qubit_http::HttpResult<()> {
-    let request = client
-        .request(Method::POST, "/v1/responses")
-        .header("authorization", &format!("Bearer {api_key}"))?
-        .header("accept", "text/event-stream")?
-        .json_body(&json!({
-            "model": "gpt-4.1-mini",
-            "input": "给一条 Rust 小技巧",
-            "stream": true
-        }))?
-        .build();
-
-    let response = client.execute_stream(request).await?;
-    let mut events = response.decode_events();
+    let mut events = client.execute_sse_with_reconnect(
+        request,
+        SseReconnectOptions {
+            max_reconnects: 5,
+            reconnect_delay: std::time::Duration::from_secs(1),
+            reconnect_on_eof: true,
+            honor_server_retry: true,
+        },
+    );
 
     while let Some(item) = events.next().await {
         let event = item?;
-        match event.event.as_deref() {
-            Some("response.output_text.delta") => {
-                let data: ResponseOutputTextDeltaEvent = event.decode_json()?;
-                print!("{}", data.delta);
-            }
-            Some("response.completed") => break,
-            Some("response.error") => {
-                return Err(qubit_http::HttpError::other(format!(
-                    "responses error event: {}",
-                    event.data
-                )));
-            }
-            _ => {}
+        if let Some(event_name) = event.event.as_deref() {
+            println!("event={event_name}");
         }
+        println!("data={}", event.data);
     }
     Ok(())
 }
 ```
+
+自动重连行为：
+
+- 遇到可重试的传输或读取错误时重连
+- 可选择在 EOF 时重连
+- 根据最近解析到的 SSE `id:` 字段发送 `Last-Event-ID`
+- 可选择遵守 SSE `retry:` 字段作为下一次重连延迟
 
 ### 10）从配置创建客户端
 
@@ -477,8 +431,13 @@ fn build_client_from_config() -> Result<qubit_http::HttpClient, qubit_http::Http
         .set("http.timeouts.connect_timeout", Duration::from_secs(3))
         .unwrap();
     config.set("http.proxy.enabled", false).unwrap();
+    config.set("http.user_agent", "my-service/1.0".to_string()).unwrap();
+    config.set("http.max_redirects", 10usize).unwrap();
     config.set("http.retry.enabled", true).unwrap();
     config.set("http.retry.max_attempts", 3_u32).unwrap();
+    config
+        .set("http.retry.status_codes", vec!["429".to_string(), "503".to_string()])
+        .unwrap();
     config.set("http.sse.json_mode", "STRICT".to_string()).unwrap();
     config.set("http.sse.max_line_bytes", 64 * 1024usize).unwrap();
     config
@@ -491,7 +450,7 @@ fn build_client_from_config() -> Result<qubit_http::HttpClient, qubit_http::Http
 
 ## 错误处理
 
-`execute(...)` 和 `execute_stream(...)` 会在以下场景返回 `Err(HttpError)`：
+`execute(...)`、响应体读取方法和 SSE 流会在以下场景返回 `Err(HttpError)`：
 
 - URL 解析失败
 - 传输错误或超时
@@ -539,14 +498,22 @@ fn handle_error(error: &qubit_http::HttpError) {
 | `request_timeout` | `None` |
 | `proxy.enabled` | `false` |
 | `proxy.proxy_type` | `http` |
+| `error_response_preview_limit` | `16 * 1024` 字节 |
+| `user_agent` | `None` |
+| `max_redirects` | `None` |
+| `pool_idle_timeout` | `None` |
+| `pool_max_idle_per_host` | `None` |
 | `logging.enabled` | `true` |
 | `logging.*` 头/体日志开关 | 全部 `true` |
 | `logging.body_size_limit` | `16 * 1024` 字节 |
 | `retry.enabled` | `false` |
 | `retry.max_attempts` | `3` |
+| `retry.max_duration` | `None` |
 | `retry.delay_strategy` | 指数退避（`200ms`、`5s`、`2.0`） |
 | `retry.jitter_factor` | `0.1` |
 | `retry.method_policy` | `IdempotentOnly` |
+| `retry.status_codes` | `None`（默认 `429` 和 `5xx`） |
+| `retry.error_kinds` | `None`（默认超时和传输错误） |
 | `ipv4_only` | `false` |
 | `sse.json_mode` | `Lenient` |
 | `sse.max_line_bytes` | `64 * 1024` 字节 |
@@ -561,7 +528,8 @@ fn handle_error(error: &qubit_http::HttpError) {
 - `proxy.enabled = false` 时，不继承环境变量代理。
 - `ipv4_only` 会强制 DNS 仅使用 IPv4 地址，并拒绝 IPv6 字面量目标/代理主机。
 - `create_with_options(...)` 总会执行 `HttpClientOptions::validate()`，非法配置会快速失败。
-- 流式重试仅覆盖返回 `HttpStreamResponse` 之前的失败；流开始后的错误由调用方处理。
+- `execute(...)` 在成功响应头返回后结束，响应体默认惰性读取；如果开启 TRACE 响应体日志，则会提前缓冲响应体。
+- 内置请求重试只覆盖返回 `HttpResponse` 之前的失败；返回后的响应体读取或流式错误会交给调用方处理。SSE 场景可使用 `execute_sse_with_reconnect(...)` 获得自动重连。
 
 ## 许可证
 
