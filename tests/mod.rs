@@ -77,6 +77,8 @@ mod http_client_cancel_tests;
 mod http_client_error_paths_tests;
 #[path = "client/http_client_factory_tests.rs"]
 mod http_client_factory_tests;
+#[path = "client/sse_reconnect_runner_tests.rs"]
+mod sse_reconnect_runner_tests;
 #[path = "http_client/http_client_request_body_tests.rs"]
 mod http_client_request_body_tests;
 #[path = "http_client/http_client_retry_override_tests.rs"]
