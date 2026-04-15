@@ -52,10 +52,7 @@ fn test_retry_hint_non_retryable_for_protocol_and_config_errors() {
     assert_eq!(proxy_config.retry_hint(), RetryHint::NonRetryable);
     assert_eq!(sse_protocol.retry_hint(), RetryHint::NonRetryable);
     assert_eq!(sse_decode.retry_hint(), RetryHint::NonRetryable);
-    assert_eq!(
-        retry_attempt_timeout.retry_hint(),
-        RetryHint::NonRetryable
-    );
+    assert_eq!(retry_attempt_timeout.retry_hint(), RetryHint::NonRetryable);
     assert_eq!(retry_max_elapsed.retry_hint(), RetryHint::NonRetryable);
     assert_eq!(retry_aborted.retry_hint(), RetryHint::NonRetryable);
     assert_eq!(other.retry_hint(), RetryHint::NonRetryable);

@@ -27,7 +27,10 @@ use tokio::time::timeout;
 use crate::common::{spawn_multi_shot_server, spawn_one_shot_server, ResponseChunk, ResponsePlan};
 
 fn retry_abort_inner_http(error: &HttpError) -> &HttpError {
-    let boxed = error.source.as_ref().expect("retry abort should chain inner error");
+    let boxed = error
+        .source
+        .as_ref()
+        .expect("retry abort should chain inner error");
     (boxed.as_ref() as &(dyn StdError + 'static))
         .downcast_ref::<HttpError>()
         .expect("inner should be HttpError")
