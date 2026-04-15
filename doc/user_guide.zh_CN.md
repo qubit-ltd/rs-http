@@ -1,14 +1,23 @@
 # qubit-http 用户指南
 
-本文档基于当前源码和测试整理，适用于 crate `qubit-http` 0.3.1，Rust 代码中通过库名 `qubit_http` 使用。
+本文档基于当前源码和测试整理，适用于 crate `qubit-http` 0.3.x，Rust 代码中通过库名 `qubit_http` 使用。
 
 `qubit-http` 是一个异步 HTTP 客户端基础设施库。它封装 `reqwest`，提供统一的客户端配置、请求构建、响应读取、错误分类、TRACE 日志脱敏、自动重试、代理、IPv4-only 解析、请求/响应拦截器，以及 Server-Sent Events（SSE）解码和重连能力。
+
+## 如何阅读本文
+
+| 目标 | 建议阅读 |
+| --- | --- |
+| 第一次接入 | 「快速开始」「构建请求」「读取响应」 |
+| 配置客户端 | 「创建客户端」「从 qubit-config 读取」「配置参考」 |
+| 排查失败 | 「错误模型」「自动重试」「日志与敏感头」 |
+| 使用流式响应或 SSE | 「读取响应」「SSE 解码」 |
 
 ## 安装与导入
 
 ```toml
 [dependencies]
-qubit-http = "0.3.1"
+qubit-http = "0.3"
 http = "1.4"
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
@@ -130,45 +139,20 @@ let client = HttpClientFactory::new()
     .create_from_config(&config.prefix_view("http"))?;
 ```
 
-支持的配置键：
+常用配置键：
 
 | 键 | 说明 |
 | --- | --- |
 | `base_url` | 相对请求路径的基础 URL |
-| `ipv4_only` | 启用后 DNS 只保留 IPv4 地址，并拒绝 IPv6 literal URL |
-| `error_response_preview_limit` | 非 2xx 错误中保留的响应体预览字节数 |
-| `user_agent` | 传给 `reqwest` builder 的默认 User-Agent |
-| `max_redirects` | 最大重定向次数 |
-| `pool_idle_timeout` | 连接池空闲超时 |
-| `pool_max_idle_per_host` | 每个 host 最大空闲连接数 |
-| `sensitive_headers` | 覆盖默认敏感头集合的字符串列表 |
 | `timeouts.connect_timeout` | 连接超时 |
 | `timeouts.read_timeout` | 读取响应体或流时的单次等待超时 |
 | `timeouts.write_timeout` | 发送请求的写阶段超时 |
 | `timeouts.request_timeout` | 整体请求超时，可选 |
 | `proxy.enabled` | 是否启用代理 |
-| `proxy.proxy_type` | `http`、`https`、`socks5` 或 `socks5h` |
-| `proxy.host` | 代理主机 |
-| `proxy.port` | 代理端口 |
-| `proxy.username` | 代理 Basic Auth 用户名 |
-| `proxy.password` | 代理 Basic Auth 密码，必须配合 username |
 | `logging.enabled` | 是否允许 TRACE HTTP 日志 |
-| `logging.log_request_header` | 是否记录请求头 |
-| `logging.log_request_body` | 是否记录请求体预览 |
-| `logging.log_response_header` | 是否记录响应头 |
-| `logging.log_response_body` | 是否记录响应体预览 |
-| `logging.body_size_limit` | 日志体预览字节数 |
 | `retry.enabled` | 是否启用内置重试 |
 | `retry.max_attempts` | 最大尝试次数，含第一次请求 |
-| `retry.max_duration` | 总重试耗时上限，可选 |
 | `retry.delay_strategy` | `NONE`、`FIXED`、`RANDOM`、`EXPONENTIAL_BACKOFF` 或 `EXPONENTIAL` |
-| `retry.fixed_delay` | 固定延迟 |
-| `retry.random_min_delay` | 随机延迟下限 |
-| `retry.random_max_delay` | 随机延迟上限 |
-| `retry.backoff_initial_delay` | 指数退避初始延迟 |
-| `retry.backoff_max_delay` | 指数退避最大延迟 |
-| `retry.backoff_multiplier` | 指数退避倍率 |
-| `retry.jitter_factor` | 抖动比例，范围 `0.0..=1.0` |
 | `retry.method_policy` | `IDEMPOTENT_ONLY`/`IDEMPOTENT`、`ALL_METHODS`/`ALL`、`NONE`/`DISABLED` |
 | `retry.status_codes` | 重试状态码白名单；未配置时默认重试 429 和 5xx |
 | `retry.error_kinds` | 非状态错误类型白名单；未配置时默认重试超时和 transport |
@@ -176,6 +160,8 @@ let client = HttpClientFactory::new()
 | `sse.done_marker` | `DISABLED`、`DEFAULT`（或 `DEFAULT_DONE`）映射到 `DoneMarkerPolicy`；其它非空字符串视为自定义完成标记（`Custom`），与 trim 后的 `data:` 文本比较 |
 | `sse.max_line_bytes` | SSE 单行字节上限 |
 | `sse.max_frame_bytes` | SSE 单帧字节上限 |
+
+完整配置键见文末「配置参考」。
 
 `default_headers` 支持两种形式。优先使用子键形式：
 
@@ -203,7 +189,7 @@ let request = client
     .query_params([("source", "mobile"), ("debug", "false")])
     .header("x-request-id", "req-001")?
     .json_body(&serde_json::json!({"name": "created"}))?
-    .timeout(Duration::from_secs(10))
+    .request_timeout(Duration::from_secs(10))
     .read_timeout(Duration::from_secs(30))
     .build();
 ```
@@ -224,7 +210,7 @@ let request = client
 
 | 方法 | 用途 |
 | --- | --- |
-| `timeout` | 覆盖整体请求超时 |
+| `request_timeout` | 覆盖整体请求超时（reqwest 单次请求的 deadline） |
 | `write_timeout` | 覆盖发送阶段超时 |
 | `read_timeout` | 覆盖响应体读取/流读取超时 |
 | `base_url` / `clear_base_url` | 覆盖或清除本次请求 base URL |
@@ -264,6 +250,68 @@ client.add_async_header_injector(AsyncHttpHeaderInjector::new(|headers| {
             HeaderName::from_static("x-async-token"),
             HeaderValue::from_static("async-value"),
         );
+        Ok(())
+    })
+}));
+```
+
+异步注入器适合在发送前动态获取会变化的请求头，例如认证 token。下面示例中，`TokenProvider` 会复用未过期 token；过期时异步刷新，并把最新值写入 `Authorization`。如果启用了自动重试，异步注入器会在每次发送尝试前重新执行，因此重试请求也能拿到新的 token。
+
+```rust
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+use http::header::{AUTHORIZATION, HeaderValue};
+use qubit_http::{AsyncHttpHeaderInjector, HttpError, HttpResult};
+use tokio::sync::RwLock;
+
+struct CachedToken {
+    value: String,
+    expires_at: Instant,
+}
+
+struct TokenProvider {
+    cached: RwLock<Option<CachedToken>>,
+}
+
+impl TokenProvider {
+    fn new() -> Self {
+        Self {
+            cached: RwLock::new(None),
+        }
+    }
+
+    async fn bearer_token(&self) -> HttpResult<String> {
+        if let Some(token) = self.cached.read().await.as_ref() {
+            if token.expires_at > Instant::now() + Duration::from_secs(30) {
+                return Ok(token.value.clone());
+            }
+        }
+
+        let value = refresh_access_token().await?;
+        let expires_at = Instant::now() + Duration::from_secs(3600);
+        *self.cached.write().await = Some(CachedToken {
+            value: value.clone(),
+            expires_at,
+        });
+        Ok(value)
+    }
+}
+
+async fn refresh_access_token() -> HttpResult<String> {
+    // 调用认证服务、读取安全存储或执行其它异步刷新逻辑。
+    Ok("fresh-token".to_string())
+}
+
+let provider = Arc::new(TokenProvider::new());
+client.add_async_header_injector(AsyncHttpHeaderInjector::new(move |headers| {
+    let provider = Arc::clone(&provider);
+    Box::pin(async move {
+        let token = provider.bearer_token().await?;
+        let value = HeaderValue::from_str(&format!("Bearer {token}")).map_err(|error| {
+            HttpError::other(format!("invalid authorization header: {error}"))
+        })?;
+        headers.insert(AUTHORIZATION, value);
         Ok(())
     })
 }));
@@ -398,6 +446,12 @@ async fn read_sse_examples(client: &qubit_http::HttpClient) -> qubit_http::HttpR
 
 注意：底层 `reqwest` 响应体在同一 `HttpResponse` 上只能有一条消费路径。调用 `bytes`、`text` 或 `json` 会把完整 body 读入并缓存；之后 `stream` 会返回由缓存构成的单块流。若在未缓存时先调用 `stream`，底层句柄已交给返回的流，须通过该流读完 body；此时再调用 `bytes` / `text` / `json` 不会再从网络补读（会得到空 body），因此不要混用「先流式、再整包读」。`sse_events` / `sse_chunks` 也会走这条路径（内部基于 `stream`），且调用后 `HttpResponse` 已被消费，不能再对同一对象调用其它读 body 方法。
 
+| 可以 | 避免 |
+| --- | --- |
+| `bytes()` / `text()` / `json()` 读取完整响应体并复用缓存 | 先 `stream()`，再对同一响应调用 `bytes()` / `text()` / `json()` |
+| `bytes()` 后再调用 `stream()`，得到基于缓存的单块流 | 调用 `sse_events()` 或 `sse_chunks()` 后继续读同一个响应 |
+| 在同一条表达式中链式设置 `sse_*` 选项并消费 SSE | 对同一个 `HttpResponse` 同时设计多条消费路径 |
+
 `retry_after_hint()` 会在响应状态为 429 或 5xx 且存在合法 `Retry-After` header 时返回延迟。它支持 `delta-seconds` 和 HTTP-date 两种格式；HTTP-date 早于当前时间时返回 0 秒。`HttpResponseMeta` 上也有同名方法，响应拦截器可以在只拿到 metadata 时读取这个提示。
 
 ## 错误模型
@@ -419,14 +473,18 @@ async fn read_sse_examples(client: &qubit_http::HttpClient) -> qubit_http::HttpR
 
 错误分类：
 
-```rust
-InvalidUrl, BuildClient, ProxyConfig,
-ConnectTimeout, ReadTimeout, WriteTimeout, RequestTimeout,
-Transport, Status, Decode, SseProtocol, SseDecode,
-Cancelled, Other
-```
+| 分组 | 错误类型 | 典型含义 |
+| --- | --- | --- |
+| URL / 配置 | `InvalidUrl`, `BuildClient`, `ProxyConfig` | URL 无法解析、客户端构建失败或代理配置非法 |
+| 超时 / 网络 | `ConnectTimeout`, `ReadTimeout`, `WriteTimeout`, `RequestTimeout`, `Transport` | 连接、读取、写入、整体请求超时，或底层传输失败 |
+| HTTP 状态 | `Status` | 收到非 2xx 状态码 |
+| 解码 / SSE | `Decode`, `SseProtocol`, `SseDecode` | 响应体解码失败、SSE 协议错误或 SSE JSON chunk 解码失败 |
+| 重试层 | `RetryAttemptTimeout`, `RetryMaxElapsedExceeded`, `RetryAborted` | 重试执行器产生的 attempt timeout、总耗时耗尽或策略中止 |
+| 取消 / 兜底 | `Cancelled`, `Other` | 请求取消，或无法归入其它分类的错误 |
 
-`retry_hint()` 会把超时、transport、429 和 5xx 状态视为可重试提示，其余默认不可重试。真正是否重试还要结合 `HttpRetryOptions` 和方法策略。
+`RetryAttemptTimeout` 表示单次重试尝试超过了重试层配置的 attempt timeout；`RetryMaxElapsedExceeded` 表示重试总耗时预算在尚未捕获可重试错误时已经耗尽；`RetryAborted` 表示 `qubit-retry` 决策器判定当前错误不可重试并提前中止，原始 `HttpError` 会作为 `source` 链接保留。
+
+`retry_hint()` 会把超时、transport、429 和 5xx 状态视为可重试提示，其余默认不可重试。新增的重试层错误分类本身也不可重试。真正是否重试还要结合 `HttpRetryOptions` 和方法策略。
 
 ## 自动重试
 
@@ -442,6 +500,8 @@ Cancelled, Other
 
 可以用 `retry.status_codes` 和 `retry.error_kinds` 配置白名单。白名单一旦设置，就只重试列出的状态码或错误类型。
 
+`retry.error_kinds` 可使用所有 `HttpErrorKind` 名称的配置形式，包括 `RETRY_ATTEMPT_TIMEOUT`、`RETRY_MAX_ELAPSED_EXCEEDED`、`RETRY_ABORTED`；配置值大小写不敏感，连字符会按下划线处理。
+
 对单个请求可以覆盖：
 
 ```rust
@@ -453,7 +513,28 @@ let request = client
     .build();
 ```
 
-`honor_retry_after(true)` 只在请求级启用。遇到可重试的 429 或 5xx 时，如果响应里有 `Retry-After`，重试控制器会确保下一次尝试至少等待该 header 指定的时间。
+`honor_retry_after(true)` 只在请求级启用。遇到可重试的 429 或 5xx 时，如果响应里有 `Retry-After`，重试执行器会确保下一次尝试至少等待该 header 指定的时间；如果执行器计划的退避时间已经更长，则不会额外等待。
+
+开启重试后，`execute` 会把每次尝试交给 `qubit-retry` 的 `RetryExecutor`。可重试错误在耗尽 `max_attempts` 或 `max_duration` 后返回最后一次 HTTP 错误，并在 `message` 中追加耗尽原因；如果错误不满足当前重试白名单或方法策略，执行器会返回 `RetryAborted`，并把被中止的原始 `HttpError` 作为 `source` 保留。
+
+| 场景 | 返回错误 | 说明 |
+| --- | --- | --- |
+| 方法策略不允许重放，例如默认策略下的 POST | 原始单次执行错误 | 不进入重试流程 |
+| 已进入重试流程，但当前错误不可重试 | `RetryAborted` | 原始 `HttpError` 保存在 `source` 中 |
+| 可重试，但耗尽 `max_attempts` | 最后一次 `HttpError` | `message` 会追加 attempts exhausted 上下文 |
+| 可重试，但耗尽 `max_duration` | 最后一次 `HttpError` 或 `RetryMaxElapsedExceeded` | 已捕获过可重试错误时返回最后一次错误；尚未捕获时返回 `RetryMaxElapsedExceeded` |
+
+如果需要从 `RetryAborted` 中读取原始状态码或错误分类，可以向下转型 `source`：
+
+```rust
+if error.kind == qubit_http::HttpErrorKind::RetryAborted {
+    if let Some(source) = error.source.as_deref() {
+        if let Some(inner) = source.downcast_ref::<qubit_http::HttpError>() {
+            eprintln!("original kind={:?}, status={:?}", inner.kind, inner.status);
+        }
+    }
+}
+```
 
 ## 日志与敏感头
 
@@ -491,6 +572,14 @@ options.proxy.port = Some(1080);
 - 代理 host 如果是 IPv6 literal，也会被拒绝。
 
 ## SSE 解码
+
+先按目标选择 API：
+
+| 目标 | 使用 |
+| --- | --- |
+| 读取原始 SSE event | `response.sse_events()` |
+| 读取 OpenAI 风格 JSON chunk 或 `[DONE]` 完成标记 | `response.sse_chunks::<T>()` |
+| 长连接断开后自动重连 | `client.execute_sse_with_reconnect(...)` |
 
 SSE 事件解码从 `HttpResponse` 开始：
 
@@ -551,6 +640,8 @@ while let Some(item) = events.next().await {
 - 单行和单帧上限默认来自 `HttpClientOptions`；若本次响应需要不同上限，在调用 `sse_events` 之前将 `sse_max_line_bytes` / `sse_max_frame_bytes` 与 `sse_events()` 链在同一条表达式上即可（完整示例见本节上文「配置 `sse_events` 选项」）。
 
 ### SSE JSON chunk
+
+以下代码片段假设已经构建好 `request`，并且 `MyChunk` 和 `handle` 已在调用方定义。
 
 `sse_chunks` 无参数：完成标记策略默认为 `DoneMarkerPolicy::DefaultDone`（即 `DoneMarkerPolicy` 的 `Default` 实现），并可通过 `HttpClientOptions::sse_done_marker_policy` 或响应上的 `sse_done_marker_policy` 覆盖。
 
@@ -614,6 +705,8 @@ let mut events = client.execute_sse_with_reconnect(
     SseReconnectOptions {
         max_reconnects: 5,
         reconnect_delay: std::time::Duration::from_secs(1),
+        max_reconnect_delay: std::time::Duration::from_secs(30),
+        reconnect_backoff_multiplier: 2.0,
         reconnect_on_eof: true,
         honor_server_retry: true,
     },
@@ -625,7 +718,56 @@ while let Some(item) = events.next().await {
 }
 ```
 
-默认重连配置为最多重连 3 次，基础延迟 1 秒，EOF 后重连，并尊重服务端 `retry:`。重连时会复用原始请求；如果之前收到过 SSE `id:`，下一次请求会带上 `Last-Event-ID` header。取消错误不会触发重连；SSE 协议错误默认也不会重连；超时、transport、429/5xx 等 retryable 错误，以及包含 unexpected EOF 语义的错误可触发重连。
+默认重连配置为最多重连 3 次，基础延迟 1 秒，指数退避上限 30 秒、倍率 2.0，EOF 后重连，并尊重服务端 `retry:`。重连时会复用原始请求；如果之前收到过 SSE `id:`，下一次请求会带上 `Last-Event-ID` header。取消错误不会触发重连；SSE 协议错误默认也不会重连；超时、transport、429/5xx 等 retryable 错误，以及包含 unexpected EOF 语义的错误可触发重连。
+
+## 配置参考
+
+下表列出 `HttpClientOptions::from_config` 支持的完整配置键。若传入 `config.prefix_view("http")`，这些键都按相对路径读取。
+
+| 键 | 说明 |
+| --- | --- |
+| `base_url` | 相对请求路径的基础 URL |
+| `ipv4_only` | 启用后 DNS 只保留 IPv4 地址，并拒绝 IPv6 literal URL |
+| `error_response_preview_limit` | 非 2xx 错误中保留的响应体预览字节数 |
+| `user_agent` | 传给 `reqwest` builder 的默认 User-Agent |
+| `max_redirects` | 最大重定向次数 |
+| `pool_idle_timeout` | 连接池空闲超时 |
+| `pool_max_idle_per_host` | 每个 host 最大空闲连接数 |
+| `sensitive_headers` | 覆盖默认敏感头集合的字符串列表 |
+| `timeouts.connect_timeout` | 连接超时 |
+| `timeouts.read_timeout` | 读取响应体或流时的单次等待超时 |
+| `timeouts.write_timeout` | 发送请求的写阶段超时 |
+| `timeouts.request_timeout` | 整体请求超时，可选 |
+| `proxy.enabled` | 是否启用代理 |
+| `proxy.proxy_type` | `http`、`https`、`socks5` 或 `socks5h` |
+| `proxy.host` | 代理主机 |
+| `proxy.port` | 代理端口 |
+| `proxy.username` | 代理 Basic Auth 用户名 |
+| `proxy.password` | 代理 Basic Auth 密码，必须配合 username |
+| `logging.enabled` | 是否允许 TRACE HTTP 日志 |
+| `logging.log_request_header` | 是否记录请求头 |
+| `logging.log_request_body` | 是否记录请求体预览 |
+| `logging.log_response_header` | 是否记录响应头 |
+| `logging.log_response_body` | 是否记录响应体预览 |
+| `logging.body_size_limit` | 日志体预览字节数 |
+| `retry.enabled` | 是否启用内置重试 |
+| `retry.max_attempts` | 最大尝试次数，含第一次请求 |
+| `retry.max_duration` | 总重试耗时上限，可选 |
+| `retry.delay_strategy` | `NONE`、`FIXED`、`RANDOM`、`EXPONENTIAL_BACKOFF` 或 `EXPONENTIAL` |
+| `retry.fixed_delay` | 固定延迟 |
+| `retry.random_min_delay` | 随机延迟下限 |
+| `retry.random_max_delay` | 随机延迟上限 |
+| `retry.backoff_initial_delay` | 指数退避初始延迟 |
+| `retry.backoff_max_delay` | 指数退避最大延迟 |
+| `retry.backoff_multiplier` | 指数退避倍率 |
+| `retry.jitter_factor` | 抖动比例，范围 `0.0..=1.0` |
+| `retry.method_policy` | `IDEMPOTENT_ONLY`/`IDEMPOTENT`、`ALL_METHODS`/`ALL`、`NONE`/`DISABLED` |
+| `retry.status_codes` | 重试状态码白名单；未配置时默认重试 429 和 5xx |
+| `retry.error_kinds` | 非状态错误类型白名单；未配置时默认重试超时和 transport |
+| `sse.json_mode` | `LENIENT` 或 `STRICT` |
+| `sse.done_marker` | `DISABLED`、`DEFAULT`（或 `DEFAULT_DONE`）映射到 `DoneMarkerPolicy`；其它非空字符串视为自定义完成标记（`Custom`），与 trim 后的 `data:` 文本比较 |
+| `sse.max_line_bytes` | SSE 单行字节上限 |
+| `sse.max_frame_bytes` | SSE 单帧字节上限 |
 
 ## 实用建议
 
