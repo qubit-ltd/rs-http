@@ -14,7 +14,7 @@ use http::Method;
 use qubit_http::{HttpClientFactory, HttpClientOptions, HttpErrorKind, RetryHint};
 use tokio::time::timeout;
 
-use crate::common::{ResponseChunk, ResponsePlan, spawn_one_shot_server};
+use crate::common::{spawn_one_shot_server, ResponseChunk, ResponsePlan};
 
 #[tokio::test]
 async fn test_client_level_request_timeout_triggers_timeout_classification() {

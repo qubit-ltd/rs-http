@@ -44,10 +44,10 @@ mod ipv4_only_tests;
 #[path = "error/http_error_tests.rs"]
 mod http_error_tests;
 
-#[path = "logging/logger_policy_tests.rs"]
-mod logger_policy_tests;
 #[path = "logging/logger_masking_tests.rs"]
 mod logger_masking_tests;
+#[path = "logging/logger_policy_tests.rs"]
+mod logger_policy_tests;
 
 #[path = "request/async_header_injector_tests.rs"]
 mod async_header_injector_tests;
@@ -75,12 +75,12 @@ mod http_client_behavior_tests;
 mod http_client_cancel_tests;
 #[path = "http_client/http_client_error_paths_tests.rs"]
 mod http_client_error_paths_tests;
+#[path = "client/http_client_factory_tests.rs"]
+mod http_client_factory_tests;
 #[path = "http_client/http_client_request_body_tests.rs"]
 mod http_client_request_body_tests;
 #[path = "http_client/http_client_retry_override_tests.rs"]
 mod http_client_retry_override_tests;
-#[path = "client/http_client_factory_tests.rs"]
-mod http_client_factory_tests;
 #[path = "client/http_client_tests.rs"]
 mod http_client_tests;
 #[path = "http_client/http_client_timeout_tests.rs"]

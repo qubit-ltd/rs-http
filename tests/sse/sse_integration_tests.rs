@@ -188,7 +188,8 @@ async fn test_execute_stream_decode_json_chunks_uses_client_default_strict_mode(
 
     let request = client.request(Method::GET, "/sse-strict").build();
     let stream_response = client.execute(request).await.unwrap();
-    let mut chunks = stream_response.decode_sse_json_chunks::<TestChunk>(DoneMarkerPolicy::DefaultDone);
+    let mut chunks =
+        stream_response.decode_sse_json_chunks::<TestChunk>(DoneMarkerPolicy::DefaultDone);
 
     let first = chunks.next().await.unwrap().unwrap();
     assert_eq!(first, SseChunk::Data(TestChunk { value: 1 }));

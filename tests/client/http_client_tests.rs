@@ -381,7 +381,7 @@ async fn test_execute_with_text_body_and_request_timeout() {
         .text_body("hello text")
         .build();
 
-    let mut response = timeout(Duration::from_secs(3), client.execute(request))
+    let response = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")
         .unwrap();
@@ -419,7 +419,7 @@ async fn test_execute_with_bytes_body() {
         .bytes_body(vec![1_u8, 2, 3, 4])
         .build();
 
-    let mut response = timeout(Duration::from_secs(3), client.execute(request))
+    let response = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")
         .unwrap();
@@ -879,7 +879,10 @@ async fn test_execute_retries_retryable_status_until_success() {
         .unwrap();
 
     assert_eq!(response.meta.status, StatusCode::OK);
-    assert_eq!(response.bytes_body().await.unwrap(), Bytes::from_static(b"ok"));
+    assert_eq!(
+        response.bytes_body().await.unwrap(),
+        Bytes::from_static(b"ok")
+    );
     assert_eq!(*injector_count.lock().unwrap(), 2);
 
     let captured = timeout(Duration::from_secs(3), server.finish())
@@ -1095,7 +1098,7 @@ async fn test_execute_retries_post_when_all_methods_policy_is_enabled() {
         .unwrap();
 
     let request = client.request(Method::POST, "/post-all").build();
-    let mut response = timeout(Duration::from_secs(3), client.execute(request))
+    let response = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")
         .unwrap();
@@ -1143,7 +1146,10 @@ async fn test_execute_retries_write_timeout_until_success() {
         .unwrap();
 
     assert_eq!(response.meta.status, StatusCode::OK);
-    assert_eq!(response.bytes_body().await.unwrap(), Bytes::from_static(b"ok"));
+    assert_eq!(
+        response.bytes_body().await.unwrap(),
+        Bytes::from_static(b"ok")
+    );
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
         .expect("server finish timed out");

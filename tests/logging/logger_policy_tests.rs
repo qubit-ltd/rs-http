@@ -11,14 +11,19 @@ use bytes::Bytes;
 use http::header::{AUTHORIZATION, CONTENT_TYPE, SET_COOKIE};
 use http::{HeaderMap, HeaderValue, Method, StatusCode};
 use qubit_http::{
-    HttpClientFactory, HttpClientOptions, HttpLogger, HttpLoggingOptions, HttpResponse,
-    HttpRequest, HttpRequestBody, HttpResponseMeta, SensitiveHeaders,
+    HttpClientFactory, HttpClientOptions, HttpLogger, HttpLoggingOptions, HttpRequest,
+    HttpRequestBody, HttpResponse, HttpResponseMeta, SensitiveHeaders,
 };
 use url::Url;
 
 use crate::common::capture_trace_logs;
 
-fn logging_request(method: Method, path: &str, headers: HeaderMap, body: HttpRequestBody) -> HttpRequest {
+fn logging_request(
+    method: Method,
+    path: &str,
+    headers: HeaderMap,
+    body: HttpRequestBody,
+) -> HttpRequest {
     let client = HttpClientFactory::new()
         .create()
         .expect("default options should create client");
@@ -26,7 +31,9 @@ fn logging_request(method: Method, path: &str, headers: HeaderMap, body: HttpReq
     match body {
         HttpRequestBody::Empty => base.build(),
         HttpRequestBody::Text(text) => base.text_body(text).build(),
-        HttpRequestBody::Json(bytes) | HttpRequestBody::Bytes(bytes) => base.bytes_body(bytes).build(),
+        HttpRequestBody::Json(bytes) | HttpRequestBody::Bytes(bytes) => {
+            base.bytes_body(bytes).build()
+        }
         HttpRequestBody::Stream(chunks) => base.stream_body(chunks).build(),
         other => panic!("logging_request: unsupported body variant: {:?}", other),
     }
