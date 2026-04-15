@@ -28,7 +28,7 @@ async fn test_execute_with_form_body_and_query_headers_timeout() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect("client should be created");
 
     let request = client
@@ -69,7 +69,7 @@ async fn test_execute_with_multipart_body_and_query_headers_timeout() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect("client should be created");
 
     let payload = Bytes::from_static(
@@ -118,7 +118,7 @@ async fn test_execute_with_ndjson_body_and_query_headers_timeout() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect("client should be created");
 
     let request = client
@@ -171,7 +171,7 @@ async fn test_execute_with_stream_body_uses_chunked_transfer_encoding() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect("client should be created");
 
     let request = client
@@ -212,7 +212,7 @@ async fn test_execute_with_stream_body_uses_chunked_transfer_encoding_without_ea
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect("client should be created");
 
     let request = client

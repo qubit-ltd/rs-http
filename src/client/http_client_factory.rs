@@ -68,8 +68,8 @@ impl HttpClientFactory {
     ///
     /// # Returns
     /// [`HttpClient`] or [`HttpError`] (proxy/build failures).
-    pub fn create(&self) -> HttpResult<HttpClient> {
-        self.create_with_options(HttpClientOptions::default())
+    pub fn create_default(&self) -> HttpResult<HttpClient> {
+        self.create(HttpClientOptions::default())
     }
 
     /// Applies `options` to a new [`reqwest::Client::builder`], then wraps the built client.
@@ -79,7 +79,7 @@ impl HttpClientFactory {
     ///
     /// # Returns
     /// [`HttpClient`] or [`HttpError`] (proxy/build failures).
-    pub fn create_with_options(&self, options: HttpClientOptions) -> HttpResult<HttpClient> {
+    pub fn create(&self, options: HttpClientOptions) -> HttpResult<HttpClient> {
         options.validate().map_err(map_validation_error)?;
 
         let mut builder = reqwest::Client::builder();
@@ -143,7 +143,7 @@ impl HttpClientFactory {
     }
 
     /// Loads [`HttpClientOptions`] from `config`, validates them, then calls
-    /// [`HttpClientFactory::create_with_options`].
+    /// [`HttpClientFactory::create`].
     ///
     /// # Parameters
     /// - `config`: Any [`ConfigReader`] (root [`qubit_config::Config`] or a
@@ -161,7 +161,7 @@ impl HttpClientFactory {
         options
             .validate()
             .map_err(|e| resolve_config_error(config, e))?;
-        self.create_with_options(options).map_err(|e| {
+        self.create(options).map_err(|e| {
             HttpConfigError::new(
                 crate::HttpConfigErrorKind::InvalidValue,
                 config.resolve_key(""),

@@ -28,7 +28,7 @@ async fn test_execute_maps_retry_after_to_retryable_http_error() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect("client should be created");
     let request = client.request(Method::GET, "/limited").build();
 
@@ -64,7 +64,7 @@ async fn test_execute_parses_retry_after_http_date_for_service_unavailable() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect("client should be created");
     let request = client.request(Method::GET, "/service-unavailable").build();
 
@@ -101,7 +101,7 @@ async fn test_execute_ignores_invalid_retry_after_for_service_unavailable() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect("client should be created");
     let request = client
         .request(Method::GET, "/service-unavailable-invalid-retry-after")
@@ -134,7 +134,7 @@ async fn test_execute_ignores_blank_retry_after_for_service_unavailable() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect("client should be created");
     let request = client
         .request(Method::GET, "/service-unavailable-blank-retry-after")
@@ -160,7 +160,7 @@ async fn test_execute_rejects_ipv6_url_when_ipv4_only() {
     let mut options = HttpClientOptions::default();
     options.ipv4_only = true;
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect("client should be created");
 
     let request = client

@@ -30,7 +30,7 @@ fn capture_request_header_logs(name: HeaderName, value: HeaderValue) -> String {
     headers.insert(name, value);
 
     let client = HttpClientFactory::new()
-        .create()
+        .create_default()
         .expect("default options should create client");
     let request = client
         .request(Method::GET, "https://example.com/")

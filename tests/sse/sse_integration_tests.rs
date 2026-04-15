@@ -98,7 +98,7 @@ async fn test_execute_stream_with_decode_events_end_to_end() {
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.write_timeout = Duration::from_secs(2);
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .unwrap();
 
     let request = client.request(Method::GET, "/sse").build();
@@ -144,7 +144,7 @@ async fn test_execute_stream_decode_events_reports_read_timeout_when_interrupted
     options.timeouts.read_timeout = Duration::from_millis(80);
     options.timeouts.write_timeout = Duration::from_secs(1);
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .unwrap();
 
     let request = client.request(Method::GET, "/sse-timeout").build();
@@ -183,7 +183,7 @@ async fn test_execute_stream_decode_json_chunks_uses_client_default_strict_mode(
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.write_timeout = Duration::from_secs(2);
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .unwrap();
 
     let request = client.request(Method::GET, "/sse-strict").build();
@@ -217,7 +217,7 @@ async fn test_execute_stream_decode_events_uses_client_default_sse_limits() {
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.write_timeout = Duration::from_secs(2);
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .unwrap();
 
     let request = client.request(Method::GET, "/sse-limits").build();
@@ -258,7 +258,7 @@ async fn test_execute_sse_with_reconnect_propagates_last_event_id() {
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.write_timeout = Duration::from_secs(2);
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .unwrap();
 
     let request = client.request(Method::GET, "/sse-reconnect").build();
@@ -319,7 +319,7 @@ async fn test_execute_sse_with_reconnect_honors_server_retry_delay() {
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.write_timeout = Duration::from_secs(2);
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .unwrap();
 
     let start = Instant::now();
@@ -366,7 +366,7 @@ async fn test_execute_sse_with_reconnect_does_not_retry_non_retryable_protocol_e
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.write_timeout = Duration::from_secs(2);
     let mut client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .unwrap();
     let attempts = Arc::new(AtomicUsize::new(0));
     let attempts_for_interceptor = Arc::clone(&attempts);
@@ -414,7 +414,7 @@ async fn test_execute_sse_with_reconnect_reports_invalid_last_event_id_header_va
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.write_timeout = Duration::from_secs(2);
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .unwrap();
 
     let request = client

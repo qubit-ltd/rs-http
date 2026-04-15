@@ -25,7 +25,7 @@ use crate::common::{spawn_one_shot_server, ResponsePlan};
 #[test]
 fn test_http_client_debug_includes_options_and_injectors() {
     let mut client = HttpClientFactory::new()
-        .create()
+        .create_default()
         .expect("default options should create client");
     client.add_header_injector(HttpHeaderInjector::new(|_headers: &mut HeaderMap| Ok(())));
 
@@ -49,7 +49,7 @@ async fn test_absolute_url_request_bypasses_base_url_join() {
     // Deliberately points to a non-existing host; absolute URL should bypass this.
     options.base_url = Some(url::Url::parse("http://127.0.0.1:1/").unwrap());
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .unwrap();
 
     let path = format!("{}absolute", target_server.base_url());
@@ -73,7 +73,7 @@ async fn test_execute_returns_invalid_url_for_bad_relative_path() {
         url::Url::parse("https://example.com/api/").expect("static base_url in test should parse"),
     );
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect("valid options should create client");
     let request = client.request(Method::GET, "http://[::1").build();
 
@@ -99,7 +99,7 @@ async fn test_header_injector_order_is_stable_and_clear_works() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server1.base_url());
     let mut client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .unwrap();
     client.add_header_injector(HttpHeaderInjector::new(|headers: &mut HeaderMap| {
         headers.insert(
@@ -130,7 +130,7 @@ async fn test_header_injector_order_is_stable_and_clear_works() {
     let mut options2 = HttpClientOptions::default();
     options2.base_url = Some(server2.base_url());
     let mut client2 = HttpClientFactory::new()
-        .create_with_options(options2)
+        .create(options2)
         .unwrap();
     client2.add_header_injector(HttpHeaderInjector::new(|headers: &mut HeaderMap| {
         headers.insert(
@@ -157,7 +157,7 @@ async fn test_failing_header_injector_short_circuits_request() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     let mut client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .unwrap();
     client.add_header_injector(HttpHeaderInjector::new(|_headers: &mut HeaderMap| {
         Err(HttpError::other("inject failed"))
@@ -180,7 +180,7 @@ async fn test_request_interceptor_order_is_stable_and_clear_works() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server1.base_url());
     let mut client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .unwrap();
     client.add_request_interceptor(HttpRequestInterceptor::new(|request| {
         request.set_typed_header(
@@ -222,7 +222,7 @@ async fn test_request_interceptor_order_is_stable_and_clear_works() {
     let mut options2 = HttpClientOptions::default();
     options2.base_url = Some(server2.base_url());
     let mut client2 = HttpClientFactory::new()
-        .create_with_options(options2)
+        .create(options2)
         .unwrap();
     client2.add_request_interceptor(HttpRequestInterceptor::new(|request| {
         request.set_typed_header(
@@ -242,7 +242,7 @@ async fn test_request_interceptor_order_is_stable_and_clear_works() {
 #[tokio::test]
 async fn test_failing_request_interceptor_short_circuits_before_url_resolution() {
     let mut client = HttpClientFactory::new()
-        .create()
+        .create_default()
         .expect("default options should create client");
     client.add_request_interceptor(HttpRequestInterceptor::new(|_request| {
         Err(HttpError::other("request blocked by interceptor"))
@@ -278,7 +278,7 @@ async fn test_response_interceptor_order_is_stable_and_short_circuits() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     let mut client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .unwrap();
 
     let events = Arc::new(Mutex::new(Vec::new()));
@@ -325,7 +325,7 @@ async fn test_clear_response_interceptors_restores_success_path() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     let mut client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .unwrap();
     client.add_response_interceptor(HttpResponseInterceptor::new(|_meta| {
         Err(HttpError::other("should be cleared"))
@@ -349,7 +349,7 @@ async fn test_execute_applies_response_interceptor_for_unconsumed_body() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     let mut client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .unwrap();
     let called = Arc::new(AtomicUsize::new(0));
     let called_for_interceptor = Arc::clone(&called);
@@ -377,7 +377,7 @@ async fn test_request_url_can_differ_from_response_meta_url() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     let mut client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect("valid options should create client");
     let rewritten_url = url::Url::parse("https://interceptor.example/rewritten")
         .expect("static interceptor URL should parse");
@@ -427,7 +427,7 @@ async fn test_request_url_is_used_in_buffered_read_error() {
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_millis(50);
     let mut client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect("valid options should create client");
     let interceptor_url = url::Url::parse("https://interceptor.example/context-url-rewritten")
         .expect("static interceptor URL should parse");
@@ -469,7 +469,7 @@ async fn test_retry_status_code_allowlist_can_disable_retry_for_503() {
     options.retry.max_attempts = 3;
     options.retry.retry_status_codes = Some(vec![StatusCode::TOO_MANY_REQUESTS]);
     let mut client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .unwrap();
     let attempts = Arc::new(AtomicUsize::new(0));
     let attempts_for_interceptor = Arc::clone(&attempts);
@@ -501,7 +501,7 @@ async fn test_retry_status_code_allowlist_can_enable_retry_for_503() {
     options.retry.retry_status_codes = Some(vec![StatusCode::SERVICE_UNAVAILABLE]);
     options.retry.retry_error_kinds = Some(vec![HttpErrorKind::Status]);
     let mut client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .unwrap();
     let attempts = Arc::new(AtomicUsize::new(0));
     let attempts_for_interceptor = Arc::clone(&attempts);
@@ -524,7 +524,7 @@ async fn test_retry_error_kind_allowlist_can_disable_transport_retry() {
     options.retry.max_attempts = 3;
     options.retry.retry_error_kinds = Some(vec![HttpErrorKind::ReadTimeout]);
     let mut client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .unwrap();
     let attempts = Arc::new(AtomicUsize::new(0));
     let attempts_for_interceptor = Arc::clone(&attempts);
@@ -555,7 +555,7 @@ async fn test_add_header_applies_client_default_header() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     let mut client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .unwrap();
     client.add_header("x-client", "default").unwrap();
 
@@ -579,7 +579,7 @@ async fn test_add_headers_is_atomic_and_request_header_still_overrides() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     let mut client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .unwrap();
     client
         .add_headers([
@@ -621,7 +621,7 @@ async fn test_add_headers_invalid_batch_does_not_partially_apply() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     let mut client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .unwrap();
 
     let error = client
@@ -647,7 +647,7 @@ async fn test_add_header_invalid_value_does_not_apply() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     let mut client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .unwrap();
 
     let error = client.add_header("x-bad", "line1\nline2").unwrap_err();
@@ -671,7 +671,7 @@ async fn test_add_header_injector_still_overrides_client_default_header() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     let mut client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .unwrap();
     client.add_header("x-order", "client").unwrap();
     client.add_header_injector(HttpHeaderInjector::new(|headers: &mut HeaderMap| {
@@ -706,7 +706,7 @@ async fn test_clone_default_headers_are_independent_after_creation() {
     })
     .await;
 
-    let mut client = HttpClientFactory::new().create().unwrap();
+    let mut client = HttpClientFactory::new().create_default().unwrap();
     client.add_header("x-shared", "base").unwrap();
 
     let mut cloned = client.clone();

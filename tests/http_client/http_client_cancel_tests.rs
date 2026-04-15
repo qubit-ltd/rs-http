@@ -33,7 +33,7 @@ async fn test_execute_request_with_pre_cancelled_token_returns_cancelled_error()
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect("client should be created");
 
     let token = CancellationToken::new();
@@ -70,7 +70,7 @@ async fn test_execute_request_can_be_cancelled_while_reading_response_body() {
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_secs(5);
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect("client should be created");
 
     let token = CancellationToken::new();
@@ -116,7 +116,7 @@ async fn test_execute_request_can_be_cancelled_while_sending() {
     options.timeouts.write_timeout = Duration::from_secs(5);
     options.timeouts.read_timeout = Duration::from_secs(5);
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect("client should be created");
 
     let token = CancellationToken::new();
@@ -166,7 +166,7 @@ async fn test_execute_stream_body_can_be_cancelled_after_first_chunk() {
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_secs(5);
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect("client should be created");
 
     let token = CancellationToken::new();

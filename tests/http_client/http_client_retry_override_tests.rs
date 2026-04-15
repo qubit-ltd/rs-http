@@ -42,7 +42,7 @@ async fn test_request_retry_override_force_enable_and_all_methods_for_post() {
     options.retry.max_attempts = 2;
     options.retry.delay_strategy = Delay::None;
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect("client should be created");
 
     let request = client
@@ -79,7 +79,7 @@ async fn test_request_retry_override_disable_retry_skips_client_retry_policy() {
     options.retry.max_attempts = 3;
     options.retry.delay_strategy = Delay::None;
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect("client should be created");
 
     let request = client
@@ -122,7 +122,7 @@ async fn test_request_retry_override_method_policy_allows_post_without_global_ov
     options.retry.delay_strategy = Delay::None;
     options.retry.method_policy = HttpRetryMethodPolicy::IdempotentOnly;
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect("client should be created");
 
     let request = client
@@ -163,7 +163,7 @@ async fn test_request_retry_override_honor_retry_after_waits_before_retrying() {
     options.retry.max_attempts = 2;
     options.retry.delay_strategy = Delay::None;
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect("client should be created");
 
     let request = client
@@ -210,7 +210,7 @@ async fn test_request_retry_override_honor_retry_after_waits_before_retrying_on_
     options.retry.max_attempts = 2;
     options.retry.delay_strategy = Delay::None;
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect("client should be created");
 
     let request = client
@@ -261,7 +261,7 @@ async fn test_request_retry_override_honor_retry_after_waits_before_body_stream_
     options.retry.max_attempts = 2;
     options.retry.delay_strategy = Delay::None;
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect("client should be created");
 
     let request = client
@@ -316,7 +316,7 @@ async fn test_request_retry_override_honor_retry_after_without_header_does_not_a
     options.retry.max_attempts = 2;
     options.retry.delay_strategy = Delay::None;
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect("client should be created");
 
     let request = client
@@ -363,7 +363,7 @@ async fn test_request_retry_override_honor_retry_after_does_not_block_runtime_th
     options.retry.max_attempts = 2;
     options.retry.delay_strategy = Delay::None;
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect("client should be created");
 
     let tick_count = Arc::new(AtomicUsize::new(0));

@@ -39,7 +39,7 @@ async fn test_http_proxy_forwards_request_and_sends_proxy_auth() {
     options.timeouts.read_timeout = Duration::from_secs(2);
 
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .unwrap();
     let request = client.request(Method::GET, "/via-proxy").build();
     let response = timeout(Duration::from_secs(3), client.execute(request))
@@ -89,7 +89,7 @@ async fn test_proxy_disabled_does_not_use_environment_proxy() {
     options.timeouts.read_timeout = Duration::from_secs(2);
 
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .unwrap();
     let result = client
         .execute(client.request(Method::GET, "/direct").build())
@@ -122,7 +122,7 @@ async fn test_https_via_http_proxy_uses_connect_tunnel() {
     options.timeouts.request_timeout = Some(Duration::from_secs(2));
 
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .unwrap();
     let request = client
         .request(Method::GET, "https://example.com/through-proxy")
