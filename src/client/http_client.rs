@@ -20,7 +20,7 @@ use qubit_function::MutatingFunction;
 use url::Url;
 
 use super::error_mapper::{map_reqwest_error, ReqwestErrorPhase};
-use super::request_pipeline::{PreparedRequestSend, RequestPipeline};
+use super::request_pipeline::RequestPipeline;
 use super::retry_controller::RetryController;
 use super::sse_reconnect::SseReconnectRunner;
 use crate::{
@@ -306,44 +306,32 @@ impl HttpClient {
         let mut request = request;
         self.apply_request_interceptors(&mut request)?;
         let pipeline = RequestPipeline::new(self);
-        let PreparedRequestSend {
-            method,
-            url,
-            cancellation_token,
-            response,
-        } = pipeline
+        let (request, response) = pipeline
             .prepare_and_send_once(request, "Request cancelled before sending")
             .await?;
 
+        let method = request.method().clone();
+        let url = request
+            .resolved_url_cached()
+            .expect("resolved_url must exist before ensure_success_response");
         let response = pipeline
             .ensure_success_response(response, &method, &url, "HTTP request failed")
             .await?;
 
-        let mut response_meta = HttpResponseMeta::new(
+        let mut meta = HttpResponseMeta::new(
             response.status(),
             response.headers().clone(),
             response.url().clone(),
         );
-        self.apply_response_interceptors(&mut response_meta, &method)?;
+        self.apply_response_interceptors(&mut meta, &method)?;
 
-        let body = pipeline
-            .read_body_with_timeout(
-                response,
-                method.clone(),
-                response_meta.url.clone(),
-                cancellation_token.as_ref(),
-            )
-            .await?;
-
+        let mut buffered_response =
+            BufferedHttpResponse::try_new(response, &request, meta.url.clone()).await?;
+        buffered_response.meta = meta;
         let logger = HttpLogger::new(&self.options);
-        logger.log_response(
-            response_meta.status,
-            &response_meta.url,
-            &response_meta.headers,
-            &body,
-        );
+        logger.log_response(&buffered_response);
 
-        Ok(BufferedHttpResponse::new_with_meta(response_meta, body))
+        Ok(buffered_response)
     }
 
     /// Performs one non-retrying streaming execution: same setup as
@@ -363,15 +351,14 @@ impl HttpClient {
         let mut request = request;
         self.apply_request_interceptors(&mut request)?;
         let pipeline = RequestPipeline::new(self);
-        let PreparedRequestSend {
-            method,
-            url,
-            cancellation_token,
-            response,
-        } = pipeline
+        let (request, response) = pipeline
             .prepare_and_send_once(request, "Streaming request cancelled before sending")
             .await?;
 
+        let method = request.method().clone();
+        let url = request
+            .resolved_url_cached()
+            .expect("resolved_url must exist before ensure_success_response");
         let response = pipeline
             .ensure_success_response(response, &method, &url, "HTTP streaming request failed")
             .await?;
@@ -384,16 +371,12 @@ impl HttpClient {
         self.apply_response_interceptors(&mut response_meta, &method)?;
 
         let logger = HttpLogger::new(&self.options);
-        logger.log_stream_response_headers(
-            response_meta.status,
-            &response_meta.url,
-            &response_meta.headers,
-        );
+        logger.log_stream_response_headers(&response_meta);
 
-        let read_timeout = self.options.timeouts.read_timeout;
+        let read_timeout = request.read_timeout();
         let method_for_err = method.clone();
         let url_for_err = response_meta.url.clone();
-        let cancellation_token_for_stream = cancellation_token.clone();
+        let cancellation_token_for_stream = request.cancellation_token().cloned();
 
         let mut stream = response.bytes_stream();
         let wrapped = stream! {

@@ -373,6 +373,51 @@ async fn test_execute_stream_applies_response_interceptor() {
 }
 
 #[tokio::test]
+async fn test_response_interceptor_context_url_is_used_in_buffered_read_error() {
+    let server = spawn_one_shot_server(ResponsePlan::Chunked {
+        status: 200,
+        headers: vec![],
+        chunks: vec![
+            crate::common::ResponseChunk {
+                delay: Duration::from_millis(0),
+                bytes: b"partial".to_vec(),
+            },
+            crate::common::ResponseChunk {
+                delay: Duration::from_millis(200),
+                bytes: b"later".to_vec(),
+            },
+        ],
+        finish: true,
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.read_timeout = Duration::from_millis(50);
+    let mut client = HttpClientFactory::new()
+        .create_with_options(options)
+        .expect("valid options should create client");
+    let expected_url =
+        url::Url::parse("https://interceptor.example/context-url-rewritten")
+            .expect("static interceptor URL should parse");
+    let expected_url_for_interceptor = expected_url.clone();
+    client.add_response_interceptor(ResponseInterceptor::new(move |meta| {
+        meta.url = expected_url_for_interceptor.clone();
+        Ok(())
+    }));
+
+    let request = client.request(Method::GET, "/context-url-timeout").build();
+    let error = client
+        .execute(request)
+        .await
+        .expect_err("buffered read should timeout");
+
+    assert_eq!(error.kind, HttpErrorKind::ReadTimeout);
+    assert_eq!(error.url, Some(expected_url));
+    let captured = server.finish().await;
+    assert_eq!(captured.target, "/context-url-timeout");
+}
+
+#[tokio::test]
 async fn test_retry_status_code_allowlist_can_disable_retry_for_503() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: StatusCode::SERVICE_UNAVAILABLE.as_u16(),

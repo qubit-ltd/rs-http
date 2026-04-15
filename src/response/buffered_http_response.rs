@@ -13,7 +13,8 @@ use http::{HeaderMap, StatusCode};
 use serde::de::DeserializeOwned;
 use url::Url;
 
-use crate::{HttpError, HttpResult};
+use crate::client::error_mapper::{map_reqwest_error, ReqwestErrorPhase};
+use crate::{HttpError, HttpErrorKind, HttpRequest, HttpResult};
 
 use super::{HttpResponse, HttpResponseMeta};
 
@@ -34,6 +35,61 @@ impl HttpResponse<Bytes> {
     #[inline]
     pub fn new(status: StatusCode, headers: HeaderMap, body: Bytes, url: Url) -> Self {
         Self::new_with_meta(HttpResponseMeta::new(status, headers, url), body)
+    }
+
+    /// Builds a buffered response from reqwest response and request read context.
+    ///
+    /// # Parameters
+    /// - `response`: Raw reqwest response; body will be consumed.
+    /// - `request`: Request context carrying method/read-timeout/cancellation settings.
+    /// - `context_url`: URL used in mapped read/cancellation errors.
+    ///
+    /// # Returns
+    /// New [`BufferedHttpResponse`] with status/headers/url copied from `response`.
+    ///
+    /// # Errors
+    /// Returns mapped decode/read-timeout/cancellation errors while reading body bytes.
+    pub(crate) async fn try_new(
+        response: reqwest::Response,
+        request: &HttpRequest,
+        context_url: Url,
+    ) -> HttpResult<Self> {
+        let meta = HttpResponseMeta::new(
+            response.status(),
+            response.headers().clone(),
+            response.url().clone(),
+        );
+        let timeout = request.read_timeout();
+        let method = request.method().clone();
+        let read_future = tokio::time::timeout(timeout, response.bytes());
+        let next = if let Some(token) = request.cancellation_token() {
+            tokio::select! {
+                _ = token.cancelled() => {
+                    return Err(HttpError::cancelled("Request cancelled while reading response body")
+                        .with_method(method)
+                        .with_url(context_url));
+                }
+                read_result = read_future => read_result,
+            }
+        } else {
+            read_future.await
+        };
+        match next {
+            Ok(Ok(body)) => Ok(Self::new_with_meta(meta, body)),
+            Ok(Err(error)) => Err(map_reqwest_error(
+                error,
+                HttpErrorKind::Decode,
+                Some(ReqwestErrorPhase::Read),
+                Some(method),
+                Some(context_url),
+            )),
+            Err(_) => Err(HttpError::read_timeout(format!(
+                "Read timeout after {:?} while reading response body",
+                timeout
+            ))
+            .with_method(method)
+            .with_url(context_url)),
+        }
     }
 
     /// Interprets buffered body as UTF-8 text.

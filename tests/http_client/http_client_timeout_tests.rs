@@ -9,11 +9,12 @@
 
 use std::time::Duration;
 
+use futures_util::StreamExt;
 use http::Method;
 use qubit_http::{HttpClientFactory, HttpClientOptions, HttpErrorKind, RetryHint};
 use tokio::time::timeout;
 
-use crate::common::{spawn_one_shot_server, ResponsePlan};
+use crate::common::{ResponseChunk, ResponsePlan, spawn_one_shot_server};
 
 #[tokio::test]
 async fn test_client_level_request_timeout_triggers_timeout_classification() {
@@ -197,4 +198,89 @@ async fn test_request_timeout_during_body_read_is_classified_as_read_timeout() {
 
     assert_eq!(error.kind, HttpErrorKind::ReadTimeout);
     assert_eq!(error.retry_hint(), RetryHint::Retryable);
+}
+
+#[tokio::test]
+async fn test_request_level_read_timeout_overrides_client_level_for_buffered_execute() {
+    let server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
+        status: 200,
+        headers: vec![],
+        total_length: 16,
+        prefix: b"abc".to_vec(),
+        delay: Duration::from_millis(250),
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.write_timeout = Duration::from_secs(2);
+    options.timeouts.read_timeout = Duration::from_secs(2);
+    options.timeouts.request_timeout = Some(Duration::from_secs(5));
+
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
+    let request = client
+        .request(Method::GET, "/request-read-timeout-override-buffered")
+        .read_timeout(Duration::from_millis(80))
+        .build();
+    let error = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .unwrap_err();
+
+    assert_eq!(error.kind, HttpErrorKind::ReadTimeout);
+}
+
+#[tokio::test]
+async fn test_request_level_read_timeout_overrides_client_level_for_streaming_execute() {
+    let server = spawn_one_shot_server(ResponsePlan::Chunked {
+        status: 200,
+        headers: vec![("Content-Type".to_string(), "text/plain".to_string())],
+        chunks: vec![
+            ResponseChunk {
+                delay: Duration::ZERO,
+                bytes: b"first".to_vec(),
+            },
+            ResponseChunk {
+                delay: Duration::from_millis(250),
+                bytes: b"second".to_vec(),
+            },
+        ],
+        finish: true,
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.write_timeout = Duration::from_secs(2);
+    options.timeouts.read_timeout = Duration::from_secs(2);
+    options.timeouts.request_timeout = Some(Duration::from_secs(5));
+
+    let client = HttpClientFactory::new()
+        .create_with_options(options)
+        .unwrap();
+    let request = client
+        .request(Method::GET, "/request-read-timeout-override-stream")
+        .read_timeout(Duration::from_millis(80))
+        .build();
+    let response = timeout(Duration::from_secs(3), client.execute_stream(request))
+        .await
+        .expect("execute_stream timed out")
+        .expect("streaming request should start");
+
+    let mut stream = response.into_stream();
+    let first = stream
+        .next()
+        .await
+        .expect("first chunk should exist")
+        .expect("first chunk should be ok");
+    assert_eq!(first, b"first".as_slice());
+
+    let timeout_error = stream
+        .next()
+        .await
+        .expect("second stream item should exist")
+        .expect_err("second stream item should be read timeout");
+    assert_eq!(timeout_error.kind, HttpErrorKind::ReadTimeout);
 }
