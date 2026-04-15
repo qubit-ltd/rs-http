@@ -40,6 +40,21 @@ fn test_http_error_request_timeout_constructor() {
 }
 
 #[test]
+fn test_http_error_retry_layer_constructors_and_retry_hints() {
+    let attempt = HttpError::retry_attempt_timeout("attempt budget");
+    assert_eq!(attempt.kind, HttpErrorKind::RetryAttemptTimeout);
+    assert_eq!(attempt.retry_hint(), RetryHint::NonRetryable);
+
+    let budget = HttpError::retry_max_elapsed_exceeded("max elapsed");
+    assert_eq!(budget.kind, HttpErrorKind::RetryMaxElapsedExceeded);
+    assert_eq!(budget.retry_hint(), RetryHint::NonRetryable);
+
+    let aborted = HttpError::retry_aborted("policy abort");
+    assert_eq!(aborted.kind, HttpErrorKind::RetryAborted);
+    assert_eq!(aborted.retry_hint(), RetryHint::NonRetryable);
+}
+
+#[test]
 fn test_http_error_retry_hint_status_without_status_code_is_non_retryable() {
     let error = HttpError::new(HttpErrorKind::Status, "status missing");
     assert_eq!(error.retry_hint(), RetryHint::NonRetryable);

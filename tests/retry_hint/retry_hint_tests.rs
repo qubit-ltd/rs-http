@@ -43,11 +43,20 @@ fn test_retry_hint_non_retryable_for_protocol_and_config_errors() {
     let proxy_config = HttpError::proxy_config("proxy config");
     let sse_protocol = HttpError::sse_protocol("sse protocol");
     let sse_decode = HttpError::sse_decode("sse decode");
+    let retry_attempt_timeout = HttpError::retry_attempt_timeout("attempt timeout");
+    let retry_max_elapsed = HttpError::retry_max_elapsed_exceeded("max elapsed");
+    let retry_aborted = HttpError::retry_aborted("aborted");
     let other = HttpError::other("other");
 
     assert_eq!(invalid_url.retry_hint(), RetryHint::NonRetryable);
     assert_eq!(proxy_config.retry_hint(), RetryHint::NonRetryable);
     assert_eq!(sse_protocol.retry_hint(), RetryHint::NonRetryable);
     assert_eq!(sse_decode.retry_hint(), RetryHint::NonRetryable);
+    assert_eq!(
+        retry_attempt_timeout.retry_hint(),
+        RetryHint::NonRetryable
+    );
+    assert_eq!(retry_max_elapsed.retry_hint(), RetryHint::NonRetryable);
+    assert_eq!(retry_aborted.retry_hint(), RetryHint::NonRetryable);
     assert_eq!(other.retry_hint(), RetryHint::NonRetryable);
 }

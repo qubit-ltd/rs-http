@@ -500,6 +500,9 @@ fn parse_retry_error_kind(value: &str) -> Option<HttpErrorKind> {
         "SSE_PROTOCOL" => Some(HttpErrorKind::SseProtocol),
         "SSE_DECODE" => Some(HttpErrorKind::SseDecode),
         "CANCELLED" => Some(HttpErrorKind::Cancelled),
+        "RETRY_ATTEMPT_TIMEOUT" => Some(HttpErrorKind::RetryAttemptTimeout),
+        "RETRY_MAX_ELAPSED_EXCEEDED" => Some(HttpErrorKind::RetryMaxElapsedExceeded),
+        "RETRY_ABORTED" => Some(HttpErrorKind::RetryAborted),
         "OTHER" => Some(HttpErrorKind::Other),
         _ => None,
     }

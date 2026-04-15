@@ -144,6 +144,9 @@ fn test_http_retry_options_parses_all_supported_error_kinds() {
                 "sse_protocol".to_string(),
                 "sse_decode".to_string(),
                 "cancelled".to_string(),
+                "retry_attempt_timeout".to_string(),
+                "retry_max_elapsed_exceeded".to_string(),
+                "retry_aborted".to_string(),
                 "other".to_string(),
             ],
         )
@@ -153,7 +156,7 @@ fn test_http_retry_options_parses_all_supported_error_kinds() {
     let kinds = options
         .retry_error_kinds
         .expect("retry_error_kinds should be parsed");
-    assert_eq!(kinds.len(), 14);
+    assert_eq!(kinds.len(), 17);
     assert!(kinds.contains(&HttpErrorKind::InvalidUrl));
     assert!(kinds.contains(&HttpErrorKind::BuildClient));
     assert!(kinds.contains(&HttpErrorKind::ProxyConfig));
@@ -167,6 +170,9 @@ fn test_http_retry_options_parses_all_supported_error_kinds() {
     assert!(kinds.contains(&HttpErrorKind::SseProtocol));
     assert!(kinds.contains(&HttpErrorKind::SseDecode));
     assert!(kinds.contains(&HttpErrorKind::Cancelled));
+    assert!(kinds.contains(&HttpErrorKind::RetryAttemptTimeout));
+    assert!(kinds.contains(&HttpErrorKind::RetryMaxElapsedExceeded));
+    assert!(kinds.contains(&HttpErrorKind::RetryAborted));
     assert!(kinds.contains(&HttpErrorKind::Other));
 }
 

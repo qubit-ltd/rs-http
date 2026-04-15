@@ -37,6 +37,12 @@ pub enum HttpErrorKind {
     SseDecode,
     /// Request was cancelled or interrupted.
     Cancelled,
+    /// A single HTTP retry attempt exceeded its configured timeout.
+    RetryAttemptTimeout,
+    /// Total retry elapsed budget was exceeded before a retryable failure was recorded.
+    RetryMaxElapsedExceeded,
+    /// Retry stopped because the retry policy decided not to continue (abort).
+    RetryAborted,
     /// Any other error.
     Other,
 }
