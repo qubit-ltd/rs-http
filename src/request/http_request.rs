@@ -488,8 +488,8 @@ impl HttpRequest {
             tokio::select! {
                 _ = token.cancelled() => {
                     return Err(HttpError::cancelled("Request cancelled while sending")
-                        .with_method(method.clone())
-                        .with_url(url.clone()));
+                        .with_method(&method)
+                        .with_url(&url));
                 }
                 send_result = send_future => send_result,
             }
@@ -510,8 +510,8 @@ impl HttpRequest {
                 "Write timeout after {:?} while sending request",
                 self.write_timeout
             ))
-            .with_method(method.clone())
-            .with_url(url.clone())),
+            .with_method(&method)
+            .with_url(&url)),
         }
     }
 
@@ -687,9 +687,9 @@ impl HttpRequest {
             .as_ref()
             .is_some_and(CancellationToken::is_cancelled)
         {
-            let mut error = HttpError::cancelled(message.to_string()).with_method(self.method.clone());
+            let mut error = HttpError::cancelled(message.to_string()).with_method(&self.method);
             if let Ok(url) = self.resolved_url() {
-                error = error.with_url(url);
+                error = error.with_url(&url);
             }
             Some(error)
         } else {

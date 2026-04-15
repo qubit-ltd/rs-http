@@ -310,20 +310,18 @@ impl HttpClient {
             .prepare_and_send_once(request, "Request cancelled before sending")
             .await?;
 
-        let method = request.method().clone();
-        let url = request
-            .resolved_url_cached()
-            .expect("resolved_url must exist before ensure_success_response");
         let response = pipeline
-            .ensure_success_response(response, &method, &url, "HTTP request failed")
+            .ensure_success_response(&request, response, "HTTP request failed")
             .await?;
 
+        let method = request.method().clone();
         let mut meta = HttpResponseMeta::new(
             response.status(),
             response.headers().clone(),
             response.url().clone(),
+            method,
         );
-        self.apply_response_interceptors(&mut meta, &method)?;
+        self.apply_response_interceptors(&mut meta)?;
 
         let mut buffered_response =
             BufferedHttpResponse::try_new(response, &request, meta.url.clone()).await?;
@@ -355,26 +353,24 @@ impl HttpClient {
             .prepare_and_send_once(request, "Streaming request cancelled before sending")
             .await?;
 
-        let method = request.method().clone();
-        let url = request
-            .resolved_url_cached()
-            .expect("resolved_url must exist before ensure_success_response");
         let response = pipeline
-            .ensure_success_response(response, &method, &url, "HTTP streaming request failed")
+            .ensure_success_response(&request, response, "HTTP streaming request failed")
             .await?;
 
+        let method = request.method().clone();
         let mut response_meta = HttpResponseMeta::new(
             response.status(),
             response.headers().clone(),
             response.url().clone(),
+            method.clone(),
         );
-        self.apply_response_interceptors(&mut response_meta, &method)?;
+        self.apply_response_interceptors(&mut response_meta)?;
 
         let logger = HttpLogger::new(&self.options);
         logger.log_stream_response_headers(&response_meta);
 
         let read_timeout = request.read_timeout();
-        let method_for_err = method.clone();
+        let method_for_err = method;
         let url_for_err = response_meta.url.clone();
         let cancellation_token_for_stream = request.cancellation_token().cloned();
 
@@ -385,8 +381,8 @@ impl HttpClient {
                     tokio::select! {
                         _ = token.cancelled() => {
                             yield Err(HttpError::cancelled("Streaming response cancelled while reading body")
-                                .with_method(method_for_err.clone())
-                                .with_url(url_for_err.clone()));
+                                .with_method(&method_for_err)
+                                .with_url(&url_for_err));
                             break;
                         }
                         item = tokio::time::timeout(read_timeout, stream.next()) => item,
@@ -413,8 +409,8 @@ impl HttpClient {
                             "Read timeout after {:?} while streaming response",
                             read_timeout
                         ))
-                        .with_method(method_for_err.clone())
-                        .with_url(url_for_err.clone());
+                        .with_method(&method_for_err)
+                        .with_url(&url_for_err);
                         yield Err(error);
                         break;
                     }
@@ -427,6 +423,7 @@ impl HttpClient {
             response_meta.headers,
             response_meta.url,
             Box::pin(wrapped),
+            response_meta.method,
             SseDecodeOptions::new(
                 self.options.sse_json_mode,
                 self.options.sse_max_line_bytes,
@@ -484,11 +481,11 @@ impl HttpClient {
             interceptor.apply(request).map_err(|error| {
                 let mut mapped = error;
                 if mapped.method.is_none() {
-                    mapped = mapped.with_method(request.method().clone());
+                    mapped = mapped.with_method(request.method());
                 }
                 if mapped.url.is_none() {
                     if let Ok(parsed_url) = Url::parse(request.path()) {
-                        mapped = mapped.with_url(parsed_url);
+                        mapped = mapped.with_url(&parsed_url);
                     }
                 }
                 mapped
@@ -500,10 +497,7 @@ impl HttpClient {
     /// Applies registered response interceptors in insertion order.
     ///
     /// # Parameters
-    /// - `status`: Response status code.
-    /// - `headers`: Response headers.
-    /// - `method`: Request method.
-    /// - `url`: Response URL.
+    /// - `response_meta`: Response metadata.
     ///
     /// # Returns
     /// `Ok(())` when all interceptors accept the response.
@@ -514,7 +508,6 @@ impl HttpClient {
     fn apply_response_interceptors(
         &self,
         response_meta: &mut HttpResponseMeta,
-        method: &http::Method,
     ) -> HttpResult<()> {
         for interceptor in &self.response_interceptors {
             interceptor.apply(response_meta).map_err(|error| {
@@ -523,10 +516,10 @@ impl HttpClient {
                     mapped = mapped.with_status(response_meta.status);
                 }
                 if mapped.method.is_none() {
-                    mapped = mapped.with_method(method.clone());
+                    mapped = mapped.with_method(&response_meta.method);
                 }
                 if mapped.url.is_none() {
-                    mapped = mapped.with_url(response_meta.url.clone());
+                    mapped = mapped.with_url(&response_meta.url);
                 }
                 mapped
             })?;

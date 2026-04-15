@@ -9,7 +9,7 @@
 
 use bytes::Bytes;
 use futures_util::StreamExt;
-use http::{HeaderMap, StatusCode};
+use http::{HeaderMap, Method, StatusCode};
 use qubit_http::StreamingHttpResponse;
 use url::Url;
 
@@ -22,6 +22,7 @@ fn test_http_stream_response_is_success_and_new() {
         Box::pin(futures_util::stream::once(async {
             Ok(Bytes::from_static(b"ok"))
         })),
+        Method::GET,
     );
 
     assert!(response.is_success());
@@ -42,6 +43,7 @@ async fn test_http_stream_response_into_stream_consumes_body() {
             Ok(Bytes::from_static(b"part-1")),
             Ok(Bytes::from_static(b"part-2")),
         ])),
+        Method::GET,
     );
 
     let mut stream = response.into_stream();

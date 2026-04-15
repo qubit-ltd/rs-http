@@ -61,10 +61,10 @@ pub(crate) fn map_reqwest_error(
 
     let mut result = HttpError::new(kind, format!("HTTP transport error: {}", error));
     if let Some(method) = method {
-        result = result.with_method(method);
+        result = result.with_method(&method);
     }
     if let Some(url) = url {
-        result = result.with_url(url);
+        result = result.with_url(&url);
     }
     result.with_source(error)
 }

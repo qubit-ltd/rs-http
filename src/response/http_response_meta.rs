@@ -6,9 +6,9 @@
  *    All rights reserved.
  *
  ******************************************************************************/
-//! Shared HTTP response metadata (status, headers, URL).
+//! Shared HTTP response metadata (status, headers, URL, request method).
 
-use http::{HeaderMap, StatusCode};
+use http::{HeaderMap, Method, StatusCode};
 use url::Url;
 
 /// HTTP response metadata available before body buffering/stream consumption.
@@ -20,15 +20,23 @@ pub struct HttpResponseMeta {
     pub headers: HeaderMap,
     /// Final resolved URL.
     pub url: Url,
+    /// Originating request method.
+    pub method: Method,
 }
 
 impl HttpResponseMeta {
-    /// Creates response metadata from status/headers/url parts.
-    pub fn new(status: StatusCode, headers: HeaderMap, url: Url) -> Self {
+    /// Creates response metadata from status/headers/url/method parts.
+    pub fn new(
+        status: StatusCode,
+        headers: HeaderMap,
+        url: Url,
+        method: Method,
+    ) -> Self {
         Self {
             status,
             headers,
             url,
+            method,
         }
     }
 }

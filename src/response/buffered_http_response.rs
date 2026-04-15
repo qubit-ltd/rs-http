@@ -9,7 +9,7 @@
 //! Buffered HTTP response specialization and helpers.
 
 use bytes::Bytes;
-use http::{HeaderMap, StatusCode};
+use http::{HeaderMap, Method, StatusCode};
 use serde::de::DeserializeOwned;
 use url::Url;
 
@@ -29,12 +29,19 @@ impl HttpResponse<Bytes> {
     /// - `headers`: Response headers.
     /// - `body`: Full body bytes.
     /// - `url`: Final URL after redirects.
+    /// - `method`: Originating request method.
     ///
     /// # Returns
     /// New [`BufferedHttpResponse`].
     #[inline]
-    pub fn new(status: StatusCode, headers: HeaderMap, body: Bytes, url: Url) -> Self {
-        Self::new_with_meta(HttpResponseMeta::new(status, headers, url), body)
+    pub fn new(
+        status: StatusCode,
+        headers: HeaderMap,
+        body: Bytes,
+        url: Url,
+        method: Method,
+    ) -> Self {
+        Self::new_with_meta(HttpResponseMeta::new(status, headers, url, method), body)
     }
 
     /// Builds a buffered response from reqwest response and request read context.
@@ -54,20 +61,21 @@ impl HttpResponse<Bytes> {
         request: &HttpRequest,
         context_url: Url,
     ) -> HttpResult<Self> {
+        let method = request.method().clone();
         let meta = HttpResponseMeta::new(
             response.status(),
             response.headers().clone(),
             response.url().clone(),
+            method.clone(),
         );
         let timeout = request.read_timeout();
-        let method = request.method().clone();
         let read_future = tokio::time::timeout(timeout, response.bytes());
         let next = if let Some(token) = request.cancellation_token() {
             tokio::select! {
                 _ = token.cancelled() => {
                     return Err(HttpError::cancelled("Request cancelled while reading response body")
-                        .with_method(method)
-                        .with_url(context_url));
+                        .with_method(&method)
+                        .with_url(&context_url));
                 }
                 read_result = read_future => read_result,
             }
@@ -80,15 +88,15 @@ impl HttpResponse<Bytes> {
                 error,
                 HttpErrorKind::Decode,
                 Some(ReqwestErrorPhase::Read),
-                Some(method),
-                Some(context_url),
+                Some(method.clone()),
+                Some(context_url.clone()),
             )),
             Err(_) => Err(HttpError::read_timeout(format!(
                 "Read timeout after {:?} while reading response body",
                 timeout
             ))
-            .with_method(method)
-            .with_url(context_url)),
+            .with_method(&method)
+            .with_url(&context_url)),
         }
     }
 
@@ -103,7 +111,7 @@ impl HttpResponse<Bytes> {
                 error
             ))
             .with_status(self.meta.status)
-            .with_url(self.meta.url.clone())
+            .with_url(&self.meta.url)
         })
     }
 
@@ -121,7 +129,7 @@ impl HttpResponse<Bytes> {
         serde_json::from_slice(&self.body).map_err(|error| {
             HttpError::decode(format!("Failed to decode response JSON: {}", error))
                 .with_status(self.meta.status)
-                .with_url(self.meta.url.clone())
+                .with_url(&self.meta.url)
         })
     }
 }

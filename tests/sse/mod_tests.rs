@@ -11,7 +11,7 @@
 
 use bytes::Bytes;
 use futures_util::StreamExt as _;
-use http::HeaderMap;
+use http::{HeaderMap, Method};
 use qubit_http::{sse::SseReconnectOptions, HttpResult, StreamingHttpResponse};
 
 async fn collect_results<T>(stream: impl futures_util::Stream<Item = HttpResult<T>>) -> Vec<T> {
@@ -32,6 +32,7 @@ fn stream_response_from_chunks(chunks: Vec<&'static str>) -> StreamingHttpRespon
         HeaderMap::new(),
         url::Url::parse("https://example.com/stream").unwrap(),
         Box::pin(stream),
+        Method::GET,
     )
 }
 

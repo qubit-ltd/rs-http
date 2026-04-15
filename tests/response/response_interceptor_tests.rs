@@ -9,7 +9,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use http::{HeaderMap, HeaderValue, StatusCode};
+use http::{HeaderMap, HeaderValue, Method, StatusCode};
 use qubit_function::MutatingFunction;
 use qubit_http::{HttpError, HttpErrorKind, HttpResponseMeta, ResponseInterceptor};
 use url::Url;
@@ -39,6 +39,7 @@ fn test_response_interceptor_apply_receives_context() {
         StatusCode::CREATED,
         headers,
         Url::parse("https://example.test/path").expect("valid test URL"),
+        Method::GET,
     );
     interceptor
         .apply(&mut meta)
@@ -67,6 +68,7 @@ fn test_response_interceptor_apply_propagates_error() {
         StatusCode::OK,
         HeaderMap::new(),
         Url::parse("https://example.test/").expect("valid test URL"),
+        Method::GET,
     );
 
     let error = interceptor

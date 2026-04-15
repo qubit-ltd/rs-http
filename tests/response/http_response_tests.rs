@@ -8,8 +8,7 @@
  ******************************************************************************/
 
 use bytes::Bytes;
-use http::HeaderMap;
-use http::StatusCode;
+use http::{HeaderMap, Method, StatusCode};
 use qubit_http::{HttpErrorKind, HttpResponse};
 use url::Url;
 
@@ -20,6 +19,7 @@ fn test_http_response_text_decode_error_contains_status_and_url() {
         HeaderMap::new(),
         Bytes::from_static(&[0xFF, 0xFE]),
         Url::parse("https://example.com/bin").unwrap(),
+        Method::GET,
     );
     let error = response.text().unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::Decode);
@@ -37,6 +37,7 @@ fn test_http_response_json_decode_error_contains_status_and_url() {
         HeaderMap::new(),
         Bytes::from_static(b"not-json"),
         Url::parse("https://example.com/json").unwrap(),
+        Method::GET,
     );
     let error = response.json::<serde_json::Value>().unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::Decode);
@@ -54,6 +55,7 @@ fn test_http_response_is_success_reports_status_class() {
         HeaderMap::new(),
         Bytes::from_static(b"ok"),
         Url::parse("https://example.com/ok").unwrap(),
+        Method::GET,
     );
 
     assert!(response.is_success());
@@ -62,6 +64,7 @@ fn test_http_response_is_success_reports_status_class() {
         HeaderMap::new(),
         Bytes::new(),
         Url::parse("https://example.com/bad").unwrap(),
+        Method::GET,
     )
     .is_success());
 }
@@ -73,6 +76,7 @@ fn test_http_response_text_success_returns_body() {
         HeaderMap::new(),
         Bytes::from_static(b"hello"),
         Url::parse("https://example.com/utf8").unwrap(),
+        Method::GET,
     );
 
     let text = response.text().expect("valid utf8 should decode");
@@ -86,6 +90,7 @@ fn test_http_response_json_success_decodes_value() {
         HeaderMap::new(),
         Bytes::from_static(b"{\"n\":42}"),
         Url::parse("https://example.com/json-ok").unwrap(),
+        Method::GET,
     );
 
     let value = response

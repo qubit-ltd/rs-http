@@ -72,8 +72,8 @@ impl HttpError {
     ///
     /// # Returns
     /// `self` for chaining.
-    pub fn with_method(mut self, method: Method) -> Self {
-        self.method = Some(method);
+    pub fn with_method(mut self, method: &Method) -> Self {
+        self.method = Some(method.clone());
         self
     }
 
@@ -84,8 +84,8 @@ impl HttpError {
     ///
     /// # Returns
     /// `self` for chaining.
-    pub fn with_url(mut self, url: Url) -> Self {
-        self.url = Some(url);
+    pub fn with_url(mut self, url: &Url) -> Self {
+        self.url = Some(url.clone());
         self
     }
 
