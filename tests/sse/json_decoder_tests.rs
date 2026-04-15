@@ -10,7 +10,7 @@
 
 use bytes::Bytes;
 use futures_util::StreamExt;
-use http::HeaderMap;
+use http::{HeaderMap, Method};
 use qubit_http::sse::{DoneMarkerPolicy, SseChunk, SseJsonMode};
 use qubit_http::{HttpResult, StreamingHttpResponse};
 
@@ -37,6 +37,7 @@ fn stream_response_from_chunks(chunks: Vec<&'static str>) -> StreamingHttpRespon
         HeaderMap::new(),
         url::Url::parse("https://example.com/stream").unwrap(),
         Box::pin(stream),
+        Method::GET,
     )
 }
 

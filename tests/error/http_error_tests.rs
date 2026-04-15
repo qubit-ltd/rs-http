@@ -14,8 +14,8 @@ use qubit_http::{HttpError, HttpErrorKind, RetryHint};
 fn test_http_error_builder_methods() {
     let url = url::Url::parse("https://example.com/test").unwrap();
     let error = HttpError::new(HttpErrorKind::Decode, "decode failure")
-        .with_method(http::Method::POST)
-        .with_url(url.clone())
+        .with_method(&http::Method::POST)
+        .with_url(&url)
         .with_status(StatusCode::BAD_GATEWAY);
 
     assert_eq!(error.kind, HttpErrorKind::Decode);

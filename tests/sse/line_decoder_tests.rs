@@ -9,7 +9,7 @@
 
 use bytes::Bytes;
 use futures_util::StreamExt;
-use http::{HeaderMap, StatusCode};
+use http::{HeaderMap, Method, StatusCode};
 use qubit_http::{HttpErrorKind, StreamingHttpResponse};
 
 fn stream_response_from_chunks(chunks: Vec<String>) -> StreamingHttpResponse {
@@ -23,6 +23,7 @@ fn stream_response_from_chunks(chunks: Vec<String>) -> StreamingHttpResponse {
         HeaderMap::new(),
         url::Url::parse("https://example.com/stream").unwrap(),
         Box::pin(stream),
+        Method::GET,
     )
 }
 

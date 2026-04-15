@@ -8,7 +8,7 @@
  ******************************************************************************/
 //! Streaming HTTP response payload and helper methods.
 
-use http::{HeaderMap, StatusCode};
+use http::{HeaderMap, Method, StatusCode};
 use serde::de::DeserializeOwned;
 use url::Url;
 
@@ -30,6 +30,7 @@ impl HttpResponse<StreamingBody> {
     /// - `headers`: Header map.
     /// - `url`: Final URL.
     /// - `stream`: Pinned body stream.
+    /// - `method`: Originating request method.
     ///
     /// # Returns
     /// New [`StreamingHttpResponse`].
@@ -38,8 +39,16 @@ impl HttpResponse<StreamingBody> {
         headers: HeaderMap,
         url: Url,
         stream: HttpByteStream,
+        method: Method,
     ) -> Self {
-        Self::new_with_sse_decode_options(status, headers, url, stream, SseDecodeOptions::default())
+        Self::new_with_sse_decode_options(
+            status,
+            headers,
+            url,
+            stream,
+            method,
+            SseDecodeOptions::default(),
+        )
     }
 
     /// Wraps status, headers, URL, and byte stream with SSE decode options.
@@ -49,6 +58,7 @@ impl HttpResponse<StreamingBody> {
     /// - `headers`: Header map.
     /// - `url`: Final URL.
     /// - `stream`: Pinned body stream.
+    /// - `method`: Originating request method.
     /// - `sse_decode_options`: Default options used by SSE decode helpers.
     ///
     /// # Returns
@@ -58,6 +68,7 @@ impl HttpResponse<StreamingBody> {
         headers: HeaderMap,
         url: Url,
         stream: HttpByteStream,
+        method: Method,
         sse_decode_options: SseDecodeOptions,
     ) -> Self {
         let body = StreamingBody {
@@ -69,7 +80,7 @@ impl HttpResponse<StreamingBody> {
             ),
         };
         Self {
-            meta: HttpResponseMeta::new(status, headers, url),
+            meta: HttpResponseMeta::new(status, headers, url, method),
             body,
         }
     }

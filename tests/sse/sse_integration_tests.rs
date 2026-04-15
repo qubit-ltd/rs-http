@@ -42,6 +42,7 @@ fn stream_response_from_chunks(chunks: Vec<Vec<u8>>) -> StreamingHttpResponse {
         HeaderMap::new(),
         url::Url::parse("https://example.com/stream").unwrap(),
         Box::pin(stream),
+        Method::GET,
     )
 }
 
@@ -80,6 +81,7 @@ async fn test_decode_events_propagates_upstream_stream_error() {
         HeaderMap::new(),
         url::Url::parse("https://example.com/stream").unwrap(),
         Box::pin(stream),
+        Method::GET,
     );
 
     let mut events = response.decode_events();

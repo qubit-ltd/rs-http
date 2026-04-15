@@ -67,30 +67,31 @@ impl<'a> RequestPipeline<'a> {
     /// status/retry/body-preview context.
     ///
     /// # Parameters
+    /// - `request`: Request snapshot used for this attempt (contains method and resolved URL).
     /// - `response`: Raw response from reqwest.
-    /// - `method`: Request method used for this attempt.
-    /// - `url`: Resolved request URL used for this attempt.
     /// - `message_prefix`: Prefix for the final error message.
     ///
     /// # Returns
     /// Original response when successful, otherwise mapped [`HttpError`].
     pub(super) async fn ensure_success_response(
         &self,
+        request: &HttpRequest,
         response: Response,
-        method: &http::Method,
-        url: &url::Url,
         message_prefix: &str,
     ) -> HttpResult<Response> {
-        if response.status().is_success() {
+        let status = response.status();
+        if status.is_success() {
             return Ok(response);
         }
-
-        let status = response.status();
         let retry_after = parse_retry_after(status, response.headers());
         let error = response.error_for_status_ref().expect_err(
             "non-success HTTP status must produce reqwest status error via error_for_status_ref",
         );
         let body_preview = self.read_error_response_preview(response).await;
+
+        let method = request.method();
+        let url = request.resolved_url()?;
+
         let message = format!(
             "{} with status {} for {} {}; response body preview: {}",
             message_prefix, status, method, url, body_preview

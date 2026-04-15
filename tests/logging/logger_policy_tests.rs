@@ -105,6 +105,7 @@ fn test_log_response_masks_sensitive_headers() {
             headers.clone(),
             Bytes::from_static(b"ok"),
             Url::parse("https://example.com/data").unwrap(),
+            Method::GET,
         );
         logger.log_response(&response);
     });
@@ -131,6 +132,7 @@ fn test_log_response_binary_body_and_truncation() {
             headers.clone(),
             Bytes::from_static(&[0xFF, 0xFE, 0xFD, 0xFC, 0xFB]),
             Url::parse("https://example.com/bin").unwrap(),
+            Method::GET,
         );
         logger.log_response(&response);
     });
@@ -154,6 +156,7 @@ fn test_log_stream_response_headers_respects_toggle() {
             StatusCode::OK,
             headers.clone(),
             Url::parse("https://example.com/stream").unwrap(),
+            Method::GET,
         );
         logger.log_stream_response_headers(&response_meta);
     });
