@@ -14,21 +14,17 @@
 //!
 //! Haixing Hu
 
-use async_stream::stream;
-use futures_util::StreamExt;
 use qubit_function::MutatingFunction;
 use url::Url;
 
-use super::error_mapper::{map_reqwest_error, ReqwestErrorPhase};
 use super::request_pipeline::RequestPipeline;
 use super::retry_controller::RetryController;
 use super::sse_reconnect::SseReconnectRunner;
 use crate::{
     sse::{SseEventStream, SseReconnectOptions},
-    AsyncHeaderInjector, BufferedHttpResponse, HeaderInjector, HttpClientOptions, HttpError,
-    HttpErrorKind, HttpLogger, HttpRequest, HttpRequestBuilder, HttpResponseMeta, HttpResult,
-    HttpRetryOptions, RequestInterceptor, ResponseInterceptor, SseDecodeOptions,
-    StreamingHttpResponse,
+    AsyncHeaderInjector, HeaderInjector, HttpClientOptions, HttpLogger, HttpRequest,
+    HttpRequestBuilder, HttpResponse, HttpResponseMeta, HttpResult, HttpRetryOptions,
+    RequestInterceptor, ResponseInterceptor, SseDecodeOptions,
 };
 
 /// High-level HTTP client that applies options, header injection, logging, and timeouts.
@@ -212,19 +208,18 @@ impl HttpClient {
         self.async_injectors.clone()
     }
 
-    /// Sends the request, reads the full response body, logs per options, and
-    /// returns a buffered [`BufferedHttpResponse`].
+    /// Sends the request and returns a unified [`HttpResponse`].
     ///
     /// # Parameters
     /// - `request`: Built request (URL resolved against `base_url` if path is
     ///   not absolute).
     ///
     /// # Returns
-    /// - `Ok(BufferedHttpResponse)` when the HTTP status is success
+    /// - `Ok(HttpResponse)` when the HTTP status is success
     ///   ([`http::StatusCode::is_success`]).
     /// - `Err(HttpError)` on URL/header errors, transport failure, timeout, or
     ///   non-success status.
-    pub async fn execute(&self, request: HttpRequest) -> HttpResult<BufferedHttpResponse> {
+    pub async fn execute(&self, request: HttpRequest) -> HttpResult<HttpResponse> {
         let retry_options = self.resolve_retry_options(&request);
         let honor_retry_after = request.retry_override().should_honor_retry_after();
         if self.should_retry_request(&request, &retry_options) {
@@ -232,31 +227,6 @@ impl HttpClient {
                 .await
         } else {
             self.execute_once(request).await
-        }
-    }
-
-    /// Sends the request and returns headers plus a byte stream without
-    /// buffering the full body.
-    ///
-    /// # Parameters
-    /// - `request`: Same as [`HttpClient::execute`].
-    ///
-    /// # Returns
-    /// - `Ok(StreamingHttpResponse)` with a stream that applies read timeout per
-    ///   options.
-    /// - `Err(HttpError)` before the stream starts (same cases as
-    ///   [`HttpClient::execute`] for the initial response).
-    pub async fn execute_stream(
-        &self,
-        request: HttpRequest,
-    ) -> HttpResult<StreamingHttpResponse> {
-        let retry_options = self.resolve_retry_options(&request);
-        let honor_retry_after = request.retry_override().should_honor_retry_after();
-        if self.should_retry_request(&request, &retry_options) {
-            self.execute_stream_with_retry(request, retry_options, honor_retry_after)
-                .await
-        } else {
-            self.execute_stream_once(request).await
         }
     }
 
@@ -290,19 +260,16 @@ impl HttpClient {
     }
 
     /// Performs one non-retrying execution: resolve URL, merge headers, log the
-    /// request, send with write timeout, reject non-success status, read the
-    /// full body with read timeout, then log the response.
+    /// request, send with write timeout, reject non-success status, return a
+    /// lazily readable response.
     ///
     /// # Parameters
     /// - `request`: Built request to send (same fields as for
     ///   [`HttpClient::execute`]).
     ///
     /// # Returns
-    /// Buffered [`BufferedHttpResponse`] or [`HttpError`].
-    pub(super) async fn execute_once(
-        &self,
-        request: HttpRequest,
-    ) -> HttpResult<BufferedHttpResponse> {
+    /// [`HttpResponse`] or [`crate::HttpError`].
+    pub(super) async fn execute_once(&self, request: HttpRequest) -> HttpResult<HttpResponse> {
         let mut request = request;
         self.apply_request_interceptors(&mut request)?;
         let pipeline = RequestPipeline::new(self);
@@ -322,114 +289,28 @@ impl HttpClient {
             method,
         );
         self.apply_response_interceptors(&mut meta)?;
+        let request_url = request.resolved_url()?;
 
-        let mut buffered_response =
-            BufferedHttpResponse::try_new(response, &request, meta.url.clone()).await?;
-        buffered_response.meta = meta;
-        let logger = HttpLogger::new(&self.options);
-        logger.log_response(&buffered_response);
-
-        Ok(buffered_response)
-    }
-
-    /// Performs one non-retrying streaming execution: same setup as
-    /// [`HttpClient::execute_once`], but on success wraps the body in a stream
-    /// with per-chunk read timeouts instead of buffering the full body.
-    ///
-    /// # Parameters
-    /// - `request`: Built request to send (same fields as for
-    ///   [`HttpClient::execute_stream`]).
-    ///
-    /// # Returns
-    /// [`StreamingHttpResponse`] or [`HttpError`].
-    pub(super) async fn execute_stream_once(
-        &self,
-        request: HttpRequest,
-    ) -> HttpResult<StreamingHttpResponse> {
-        let mut request = request;
-        self.apply_request_interceptors(&mut request)?;
-        let pipeline = RequestPipeline::new(self);
-        let (request, response) = pipeline
-            .prepare_and_send_once(request, "Streaming request cancelled before sending")
-            .await?;
-
-        let response = pipeline
-            .ensure_success_response(&request, response, "HTTP streaming request failed")
-            .await?;
-
-        let method = request.method().clone();
-        let mut response_meta = HttpResponseMeta::new(
-            response.status(),
-            response.headers().clone(),
-            response.url().clone(),
-            method.clone(),
+        let sse_decode_options = SseDecodeOptions::new(
+            self.options.sse_json_mode,
+            self.options.sse_max_line_bytes,
+            self.options.sse_max_frame_bytes,
         );
-        self.apply_response_interceptors(&mut response_meta)?;
-
+        let mut unified_response = HttpResponse::from_backend(
+            meta,
+            response,
+            request.read_timeout(),
+            request.cancellation_token().cloned(),
+            request_url,
+            sse_decode_options,
+        );
         let logger = HttpLogger::new(&self.options);
-        logger.log_stream_response_headers(&response_meta);
+        if logger.is_trace_enabled() && self.options.logging.log_response_body {
+            let _ = unified_response.bytes_body().await?;
+        }
+        logger.log_response(&unified_response);
 
-        let read_timeout = request.read_timeout();
-        let method_for_err = method;
-        let url_for_err = response_meta.url.clone();
-        let cancellation_token_for_stream = request.cancellation_token().cloned();
-
-        let mut stream = response.bytes_stream();
-        let wrapped = stream! {
-            loop {
-                let next = if let Some(token) = &cancellation_token_for_stream {
-                    tokio::select! {
-                        _ = token.cancelled() => {
-                            yield Err(HttpError::cancelled("Streaming response cancelled while reading body")
-                                .with_method(&method_for_err)
-                                .with_url(&url_for_err));
-                            break;
-                        }
-                        item = tokio::time::timeout(read_timeout, stream.next()) => item,
-                    }
-                } else {
-                    tokio::time::timeout(read_timeout, stream.next()).await
-                };
-                match next {
-                    Ok(Some(Ok(bytes))) => yield Ok(bytes),
-                    Ok(Some(Err(error))) => {
-                        let mapped = map_reqwest_error(
-                            error,
-                            HttpErrorKind::Transport,
-                            Some(ReqwestErrorPhase::Read),
-                            Some(method_for_err.clone()),
-                            Some(url_for_err.clone()),
-                        );
-                        yield Err(mapped);
-                        break;
-                    }
-                    Ok(None) => break,
-                    Err(_) => {
-                        let error = HttpError::read_timeout(format!(
-                            "Read timeout after {:?} while streaming response",
-                            read_timeout
-                        ))
-                        .with_method(&method_for_err)
-                        .with_url(&url_for_err);
-                        yield Err(error);
-                        break;
-                    }
-                }
-            }
-        };
-
-        Ok(StreamingHttpResponse::new_with_sse_decode_options(
-            response_meta.status,
-            response_meta.headers,
-            response_meta.url,
-            Box::pin(wrapped),
-            response_meta.method,
-            SseDecodeOptions::new(
-                self.options.sse_json_mode,
-                self.options.sse_max_line_bytes,
-                self.options.sse_max_frame_bytes,
-            ),
-        ))
+        Ok(unified_response)
     }
 
     /// Returns whether the client should run the retry policy for this request.
@@ -544,32 +425,9 @@ impl HttpClient {
         request: HttpRequest,
         retry_options: HttpRetryOptions,
         honor_retry_after: bool,
-    ) -> HttpResult<BufferedHttpResponse> {
+    ) -> HttpResult<HttpResponse> {
         let retry_controller = RetryController::new(&retry_options, honor_retry_after)?;
         retry_controller.run_response(self, request).await
-    }
-
-    /// Runs [`HttpClient::execute_stream_once`] under the configured retry
-    /// policy.
-    ///
-    /// # Parameters
-    /// - `request`: Built request passed to each
-    ///   [`HttpClient::execute_stream_once`] attempt.
-    /// - `retry_options`: Effective retry options for this request.
-    /// - `honor_retry_after`: Whether to honor `Retry-After` on retryable
-    ///   status responses (`429` and `5xx`).
-    ///
-    /// # Returns
-    /// Same as a successful single streaming attempt, or a mapped [`HttpError`]
-    /// when retries abort or limits are exceeded.
-    async fn execute_stream_with_retry(
-        &self,
-        request: HttpRequest,
-        retry_options: HttpRetryOptions,
-        honor_retry_after: bool,
-    ) -> HttpResult<StreamingHttpResponse> {
-        let retry_controller = RetryController::new(&retry_options, honor_retry_after)?;
-        retry_controller.run_stream(self, request).await
     }
 }
 

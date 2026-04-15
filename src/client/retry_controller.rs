@@ -16,8 +16,7 @@ use qubit_retry::{
 };
 
 use crate::{
-    BufferedHttpResponse, HttpClient, HttpError, HttpErrorKind, HttpRequest, HttpResult,
-    HttpRetryOptions, StreamingHttpResponse,
+    HttpClient, HttpError, HttpErrorKind, HttpRequest, HttpResponse, HttpResult, HttpRetryOptions,
 };
 
 /// Shared state used to carry extra `Retry-After` delay into the next async
@@ -124,7 +123,7 @@ impl RetryController {
         &self,
         client: &HttpClient,
         request: HttpRequest,
-    ) -> HttpResult<BufferedHttpResponse> {
+    ) -> HttpResult<HttpResponse> {
         let client = client.clone();
         let pending_retry_after_delay = self.pending_retry_after_delay.clone();
         let result = self
@@ -147,42 +146,6 @@ impl RetryController {
         map_retry_result(result)
     }
 
-    /// Runs [`HttpClient::execute_stream_once`] under the configured retry policy.
-    ///
-    /// # Parameters
-    /// - `client`: HTTP client used to run attempts.
-    /// - `request`: Built request passed to each
-    ///   [`HttpClient::execute_stream_once`] attempt.
-    ///
-    /// # Returns
-    /// Same as a successful single streaming attempt, or a mapped [`HttpError`]
-    /// when retries abort or limits are exceeded.
-    pub(super) async fn run_stream(
-        &self,
-        client: &HttpClient,
-        request: HttpRequest,
-    ) -> HttpResult<StreamingHttpResponse> {
-        let client = client.clone();
-        let pending_retry_after_delay = self.pending_retry_after_delay.clone();
-        let result = self
-            .executor
-            .run_async(move || {
-                let client = client.clone();
-                let request = request.clone();
-                let pending_retry_after_delay = pending_retry_after_delay.clone();
-                async move {
-                    if let Some(delay) = pending_retry_after_delay
-                        .as_ref()
-                        .and_then(take_pending_retry_after_delay)
-                    {
-                        tokio::time::sleep(delay).await;
-                    }
-                    client.execute_stream_once(request).await
-                }
-            })
-            .await;
-        map_retry_result(result)
-    }
 }
 
 /// Stores the extra `Retry-After` delay that should be applied before the next

@@ -8,7 +8,7 @@
  ******************************************************************************/
 //! # SSE Decoding
 //!
-//! SSE utilities built on top of [`StreamingHttpResponse`](crate::StreamingHttpResponse).
+//! SSE utilities built on top of [`HttpByteStream`](crate::HttpByteStream).
 //!
 //! # Author
 //!
@@ -26,7 +26,7 @@ mod sse_event;
 mod sse_event_stream;
 mod sse_json_mode;
 
-use crate::StreamingHttpResponse;
+use crate::HttpByteStream;
 
 pub use done_marker_policy::DoneMarkerPolicy;
 pub use sse_chunk::SseChunk;
@@ -35,7 +35,7 @@ pub use sse_event::SseEvent;
 pub use sse_event_stream::SseEventStream;
 pub use sse_json_mode::SseJsonMode;
 
-pub(crate) use json_decoder::decode_json_chunks_from_response_with_limits;
+pub(crate) use json_decoder::decode_json_chunks_from_stream_with_limits;
 
 /// Reconnect behavior options for [`crate::HttpClient::execute_sse_with_reconnect`].
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -75,20 +75,20 @@ impl SseReconnectOptions {
     }
 }
 
-/// Parses SSE frames from a streaming HTTP response with explicit line/frame size limits.
+/// Parses SSE frames from a body byte stream with explicit line/frame size limits.
 ///
 /// # Parameters
-/// - `stream`: Streaming response whose body is SSE text.
+/// - `stream`: Body byte stream whose payload is SSE text.
 /// - `max_line_bytes`: Maximum allowed bytes for one SSE line.
 /// - `max_frame_bytes`: Maximum allowed bytes for one SSE frame.
 ///
 /// # Returns
 /// Stream yielding [`SseEvent`] values or protocol/transport errors.
-pub(crate) fn decode_events_from_response_with_limits(
-    stream: StreamingHttpResponse,
+pub(crate) fn decode_events_from_stream_with_limits(
+    stream: HttpByteStream,
     max_line_bytes: usize,
     max_frame_bytes: usize,
 ) -> SseEventStream {
-    let lines = line_decoder::decode_lines(stream.into_stream(), max_line_bytes);
+    let lines = line_decoder::decode_lines(stream, max_line_bytes);
     frame_decoder::decode_frames(lines, max_frame_bytes)
 }

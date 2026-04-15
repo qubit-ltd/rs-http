@@ -11,9 +11,9 @@
 use reqwest::Response;
 
 use crate::client::error_mapper::{
-    map_reqwest_error, parse_retry_after, render_error_body_preview,
+    map_reqwest_error, parse_retry_after,
 };
-use crate::{HttpClient, HttpErrorKind, HttpLogger, HttpRequest, HttpResult};
+use crate::{HttpClient, HttpErrorKind, HttpLogger, HttpRequest, HttpResponse, HttpResult};
 
 /// Pipeline object that encapsulates one-attempt request setup and response
 /// handling.
@@ -120,45 +120,10 @@ impl<'a> RequestPipeline<'a> {
     /// # Returns
     /// Rendered preview text. On preview read failure, returns a descriptive
     /// placeholder.
-    async fn read_error_response_preview(&self, mut response: Response) -> String {
+    async fn read_error_response_preview(&self, response: Response) -> String {
         let read_timeout = self.client.options.timeouts.read_timeout;
         let max_bytes = self.client.options.error_response_preview_limit.max(1);
-        let mut preview = Vec::new();
-        let mut truncated = false;
-
-        loop {
-            let next = tokio::time::timeout(read_timeout, response.chunk()).await;
-            match next {
-                Ok(Ok(Some(chunk))) => {
-                    if preview.len() >= max_bytes {
-                        truncated = true;
-                        break;
-                    }
-                    let remaining = max_bytes - preview.len();
-                    if chunk.len() > remaining {
-                        preview.extend_from_slice(&chunk[..remaining]);
-                        truncated = true;
-                        break;
-                    }
-                    preview.extend_from_slice(&chunk);
-                }
-                Ok(Ok(None)) => break,
-                Ok(Err(error)) => {
-                    return format!(
-                        "<error body unavailable: failed to read response body: {}>",
-                        error
-                    );
-                }
-                Err(_) => {
-                    return format!(
-                        "<error body unavailable: read timeout after {:?}>",
-                        read_timeout
-                    );
-                }
-            }
-        }
-
-        render_error_body_preview(&preview, truncated)
+        HttpResponse::read_error_body_preview(response, read_timeout, max_bytes).await
     }
 
 }

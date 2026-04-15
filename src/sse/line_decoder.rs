@@ -28,7 +28,7 @@ pub type SseLineStream = Pin<Box<dyn Stream<Item = HttpResult<String>> + Send>>;
 /// Buffers chunks from `stream`, splits on `\n`, strips `\r`, validates UTF-8 per line.
 ///
 /// # Parameters
-/// - `stream`: Raw byte stream from [`crate::StreamingHttpResponse::into_stream`].
+/// - `stream`: Raw byte stream from [`crate::HttpResponse::stream_body`].
 /// - `max_line_bytes`: Maximum allowed bytes for one SSE line.
 ///
 /// # Returns

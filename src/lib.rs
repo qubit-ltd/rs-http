@@ -50,7 +50,6 @@ pub use request::{
     HttpRequestRetryOverride, RequestInterceptor,
 };
 pub use response::{
-    BufferedHttpResponse, HttpByteStream, HttpResponse, HttpResponseMeta, StreamingHttpResponse,
-    ResponseInterceptor, StreamingBody,
+    HttpByteStream, HttpResponse, HttpResponseMeta, ResponseInterceptor,
 };
 pub use tokio_util::sync::CancellationToken;
