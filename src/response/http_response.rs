@@ -54,7 +54,7 @@ impl HttpResponseRuntime {
 }
 
 /// Decode/error-preview options bound to one response instance.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct HttpResponseOptions {
     /// Maximum bytes captured for status-error body preview.
     pub error_response_preview_limit: usize,
@@ -64,6 +64,8 @@ pub(crate) struct HttpResponseOptions {
     pub sse_max_line_bytes: usize,
     /// Default maximum bytes allowed for one SSE frame.
     pub sse_max_frame_bytes: usize,
+    /// How [`crate::HttpResponse::sse_chunks`] recognizes end-of-stream `data:` markers.
+    pub sse_done_marker_policy: DoneMarkerPolicy,
 }
 
 impl Default for HttpResponseOptions {
@@ -73,6 +75,7 @@ impl Default for HttpResponseOptions {
             sse_json_mode: SseJsonMode::Lenient,
             sse_max_line_bytes: DEFAULT_SSE_MAX_LINE_BYTES,
             sse_max_frame_bytes: DEFAULT_SSE_MAX_FRAME_BYTES,
+            sse_done_marker_policy: DoneMarkerPolicy::default(),
         }
     }
 }
@@ -83,12 +86,14 @@ impl HttpResponseOptions {
         sse_json_mode: SseJsonMode,
         sse_max_line_bytes: usize,
         sse_max_frame_bytes: usize,
+        sse_done_marker_policy: DoneMarkerPolicy,
     ) -> Self {
         Self {
             error_response_preview_limit: error_response_preview_limit.max(1),
             sse_json_mode,
             sse_max_line_bytes: sse_max_line_bytes.max(1),
             sse_max_frame_bytes: sse_max_frame_bytes.max(1),
+            sse_done_marker_policy,
         }
     }
 }
@@ -229,7 +234,7 @@ impl HttpResponse {
     }
 
     /// Returns full body bytes, consuming backend stream lazily on first call.
-    pub async fn bytes_body(&mut self) -> HttpResult<Bytes> {
+    pub async fn bytes(&mut self) -> HttpResult<Bytes> {
         if let Some(body) = &self.buffered_body {
             return Ok(body.clone());
         }
@@ -275,7 +280,7 @@ impl HttpResponse {
     }
 
     /// Returns body as stream; if already buffered, returns stream backed by cached bytes.
-    pub fn stream_body(&mut self) -> HttpResult<HttpByteStream> {
+    pub fn stream(&mut self) -> HttpResult<HttpByteStream> {
         if let Some(body) = self.buffered_body.as_ref() {
             let bytes = body.clone();
             return Ok(Box::pin(futures_stream::once(async move { Ok(bytes) })));
@@ -336,7 +341,7 @@ impl HttpResponse {
 
     /// Interprets response body as UTF-8 text.
     pub async fn text(&mut self) -> HttpResult<String> {
-        let body = self.bytes_body().await?;
+        let body = self.bytes().await?;
         String::from_utf8(body.to_vec()).map_err(|error| {
             HttpError::decode(format!(
                 "Failed to decode response body as UTF-8: {}",
@@ -352,7 +357,7 @@ impl HttpResponse {
     where
         T: DeserializeOwned,
     {
-        let body = self.bytes_body().await?;
+        let body = self.bytes().await?;
         serde_json::from_slice(&body).map_err(|error| {
             HttpError::decode(format!("Failed to decode response JSON: {}", error))
                 .with_status(self.meta.status)
@@ -360,19 +365,47 @@ impl HttpResponse {
         })
     }
 
-    /// Decodes body stream as SSE events with default limits.
-    pub fn decode_sse_events(self) -> SseEventStream {
-        let options = self.options;
-        self.decode_sse_events_with_limits(options.sse_max_line_bytes, options.sse_max_frame_bytes)
+    /// Overrides the maximum allowed size (in bytes) for one SSE line on this response.
+    ///
+    /// Values below 1 are clamped to 1. Returns `self` so callers can chain configuration
+    /// before consuming the body with [`Self::sse_events`] or [`Self::sse_chunks`]
+    /// (together with [`Self::sse_json_mode`], [`Self::sse_done_marker_policy`], etc.).
+    #[inline]
+    pub fn sse_max_line_bytes(mut self, max_line_bytes: usize) -> Self {
+        self.options.sse_max_line_bytes = max_line_bytes.max(1);
+        self
     }
 
-    /// Decodes body stream as SSE events with explicit limits.
-    pub fn decode_sse_events_with_limits(
-        mut self,
-        max_line_bytes: usize,
-        max_frame_bytes: usize,
-    ) -> SseEventStream {
-        match self.stream_body() {
+    /// Overrides the maximum allowed size (in bytes) for one SSE frame on this response.
+    ///
+    /// Values below 1 are clamped to 1. Returns `self` for chained configuration.
+    #[inline]
+    pub fn sse_max_frame_bytes(mut self, max_frame_bytes: usize) -> Self {
+        self.options.sse_max_frame_bytes = max_frame_bytes.max(1);
+        self
+    }
+
+    /// Overrides the JSON decoding mode used by [`Self::sse_chunks`] on this response.
+    #[inline]
+    pub fn sse_json_mode(mut self, mode: SseJsonMode) -> Self {
+        self.options.sse_json_mode = mode;
+        self
+    }
+
+    /// Overrides how [`Self::sse_chunks`] detects end-of-stream from trimmed `data:` payloads.
+    #[inline]
+    pub fn sse_done_marker_policy(mut self, policy: DoneMarkerPolicy) -> Self {
+        self.options.sse_done_marker_policy = policy;
+        self
+    }
+
+    /// Decodes body stream as SSE events using this response's SSE line/frame byte limits (from
+    /// client defaults unless overridden via [`Self::sse_max_line_bytes`] /
+    /// [`Self::sse_max_frame_bytes`]).
+    pub fn sse_events(mut self) -> SseEventStream {
+        let max_line_bytes = self.options.sse_max_line_bytes;
+        let max_frame_bytes = self.options.sse_max_frame_bytes;
+        match self.stream() {
             Ok(stream) => crate::sse::decode_events_from_stream_with_limits(
                 stream,
                 max_line_bytes,
@@ -382,50 +415,18 @@ impl HttpResponse {
         }
     }
 
-    /// Decodes SSE data chunks as JSON using response default options.
-    pub fn decode_sse_json_chunks<T>(self, done_policy: DoneMarkerPolicy) -> SseChunkStream<T>
+    /// Decodes SSE `data:` lines as JSON chunks using this response's SSE JSON mode, done-marker
+    /// policy, and line/frame limits (see [`Self::sse_json_mode`], [`Self::sse_done_marker_policy`],
+    /// [`Self::sse_max_line_bytes`], [`Self::sse_max_frame_bytes`]).
+    pub fn sse_chunks<T>(mut self) -> SseChunkStream<T>
     where
         T: DeserializeOwned + Send + 'static,
     {
-        let options = self.options;
-        self.decode_sse_json_chunks_with_mode_and_limits(
-            done_policy,
-            options.sse_json_mode,
-            options.sse_max_line_bytes,
-            options.sse_max_frame_bytes,
-        )
-    }
-
-    /// Decodes SSE JSON chunks with explicit mode and default limits.
-    pub fn decode_sse_json_chunks_with_mode<T>(
-        self,
-        done_policy: DoneMarkerPolicy,
-        mode: SseJsonMode,
-    ) -> SseChunkStream<T>
-    where
-        T: DeserializeOwned + Send + 'static,
-    {
-        let options = self.options;
-        self.decode_sse_json_chunks_with_mode_and_limits(
-            done_policy,
-            mode,
-            options.sse_max_line_bytes,
-            options.sse_max_frame_bytes,
-        )
-    }
-
-    /// Decodes SSE JSON chunks with explicit mode and limits.
-    pub fn decode_sse_json_chunks_with_mode_and_limits<T>(
-        mut self,
-        done_policy: DoneMarkerPolicy,
-        mode: SseJsonMode,
-        max_line_bytes: usize,
-        max_frame_bytes: usize,
-    ) -> SseChunkStream<T>
-    where
-        T: DeserializeOwned + Send + 'static,
-    {
-        match self.stream_body() {
+        let done_policy = self.options.sse_done_marker_policy.clone();
+        let mode = self.options.sse_json_mode;
+        let max_line_bytes = self.options.sse_max_line_bytes;
+        let max_frame_bytes = self.options.sse_max_frame_bytes;
+        match self.stream() {
             Ok(stream) => crate::sse::decode_json_chunks_from_stream_with_limits(
                 stream,
                 done_policy,

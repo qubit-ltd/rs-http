@@ -42,7 +42,7 @@ async fn test_http_stream_response_into_stream_consumes_body() {
     );
 
     let mut stream = response
-        .stream_body()
+        .stream()
         .expect("stream body should be available");
     let mut chunks = Vec::new();
     while let Some(item) = stream.next().await {

@@ -248,7 +248,7 @@ async fn test_execute_read_timeout_on_buffered_body() {
         .await
         .expect("execute timed out")
         .unwrap();
-    let error = response.bytes_body().await.unwrap_err();
+    let error = response.bytes().await.unwrap_err();
 
     assert_eq!(error.kind, HttpErrorKind::ReadTimeout);
     assert_eq!(error.method, Some(Method::GET));
@@ -297,7 +297,7 @@ async fn test_execute_stream_success_reads_all_chunks() {
 
     let mut body = Vec::new();
     let mut stream = stream_response
-        .stream_body()
+        .stream()
         .expect("stream body should be available");
     while let Some(item) = stream.next().await {
         let bytes = item.unwrap();
@@ -344,7 +344,7 @@ async fn test_execute_stream_read_timeout() {
         .expect("execute timed out")
         .unwrap();
     let mut stream = response
-        .stream_body()
+        .stream()
         .expect("stream body should be available");
 
     let first = stream.next().await.unwrap().unwrap();
@@ -465,7 +465,7 @@ async fn test_execute_stream_post_json_body_with_query_and_timeout() {
         .expect("execute timed out")
         .unwrap();
     let body = response
-        .stream_body()
+        .stream()
         .expect("stream body should be available")
         .collect::<Vec<_>>()
         .await
@@ -517,7 +517,7 @@ async fn test_execute_stream_with_text_body() {
         .expect("execute timed out")
         .unwrap();
     let body = response
-        .stream_body()
+        .stream()
         .expect("stream body should be available")
         .collect::<Vec<_>>()
         .await
@@ -571,7 +571,7 @@ async fn test_execute_stream_with_bytes_body() {
         .expect("execute timed out")
         .unwrap();
     let body = response
-        .stream_body()
+        .stream()
         .expect("stream body should be available")
         .collect::<Vec<_>>()
         .await
@@ -820,7 +820,7 @@ async fn test_execute_maps_truncated_response_body_to_decode_error() {
         .await
         .expect("execute timed out")
         .unwrap();
-    let error = response.bytes_body().await.unwrap_err();
+    let error = response.bytes().await.unwrap_err();
 
     assert_eq!(error.kind, HttpErrorKind::Decode);
     assert_eq!(error.method, Some(Method::GET));
@@ -880,7 +880,7 @@ async fn test_execute_retries_retryable_status_until_success() {
 
     assert_eq!(response.meta.status, StatusCode::OK);
     assert_eq!(
-        response.bytes_body().await.unwrap(),
+        response.bytes().await.unwrap(),
         Bytes::from_static(b"ok")
     );
     assert_eq!(*injector_count.lock().unwrap(), 2);
@@ -1147,7 +1147,7 @@ async fn test_execute_retries_write_timeout_until_success() {
 
     assert_eq!(response.meta.status, StatusCode::OK);
     assert_eq!(
-        response.bytes_body().await.unwrap(),
+        response.bytes().await.unwrap(),
         Bytes::from_static(b"ok")
     );
     let captured = timeout(Duration::from_secs(3), server.finish())
@@ -1191,7 +1191,7 @@ async fn test_execute_stream_retries_initial_status_until_success() {
         .expect("execute timed out")
         .unwrap();
     let body = response
-        .stream_body()
+        .stream()
         .expect("stream body should be available")
         .collect::<Vec<_>>()
         .await
@@ -1241,7 +1241,7 @@ async fn test_execute_stream_does_not_retry_after_stream_is_returned() {
         .expect("execute timed out")
         .unwrap();
     let mut stream = response
-        .stream_body()
+        .stream()
         .expect("stream body should be available");
     let first = stream
         .next()

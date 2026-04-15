@@ -18,7 +18,7 @@ use bytes::Bytes;
 use futures_util::StreamExt;
 use http::{HeaderMap, Method, StatusCode};
 use qubit_http::{
-    sse::{DoneMarkerPolicy, SseChunk, SseJsonMode, SseReconnectOptions},
+    sse::{SseChunk, SseJsonMode, SseReconnectOptions},
     HttpClientFactory, HttpClientOptions, HttpErrorKind, HttpRequestInterceptor, HttpResponse,
 };
 use tokio::time::timeout;
@@ -44,7 +44,7 @@ fn stream_response_from_chunks(chunks: Vec<Vec<u8>>) -> HttpResponse {
 #[tokio::test]
 async fn test_decode_events_reports_sse_protocol_error_on_non_utf8_line() {
     let response = stream_response_from_chunks(vec![vec![0xFF, b'\n']]);
-    let mut events = response.decode_sse_events();
+    let mut events = response.sse_events();
     let error = events.next().await.unwrap().unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::SseProtocol);
 }
@@ -57,7 +57,7 @@ async fn test_decode_events_handles_chunk_boundaries_and_trailing_flush() {
         b"\n".to_vec(),
         b"data: {\"value\":2}".to_vec(),
     ]);
-    let mut events = response.decode_sse_events();
+    let mut events = response.sse_events();
 
     let first = events.next().await.unwrap().unwrap();
     assert_eq!(first.data, "{\"value\":1}");
@@ -69,9 +69,26 @@ async fn test_decode_events_handles_chunk_boundaries_and_trailing_flush() {
 #[tokio::test]
 async fn test_decode_events_reports_frame_limit_error() {
     let response = stream_response_from_chunks(vec![b"data: one\ndata: two\n\n".to_vec()]);
-    let mut events = response.decode_sse_events_with_limits(1024, 8);
+    let mut events = response
+        .sse_max_line_bytes(1024)
+        .sse_max_frame_bytes(8)
+        .sse_events();
     let error = events.next().await.unwrap().unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::SseProtocol);
+}
+
+/// Regression: `sse_max_line_bytes` → `sse_max_frame_bytes` → `sse_events()` must compile and
+/// apply limits from the same chain (see user guide “Configure `sse_events` options”).
+#[tokio::test]
+async fn test_regression_sse_events_chain_setters_before_decode() {
+    let response = stream_response_from_chunks(vec![b"data: ok\n\n".to_vec()]);
+    let mut events = response
+        .sse_max_line_bytes(64 * 1024)
+        .sse_max_frame_bytes(1024 * 1024)
+        .sse_events();
+    let ev = events.next().await.unwrap().unwrap();
+    assert_eq!(ev.data, "ok");
+    assert!(events.next().await.is_none());
 }
 
 #[tokio::test]
@@ -106,7 +123,7 @@ async fn test_execute_stream_with_decode_events_end_to_end() {
         .await
         .expect("execute timed out")
         .unwrap();
-    let mut events = stream_response.decode_sse_events();
+    let mut events = stream_response.sse_events();
 
     let first = events.next().await.unwrap().unwrap();
     assert_eq!(first.data, "{\"value\":1}");
@@ -149,7 +166,7 @@ async fn test_execute_stream_decode_events_reports_read_timeout_when_interrupted
 
     let request = client.request(Method::GET, "/sse-timeout").build();
     let stream_response = client.execute(request).await.unwrap();
-    let mut events = stream_response.decode_sse_events();
+    let mut events = stream_response.sse_events();
 
     let first = events.next().await.unwrap().unwrap();
     assert_eq!(first.data, "{\"value\":1}");
@@ -189,7 +206,7 @@ async fn test_execute_stream_decode_json_chunks_uses_client_default_strict_mode(
     let request = client.request(Method::GET, "/sse-strict").build();
     let stream_response = client.execute(request).await.unwrap();
     let mut chunks =
-        stream_response.decode_sse_json_chunks::<TestChunk>(DoneMarkerPolicy::DefaultDone);
+        stream_response.sse_chunks::<TestChunk>();
 
     let first = chunks.next().await.unwrap().unwrap();
     assert_eq!(first, SseChunk::Data(TestChunk { value: 1 }));
@@ -222,7 +239,7 @@ async fn test_execute_stream_decode_events_uses_client_default_sse_limits() {
 
     let request = client.request(Method::GET, "/sse-limits").build();
     let stream_response = client.execute(request).await.unwrap();
-    let mut events = stream_response.decode_sse_events();
+    let mut events = stream_response.sse_events();
 
     let error = events.next().await.unwrap().unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::SseProtocol);

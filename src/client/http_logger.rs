@@ -112,7 +112,7 @@ impl<'a> HttpLogger<'a> {
         }
 
         if self.options.log_response_body {
-            let body = response.bytes_body().await?;
+            let body = response.bytes().await?;
             tracing::trace!("Response body: {}", self.render_body(&body));
         }
         Ok(())

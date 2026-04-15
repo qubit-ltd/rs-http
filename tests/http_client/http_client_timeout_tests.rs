@@ -195,7 +195,7 @@ async fn test_request_timeout_during_body_read_is_classified_as_read_timeout() {
         .await
         .expect("execute timed out")
         .unwrap();
-    let error = response.bytes_body().await.unwrap_err();
+    let error = response.bytes().await.unwrap_err();
 
     assert_eq!(error.kind, HttpErrorKind::Decode);
     assert_eq!(error.retry_hint(), RetryHint::NonRetryable);
@@ -229,7 +229,7 @@ async fn test_request_level_read_timeout_overrides_client_level_for_buffered_exe
         .await
         .expect("execute timed out")
         .unwrap();
-    let error = response.bytes_body().await.unwrap_err();
+    let error = response.bytes().await.unwrap_err();
 
     assert_eq!(error.kind, HttpErrorKind::ReadTimeout);
 }
@@ -272,7 +272,7 @@ async fn test_request_level_read_timeout_overrides_client_level_for_stream_body(
         .expect("request should start");
 
     let mut stream = response
-        .stream_body()
+        .stream()
         .expect("stream body should be available");
     let first = stream
         .next()

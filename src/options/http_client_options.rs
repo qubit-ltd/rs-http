@@ -28,7 +28,7 @@ use crate::{
         DEFAULT_SSE_MAX_LINE_BYTES,
     },
     request::parse_header,
-    sse::SseJsonMode,
+    sse::{DoneMarkerPolicy, SseJsonMode},
     HttpResult,
 };
 
@@ -61,8 +61,10 @@ pub struct HttpClientOptions {
     pub sensitive_headers: SensitiveHttpHeaders,
     /// Whether IPv4-only DNS behavior is requested.
     pub ipv4_only: bool,
-    /// Default JSON handling mode used by [`crate::HttpResponse::decode_sse_json_chunks`].
+    /// Default JSON handling mode used by [`crate::HttpResponse::sse_chunks`].
     pub sse_json_mode: SseJsonMode,
+    /// Default done-marker policy used by [`crate::HttpResponse::sse_chunks`].
+    pub sse_done_marker_policy: DoneMarkerPolicy,
     /// Default maximum bytes for one SSE line.
     pub sse_max_line_bytes: usize,
     /// Default maximum bytes for one SSE frame.
@@ -71,8 +73,8 @@ pub struct HttpClientOptions {
 
 impl Default for HttpClientOptions {
     /// Default: no base URL, empty headers, default timeouts/proxy/logging,
-    /// default sensitive headers, IPv4-only off, lenient SSE JSON mode with
-    /// crate default SSE line/frame limits.
+    /// default sensitive headers, IPv4-only off, lenient SSE JSON mode, default SSE done-marker
+    /// policy, and crate default SSE line/frame limits.
     ///
     /// # Returns
     /// Default [`HttpClientOptions`].
@@ -92,6 +94,7 @@ impl Default for HttpClientOptions {
             sensitive_headers: SensitiveHttpHeaders::default(),
             ipv4_only: false,
             sse_json_mode: SseJsonMode::Lenient,
+            sse_done_marker_policy: DoneMarkerPolicy::default(),
             sse_max_line_bytes: DEFAULT_SSE_MAX_LINE_BYTES,
             sse_max_frame_bytes: DEFAULT_SSE_MAX_FRAME_BYTES,
         }
@@ -113,6 +116,7 @@ struct HttpClientRootConfigInput {
 /// SSE scalar keys read from `sse.*`.
 struct HttpClientSseConfigInput {
     json_mode: Option<String>,
+    done_marker: Option<String>,
     max_line_bytes: Option<usize>,
     max_frame_bytes: Option<usize>,
 }
@@ -152,9 +156,26 @@ impl HttpClientOptions {
     {
         Ok(HttpClientSseConfigInput {
             json_mode: config.get_optional_string("json_mode")?,
+            done_marker: config.get_optional_string("done_marker")?,
             max_line_bytes: config.get_optional("max_line_bytes")?,
             max_frame_bytes: config.get_optional("max_frame_bytes")?,
         })
+    }
+
+    fn parse_sse_done_marker_policy(value: &str) -> Result<DoneMarkerPolicy, HttpConfigError> {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            return Err(HttpConfigError::invalid_value(
+                "done_marker",
+                "Value must not be empty",
+            ));
+        }
+        let normalized = trimmed.to_ascii_uppercase().replace('-', "_");
+        match normalized.as_str() {
+            "DISABLED" | "DISABLE" => Ok(DoneMarkerPolicy::Disabled),
+            "DEFAULT_DONE" | "DEFAULT" => Ok(DoneMarkerPolicy::DefaultDone),
+            _ => Ok(DoneMarkerPolicy::Custom(trimmed.to_string())),
+        }
     }
 
     fn parse_base_url(base_url: &str) -> Result<Url, HttpConfigError> {
@@ -320,6 +341,10 @@ impl HttpClientOptions {
                 .map_err(|e| Self::resolve_config_error(&sse_config, e))?;
             if let Some(mode) = sse.json_mode.as_deref() {
                 opts.sse_json_mode = Self::parse_sse_json_mode(mode)
+                    .map_err(|e| Self::resolve_config_error(&sse_config, e))?;
+            }
+            if let Some(marker) = sse.done_marker.as_deref() {
+                opts.sse_done_marker_policy = Self::parse_sse_done_marker_policy(marker)
                     .map_err(|e| Self::resolve_config_error(&sse_config, e))?;
             }
             if let Some(max_line_bytes) = sse.max_line_bytes {

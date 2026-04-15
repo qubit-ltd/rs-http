@@ -444,7 +444,7 @@ async fn test_request_url_is_used_in_buffered_read_error() {
     let request = client.request(Method::GET, "/context-url-timeout").build();
     let mut response = client.execute(request).await.expect("request should start");
     let error = response
-        .bytes_body()
+        .bytes()
         .await
         .expect_err("buffered read should timeout");
 
