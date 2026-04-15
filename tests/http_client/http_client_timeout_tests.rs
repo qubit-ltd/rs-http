@@ -33,7 +33,7 @@ async fn test_client_level_request_timeout_triggers_timeout_classification() {
     options.timeouts.request_timeout = Some(Duration::from_millis(80));
 
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .unwrap();
     let request = client.request(Method::GET, "/request-timeout").build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
@@ -62,7 +62,7 @@ async fn test_request_level_timeout_overrides_client_level_timeout() {
     options.timeouts.request_timeout = Some(Duration::from_secs(5));
 
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .unwrap();
     let request = client
         .request(Method::GET, "/request-timeout-override")
@@ -94,7 +94,7 @@ async fn test_client_level_write_timeout_triggers_write_timeout_error() {
     options.timeouts.request_timeout = Some(Duration::from_secs(5));
 
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .unwrap();
     let request = client.request(Method::GET, "/client-write-timeout").build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
@@ -123,7 +123,7 @@ async fn test_request_level_write_timeout_overrides_client_level_timeout() {
     options.timeouts.request_timeout = Some(Duration::from_secs(5));
 
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .unwrap();
     let request = client
         .request(Method::GET, "/request-write-timeout")
@@ -155,7 +155,7 @@ async fn test_timeout_classification_is_retryable_in_deterministic_path() {
     options.timeouts.request_timeout = Some(Duration::from_millis(80));
 
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .unwrap();
     let request = client
         .request(Method::GET, "/deterministic-timeout")
@@ -186,7 +186,7 @@ async fn test_request_timeout_during_body_read_is_classified_as_read_timeout() {
     options.timeouts.request_timeout = Some(Duration::from_secs(5));
 
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .unwrap();
     let request = client
         .request(Method::GET, "/request-timeout-read-phase")
@@ -219,7 +219,7 @@ async fn test_request_level_read_timeout_overrides_client_level_for_buffered_exe
     options.timeouts.request_timeout = Some(Duration::from_secs(5));
 
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .unwrap();
     let request = client
         .request(Method::GET, "/request-read-timeout-override-buffered")
@@ -260,7 +260,7 @@ async fn test_request_level_read_timeout_overrides_client_level_for_stream_body(
     options.timeouts.request_timeout = Some(Duration::from_secs(5));
 
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .unwrap();
     let request = client
         .request(Method::GET, "/request-read-timeout-override-stream")

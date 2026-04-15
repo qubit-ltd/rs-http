@@ -215,7 +215,7 @@ async fn test_socks5_proxy_forwards_http_request() {
     options.timeouts.request_timeout = Some(Duration::from_secs(3));
 
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .unwrap();
     let request = client.request(Method::GET, "/socks").build();
     let mut response = timeout(Duration::from_secs(5), client.execute(request))

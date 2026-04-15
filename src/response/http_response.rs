@@ -174,12 +174,6 @@ impl HttpResponse {
         &self.runtime.request_url
     }
 
-    /// Returns cached full body if already buffered.
-    #[inline]
-    pub fn buffered_body(&self) -> Option<&Bytes> {
-        self.buffered_body.as_ref()
-    }
-
     /// Returns whether status is success.
     #[inline]
     pub fn is_success(&self) -> bool {
@@ -222,7 +216,7 @@ impl HttpResponse {
     }
 
     /// Consumes this response and returns a bounded body preview for status errors.
-    pub async fn into_error_body_preview(mut self, max_bytes: usize) -> String {
+    pub(crate) async fn into_error_body_preview(mut self, max_bytes: usize) -> String {
         let limit = max_bytes.max(1);
         if let Some(body) = self.buffered_body.take() {
             let end = body.len().min(limit);

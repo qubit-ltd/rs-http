@@ -18,7 +18,7 @@ use qubit_http::{
 fn test_factory_create_uses_default_options() {
     let factory = HttpClientFactory::new();
     let client = factory
-        .create()
+        .create_default()
         .expect("default options should create client");
 
     assert!(!client.options().ipv4_only);
@@ -30,7 +30,7 @@ fn test_factory_create_uses_default_options() {
 }
 
 #[test]
-fn test_factory_create_with_options_preserves_options() {
+fn test_factory_create_preserves_options() {
     let factory = HttpClientFactory::new();
     let mut options = HttpClientOptions::default();
     options.timeouts.request_timeout = Some(Duration::from_secs(2));
@@ -39,7 +39,7 @@ fn test_factory_create_with_options_preserves_options() {
     options.pool_idle_timeout = Some(Duration::from_secs(20));
     options.pool_max_idle_per_host = Some(24);
     let client = factory
-        .create_with_options(options)
+        .create(options)
         .expect("explicit options should create client");
     assert_eq!(
         client.options().timeouts.request_timeout,
@@ -64,7 +64,7 @@ fn test_factory_proxy_enabled_without_host_returns_error() {
     options.proxy.enabled = true;
     options.proxy.port = Some(8080);
 
-    let error = factory.create_with_options(options).unwrap_err();
+    let error = factory.create(options).unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::ProxyConfig);
     assert!(error.message.contains("host is missing"));
 }
@@ -76,7 +76,7 @@ fn test_factory_proxy_enabled_without_port_returns_error() {
     options.proxy.enabled = true;
     options.proxy.host = Some("127.0.0.1".to_string());
 
-    let error = factory.create_with_options(options).unwrap_err();
+    let error = factory.create(options).unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::ProxyConfig);
     assert!(error.message.contains("port is missing"));
 }
@@ -91,7 +91,7 @@ fn test_factory_proxy_password_without_username_returns_error() {
     options.proxy.port = Some(8080);
     options.proxy.password = Some("secret".to_string());
 
-    let error = factory.create_with_options(options).unwrap_err();
+    let error = factory.create(options).unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::ProxyConfig);
     assert!(error.message.contains("username is missing"));
 }
@@ -108,7 +108,7 @@ fn test_factory_proxy_with_auth_is_valid() {
     options.proxy.password = Some("pass".to_string());
 
     let client = factory
-        .create_with_options(options)
+        .create(options)
         .expect("proxy with auth should still create client");
     assert!(!client.options().ipv4_only);
 }
@@ -262,7 +262,7 @@ fn test_factory_create_from_config_full() {
 }
 
 #[test]
-fn test_factory_create_with_options_rejects_zero_proxy_port() {
+fn test_factory_create_rejects_zero_proxy_port() {
     let mut options = HttpClientOptions::default();
     options.proxy.enabled = true;
     options.proxy.proxy_type = ProxyType::Http;
@@ -270,7 +270,7 @@ fn test_factory_create_with_options_rejects_zero_proxy_port() {
     options.proxy.port = Some(0);
 
     let error = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect_err("zero proxy port should fail");
 
     assert_eq!(error.kind, HttpErrorKind::ProxyConfig);
@@ -278,7 +278,7 @@ fn test_factory_create_with_options_rejects_zero_proxy_port() {
 }
 
 #[test]
-fn test_factory_create_with_options_rejects_blank_proxy_host() {
+fn test_factory_create_rejects_blank_proxy_host() {
     let mut options = HttpClientOptions::default();
     options.proxy.enabled = true;
     options.proxy.proxy_type = ProxyType::Http;
@@ -286,7 +286,7 @@ fn test_factory_create_with_options_rejects_blank_proxy_host() {
     options.proxy.port = Some(8080);
 
     let error = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect_err("blank proxy host should fail");
 
     assert_eq!(error.kind, HttpErrorKind::ProxyConfig);
@@ -294,12 +294,12 @@ fn test_factory_create_with_options_rejects_blank_proxy_host() {
 }
 
 #[test]
-fn test_factory_create_with_options_rejects_zero_connect_timeout() {
+fn test_factory_create_rejects_zero_connect_timeout() {
     let mut options = HttpClientOptions::default();
     options.timeouts.connect_timeout = Duration::ZERO;
 
     let error = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect_err("zero connect timeout should fail");
 
     assert_eq!(error.kind, HttpErrorKind::Other);
@@ -307,7 +307,7 @@ fn test_factory_create_with_options_rejects_zero_connect_timeout() {
 }
 
 #[test]
-fn test_factory_create_with_options_accepts_proxy_without_auth_and_request_timeout() {
+fn test_factory_create_accepts_proxy_without_auth_and_request_timeout() {
     let mut options = HttpClientOptions::default();
     options.timeouts.request_timeout = Some(Duration::from_secs(2));
     options.proxy.enabled = true;
@@ -316,7 +316,7 @@ fn test_factory_create_with_options_accepts_proxy_without_auth_and_request_timeo
     options.proxy.port = Some(8080);
 
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect("valid proxy config should create client");
 
     assert_eq!(
@@ -326,7 +326,7 @@ fn test_factory_create_with_options_accepts_proxy_without_auth_and_request_timeo
 }
 
 #[test]
-fn test_factory_create_with_options_rejects_invalid_proxy_url() {
+fn test_factory_create_rejects_invalid_proxy_url() {
     let mut options = HttpClientOptions::default();
     options.proxy.enabled = true;
     options.proxy.proxy_type = ProxyType::Http;
@@ -334,7 +334,7 @@ fn test_factory_create_with_options_rejects_invalid_proxy_url() {
     options.proxy.port = Some(8080);
 
     let error = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect_err("invalid proxy host should fail");
 
     assert_eq!(error.kind, HttpErrorKind::ProxyConfig);
@@ -342,12 +342,12 @@ fn test_factory_create_with_options_rejects_invalid_proxy_url() {
 }
 
 #[test]
-fn test_factory_create_with_options_rejects_invalid_logging_options() {
+fn test_factory_create_rejects_invalid_logging_options() {
     let mut options = HttpClientOptions::default();
     options.logging.body_size_limit = 0;
 
     let error = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect_err("invalid logging options should fail");
 
     assert_eq!(error.kind, HttpErrorKind::Other);
@@ -355,12 +355,12 @@ fn test_factory_create_with_options_rejects_invalid_logging_options() {
 }
 
 #[test]
-fn test_factory_create_with_options_rejects_invalid_retry_options() {
+fn test_factory_create_rejects_invalid_retry_options() {
     let mut options = HttpClientOptions::default();
     options.retry.max_attempts = 0;
 
     let error = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect_err("invalid retry options should fail");
 
     assert_eq!(error.kind, HttpErrorKind::Other);
@@ -368,12 +368,12 @@ fn test_factory_create_with_options_rejects_invalid_retry_options() {
 }
 
 #[test]
-fn test_factory_create_with_options_rejects_blank_user_agent() {
+fn test_factory_create_rejects_blank_user_agent() {
     let mut options = HttpClientOptions::default();
     options.user_agent = Some("   ".to_string());
 
     let error = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect_err("blank user_agent should fail");
 
     assert_eq!(error.kind, HttpErrorKind::Other);

@@ -20,7 +20,7 @@ fn test_ipv4_only_option_is_preserved_in_client_options() {
     let mut options = HttpClientOptions::default();
     options.ipv4_only = true;
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .unwrap();
     assert!(client.options().ipv4_only);
 }
@@ -46,7 +46,7 @@ async fn test_ipv4_only_with_localhost_request_is_accessible() {
     options.timeouts.read_timeout = Duration::from_secs(2);
 
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .unwrap();
     let request = client.request(Method::GET, "/ipv4-check").build();
     let mut response = timeout(Duration::from_secs(3), client.execute(request))
@@ -65,7 +65,7 @@ async fn test_ipv4_only_rejects_ipv6_literal_request_url() {
     options.timeouts.read_timeout = Duration::from_secs(1);
 
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .unwrap();
     let request = client
         .request(Method::GET, "http://[::1]:18080/ipv6")
@@ -85,7 +85,7 @@ fn test_ipv4_only_rejects_ipv6_literal_proxy_host() {
     options.proxy.port = Some(8080);
 
     let error = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .unwrap_err();
 
     assert_eq!(error.kind, HttpErrorKind::ProxyConfig);
@@ -103,7 +103,7 @@ async fn test_ipv4_only_fails_on_hostname_without_ipv4_address() {
     options.timeouts.read_timeout = Duration::from_secs(1);
 
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .unwrap();
     let request = client.request(Method::GET, "/only-ipv6").build();
     let error = timeout(Duration::from_secs(3), client.execute(request))

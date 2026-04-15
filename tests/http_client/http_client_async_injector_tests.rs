@@ -35,7 +35,7 @@ async fn test_async_header_injector_runs_after_sync_injector_with_stable_order()
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     let mut client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect("client should be created");
     client.add_header_injector(HttpHeaderInjector::new(move |headers| {
         sync_order.lock().unwrap().push("sync".to_string());
@@ -81,7 +81,7 @@ async fn test_async_header_injector_failure_short_circuits_request() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     let mut client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect("client should be created");
     client.add_async_header_injector(AsyncHttpHeaderInjector::new(|_headers| {
         Box::pin(async move { Err(qubit_http::HttpError::other("async injector failed")) })
@@ -113,7 +113,7 @@ async fn test_clear_async_header_injectors_removes_async_mutation() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     let mut client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect("client should be created");
     client.add_async_header_injector(AsyncHttpHeaderInjector::new(|headers| {
         Box::pin(async move {

@@ -31,7 +31,7 @@ impl serde::Serialize for FailingSerialize {
 
 fn new_builder(method: Method, path: &str) -> qubit_http::HttpRequestBuilder {
     let client = HttpClientFactory::new()
-        .create()
+        .create_default()
         .expect("default options should create client");
     client.request(method, path)
 }
@@ -43,7 +43,7 @@ fn test_request_builder_copies_base_url_and_ipv4_only_defaults() {
     options.ipv4_only = true;
 
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect("client should be created");
     let request = client.request(Method::GET, "users").build();
     assert_eq!(
@@ -59,7 +59,7 @@ fn test_request_builder_copies_write_timeout_default_from_client_options() {
     options.timeouts.write_timeout = Duration::from_millis(321);
 
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect("client should be created");
     let request = client
         .request(Method::GET, "/v1/default-write-timeout")
@@ -74,7 +74,7 @@ fn test_request_builder_write_timeout_overrides_default_from_options() {
     options.timeouts.write_timeout = Duration::from_secs(2);
 
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect("client should be created");
     let request = client
         .request(Method::GET, "/v1/override-write-timeout")
@@ -90,7 +90,7 @@ fn test_request_builder_copies_read_timeout_default_from_client_options() {
     options.timeouts.read_timeout = Duration::from_millis(432);
 
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect("client should be created");
     let request = client
         .request(Method::GET, "/v1/default-read-timeout")
@@ -105,7 +105,7 @@ fn test_request_builder_read_timeout_overrides_default_from_options() {
     options.timeouts.read_timeout = Duration::from_secs(2);
 
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect("client should be created");
     let request = client
         .request(Method::GET, "/v1/override-read-timeout")
@@ -122,7 +122,7 @@ fn test_request_builder_base_url_method_overrides_default_from_options() {
 
     let override_base = url::Url::parse("https://override.example.com/root/").unwrap();
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect("client should be created");
     let request = client
         .request(Method::GET, "users")
@@ -138,7 +138,7 @@ fn test_request_builder_ipv4_only_method_overrides_default_from_options() {
     options.ipv4_only = true;
 
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect("client should be created");
     let request = client
         .request(Method::GET, "users")
@@ -154,7 +154,7 @@ fn test_request_builder_clear_base_url_method_overrides_default_from_options() {
     options.set_base_url("https://api.example.com/v1/").unwrap();
 
     let client = HttpClientFactory::new()
-        .create_with_options(options)
+        .create(options)
         .expect("client should be created");
     let request = client
         .request(Method::GET, "users")

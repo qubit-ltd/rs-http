@@ -25,7 +25,7 @@ fn logging_request(
     body: HttpRequestBody,
 ) -> HttpRequest {
     let client = HttpClientFactory::new()
-        .create()
+        .create_default()
         .expect("default options should create client");
     let base = client.request(method, path).headers(headers);
     match body {
