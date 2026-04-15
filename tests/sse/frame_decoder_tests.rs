@@ -10,7 +10,7 @@
 use bytes::Bytes;
 use futures_util::StreamExt;
 use http::{HeaderMap, Method};
-use qubit_http::{HttpResult, StreamingHttpResponse};
+use qubit_http::{HttpResponse, HttpResult};
 
 async fn collect_results<T>(stream: impl futures_util::Stream<Item = HttpResult<T>>) -> Vec<T> {
     stream
@@ -19,17 +19,13 @@ async fn collect_results<T>(stream: impl futures_util::Stream<Item = HttpResult<
         .await
 }
 
-fn stream_response_from_chunks(chunks: Vec<&'static str>) -> StreamingHttpResponse {
-    let stream = futures_util::stream::iter(
-        chunks
-            .into_iter()
-            .map(|text| Ok::<Bytes, qubit_http::HttpError>(Bytes::from(text.to_string()))),
-    );
-    StreamingHttpResponse::new_stream(
+fn stream_response_from_chunks(chunks: Vec<&'static str>) -> HttpResponse {
+    let body = chunks.join("");
+    HttpResponse::new(
         http::StatusCode::OK,
         HeaderMap::new(),
+        Bytes::from(body),
         url::Url::parse("https://example.com/stream").unwrap(),
-        Box::pin(stream),
         Method::GET,
     )
 }
@@ -37,7 +33,7 @@ fn stream_response_from_chunks(chunks: Vec<&'static str>) -> StreamingHttpRespon
 #[tokio::test]
 async fn test_decode_frames_allows_field_without_colon_as_field_name() {
     let response = stream_response_from_chunks(vec!["data\n", "\n"]);
-    let events = collect_results(response.decode_events()).await;
+    let events = collect_results(response.decode_sse_events()).await;
 
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].data, "");
@@ -47,7 +43,7 @@ async fn test_decode_frames_allows_field_without_colon_as_field_name() {
 #[tokio::test]
 async fn test_decode_frames_handles_invalid_retry_value_as_known_field() {
     let response = stream_response_from_chunks(vec!["data: hi\n", "retry: bad\n", "\n"]);
-    let events = collect_results(response.decode_events()).await;
+    let events = collect_results(response.decode_sse_events()).await;
 
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].data, "hi");
@@ -57,7 +53,7 @@ async fn test_decode_frames_handles_invalid_retry_value_as_known_field() {
 #[tokio::test]
 async fn test_decode_frames_ignores_unknown_field_name() {
     let response = stream_response_from_chunks(vec!["unknown: ignored\n", "data: value\n", "\n"]);
-    let events = collect_results(response.decode_events()).await;
+    let events = collect_results(response.decode_sse_events()).await;
 
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].data, "value");
@@ -66,7 +62,7 @@ async fn test_decode_frames_ignores_unknown_field_name() {
 #[tokio::test]
 async fn test_decode_frames_rejects_frame_exceeding_max_bytes() {
     let response = stream_response_from_chunks(vec!["data: 12345\n", "data: 67890\n", "\n"]);
-    let mut events = response.decode_events_with_limits(128, 12);
+    let mut events = response.decode_sse_events_with_limits(128, 12);
     let error = events.next().await.unwrap().unwrap_err();
 
     assert_eq!(error.kind, qubit_http::HttpErrorKind::SseProtocol);
@@ -76,7 +72,7 @@ async fn test_decode_frames_rejects_frame_exceeding_max_bytes() {
 #[tokio::test]
 async fn test_decode_frames_ignores_comment_lines() {
     let response = stream_response_from_chunks(vec![": heartbeat\n", "data: hello\n", "\n"]);
-    let events = collect_results(response.decode_events_with_limits(128, 64)).await;
+    let events = collect_results(response.decode_sse_events_with_limits(128, 64)).await;
 
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].data, "hello");
@@ -85,7 +81,7 @@ async fn test_decode_frames_ignores_comment_lines() {
 #[tokio::test]
 async fn test_decode_frames_emits_last_event_without_trailing_blank_line() {
     let response = stream_response_from_chunks(vec!["data: final"]);
-    let events = collect_results(response.decode_events()).await;
+    let events = collect_results(response.decode_sse_events()).await;
 
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].data, "final");

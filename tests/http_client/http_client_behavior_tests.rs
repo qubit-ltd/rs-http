@@ -342,7 +342,7 @@ async fn test_clear_response_interceptors_restores_success_path() {
 }
 
 #[tokio::test]
-async fn test_execute_stream_applies_response_interceptor() {
+async fn test_execute_applies_response_interceptor_for_unconsumed_body() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
         headers: vec![],
@@ -367,13 +367,49 @@ async fn test_execute_stream_applies_response_interceptor() {
     let request = client
         .request(Method::GET, "/stream-response-interceptor")
         .build();
-    let response = client.execute_stream(request).await.unwrap();
+    let response = client.execute(request).await.unwrap();
     assert_eq!(response.status().as_u16(), 200);
     assert_eq!(called.load(Ordering::Relaxed), 1);
 }
 
 #[tokio::test]
-async fn test_response_interceptor_context_url_is_used_in_buffered_read_error() {
+async fn test_request_url_can_differ_from_response_meta_url() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 200,
+        headers: vec![],
+        body: b"ok".to_vec(),
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    let mut client = HttpClientFactory::new()
+        .create_with_options(options)
+        .expect("valid options should create client");
+    let rewritten_url = url::Url::parse("https://interceptor.example/rewritten")
+        .expect("static interceptor URL should parse");
+    let rewritten_url_for_interceptor = rewritten_url.clone();
+    client.add_response_interceptor(ResponseInterceptor::new(move |meta| {
+        meta.url = rewritten_url_for_interceptor.clone();
+        Ok(())
+    }));
+
+    let request = client.request(Method::GET, "/request-url-diff").build();
+    let response = client.execute(request).await.expect("request should succeed");
+    let expected_request_url = server
+        .base_url()
+        .join("request-url-diff")
+        .expect("request URL should join");
+
+    assert_eq!(response.request_url(), &expected_request_url);
+    assert_eq!(response.url(), &rewritten_url);
+    assert_ne!(response.request_url(), response.url());
+
+    let captured = server.finish().await;
+    assert_eq!(captured.target, "/request-url-diff");
+}
+
+#[tokio::test]
+async fn test_request_url_is_used_in_buffered_read_error() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
         headers: vec![],
@@ -396,23 +432,28 @@ async fn test_response_interceptor_context_url_is_used_in_buffered_read_error() 
     let mut client = HttpClientFactory::new()
         .create_with_options(options)
         .expect("valid options should create client");
-    let expected_url =
+    let interceptor_url =
         url::Url::parse("https://interceptor.example/context-url-rewritten")
             .expect("static interceptor URL should parse");
-    let expected_url_for_interceptor = expected_url.clone();
+    let expected_request_url = server
+        .base_url()
+        .join("context-url-timeout")
+        .expect("request URL should join");
+    let expected_url_for_interceptor = interceptor_url.clone();
     client.add_response_interceptor(ResponseInterceptor::new(move |meta| {
         meta.url = expected_url_for_interceptor.clone();
         Ok(())
     }));
 
     let request = client.request(Method::GET, "/context-url-timeout").build();
-    let error = client
-        .execute(request)
+    let mut response = client.execute(request).await.expect("request should start");
+    let error = response
+        .bytes_body()
         .await
         .expect_err("buffered read should timeout");
 
     assert_eq!(error.kind, HttpErrorKind::ReadTimeout);
-    assert_eq!(error.url, Some(expected_url));
+    assert_eq!(error.url, Some(expected_request_url));
     let captured = server.finish().await;
     assert_eq!(captured.target, "/context-url-timeout");
 }

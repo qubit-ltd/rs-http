@@ -201,7 +201,7 @@ async fn test_execute_with_stream_body_uses_chunked_transfer_encoding() {
 }
 
 #[tokio::test]
-async fn test_execute_stream_with_stream_body_uses_chunked_transfer_encoding() {
+async fn test_execute_with_stream_body_uses_chunked_transfer_encoding_without_eager_read() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
         headers: vec![],
@@ -221,9 +221,9 @@ async fn test_execute_stream_with_stream_body_uses_chunked_transfer_encoding() {
         .stream_body([Bytes::from_static(b"a"), Bytes::from_static(b"b")])
         .timeout(Duration::from_secs(1))
         .build();
-    let response = timeout(Duration::from_secs(3), client.execute_stream(request))
+    let response = timeout(Duration::from_secs(3), client.execute(request))
         .await
-        .expect("execute_stream timed out")
+        .expect("execute timed out")
         .expect("stream body request should succeed");
     assert_eq!(response.status().as_u16(), 200);
 

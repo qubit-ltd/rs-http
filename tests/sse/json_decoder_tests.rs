@@ -12,7 +12,7 @@ use bytes::Bytes;
 use futures_util::StreamExt;
 use http::{HeaderMap, Method};
 use qubit_http::sse::{DoneMarkerPolicy, SseChunk, SseJsonMode};
-use qubit_http::{HttpResult, StreamingHttpResponse};
+use qubit_http::{HttpResponse, HttpResult};
 
 #[derive(Debug, serde::Deserialize, PartialEq, Eq)]
 struct TestChunk {
@@ -26,17 +26,13 @@ async fn collect_results<T>(stream: impl futures_util::Stream<Item = HttpResult<
         .await
 }
 
-fn stream_response_from_chunks(chunks: Vec<&'static str>) -> StreamingHttpResponse {
-    let stream = futures_util::stream::iter(
-        chunks
-            .into_iter()
-            .map(|text| Ok::<Bytes, qubit_http::HttpError>(Bytes::from(text.to_string()))),
-    );
-    StreamingHttpResponse::new_stream(
+fn stream_response_from_chunks(chunks: Vec<&'static str>) -> HttpResponse {
+    let body = chunks.join("");
+    HttpResponse::new(
         http::StatusCode::OK,
         HeaderMap::new(),
+        Bytes::from(body),
         url::Url::parse("https://example.com/stream").unwrap(),
-        Box::pin(stream),
         Method::GET,
     )
 }
@@ -50,7 +46,7 @@ async fn test_decode_json_chunks_lenient_skips_bad_json_and_respects_done() {
         "data: {\"value\": 9}\n\n",
     ]);
     let chunks =
-        collect_results(response.decode_json_chunks::<TestChunk>(DoneMarkerPolicy::DefaultDone))
+        collect_results(response.decode_sse_json_chunks::<TestChunk>(DoneMarkerPolicy::DefaultDone))
             .await;
 
     assert_eq!(chunks.len(), 2);
@@ -62,7 +58,7 @@ async fn test_decode_json_chunks_lenient_skips_bad_json_and_respects_done() {
 async fn test_decode_json_chunks_strict_fails_on_bad_json() {
     let response =
         stream_response_from_chunks(vec!["data: {\"value\": 1}\n\n", "data: malformed-json\n\n"]);
-    let mut stream = response.decode_json_chunks_with_mode::<TestChunk>(
+    let mut stream = response.decode_sse_json_chunks_with_mode::<TestChunk>(
         DoneMarkerPolicy::DefaultDone,
         SseJsonMode::Strict,
     );
@@ -79,7 +75,7 @@ async fn test_decode_json_chunks_strict_fails_on_bad_json() {
 async fn test_decode_json_chunks_with_custom_done_marker() {
     let response = stream_response_from_chunks(vec!["data: {\"value\": 2}\n\n", "data: <END>\n\n"]);
     let chunks = collect_results(
-        response.decode_json_chunks::<TestChunk>(DoneMarkerPolicy::Custom("<END>".to_string())),
+        response.decode_sse_json_chunks::<TestChunk>(DoneMarkerPolicy::Custom("<END>".to_string())),
     )
     .await;
 
@@ -95,7 +91,7 @@ async fn test_decode_json_chunks_with_limits_reports_sse_protocol_error() {
         "data: {\"value\": 2}\n",
         "\n",
     ]);
-    let mut stream = response.decode_json_chunks_with_mode_and_limits::<TestChunk>(
+    let mut stream = response.decode_sse_json_chunks_with_mode_and_limits::<TestChunk>(
         DoneMarkerPolicy::DefaultDone,
         SseJsonMode::Strict,
         256,

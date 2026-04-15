@@ -12,16 +12,16 @@ use http::{HeaderMap, Method, StatusCode};
 use qubit_http::{HttpErrorKind, HttpResponse};
 use url::Url;
 
-#[test]
-fn test_http_response_text_decode_error_contains_status_and_url() {
-    let response = HttpResponse::new(
+#[tokio::test]
+async fn test_http_response_text_decode_error_contains_status_and_url() {
+    let mut response = HttpResponse::new(
         StatusCode::OK,
         HeaderMap::new(),
         Bytes::from_static(&[0xFF, 0xFE]),
         Url::parse("https://example.com/bin").unwrap(),
         Method::GET,
     );
-    let error = response.text().unwrap_err();
+    let error = response.text().await.unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::Decode);
     assert_eq!(error.status, Some(StatusCode::OK));
     assert_eq!(
@@ -30,16 +30,16 @@ fn test_http_response_text_decode_error_contains_status_and_url() {
     );
 }
 
-#[test]
-fn test_http_response_json_decode_error_contains_status_and_url() {
-    let response = HttpResponse::new(
+#[tokio::test]
+async fn test_http_response_json_decode_error_contains_status_and_url() {
+    let mut response = HttpResponse::new(
         StatusCode::OK,
         HeaderMap::new(),
         Bytes::from_static(b"not-json"),
         Url::parse("https://example.com/json").unwrap(),
         Method::GET,
     );
-    let error = response.json::<serde_json::Value>().unwrap_err();
+    let error = response.json::<serde_json::Value>().await.unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::Decode);
     assert_eq!(error.status, Some(StatusCode::OK));
     assert_eq!(
@@ -69,9 +69,9 @@ fn test_http_response_is_success_reports_status_class() {
     .is_success());
 }
 
-#[test]
-fn test_http_response_text_success_returns_body() {
-    let response = HttpResponse::new(
+#[tokio::test]
+async fn test_http_response_text_success_returns_body() {
+    let mut response = HttpResponse::new(
         StatusCode::OK,
         HeaderMap::new(),
         Bytes::from_static(b"hello"),
@@ -79,13 +79,13 @@ fn test_http_response_text_success_returns_body() {
         Method::GET,
     );
 
-    let text = response.text().expect("valid utf8 should decode");
+    let text = response.text().await.expect("valid utf8 should decode");
     assert_eq!(text, "hello");
 }
 
-#[test]
-fn test_http_response_json_success_decodes_value() {
-    let response = HttpResponse::new(
+#[tokio::test]
+async fn test_http_response_json_success_decodes_value() {
+    let mut response = HttpResponse::new(
         StatusCode::OK,
         HeaderMap::new(),
         Bytes::from_static(b"{\"n\":42}"),
@@ -95,6 +95,7 @@ fn test_http_response_json_success_decodes_value() {
 
     let value = response
         .json::<serde_json::Value>()
+        .await
         .expect("json payload should decode");
     assert_eq!(value["n"], 42);
 }

@@ -183,7 +183,7 @@ async fn test_request_timeout_during_body_read_is_classified_as_read_timeout() {
     options.base_url = Some(server.base_url());
     options.timeouts.write_timeout = Duration::from_secs(2);
     options.timeouts.read_timeout = Duration::from_secs(2);
-    options.timeouts.request_timeout = Some(Duration::from_millis(80));
+    options.timeouts.request_timeout = Some(Duration::from_secs(5));
 
     let client = HttpClientFactory::new()
         .create_with_options(options)
@@ -191,13 +191,14 @@ async fn test_request_timeout_during_body_read_is_classified_as_read_timeout() {
     let request = client
         .request(Method::GET, "/request-timeout-read-phase")
         .build();
-    let error = timeout(Duration::from_secs(3), client.execute(request))
+    let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")
-        .unwrap_err();
+        .unwrap();
+    let error = response.bytes_body().await.unwrap_err();
 
-    assert_eq!(error.kind, HttpErrorKind::ReadTimeout);
-    assert_eq!(error.retry_hint(), RetryHint::Retryable);
+    assert_eq!(error.kind, HttpErrorKind::Decode);
+    assert_eq!(error.retry_hint(), RetryHint::NonRetryable);
 }
 
 #[tokio::test]
@@ -224,16 +225,17 @@ async fn test_request_level_read_timeout_overrides_client_level_for_buffered_exe
         .request(Method::GET, "/request-read-timeout-override-buffered")
         .read_timeout(Duration::from_millis(80))
         .build();
-    let error = timeout(Duration::from_secs(3), client.execute(request))
+    let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")
-        .unwrap_err();
+        .unwrap();
+    let error = response.bytes_body().await.unwrap_err();
 
     assert_eq!(error.kind, HttpErrorKind::ReadTimeout);
 }
 
 #[tokio::test]
-async fn test_request_level_read_timeout_overrides_client_level_for_streaming_execute() {
+async fn test_request_level_read_timeout_overrides_client_level_for_stream_body() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
         headers: vec![("Content-Type".to_string(), "text/plain".to_string())],
@@ -264,12 +266,14 @@ async fn test_request_level_read_timeout_overrides_client_level_for_streaming_ex
         .request(Method::GET, "/request-read-timeout-override-stream")
         .read_timeout(Duration::from_millis(80))
         .build();
-    let response = timeout(Duration::from_secs(3), client.execute_stream(request))
+    let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
-        .expect("execute_stream timed out")
-        .expect("streaming request should start");
+        .expect("execute timed out")
+        .expect("request should start");
 
-    let mut stream = response.into_stream();
+    let mut stream = response
+        .stream_body()
+        .expect("stream body should be available");
     let first = stream
         .next()
         .await

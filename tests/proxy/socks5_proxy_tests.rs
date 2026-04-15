@@ -218,12 +218,12 @@ async fn test_socks5_proxy_forwards_http_request() {
         .create_with_options(options)
         .unwrap();
     let request = client.request(Method::GET, "/socks").build();
-    let response = timeout(Duration::from_secs(5), client.execute(request))
+    let mut response = timeout(Duration::from_secs(5), client.execute(request))
         .await
         .expect("execute timed out")
         .unwrap();
     assert_eq!(response.meta.status.as_u16(), 200);
-    assert_eq!(response.text().unwrap(), "ok-through-socks");
+    assert_eq!(response.text().await.unwrap(), "ok-through-socks");
 
     let target = timeout(Duration::from_secs(5), socks.finish())
         .await
