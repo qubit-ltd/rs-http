@@ -15,6 +15,7 @@ fn test_sensitive_headers_default_is_case_normalized() {
     assert!(!headers.is_empty());
     assert!(headers.contains("AUTHORIZATION"));
     assert!(headers.contains("authorization"));
+    assert!(headers.contains("proxy-authorization"));
 }
 
 #[test]

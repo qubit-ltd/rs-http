@@ -69,6 +69,22 @@ fn test_http_response_is_success_reports_status_class() {
     .is_success());
 }
 
+#[test]
+fn test_http_response_meta_accessor_returns_shared_metadata() {
+    let response = HttpResponse::new(
+        StatusCode::ACCEPTED,
+        HeaderMap::new(),
+        Bytes::from_static(b"queued"),
+        Url::parse("https://example.com/jobs/1").unwrap(),
+        Method::POST,
+    );
+
+    let meta = response.meta();
+    assert_eq!(meta.status, StatusCode::ACCEPTED);
+    assert_eq!(meta.url, Url::parse("https://example.com/jobs/1").unwrap());
+    assert_eq!(meta.method, Method::POST);
+}
+
 #[tokio::test]
 async fn test_http_response_text_success_returns_body() {
     let mut response = HttpResponse::new(

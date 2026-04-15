@@ -1,6 +1,6 @@
 [package]
 name = "qubit-http"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2021"
 rust-version = "1.70"
 authors = ["Haixing Hu <starfish.hu@gmail.com>"]

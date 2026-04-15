@@ -14,8 +14,9 @@
 
 /// Built-in header names preloaded into [`crate::SensitiveHttpHeaders::default`]
 /// for log masking.
-pub const DEFAULT_SENSITIVE_HEADER_NAMES: [&str; 20] = [
+pub const DEFAULT_SENSITIVE_HEADER_NAMES: [&str; 21] = [
     "Authorization",
+    "Proxy-Authorization",
     "Api-Key",
     "X-Api-Key",
     "Bearer",

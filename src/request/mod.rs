@@ -22,8 +22,10 @@ mod async_header_injector;
 mod header_injector;
 mod http_request;
 mod http_request_body;
+mod http_request_body_byte_stream;
 mod http_request_builder;
 mod http_request_retry_override;
+mod http_request_streaming_body;
 mod request_interceptor;
 
 pub(crate) fn parse_header(name: &str, value: &str) -> HttpResult<(HeaderName, HeaderValue)> {
@@ -39,6 +41,8 @@ pub use async_header_injector::AsyncHttpHeaderInjector;
 pub use header_injector::HttpHeaderInjector;
 pub use http_request::HttpRequest;
 pub use http_request_body::HttpRequestBody;
+pub use http_request_body_byte_stream::HttpRequestBodyByteStream;
 pub use http_request_builder::HttpRequestBuilder;
 pub use http_request_retry_override::HttpRequestRetryOverride;
+pub use http_request_streaming_body::HttpRequestStreamingBody;
 pub use request_interceptor::{HttpRequestInterceptor, HttpRequestInterceptors};

@@ -8,13 +8,18 @@
  ******************************************************************************/
 //! [`SseReconnectRunner`] implementation used by [`HttpClient`](crate::HttpClient).
 
+use std::error::Error as StdError;
+use std::io::ErrorKind;
 use std::time::Duration;
 
 use async_stream::stream;
 use futures_util::StreamExt;
 use http::header::{HeaderName, HeaderValue};
 
-use super::{SseEventStream, SseReconnectOptions};
+use super::{
+    SseEventStream, SseReconnectOptions, DEFAULT_SSE_MAX_RECONNECT_DELAY,
+    DEFAULT_SSE_RECONNECT_BACKOFF_MULTIPLIER,
+};
 use crate::{HttpClient, HttpError, HttpErrorKind, HttpRequest, HttpResult, RetryHint};
 
 /// Header name used for SSE resume token propagation.
@@ -63,7 +68,11 @@ impl SseReconnectRunner {
         let options = self.options;
         let output = stream! {
             let mut count: u32 = 0;
-            let mut delay = options.reconnect_delay;
+            let mut delay = options.reconnect_delay.max(Duration::from_millis(1));
+            let max_reconnect_delay = normalize_max_reconnect_delay(options.max_reconnect_delay);
+            let reconnect_backoff_multiplier = normalize_reconnect_backoff_multiplier(
+                options.reconnect_backoff_multiplier,
+            );
             let mut last_event_id: Option<String> = None;
             loop {
                 let mut request = request_template.clone();
@@ -80,6 +89,11 @@ impl SseReconnectRunner {
                         if (count < options.max_reconnects) && should_reconnect_sse_error(&error) {
                             count += 1;
                             tokio::time::sleep(delay).await;
+                            delay = next_reconnect_delay(
+                                delay,
+                                max_reconnect_delay,
+                                reconnect_backoff_multiplier,
+                            );
                             continue;
                         }
                         yield Err(error);
@@ -113,6 +127,11 @@ impl SseReconnectRunner {
                     if (count < options.max_reconnects) && should_reconnect_sse_error(&error) {
                         count += 1;
                         tokio::time::sleep(delay).await;
+                        delay = next_reconnect_delay(
+                            delay,
+                            max_reconnect_delay,
+                            reconnect_backoff_multiplier,
+                        );
                         continue;
                     }
                     yield Err(error);
@@ -122,6 +141,11 @@ impl SseReconnectRunner {
                 if options.reconnect_on_eof && (count < options.max_reconnects) {
                     count += 1;
                     tokio::time::sleep(delay).await;
+                    delay = next_reconnect_delay(
+                        delay,
+                        max_reconnect_delay,
+                        reconnect_backoff_multiplier,
+                    );
                     continue;
                 }
                 return;
@@ -167,6 +191,59 @@ fn should_reconnect_sse_error(error: &HttpError) -> bool {
     matches!(error.retry_hint(), RetryHint::Retryable) || is_unexpected_eof_error(error)
 }
 
+/// Returns the next reconnect delay after one reconnect sleep.
+///
+/// # Parameters
+/// - `current`: Current reconnect delay.
+/// - `max_reconnect_delay`: Upper bound for exponential backoff delay.
+/// - `reconnect_backoff_multiplier`: Backoff multiplier for delay growth.
+///
+/// # Returns
+/// Exponential backoff delay capped by `max_reconnect_delay`.
+fn next_reconnect_delay(
+    current: Duration,
+    max_reconnect_delay: Duration,
+    reconnect_backoff_multiplier: f64,
+) -> Duration {
+    let bounded_current = current.min(max_reconnect_delay);
+    let next = bounded_current.mul_f64(reconnect_backoff_multiplier);
+    if next > max_reconnect_delay {
+        max_reconnect_delay
+    } else {
+        next
+    }
+}
+
+/// Normalizes reconnect backoff multiplier from options.
+///
+/// # Parameters
+/// - `value`: Raw multiplier supplied in [`SseReconnectOptions`].
+///
+/// # Returns
+/// Valid multiplier (`>= 1.0` and finite), or the default value.
+fn normalize_reconnect_backoff_multiplier(value: f64) -> f64 {
+    if value.is_finite() && (value >= 1.0) {
+        value
+    } else {
+        DEFAULT_SSE_RECONNECT_BACKOFF_MULTIPLIER
+    }
+}
+
+/// Normalizes maximum reconnect delay from options.
+///
+/// # Parameters
+/// - `value`: Raw maximum reconnect delay in [`SseReconnectOptions`].
+///
+/// # Returns
+/// Non-zero delay upper bound; falls back to default when value is zero.
+fn normalize_max_reconnect_delay(value: Duration) -> Duration {
+    if value.is_zero() {
+        DEFAULT_SSE_MAX_RECONNECT_DELAY
+    } else {
+        value.max(Duration::from_millis(1))
+    }
+}
+
 /// Returns whether an HTTP error represents an unexpected stream EOF that is
 /// suitable for SSE reconnect.
 ///
@@ -181,7 +258,29 @@ fn is_unexpected_eof_error(error: &HttpError) -> bool {
         return true;
     }
     error.source.as_ref().is_some_and(|source| {
-        contains_unexpected_eof(&source.to_string())
+        has_unexpected_eof_in_error_chain(source.as_ref())
+            || contains_unexpected_eof(&source.to_string())
             || contains_unexpected_eof(&format!("{source:?}"))
     })
+}
+
+/// Returns whether any error in the source chain is an unexpected EOF.
+///
+/// # Parameters
+/// - `error`: Root source error to inspect.
+///
+/// # Returns
+/// `true` when chain contains `std::io::ErrorKind::UnexpectedEof`.
+fn has_unexpected_eof_in_error_chain(error: &(dyn StdError + 'static)) -> bool {
+    let mut current: Option<&(dyn StdError + 'static)> = Some(error);
+    while let Some(item) = current {
+        if item
+            .downcast_ref::<std::io::Error>()
+            .is_some_and(|io_error| io_error.kind() == ErrorKind::UnexpectedEof)
+        {
+            return true;
+        }
+        current = item.source();
+    }
+    false
 }

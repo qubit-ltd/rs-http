@@ -13,6 +13,7 @@ use std::time::Duration;
 use async_stream::stream;
 use bytes::Bytes;
 use futures_util::{stream as futures_stream, StreamExt};
+use http::header::{CONTENT_LENGTH, CONTENT_TYPE};
 use http::{HeaderMap, Method, StatusCode};
 use serde::de::DeserializeOwned;
 use tokio_util::sync::CancellationToken;
@@ -238,44 +239,56 @@ impl HttpResponse {
         if let Some(body) = &self.buffered_body {
             return Ok(body.clone());
         }
-        let Some(backend) = self.backend.take() else {
+        let Some(mut backend) = self.backend.take() else {
             self.buffered_body = Some(Bytes::new());
             return Ok(Bytes::new());
         };
 
         let method = self.meta.method.clone();
-        let read_future = tokio::time::timeout(self.runtime.read_timeout, backend.bytes());
-        let next = if let Some(token) = &self.runtime.cancellation_token {
-            tokio::select! {
-                _ = token.cancelled() => {
-                    return Err(HttpError::cancelled("Request cancelled while reading response body")
-                        .with_method(&method)
-                        .with_url(&self.runtime.request_url));
-                }
-                read_result = read_future => read_result,
-            }
-        } else {
-            read_future.await
-        };
+        let url = self.runtime.request_url.clone();
+        let read_timeout = self.runtime.read_timeout;
+        let cancellation_token = self.runtime.cancellation_token.clone();
+        let mut body = bytes::BytesMut::new();
 
-        match next {
-            Ok(Ok(body)) => {
-                self.buffered_body = Some(body.clone());
-                Ok(body)
+        loop {
+            let next = if let Some(token) = &cancellation_token {
+                tokio::select! {
+                    _ = token.cancelled() => {
+                        return Err(HttpError::cancelled("Request cancelled while reading response body")
+                            .with_method(&method)
+                            .with_url(&url));
+                    }
+                    item = tokio::time::timeout(read_timeout, backend.chunk()) => item,
+                }
+            } else {
+                tokio::time::timeout(read_timeout, backend.chunk()).await
+            };
+
+            match next {
+                Ok(Ok(Some(chunk))) => body.extend_from_slice(&chunk),
+                Ok(Ok(None)) => {
+                    let body = body.freeze();
+                    self.buffered_body = Some(body.clone());
+                    return Ok(body);
+                }
+                Ok(Err(error)) => {
+                    return Err(map_reqwest_error(
+                        error,
+                        HttpErrorKind::Decode,
+                        Some(ReqwestErrorPhase::Read),
+                        Some(method),
+                        Some(url),
+                    ));
+                }
+                Err(_) => {
+                    return Err(HttpError::read_timeout(format!(
+                        "Read timeout after {:?} while reading response body",
+                        read_timeout
+                    ))
+                    .with_method(&self.meta.method)
+                    .with_url(&self.runtime.request_url));
+                }
             }
-            Ok(Err(error)) => Err(map_reqwest_error(
-                error,
-                HttpErrorKind::Decode,
-                Some(ReqwestErrorPhase::Read),
-                Some(method),
-                Some(self.runtime.request_url.clone()),
-            )),
-            Err(_) => Err(HttpError::read_timeout(format!(
-                "Read timeout after {:?} while reading response body",
-                self.runtime.read_timeout
-            ))
-            .with_method(&self.meta.method)
-            .with_url(&self.runtime.request_url)),
         }
     }
 
@@ -438,6 +451,33 @@ impl HttpResponse {
         }
     }
 
+    /// Returns a buffered body reference for response logging if available.
+    ///
+    /// # Returns
+    /// `Some(&Bytes)` when response body has already been buffered.
+    pub(crate) fn buffered_body_for_logging(&self) -> Option<&Bytes> {
+        self.buffered_body.as_ref()
+    }
+
+    /// Returns whether logger may safely buffer the full body for logging.
+    ///
+    /// # Parameters
+    /// - `body_log_limit`: Configured logging body preview limit in bytes.
+    ///
+    /// # Returns
+    /// `true` only when this response is not SSE, has an explicit `Content-Length`,
+    /// and declared length is within `body_log_limit`.
+    pub(crate) fn can_buffer_body_for_logging(&self, body_log_limit: usize) -> bool {
+        if self.backend.is_none() {
+            return false;
+        }
+        if self.is_sse_response() {
+            return false;
+        }
+        self.content_length_hint()
+            .is_some_and(|content_length| content_length <= body_log_limit as u64)
+    }
+
     /// Reads bounded preview bytes from a response body for status error messages.
     async fn read_error_body_preview(
         mut response: reqwest::Response,
@@ -480,6 +520,28 @@ impl HttpResponse {
             }
         }
         Self::render_error_body_preview(&preview, truncated)
+    }
+
+    /// Returns `Content-Length` parsed from response headers when present and valid.
+    fn content_length_hint(&self) -> Option<u64> {
+        self.meta
+            .headers
+            .get(CONTENT_LENGTH)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.parse::<u64>().ok())
+    }
+
+    /// Returns whether response content-type is SSE (`text/event-stream`).
+    fn is_sse_response(&self) -> bool {
+        self.meta
+            .headers
+            .get(CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|content_type| {
+                content_type
+                    .to_ascii_lowercase()
+                    .starts_with("text/event-stream")
+            })
     }
 
     fn render_error_body_preview(bytes: &[u8], truncated: bool) -> String {

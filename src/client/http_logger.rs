@@ -112,8 +112,14 @@ impl<'a> HttpLogger<'a> {
         }
 
         if self.options.log_response_body {
-            let body = response.bytes().await?;
-            tracing::trace!("Response body: {}", self.render_body(&body));
+            if let Some(body) = response.buffered_body_for_logging() {
+                tracing::trace!("Response body: {}", self.render_body(body));
+            } else if response.can_buffer_body_for_logging(self.options.body_size_limit) {
+                let body = response.bytes().await?;
+                tracing::trace!("Response body: {}", self.render_body(&body));
+            } else {
+                tracing::trace!("Response body: <skipped: streaming or unknown-size body>");
+            }
         }
         Ok(())
     }

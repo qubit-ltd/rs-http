@@ -131,9 +131,10 @@ impl HttpClientFactory {
             }
 
             builder = builder.proxy(proxy);
-        } else {
+        } else if !options.use_env_proxy {
             // Keep behavior aligned with explicit proxy switch semantics:
-            // when proxy is disabled, do not inherit environment proxies.
+            // when both explicit proxy and env proxy inheritance are disabled,
+            // do not inherit environment proxies.
             builder = builder.no_proxy();
         }
 

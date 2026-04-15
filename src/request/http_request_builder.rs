@@ -9,6 +9,7 @@
 //! Builder for [`super::http_request::HttpRequest`].
 
 use std::time::Duration;
+use std::{future::Future, pin::Pin};
 
 use bytes::Bytes;
 use http::header::CONTENT_TYPE;
@@ -19,8 +20,8 @@ use url::form_urlencoded;
 use url::Url;
 
 use crate::{
-    AsyncHttpHeaderInjector, HttpClient, HttpError, HttpHeaderInjector, HttpResult,
-    HttpRetryMethodPolicy,
+    AsyncHttpHeaderInjector, HttpClient, HttpError, HttpHeaderInjector, HttpRequestBodyByteStream,
+    HttpRequestStreamingBody, HttpResult, HttpRetryMethodPolicy,
 };
 
 use super::http_request::HttpRequest;
@@ -41,6 +42,8 @@ pub struct HttpRequestBuilder {
     pub(super) headers: HeaderMap,
     /// Request body; empty if not set.
     pub(super) body: HttpRequestBody,
+    /// Deferred streaming upload body factory for per-attempt stream creation.
+    pub(super) streaming_body: Option<HttpRequestStreamingBody>,
     /// Per-request timeout; if unset, the client default applies.
     pub(super) request_timeout: Option<Duration>,
     /// Per-request write timeout used by the send phase.
@@ -81,6 +84,7 @@ impl HttpRequestBuilder {
             query: Vec::new(),
             headers: HeaderMap::new(),
             body: HttpRequestBody::Empty,
+            streaming_body: None,
             request_timeout: options.timeouts.request_timeout,
             write_timeout: options.timeouts.write_timeout,
             read_timeout: options.timeouts.read_timeout,
@@ -159,6 +163,7 @@ impl HttpRequestBuilder {
     /// `self` for chaining.
     pub fn bytes_body(mut self, body: impl Into<Bytes>) -> Self {
         self.body = HttpRequestBody::Bytes(body.into());
+        self.streaming_body = None;
         self
     }
 
@@ -175,6 +180,29 @@ impl HttpRequestBuilder {
         B: Into<Bytes>,
     {
         self.body = HttpRequestBody::Stream(chunks.into_iter().map(Into::into).collect());
+        self.streaming_body = None;
+        self
+    }
+
+    /// Sets a deferred streaming upload body factory.
+    ///
+    /// The factory runs once per send attempt and returns a fresh async byte
+    /// stream, which allows retries to rebuild the outbound stream body.
+    ///
+    /// # Parameters
+    /// - `factory`: Async stream factory for per-attempt body generation.
+    ///
+    /// # Returns
+    /// `self` for chaining.
+    pub fn streaming_body<F>(mut self, factory: F) -> Self
+    where
+        F: Fn() -> Pin<Box<dyn Future<Output = HttpRequestBodyByteStream> + Send + 'static>>
+            + Send
+            + Sync
+            + 'static,
+    {
+        self.streaming_body = Some(HttpRequestStreamingBody::new(factory));
+        self.body = HttpRequestBody::Empty;
         self
     }
 
@@ -193,6 +221,7 @@ impl HttpRequestBuilder {
             );
         }
         self.body = HttpRequestBody::Text(body.into());
+        self.streaming_body = None;
         self
     }
 
@@ -214,6 +243,7 @@ impl HttpRequestBuilder {
                 .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         }
         self.body = HttpRequestBody::Json(Bytes::from(bytes));
+        self.streaming_body = None;
         Ok(self)
     }
 
@@ -240,6 +270,7 @@ impl HttpRequestBuilder {
             );
         }
         self.body = HttpRequestBody::Form(Bytes::from(body));
+        self.streaming_body = None;
         self
     }
 
@@ -270,6 +301,7 @@ impl HttpRequestBuilder {
             self.headers.insert(CONTENT_TYPE, value);
         }
         self.body = HttpRequestBody::Multipart(body.into());
+        self.streaming_body = None;
         Ok(self)
     }
 
@@ -302,17 +334,21 @@ impl HttpRequestBuilder {
             );
         }
         self.body = HttpRequestBody::Ndjson(Bytes::from(payload));
+        self.streaming_body = None;
         Ok(self)
     }
 
     /// Overrides the client-wide request timeout for this request only.
+    ///
+    /// This sets reqwest's per-request [`reqwest::RequestBuilder::timeout`], i.e. a
+    /// whole-request deadline for that HTTP call (see reqwest docs for exact semantics).
     ///
     /// # Parameters
     /// - `timeout`: Maximum time for the whole request (reqwest `timeout`).
     ///
     /// # Returns
     /// `self` for chaining.
-    pub fn timeout(mut self, timeout: Duration) -> Self {
+    pub fn request_timeout(mut self, timeout: Duration) -> Self {
         self.request_timeout = Some(timeout);
         self
     }

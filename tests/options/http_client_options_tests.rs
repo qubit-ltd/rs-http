@@ -58,6 +58,7 @@ fn test_http_client_options_defaults() {
     assert_eq!(options.max_redirects, None);
     assert_eq!(options.pool_idle_timeout, None);
     assert_eq!(options.pool_max_idle_per_host, None);
+    assert!(!options.use_env_proxy);
     assert_eq!(options.retry, HttpRetryOptions::default());
     assert!(!options.retry.enabled);
     assert_eq!(options.retry.max_attempts, 3);
@@ -93,6 +94,7 @@ fn test_http_client_options_new_matches_default() {
         options.pool_max_idle_per_host,
         defaults.pool_max_idle_per_host
     );
+    assert_eq!(options.use_env_proxy, defaults.use_env_proxy);
     assert_eq!(options.retry, defaults.retry);
     assert_eq!(options.sensitive_headers, defaults.sensitive_headers);
     assert_eq!(options.ipv4_only, defaults.ipv4_only);
@@ -183,12 +185,14 @@ fn test_http_client_options_reqwest_extra_fields_from_config() {
         .set("http.pool_idle_timeout", Duration::from_secs(15))
         .unwrap();
     config.set("http.pool_max_idle_per_host", 32_usize).unwrap();
+    config.set("http.use_env_proxy", true).unwrap();
 
     let opts = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap();
     assert_eq!(opts.user_agent.as_deref(), Some("qubit-http-tests/1.0"));
     assert_eq!(opts.max_redirects, Some(7));
     assert_eq!(opts.pool_idle_timeout, Some(Duration::from_secs(15)));
     assert_eq!(opts.pool_max_idle_per_host, Some(32));
+    assert!(opts.use_env_proxy);
 }
 
 #[test]
@@ -566,6 +570,44 @@ fn test_http_client_options_sse_json_mode_invalid_value_is_prefixed() {
 }
 
 #[test]
+fn test_http_client_options_sse_done_marker_default_alias_and_custom_value() {
+    let mut default_config = Config::new();
+    default_config
+        .set("http.sse.done_marker", " default ".to_string())
+        .unwrap();
+
+    let default_opts = HttpClientOptions::from_config(&default_config.prefix_view("http")).unwrap();
+    assert_eq!(
+        default_opts.sse_done_marker_policy,
+        DoneMarkerPolicy::DefaultDone
+    );
+
+    let mut custom_config = Config::new();
+    custom_config
+        .set("http.sse.done_marker", "  [FIN]  ".to_string())
+        .unwrap();
+
+    let custom_opts = HttpClientOptions::from_config(&custom_config.prefix_view("http")).unwrap();
+    assert_eq!(
+        custom_opts.sse_done_marker_policy,
+        DoneMarkerPolicy::Custom("[FIN]".to_string())
+    );
+}
+
+#[test]
+fn test_http_client_options_sse_done_marker_empty_value_is_prefixed() {
+    let mut config = Config::new();
+    config
+        .set("http.sse.done_marker", "   ".to_string())
+        .unwrap();
+
+    let err = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap_err();
+
+    assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
+    assert_eq!(err.path, "http.sse.done_marker");
+}
+
+#[test]
 fn test_http_client_options_sse_limits_zero_is_prefixed() {
     let mut config = Config::new();
     config.set("http.sse.max_line_bytes", 0usize).unwrap();
@@ -740,7 +782,7 @@ fn test_http_client_options_sensitive_headers_invalid_type_is_prefixed() {
 }
 
 #[test]
-fn test_http_client_options_default_headers_prefers_subkey_form_over_invalid_json_form() {
+fn test_http_client_options_default_headers_conflicting_forms_are_rejected() {
     let mut config = Config::new();
     config
         .set("http.default_headers", "not-json".to_string())
@@ -749,10 +791,8 @@ fn test_http_client_options_default_headers_prefers_subkey_form_over_invalid_jso
         .set("http.default_headers.x-api-key", "from-subkey".to_string())
         .unwrap();
 
-    let opts = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap();
-    assert_eq!(opts.default_headers.len(), 1);
-    assert_eq!(
-        opts.default_headers.get("x-api-key").unwrap(),
-        "from-subkey"
-    );
+    let err = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap_err();
+    assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
+    assert_eq!(err.path, "http.default_headers");
+    assert!(err.message.contains("cannot be used at the same time"));
 }
