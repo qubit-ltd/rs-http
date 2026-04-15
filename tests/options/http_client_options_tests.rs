@@ -16,7 +16,7 @@ use qubit_http::{
         DEFAULT_LOG_BODY_SIZE_LIMIT_BYTES, DEFAULT_READ_TIMEOUT_SECS, DEFAULT_SSE_MAX_FRAME_BYTES,
         DEFAULT_SSE_MAX_LINE_BYTES, DEFAULT_WRITE_TIMEOUT_SECS,
     },
-    sse::SseJsonMode,
+    sse::{DoneMarkerPolicy, SseJsonMode},
     Delay, HttpClientOptions, HttpConfigErrorKind, HttpErrorKind, HttpRetryMethodPolicy,
     HttpRetryOptions, ProxyType,
 };
@@ -67,6 +67,7 @@ fn test_http_client_options_defaults() {
     );
     assert!(!options.ipv4_only);
     assert_eq!(options.sse_json_mode, SseJsonMode::Lenient);
+    assert_eq!(options.sse_done_marker_policy, DoneMarkerPolicy::default());
     assert_eq!(options.sse_max_line_bytes, DEFAULT_SSE_MAX_LINE_BYTES);
     assert_eq!(options.sse_max_frame_bytes, DEFAULT_SSE_MAX_FRAME_BYTES);
 }
@@ -96,6 +97,10 @@ fn test_http_client_options_new_matches_default() {
     assert_eq!(options.sensitive_headers, defaults.sensitive_headers);
     assert_eq!(options.ipv4_only, defaults.ipv4_only);
     assert_eq!(options.sse_json_mode, defaults.sse_json_mode);
+    assert_eq!(
+        options.sse_done_marker_policy,
+        defaults.sse_done_marker_policy
+    );
     assert_eq!(options.sse_max_line_bytes, defaults.sse_max_line_bytes);
     assert_eq!(options.sse_max_frame_bytes, defaults.sse_max_frame_bytes);
 }
@@ -535,10 +540,14 @@ fn test_http_client_options_sse_section() {
         .unwrap();
     config.set("http.sse.max_line_bytes", 8192usize).unwrap();
     config.set("http.sse.max_frame_bytes", 65536usize).unwrap();
+    config
+        .set("http.sse.done_marker", "disabled".to_string())
+        .unwrap();
 
     let opts = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap();
 
     assert_eq!(opts.sse_json_mode, SseJsonMode::Strict);
+    assert_eq!(opts.sse_done_marker_policy, DoneMarkerPolicy::Disabled);
     assert_eq!(opts.sse_max_line_bytes, 8192);
     assert_eq!(opts.sse_max_frame_bytes, 65536);
 }

@@ -275,7 +275,7 @@ async fn test_request_retry_override_honor_retry_after_waits_before_body_stream_
         .expect("request should succeed after retry");
     let elapsed = start.elapsed();
     let body = response
-        .stream_body()
+        .stream()
         .expect("stream body should be available")
         .collect::<Vec<_>>()
         .await

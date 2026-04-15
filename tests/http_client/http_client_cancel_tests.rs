@@ -89,7 +89,7 @@ async fn test_execute_request_can_be_cancelled_while_reading_response_body() {
         .expect("execute timed out")
         .expect("request should start");
     let error = response
-        .bytes_body()
+        .bytes()
         .await
         .expect_err("request should be cancelled while reading body");
     assert_eq!(error.kind, HttpErrorKind::Cancelled);
@@ -180,7 +180,7 @@ async fn test_execute_stream_body_can_be_cancelled_after_first_chunk() {
         .expect("request should start");
 
     let mut stream = response
-        .stream_body()
+        .stream()
         .expect("stream body should be available");
     let first = stream
         .next()

@@ -298,6 +298,7 @@ impl HttpClient {
             self.options.sse_json_mode,
             self.options.sse_max_line_bytes,
             self.options.sse_max_frame_bytes,
+            self.options.sse_done_marker_policy.clone(),
         );
         Ok(HttpResponse::from_backend(
             meta,

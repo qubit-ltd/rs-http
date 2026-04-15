@@ -84,7 +84,7 @@ impl SseReconnectRunner {
                     }
                 };
 
-                let mut events = response.decode_sse_events();
+                let mut events = response.sse_events();
                 let mut stream_error: Option<HttpError> = None;
                 while let Some(item) = events.next().await {
                     match item {
