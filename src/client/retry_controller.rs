@@ -11,12 +11,10 @@
 use std::time::Duration;
 
 use qubit_concurrent::{ArcMutex, Lock};
-use qubit_retry::{
-    AttemptFailure, Jitter, RetryDecision, RetryError, RetryExecutor, RetryOptions, RetryResult,
-};
+use qubit_retry::{AttemptFailure, RetryError, RetryExecutor, RetryResult};
 
 use crate::{
-    HttpClient, HttpError, HttpErrorKind, HttpRequest, HttpResponse, HttpResult, HttpRetryOptions,
+    HttpClient, HttpError, HttpRequest, HttpResponse, HttpResult, HttpRetryOptions,
 };
 
 /// Shared state used to carry extra `Retry-After` delay into the next async
@@ -46,31 +44,9 @@ impl RetryController {
         retry_options: &HttpRetryOptions,
         honor_retry_after: bool,
     ) -> HttpResult<Self> {
-        let options = RetryOptions::new(
-            retry_options.max_attempts,
-            retry_options.max_duration,
-            retry_options.delay_strategy.clone(),
-            Jitter::factor(retry_options.jitter_factor),
-        )
-        .map_err(|error| HttpError::other(format!("Invalid HTTP retry options: {error}")))?;
-
-        let retry_options_clone = retry_options.clone();
         let mut builder = RetryExecutor::<HttpError>::builder()
-            .options(options)
-            .classify_error(move |error: &HttpError, _| {
-                let retryable = if error.kind == HttpErrorKind::Status {
-                    error
-                        .status
-                        .is_some_and(|status| retry_options_clone.is_retryable_status(status))
-                } else {
-                    retry_options_clone.is_retryable_error_kind(error.kind)
-                };
-                if retryable {
-                    RetryDecision::Retry
-                } else {
-                    RetryDecision::Abort
-                }
-            });
+            .options(retry_options.to_executor_options()?)
+            .classify_error(retry_options.to_executor_error_classifier());
 
         if honor_retry_after {
             let pending_retry_after_delay: PendingRetryAfterDelay = ArcMutex::new(None);

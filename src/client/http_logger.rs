@@ -20,7 +20,7 @@ use crate::constants::{
 };
 use crate::{
     HttpClientOptions, HttpLoggingOptions, HttpRequest, HttpRequestBody, HttpResponse,
-    HttpResponseMeta, SensitiveHeaders,
+    HttpResponseMeta, SensitiveHttpHeaders,
 };
 use bytes::Bytes;
 
@@ -28,7 +28,7 @@ use bytes::Bytes;
 #[derive(Debug, Clone, Copy)]
 pub struct HttpLogger<'a> {
     options: &'a HttpLoggingOptions,
-    sensitive_headers: &'a SensitiveHeaders,
+    sensitive_headers: &'a SensitiveHttpHeaders,
 }
 
 impl<'a> HttpLogger<'a> {
@@ -92,10 +92,13 @@ impl<'a> HttpLogger<'a> {
     /// - `response`: Response object (status/url/headers/body cache).
     ///
     /// # Returns
-    /// Nothing; no-op when disabled or TRACE off.
-    pub fn log_response(&self, response: &HttpResponse) {
+    /// `Ok(())` on success; no-op when disabled or TRACE off.
+    ///
+    /// # Errors
+    /// Returns [`crate::HttpError`] when reading the response body for logging fails.
+    pub async fn log_response(&self, response: &mut HttpResponse) -> crate::HttpResult<()> {
         if !self.is_trace_enabled() {
-            return;
+            return Ok(());
         }
 
         tracing::trace!("<-- {} {}", response.status().as_u16(), response.url());
@@ -109,9 +112,10 @@ impl<'a> HttpLogger<'a> {
         }
 
         if self.options.log_response_body {
-            let body = response.buffered_body().cloned().unwrap_or_default();
+            let body = response.bytes_body().await?;
             tracing::trace!("Response body: {}", self.render_body(&body));
         }
+        Ok(())
     }
 
     /// Logs response line and headers for a streaming call without reading the body stream.

@@ -7,11 +7,11 @@
  *
  ******************************************************************************/
 
-use qubit_http::SensitiveHeaders;
+use qubit_http::SensitiveHttpHeaders;
 
 #[test]
 fn test_sensitive_headers_default_is_case_normalized() {
-    let headers = SensitiveHeaders::default();
+    let headers = SensitiveHttpHeaders::default();
     assert!(!headers.is_empty());
     assert!(headers.contains("AUTHORIZATION"));
     assert!(headers.contains("authorization"));
@@ -19,7 +19,7 @@ fn test_sensitive_headers_default_is_case_normalized() {
 
 #[test]
 fn test_sensitive_headers_case_insensitive() {
-    let mut headers = SensitiveHeaders::new();
+    let mut headers = SensitiveHttpHeaders::new();
     headers.insert("Authorization");
     headers.insert("X-Api-Key");
 
@@ -32,7 +32,7 @@ fn test_sensitive_headers_case_insensitive() {
 
 #[test]
 fn test_sensitive_headers_extend_and_clear() {
-    let mut headers = SensitiveHeaders::new();
+    let mut headers = SensitiveHttpHeaders::new();
     headers.extend(["Authorization", "Cookie", "Set-Cookie"]);
     assert_eq!(headers.len(), 3);
     assert!(!headers.is_empty());
@@ -42,7 +42,7 @@ fn test_sensitive_headers_extend_and_clear() {
 
 #[test]
 fn test_sensitive_headers_iter_returns_normalized_names() {
-    let mut headers = SensitiveHeaders::new();
+    let mut headers = SensitiveHttpHeaders::new();
     headers.insert(" Content-Type ");
     headers.insert("X-Custom");
 
@@ -52,7 +52,7 @@ fn test_sensitive_headers_iter_returns_normalized_names() {
 
 #[test]
 fn test_sensitive_headers_insert_ignores_empty_or_whitespace_values() {
-    let mut headers = SensitiveHeaders::new();
+    let mut headers = SensitiveHttpHeaders::new();
     headers.insert("");
     headers.insert("   ");
     headers.insert("Authorization");

@@ -10,13 +10,13 @@
 use std::time::Duration;
 
 use qubit_config::Config;
-use qubit_http::{HttpConfigErrorKind, TimeoutOptions};
+use qubit_http::{HttpConfigErrorKind, HttpTimeoutOptions};
 
 #[test]
 fn test_timeout_options_defaults_when_no_keys() {
     let config = Config::new();
-    let opts = TimeoutOptions::from_config(&config.prefix_view("http.timeouts")).unwrap();
-    assert_eq!(opts, TimeoutOptions::default());
+    let opts = HttpTimeoutOptions::from_config(&config.prefix_view("http.timeouts")).unwrap();
+    assert_eq!(opts, HttpTimeoutOptions::default());
 }
 
 #[test]
@@ -35,7 +35,7 @@ fn test_timeout_options_all_fields() {
         .set("http.timeouts.request_timeout", Duration::from_secs(60))
         .unwrap();
 
-    let opts = TimeoutOptions::from_config(&config.prefix_view("http.timeouts")).unwrap();
+    let opts = HttpTimeoutOptions::from_config(&config.prefix_view("http.timeouts")).unwrap();
     assert_eq!(opts.connect_timeout, Duration::from_secs(5));
     assert_eq!(opts.read_timeout, Duration::from_secs(30));
     assert_eq!(opts.write_timeout, Duration::from_secs(20));
@@ -49,7 +49,7 @@ fn test_timeout_options_partial_fields() {
         .set("t.connect_timeout", Duration::from_millis(500))
         .unwrap();
 
-    let opts = TimeoutOptions::from_config(&config.prefix_view("t")).unwrap();
+    let opts = HttpTimeoutOptions::from_config(&config.prefix_view("t")).unwrap();
     assert_eq!(opts.connect_timeout, Duration::from_millis(500));
     assert_eq!(opts.read_timeout, Duration::from_secs(120));
     assert_eq!(opts.request_timeout, None);
@@ -62,7 +62,7 @@ fn test_timeout_options_no_request_timeout() {
         .set("t.connect_timeout", Duration::from_secs(10))
         .unwrap();
 
-    let opts = TimeoutOptions::from_config(&config.prefix_view("t")).unwrap();
+    let opts = HttpTimeoutOptions::from_config(&config.prefix_view("t")).unwrap();
     assert_eq!(opts.request_timeout, None);
 }
 
@@ -71,14 +71,14 @@ fn test_timeout_options_invalid_type_is_prefixed() {
     let mut config = Config::new();
     config.set("t.connect_timeout", "invalid").unwrap();
 
-    let err = TimeoutOptions::from_config(&config.prefix_view("t")).unwrap_err();
+    let err = HttpTimeoutOptions::from_config(&config.prefix_view("t")).unwrap_err();
 
     assert_eq!(err.path, "t.connect_timeout");
 }
 
 #[test]
 fn test_timeout_options_validate_rejects_zero_values() {
-    let mut opts = TimeoutOptions::default();
+    let mut opts = HttpTimeoutOptions::default();
     opts.connect_timeout = Duration::ZERO;
 
     let err = opts.validate().unwrap_err();
@@ -93,7 +93,7 @@ fn test_timeout_options_from_config_rejects_zero_request_timeout() {
         .set("t.request_timeout", Duration::ZERO)
         .expect("test config should set request_timeout");
 
-    let err = TimeoutOptions::from_config(&config.prefix_view("t")).unwrap_err();
+    let err = HttpTimeoutOptions::from_config(&config.prefix_view("t")).unwrap_err();
     assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
     assert_eq!(err.path, "request_timeout");
 }

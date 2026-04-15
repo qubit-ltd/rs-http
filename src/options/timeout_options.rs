@@ -18,7 +18,7 @@ use crate::constants::{
 
 /// Connect, read, write, and optional whole-request timeouts for HTTP I/O.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TimeoutOptions {
+pub struct HttpTimeoutOptions {
     /// Connect timeout.
     pub connect_timeout: Duration,
     /// Read timeout.
@@ -29,14 +29,14 @@ pub struct TimeoutOptions {
     pub request_timeout: Option<Duration>,
 }
 
-impl Default for TimeoutOptions {
+impl Default for HttpTimeoutOptions {
     /// Connect / read / write durations use
     /// [`crate::constants::DEFAULT_CONNECT_TIMEOUT_SECS`],
     /// [`crate::constants::DEFAULT_READ_TIMEOUT_SECS`], and
     /// [`crate::constants::DEFAULT_WRITE_TIMEOUT_SECS`]; no global request timeout.
     ///
     /// # Returns
-    /// Default [`TimeoutOptions`].
+    /// Default [`HttpTimeoutOptions`].
     fn default() -> Self {
         Self {
             connect_timeout: Duration::from_secs(DEFAULT_CONNECT_TIMEOUT_SECS),
@@ -66,7 +66,7 @@ where
     })
 }
 
-impl TimeoutOptions {
+impl HttpTimeoutOptions {
     /// Validates timeout bounds.
     ///
     /// # Returns
@@ -94,14 +94,15 @@ impl TimeoutOptions {
     /// - `request_timeout`
     ///
     /// # Returns
-    /// Populated [`TimeoutOptions`] or [`HttpConfigError`] on type conversion failure.
+    /// Populated [`HttpTimeoutOptions`] or [`HttpConfigError`] on type conversion
+    /// failure.
     pub fn from_config<R>(config: &R) -> Result<Self, HttpConfigError>
     where
         R: ConfigReader + ?Sized,
     {
         let raw = read_timeout_config(config).map_err(HttpConfigError::from)?;
 
-        let mut opts = TimeoutOptions::default();
+        let mut opts = HttpTimeoutOptions::default();
         if let Some(d) = raw.connect_timeout {
             opts.connect_timeout = d;
         }

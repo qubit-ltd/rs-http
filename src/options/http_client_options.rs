@@ -19,8 +19,8 @@ use super::from_config_helpers::hashmap_to_headermap;
 use super::http_retry_options::HttpRetryOptions;
 use super::logging_options::HttpLoggingOptions;
 use super::proxy_options::ProxyOptions;
-use super::sensitive_headers::SensitiveHeaders;
-use super::timeout_options::TimeoutOptions;
+use super::sensitive_headers::SensitiveHttpHeaders;
+use super::timeout_options::HttpTimeoutOptions;
 use super::HttpConfigError;
 use crate::{
     constants::{
@@ -40,7 +40,7 @@ pub struct HttpClientOptions {
     /// Default request headers.
     pub default_headers: HeaderMap,
     /// Timeout options.
-    pub timeouts: TimeoutOptions,
+    pub timeouts: HttpTimeoutOptions,
     /// Proxy options.
     pub proxy: ProxyOptions,
     /// Logging options.
@@ -58,7 +58,7 @@ pub struct HttpClientOptions {
     /// Retry options.
     pub retry: HttpRetryOptions,
     /// Sensitive headers for masking.
-    pub sensitive_headers: SensitiveHeaders,
+    pub sensitive_headers: SensitiveHttpHeaders,
     /// Whether IPv4-only DNS behavior is requested.
     pub ipv4_only: bool,
     /// Default JSON handling mode used by [`crate::HttpResponse::decode_sse_json_chunks`].
@@ -80,7 +80,7 @@ impl Default for HttpClientOptions {
         Self {
             base_url: None,
             default_headers: HeaderMap::new(),
-            timeouts: TimeoutOptions::default(),
+            timeouts: HttpTimeoutOptions::default(),
             proxy: ProxyOptions::default(),
             logging: HttpLoggingOptions::default(),
             error_response_preview_limit: DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES,
@@ -89,7 +89,7 @@ impl Default for HttpClientOptions {
             pool_idle_timeout: None,
             pool_max_idle_per_host: None,
             retry: HttpRetryOptions::default(),
-            sensitive_headers: SensitiveHeaders::default(),
+            sensitive_headers: SensitiveHttpHeaders::default(),
             ipv4_only: false,
             sse_json_mode: SseJsonMode::Lenient,
             sse_max_line_bytes: DEFAULT_SSE_MAX_LINE_BYTES,
@@ -289,7 +289,7 @@ impl HttpClientOptions {
         // timeouts
         if config.contains_prefix("timeouts") {
             let timeouts_config = config.prefix_view("timeouts");
-            opts.timeouts = TimeoutOptions::from_config(&timeouts_config)
+            opts.timeouts = HttpTimeoutOptions::from_config(&timeouts_config)
                 .map_err(|e| Self::resolve_config_error(&timeouts_config, e))?;
         }
 
@@ -367,7 +367,7 @@ impl HttpClientOptions {
         }
 
         if let Some(names) = root.sensitive_headers {
-            let mut sh = SensitiveHeaders::new();
+            let mut sh = SensitiveHttpHeaders::new();
             sh.extend(names);
             opts.sensitive_headers = sh;
         }

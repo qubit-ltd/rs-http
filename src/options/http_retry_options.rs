@@ -11,11 +11,13 @@ use std::time::Duration;
 
 use http::StatusCode;
 use qubit_config::{ConfigReader, ConfigResult};
-use qubit_retry::Delay;
+use qubit_retry::{
+    AttemptContext, Delay, Jitter, RetryDecision, RetryOptions,
+};
 
 use super::http_retry_method_policy::HttpRetryMethodPolicy;
 use super::HttpConfigError;
-use crate::HttpErrorKind;
+use crate::{HttpError, HttpErrorKind, HttpRequest, HttpResult};
 
 const DEFAULT_RETRY_MAX_ATTEMPTS: u32 = 3;
 const DEFAULT_RETRY_INITIAL_DELAY: Duration = Duration::from_millis(200);
@@ -48,65 +50,29 @@ pub struct HttpRetryOptions {
     pub retry_error_kinds: Option<Vec<HttpErrorKind>>,
 }
 
-impl Default for HttpRetryOptions {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            max_attempts: DEFAULT_RETRY_MAX_ATTEMPTS,
-            max_duration: None,
-            delay_strategy: Delay::Exponential {
-                initial: DEFAULT_RETRY_INITIAL_DELAY,
-                max: DEFAULT_RETRY_MAX_DELAY,
-                multiplier: DEFAULT_RETRY_MULTIPLIER,
-            },
-            jitter_factor: DEFAULT_RETRY_JITTER_FACTOR,
-            method_policy: HttpRetryMethodPolicy::default(),
-            retry_status_codes: None,
-            retry_error_kinds: None,
-        }
+/// Returns whether `status` is retryable for the given optional allowlist.
+///
+/// When `retry_status_codes` is `None`, uses [`default_retryable_status`].
+fn is_retryable_status(status: StatusCode, retry_status_codes: Option<&[StatusCode]>) -> bool {
+    if let Some(status_codes) = retry_status_codes {
+        status_codes.contains(&status)
+    } else {
+        default_retryable_status(status)
     }
 }
 
-struct HttpRetryConfigInput {
-    enabled: Option<bool>,
-    max_attempts: Option<u32>,
-    max_duration: Option<Duration>,
-    delay_strategy: Option<String>,
-    fixed_delay: Option<Duration>,
-    random_min_delay: Option<Duration>,
-    random_max_delay: Option<Duration>,
-    backoff_initial_delay: Option<Duration>,
-    backoff_max_delay: Option<Duration>,
-    backoff_multiplier: Option<f64>,
-    jitter_factor: Option<f64>,
-    method_policy: Option<String>,
-    status_codes: Option<Vec<String>>,
-    error_kinds: Option<Vec<String>>,
+/// Returns whether `kind` is retryable for the given optional allowlist.
+///
+/// When `retry_error_kinds` is `None`, uses [`default_retryable_error_kind`].
+fn is_retryable_error_kind(kind: HttpErrorKind, retry_error_kinds: Option<&[HttpErrorKind]>) -> bool {
+    if let Some(error_kinds) = retry_error_kinds {
+        error_kinds.contains(&kind)
+    } else {
+        default_retryable_error_kind(kind)
+    }
 }
 
 impl HttpRetryOptions {
-    fn read_config<R>(config: &R) -> ConfigResult<HttpRetryConfigInput>
-    where
-        R: ConfigReader + ?Sized,
-    {
-        Ok(HttpRetryConfigInput {
-            enabled: config.get_optional("enabled")?,
-            max_attempts: config.get_optional("max_attempts")?,
-            max_duration: config.get_optional("max_duration")?,
-            delay_strategy: config.get_optional_string("delay_strategy")?,
-            fixed_delay: config.get_optional("fixed_delay")?,
-            random_min_delay: config.get_optional("random_min_delay")?,
-            random_max_delay: config.get_optional("random_max_delay")?,
-            backoff_initial_delay: config.get_optional("backoff_initial_delay")?,
-            backoff_max_delay: config.get_optional("backoff_max_delay")?,
-            backoff_multiplier: config.get_optional("backoff_multiplier")?,
-            jitter_factor: config.get_optional("jitter_factor")?,
-            method_policy: config.get_optional_string("method_policy")?,
-            status_codes: config.get_optional_string_list("status_codes")?,
-            error_kinds: config.get_optional_string_list("error_kinds")?,
-        })
-    }
-
     /// Creates default retry options.
     ///
     /// # Returns
@@ -157,6 +123,36 @@ impl HttpRetryOptions {
         Ok(opts)
     }
 
+    /// Reads retry options from a `ConfigReader`.
+    ///
+    /// # Parameters
+    /// - `config`: Configuration reader whose keys are relative to the retry
+    ///   configuration prefix.
+    ///
+    /// # Returns
+    /// Parsed retry options or [`HttpConfigError`].
+    fn read_config<R>(config: &R) -> ConfigResult<HttpRetryConfigInput>
+    where
+        R: ConfigReader + ?Sized,
+    {
+        Ok(HttpRetryConfigInput {
+            enabled: config.get_optional("enabled")?,
+            max_attempts: config.get_optional("max_attempts")?,
+            max_duration: config.get_optional("max_duration")?,
+            delay_strategy: config.get_optional_string("delay_strategy")?,
+            fixed_delay: config.get_optional("fixed_delay")?,
+            random_min_delay: config.get_optional("random_min_delay")?,
+            random_max_delay: config.get_optional("random_max_delay")?,
+            backoff_initial_delay: config.get_optional("backoff_initial_delay")?,
+            backoff_max_delay: config.get_optional("backoff_max_delay")?,
+            backoff_multiplier: config.get_optional("backoff_multiplier")?,
+            jitter_factor: config.get_optional("jitter_factor")?,
+            method_policy: config.get_optional_string("method_policy")?,
+            status_codes: config.get_optional_string_list("status_codes")?,
+            error_kinds: config.get_optional_string_list("error_kinds")?,
+        })
+    }
+
     /// Runs retry option validation.
     ///
     /// # Returns
@@ -191,6 +187,34 @@ impl HttpRetryOptions {
         self.enabled && self.method_policy.allows_method(method)
     }
 
+    /// Returns whether retry should run for `request` under this policy.
+    ///
+    /// # Parameters
+    /// - `request`: Request whose method is checked against retry policy.
+    ///
+    /// # Returns
+    /// `true` when retry is enabled, `max_attempts` is greater than one, and
+    /// the request method is allowed by [`Self::method_policy`].
+    pub fn should_retry(&self, request: &HttpRequest) -> bool {
+        self.max_attempts > 1 && self.allows_method(request.method())
+    }
+
+    /// Resolves request-level retry override against this retry policy.
+    ///
+    /// # Parameters
+    /// - `request`: Request whose retry override is applied.
+    ///
+    /// # Returns
+    /// Effective retry options for this request.
+    pub fn resolve(&self, request: &HttpRequest) -> Self {
+        let mut options = self.clone();
+        options.enabled = request.retry_override().resolve_enabled(options.enabled);
+        options.method_policy = request
+            .retry_override()
+            .resolve_method_policy(options.method_policy);
+        options
+    }
+
     /// Returns whether a status code is retryable under current retry policy.
     ///
     /// # Parameters
@@ -199,11 +223,7 @@ impl HttpRetryOptions {
     /// # Returns
     /// `true` if status should be retried.
     pub fn is_retryable_status(&self, status: StatusCode) -> bool {
-        if let Some(status_codes) = &self.retry_status_codes {
-            status_codes.contains(&status)
-        } else {
-            default_retryable_status(status)
-        }
+        is_retryable_status(status, self.retry_status_codes.as_deref())
     }
 
     /// Returns whether a non-status error kind is retryable under current retry
@@ -215,12 +235,84 @@ impl HttpRetryOptions {
     /// # Returns
     /// `true` if kind should be retried.
     pub fn is_retryable_error_kind(&self, kind: HttpErrorKind) -> bool {
-        if let Some(error_kinds) = &self.retry_error_kinds {
-            error_kinds.contains(&kind)
-        } else {
-            default_retryable_error_kind(kind)
+        is_retryable_error_kind(kind, self.retry_error_kinds.as_deref())
+    }
+
+    /// Converts these options into [`RetryOptions`] for the built-in retry executor.
+    ///
+    /// # Errors
+    /// Returns [`HttpError`] when executor limits or delay/jitter settings are invalid.
+    pub fn to_executor_options(&self) -> HttpResult<RetryOptions> {
+        RetryOptions::new(
+            self.max_attempts,
+            self.max_duration,
+            self.delay_strategy.clone(),
+            Jitter::factor(self.jitter_factor),
+        )
+        .map_err(|error| HttpError::other(format!("Invalid HTTP retry options: {error}")))
+    }
+
+    /// Returns an error classifier for [`qubit_retry::RetryExecutor::builder`] /
+    /// [`qubit_retry::RetryExecutorBuilder::classify_error`].
+    ///
+    /// The closure captures clones of the status and error-kind allowlists only
+    /// and delegates to [`is_retryable_status`] and [`is_retryable_error_kind`].
+    pub fn to_executor_error_classifier(
+        &self,
+    ) -> impl Fn(&HttpError, &AttemptContext) -> RetryDecision + Send + Sync + 'static {
+        let retry_status_codes = self.retry_status_codes.clone();
+        let retry_error_kinds = self.retry_error_kinds.clone();
+        move |error: &HttpError, _context: &AttemptContext| {
+            let retryable = if error.kind == HttpErrorKind::Status {
+                error.status.is_some_and(|status| {
+                    is_retryable_status(status, retry_status_codes.as_deref())
+                })
+            } else {
+                is_retryable_error_kind(error.kind, retry_error_kinds.as_deref())
+            };
+            if retryable {
+                RetryDecision::Retry
+            } else {
+                RetryDecision::Abort
+            }
         }
     }
+}
+
+impl Default for HttpRetryOptions {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            max_attempts: DEFAULT_RETRY_MAX_ATTEMPTS,
+            max_duration: None,
+            delay_strategy: Delay::Exponential {
+                initial: DEFAULT_RETRY_INITIAL_DELAY,
+                max: DEFAULT_RETRY_MAX_DELAY,
+                multiplier: DEFAULT_RETRY_MULTIPLIER,
+            },
+            jitter_factor: DEFAULT_RETRY_JITTER_FACTOR,
+            method_policy: HttpRetryMethodPolicy::default(),
+            retry_status_codes: None,
+            retry_error_kinds: None,
+        }
+    }
+}
+
+struct HttpRetryConfigInput {
+    enabled: Option<bool>,
+    max_attempts: Option<u32>,
+    max_duration: Option<Duration>,
+    delay_strategy: Option<String>,
+    fixed_delay: Option<Duration>,
+    random_min_delay: Option<Duration>,
+    random_max_delay: Option<Duration>,
+    backoff_initial_delay: Option<Duration>,
+    backoff_max_delay: Option<Duration>,
+    backoff_multiplier: Option<f64>,
+    jitter_factor: Option<f64>,
+    method_policy: Option<String>,
+    status_codes: Option<Vec<String>>,
+    error_kinds: Option<Vec<String>>,
 }
 
 fn parse_retry_delay_strategy(

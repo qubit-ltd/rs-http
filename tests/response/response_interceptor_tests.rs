@@ -11,14 +11,14 @@ use std::sync::{Arc, Mutex};
 
 use http::{HeaderMap, HeaderValue, Method, StatusCode};
 use qubit_function::MutatingFunction;
-use qubit_http::{HttpError, HttpErrorKind, HttpResponseMeta, ResponseInterceptor};
+use qubit_http::{HttpError, HttpErrorKind, HttpResponseInterceptor, HttpResponseMeta};
 use url::Url;
 
 #[test]
 fn test_response_interceptor_apply_receives_context() {
     let seen = Arc::new(Mutex::new(None));
     let seen_for_interceptor = Arc::clone(&seen);
-    let interceptor = ResponseInterceptor::new(move |meta| {
+    let interceptor = HttpResponseInterceptor::new(move |meta| {
         let header = meta
             .headers
             .get("x-check")
@@ -62,7 +62,7 @@ fn test_response_interceptor_apply_receives_context() {
 #[test]
 fn test_response_interceptor_apply_propagates_error() {
     let interceptor =
-        ResponseInterceptor::new(|_meta| Err(HttpError::other("response interceptor failure")));
+        HttpResponseInterceptor::new(|_meta| Err(HttpError::other("response interceptor failure")));
     let mut meta = HttpResponseMeta::new(
         StatusCode::OK,
         HeaderMap::new(),
@@ -79,7 +79,7 @@ fn test_response_interceptor_apply_propagates_error() {
 
 #[test]
 fn test_response_interceptor_clone_and_debug() {
-    let interceptor = ResponseInterceptor::new(|_meta| Ok(()));
+    let interceptor = HttpResponseInterceptor::new(|_meta| Ok(()));
     let cloned = interceptor.clone();
 
     let output = format!("{:?}", cloned);

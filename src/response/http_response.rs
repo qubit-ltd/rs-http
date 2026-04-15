@@ -19,10 +19,79 @@ use tokio_util::sync::CancellationToken;
 use url::Url;
 
 use crate::client::error_mapper::{map_reqwest_error, ReqwestErrorPhase};
+use crate::constants::{
+    DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES, DEFAULT_SSE_MAX_FRAME_BYTES,
+    DEFAULT_SSE_MAX_LINE_BYTES,
+};
 use crate::sse::{DoneMarkerPolicy, SseChunkStream, SseEventStream, SseJsonMode};
-use crate::{HttpByteStream, HttpError, HttpErrorKind, HttpResult, SseDecodeOptions};
+use crate::{HttpByteStream, HttpError, HttpErrorKind, HttpResult};
 
 use super::HttpResponseMeta;
+
+/// Runtime state bound to one response instance.
+#[derive(Debug, Clone)]
+struct HttpResponseRuntime {
+    /// Per-response read timeout inherited from request/client.
+    read_timeout: Duration,
+    /// Optional cancellation token inherited from request.
+    cancellation_token: Option<CancellationToken>,
+    /// Request URL used in read/cancellation error context.
+    request_url: Url,
+}
+
+impl HttpResponseRuntime {
+    fn new(
+        read_timeout: Duration,
+        cancellation_token: Option<CancellationToken>,
+        request_url: Url,
+    ) -> Self {
+        Self {
+            read_timeout,
+            cancellation_token,
+            request_url,
+        }
+    }
+}
+
+/// Decode/error-preview options bound to one response instance.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct HttpResponseOptions {
+    /// Maximum bytes captured for status-error body preview.
+    pub error_response_preview_limit: usize,
+    /// Default JSON decoding mode used by stream JSON helpers.
+    pub sse_json_mode: SseJsonMode,
+    /// Default maximum bytes allowed for one SSE line.
+    pub sse_max_line_bytes: usize,
+    /// Default maximum bytes allowed for one SSE frame.
+    pub sse_max_frame_bytes: usize,
+}
+
+impl Default for HttpResponseOptions {
+    fn default() -> Self {
+        Self {
+            error_response_preview_limit: DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES,
+            sse_json_mode: SseJsonMode::Lenient,
+            sse_max_line_bytes: DEFAULT_SSE_MAX_LINE_BYTES,
+            sse_max_frame_bytes: DEFAULT_SSE_MAX_FRAME_BYTES,
+        }
+    }
+}
+
+impl HttpResponseOptions {
+    pub(crate) fn new(
+        error_response_preview_limit: usize,
+        sse_json_mode: SseJsonMode,
+        sse_max_line_bytes: usize,
+        sse_max_frame_bytes: usize,
+    ) -> Self {
+        Self {
+            error_response_preview_limit: error_response_preview_limit.max(1),
+            sse_json_mode,
+            sse_max_line_bytes: sse_max_line_bytes.max(1),
+            sse_max_frame_bytes: sse_max_frame_bytes.max(1),
+        }
+    }
+}
 
 /// Unified HTTP response with lazily consumed body.
 #[derive(Debug)]
@@ -33,14 +102,10 @@ pub struct HttpResponse {
     backend: Option<reqwest::Response>,
     /// Cached full body bytes after eager or lazy read.
     buffered_body: Option<Bytes>,
-    /// Per-response read timeout inherited from request/client.
-    read_timeout: Duration,
-    /// Optional cancellation token inherited from request.
-    cancellation_token: Option<CancellationToken>,
-    /// Request URL used in read/cancellation error context.
-    request_url: Url,
-    /// Default SSE decode options inherited from client options.
-    sse_decode_options: SseDecodeOptions,
+    /// Runtime state inherited from request/client.
+    runtime: HttpResponseRuntime,
+    /// Decode and error-preview options inherited from client options.
+    options: HttpResponseOptions,
 }
 
 impl HttpResponse {
@@ -56,10 +121,8 @@ impl HttpResponse {
             meta: HttpResponseMeta::new(status, headers, url.clone(), method),
             backend: None,
             buffered_body: Some(body),
-            read_timeout: Duration::from_secs(30),
-            cancellation_token: None,
-            request_url: url,
-            sse_decode_options: SseDecodeOptions::default(),
+            runtime: HttpResponseRuntime::new(Duration::from_secs(30), None, url),
+            options: HttpResponseOptions::default(),
         }
     }
 
@@ -70,16 +133,14 @@ impl HttpResponse {
         read_timeout: Duration,
         cancellation_token: Option<CancellationToken>,
         request_url: Url,
-        sse_decode_options: SseDecodeOptions,
+        options: HttpResponseOptions,
     ) -> Self {
         Self {
             meta,
             backend: Some(backend),
             buffered_body: None,
-            read_timeout,
-            cancellation_token,
-            request_url,
-            sse_decode_options,
+            runtime: HttpResponseRuntime::new(read_timeout, cancellation_token, request_url),
+            options,
         }
     }
 
@@ -110,7 +171,7 @@ impl HttpResponse {
     /// Returns request URL used in response read context.
     #[inline]
     pub fn request_url(&self) -> &Url {
-        &self.request_url
+        &self.runtime.request_url
     }
 
     /// Returns cached full body if already buffered.
@@ -125,6 +186,54 @@ impl HttpResponse {
         self.status().is_success()
     }
 
+    /// Returns parsed `Retry-After` hint when status and headers provide one.
+    #[inline]
+    pub fn retry_after_hint(&self) -> Option<Duration> {
+        self.meta.retry_after_hint()
+    }
+
+    /// Returns `Ok(self)` for success statuses, otherwise maps a status error
+    /// with `Retry-After` and response-body preview context.
+    pub(crate) async fn into_success_or_status_error(
+        self,
+        message_prefix: &str,
+    ) -> HttpResult<Self> {
+        let status = self.status();
+        if status.is_success() {
+            return Ok(self);
+        }
+        let retry_after = self.retry_after_hint();
+        let method = self.meta.method.clone();
+        let url = self.request_url().clone();
+        let error_preview_limit = self.options.error_response_preview_limit;
+        let body_preview = self.into_error_body_preview(error_preview_limit).await;
+        let message = format!(
+            "{} with status {} for {} {}; response body preview: {}",
+            message_prefix, status, method, url, body_preview
+        );
+        let mut mapped = HttpError::status(status, message)
+            .with_method(&method)
+            .with_url(&url)
+            .with_response_body_preview(body_preview);
+        if let Some(retry_after) = retry_after {
+            mapped = mapped.with_retry_after(retry_after);
+        }
+        Err(mapped)
+    }
+
+    /// Consumes this response and returns a bounded body preview for status errors.
+    pub async fn into_error_body_preview(mut self, max_bytes: usize) -> String {
+        let limit = max_bytes.max(1);
+        if let Some(body) = self.buffered_body.take() {
+            let end = body.len().min(limit);
+            return Self::render_error_body_preview(&body[..end], body.len() > limit);
+        }
+        let Some(backend) = self.backend.take() else {
+            return "<empty>".to_string();
+        };
+        Self::read_error_body_preview(backend, self.runtime.read_timeout, limit).await
+    }
+
     /// Returns full body bytes, consuming backend stream lazily on first call.
     pub async fn bytes_body(&mut self) -> HttpResult<Bytes> {
         if let Some(body) = &self.buffered_body {
@@ -136,13 +245,13 @@ impl HttpResponse {
         };
 
         let method = self.meta.method.clone();
-        let read_future = tokio::time::timeout(self.read_timeout, backend.bytes());
-        let next = if let Some(token) = &self.cancellation_token {
+        let read_future = tokio::time::timeout(self.runtime.read_timeout, backend.bytes());
+        let next = if let Some(token) = &self.runtime.cancellation_token {
             tokio::select! {
                 _ = token.cancelled() => {
                     return Err(HttpError::cancelled("Request cancelled while reading response body")
                         .with_method(&method)
-                        .with_url(&self.request_url));
+                        .with_url(&self.runtime.request_url));
                 }
                 read_result = read_future => read_result,
             }
@@ -160,14 +269,14 @@ impl HttpResponse {
                 HttpErrorKind::Decode,
                 Some(ReqwestErrorPhase::Read),
                 Some(method),
-                Some(self.request_url.clone()),
+                Some(self.runtime.request_url.clone()),
             )),
             Err(_) => Err(HttpError::read_timeout(format!(
                 "Read timeout after {:?} while reading response body",
-                self.read_timeout
+                self.runtime.read_timeout
             ))
             .with_method(&self.meta.method)
-            .with_url(&self.request_url)),
+            .with_url(&self.runtime.request_url)),
         }
     }
 
@@ -182,9 +291,9 @@ impl HttpResponse {
         };
 
         let method = self.meta.method.clone();
-        let url = self.request_url.clone();
-        let read_timeout = self.read_timeout;
-        let cancellation_token = self.cancellation_token.clone();
+        let url = self.runtime.request_url.clone();
+        let read_timeout = self.runtime.read_timeout;
+        let cancellation_token = self.runtime.cancellation_token.clone();
         let mut stream = backend.bytes_stream();
         let wrapped = stream! {
             loop {
@@ -259,8 +368,8 @@ impl HttpResponse {
 
     /// Decodes body stream as SSE events with default limits.
     pub fn decode_sse_events(self) -> SseEventStream {
-        let options = self.sse_decode_options;
-        self.decode_sse_events_with_limits(options.max_line_bytes, options.max_frame_bytes)
+        let options = self.options;
+        self.decode_sse_events_with_limits(options.sse_max_line_bytes, options.sse_max_frame_bytes)
     }
 
     /// Decodes body stream as SSE events with explicit limits.
@@ -284,12 +393,12 @@ impl HttpResponse {
     where
         T: DeserializeOwned + Send + 'static,
     {
-        let options = self.sse_decode_options;
+        let options = self.options;
         self.decode_sse_json_chunks_with_mode_and_limits(
             done_policy,
-            options.json_mode,
-            options.max_line_bytes,
-            options.max_frame_bytes,
+            options.sse_json_mode,
+            options.sse_max_line_bytes,
+            options.sse_max_frame_bytes,
         )
     }
 
@@ -302,12 +411,12 @@ impl HttpResponse {
     where
         T: DeserializeOwned + Send + 'static,
     {
-        let options = self.sse_decode_options;
+        let options = self.options;
         self.decode_sse_json_chunks_with_mode_and_limits(
             done_policy,
             mode,
-            options.max_line_bytes,
-            options.max_frame_bytes,
+            options.sse_max_line_bytes,
+            options.sse_max_frame_bytes,
         )
     }
 
@@ -335,7 +444,7 @@ impl HttpResponse {
     }
 
     /// Reads bounded preview bytes from a response body for status error messages.
-    pub(crate) async fn read_error_body_preview(
+    async fn read_error_body_preview(
         mut response: reqwest::Response,
         read_timeout: Duration,
         max_bytes: usize,

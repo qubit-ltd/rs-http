@@ -16,19 +16,21 @@ use http::HeaderMap;
 
 use crate::HttpResult;
 
-type AsyncHeaderInjectorFuture<'a> = Pin<Box<dyn Future<Output = HttpResult<()>> + Send + 'a>>;
-type AsyncHeaderInjectorFn =
-    dyn for<'a> Fn(&'a mut HeaderMap) -> AsyncHeaderInjectorFuture<'a> + Send + Sync + 'static;
+type AsyncHttpHeaderInjectorFuture<'a> = Pin<Box<dyn Future<Output = HttpResult<()>> + Send + 'a>>;
+type AsyncHttpHeaderInjectorFn = dyn for<'a> Fn(&'a mut HeaderMap) -> AsyncHttpHeaderInjectorFuture<'a>
+    + Send
+    + Sync
+    + 'static;
 
-/// Async header injector that can await external state (for example token refresh)
+/// Async HTTP header injector that can await external state (for example token refresh)
 /// before mutating outbound request headers.
 #[derive(Clone)]
-pub struct AsyncHeaderInjector {
+pub struct AsyncHttpHeaderInjector {
     /// Underlying async mutation callback.
-    inner: Arc<AsyncHeaderInjectorFn>,
+    inner: Arc<AsyncHttpHeaderInjectorFn>,
 }
 
-impl std::fmt::Debug for AsyncHeaderInjector {
+impl std::fmt::Debug for AsyncHttpHeaderInjector {
     /// Formats this injector without exposing closure internals.
     ///
     /// # Parameters
@@ -37,22 +39,25 @@ impl std::fmt::Debug for AsyncHeaderInjector {
     /// # Returns
     /// Formatting result.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("AsyncHeaderInjector")
+        f.debug_struct("AsyncHttpHeaderInjector")
             .finish_non_exhaustive()
     }
 }
 
-impl AsyncHeaderInjector {
+impl AsyncHttpHeaderInjector {
     /// Creates an async header injector from a callback.
     ///
     /// # Parameters
     /// - `injector`: Async callback that mutates `HeaderMap` and may fail.
     ///
     /// # Returns
-    /// New [`AsyncHeaderInjector`].
+    /// New [`AsyncHttpHeaderInjector`].
     pub fn new<F>(injector: F) -> Self
     where
-        F: for<'a> Fn(&'a mut HeaderMap) -> AsyncHeaderInjectorFuture<'a> + Send + Sync + 'static,
+        F: for<'a> Fn(&'a mut HeaderMap) -> AsyncHttpHeaderInjectorFuture<'a>
+            + Send
+            + Sync
+            + 'static,
     {
         Self {
             inner: Arc::new(injector),

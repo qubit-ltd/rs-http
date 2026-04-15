@@ -18,7 +18,7 @@ use futures_util::StreamExt;
 use http::header::{HeaderName, AUTHORIZATION, CONTENT_TYPE};
 use http::{HeaderValue, Method, StatusCode};
 use qubit_http::{
-    Delay, HeaderInjector, HttpClientFactory, HttpClientOptions, HttpErrorKind,
+    Delay, HttpClientFactory, HttpClientOptions, HttpErrorKind, HttpHeaderInjector,
     HttpRetryMethodPolicy,
 };
 use tokio::time::timeout;
@@ -40,7 +40,7 @@ async fn test_execute_success_with_header_injector_and_request_override() {
 
     let factory = HttpClientFactory::new();
     let mut client = factory.create_with_options(options).unwrap();
-    client.add_header_injector(HeaderInjector::new(|headers| {
+    client.add_header_injector(HttpHeaderInjector::new(|headers| {
         headers.insert(
             HeaderName::from_static("x-order"),
             HeaderValue::from_static("injector"),
@@ -862,7 +862,7 @@ async fn test_execute_retries_retryable_status_until_success() {
     let mut client = HttpClientFactory::new()
         .create_with_options(options)
         .unwrap();
-    client.add_header_injector(HeaderInjector::new(move |headers| {
+    client.add_header_injector(HttpHeaderInjector::new(move |headers| {
         let mut count = injector_count_clone.lock().unwrap();
         *count += 1;
         headers.insert(

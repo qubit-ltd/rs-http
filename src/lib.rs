@@ -41,13 +41,16 @@ pub use constants::DEFAULT_SENSITIVE_HEADER_NAMES;
 pub use error::{HttpError, HttpErrorKind, HttpResult, RetryHint};
 pub use options::{
     HttpClientOptions, HttpConfigError, HttpConfigErrorKind, HttpLoggingOptions,
-    HttpRetryMethodPolicy, HttpRetryOptions, ProxyOptions, ProxyType, SensitiveHeaders,
-    SseDecodeOptions, TimeoutOptions,
+    HttpRetryMethodPolicy, HttpRetryOptions, HttpTimeoutOptions, ProxyOptions, ProxyType,
+    SensitiveHttpHeaders,
 };
 pub use qubit_retry::{Delay, Jitter};
 pub use request::{
-    AsyncHeaderInjector, HeaderInjector, HttpRequest, HttpRequestBody, HttpRequestBuilder,
-    HttpRequestRetryOverride, RequestInterceptor,
+    AsyncHttpHeaderInjector, HttpHeaderInjector, HttpRequest, HttpRequestBody,
+    HttpRequestBuilder, HttpRequestInterceptor, HttpRequestInterceptors, HttpRequestRetryOverride,
 };
-pub use response::{HttpByteStream, HttpResponse, HttpResponseMeta, ResponseInterceptor};
+pub use response::{
+    HttpByteStream, HttpResponse, HttpResponseInterceptor, HttpResponseInterceptors,
+    HttpResponseMeta,
+};
 pub use tokio_util::sync::CancellationToken;
