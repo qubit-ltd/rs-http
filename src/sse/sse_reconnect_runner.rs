@@ -20,7 +20,9 @@ use super::{
     SseEventStream, SseReconnectOptions, DEFAULT_SSE_MAX_RECONNECT_DELAY,
     DEFAULT_SSE_RECONNECT_BACKOFF_MULTIPLIER,
 };
-use crate::{HttpClient, HttpError, HttpErrorKind, HttpRequest, HttpResult, RetryHint};
+use crate::{
+    HttpClient, HttpError, HttpErrorKind, HttpRequest, HttpResult, RetryHint, RetryJitter,
+};
 
 /// Header name used for SSE resume token propagation.
 const LAST_EVENT_ID_HEADER: &str = "last-event-id";
@@ -73,6 +75,7 @@ impl SseReconnectRunner {
             let reconnect_backoff_multiplier = normalize_reconnect_backoff_multiplier(
                 options.reconnect_backoff_multiplier,
             );
+            let reconnect_jitter = normalize_reconnect_jitter(options.reconnect_jitter);
             let mut last_event_id: Option<String> = None;
             loop {
                 let mut request = request_template.clone();
@@ -88,7 +91,7 @@ impl SseReconnectRunner {
                     Err(error) => {
                         if (count < options.max_reconnects) && should_reconnect_sse_error(&error) {
                             count += 1;
-                            tokio::time::sleep(delay).await;
+                            tokio::time::sleep(reconnect_jitter.apply(delay)).await;
                             delay = next_reconnect_delay(
                                 delay,
                                 max_reconnect_delay,
@@ -126,7 +129,7 @@ impl SseReconnectRunner {
                 if let Some(error) = stream_error {
                     if (count < options.max_reconnects) && should_reconnect_sse_error(&error) {
                         count += 1;
-                        tokio::time::sleep(delay).await;
+                        tokio::time::sleep(reconnect_jitter.apply(delay)).await;
                         delay = next_reconnect_delay(
                             delay,
                             max_reconnect_delay,
@@ -140,7 +143,7 @@ impl SseReconnectRunner {
 
                 if options.reconnect_on_eof && (count < options.max_reconnects) {
                     count += 1;
-                    tokio::time::sleep(delay).await;
+                    tokio::time::sleep(reconnect_jitter.apply(delay)).await;
                     delay = next_reconnect_delay(
                         delay,
                         max_reconnect_delay,
@@ -241,6 +244,21 @@ fn normalize_max_reconnect_delay(value: Duration) -> Duration {
         DEFAULT_SSE_MAX_RECONNECT_DELAY
     } else {
         value.max(Duration::from_millis(1))
+    }
+}
+
+/// Normalizes reconnect jitter strategy from options.
+///
+/// # Parameters
+/// - `value`: Raw jitter supplied in [`SseReconnectOptions`].
+///
+/// # Returns
+/// Valid jitter strategy, or [`RetryJitter::None`] when invalid.
+fn normalize_reconnect_jitter(value: RetryJitter) -> RetryJitter {
+    if value.validate().is_ok() {
+        value
+    } else {
+        RetryJitter::None
     }
 }
 

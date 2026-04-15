@@ -698,6 +698,7 @@ while let Some(item) = chunks.next().await {
 ```rust
 use futures_util::StreamExt;
 use qubit_http::sse::SseReconnectOptions;
+use qubit_http::RetryJitter;
 
 let request = client.request(Method::GET, "/events").build();
 let mut events = client.execute_sse_with_reconnect(
@@ -707,6 +708,7 @@ let mut events = client.execute_sse_with_reconnect(
         reconnect_delay: std::time::Duration::from_secs(1),
         max_reconnect_delay: std::time::Duration::from_secs(30),
         reconnect_backoff_multiplier: 2.0,
+        reconnect_jitter: RetryJitter::None,
         reconnect_on_eof: true,
         honor_server_retry: true,
     },
@@ -718,7 +720,7 @@ while let Some(item) = events.next().await {
 }
 ```
 
-默认重连配置为最多重连 3 次，基础延迟 1 秒，指数退避上限 30 秒、倍率 2.0，EOF 后重连，并尊重服务端 `retry:`。重连时会复用原始请求；如果之前收到过 SSE `id:`，下一次请求会带上 `Last-Event-ID` header。取消错误不会触发重连；SSE 协议错误默认也不会重连；超时、transport、429/5xx 等 retryable 错误，以及包含 unexpected EOF 语义的错误可触发重连。
+默认重连配置为最多重连 3 次，基础延迟 1 秒，指数退避上限 30 秒、倍率 2.0、无 jitter，EOF 后重连，并尊重服务端 `retry:`。重连时会复用原始请求；如果之前收到过 SSE `id:`，下一次请求会带上 `Last-Event-ID` header。取消错误不会触发重连；SSE 协议错误默认也不会重连；超时、transport、429/5xx 等 retryable 错误，以及包含 unexpected EOF 语义的错误可触发重连。
 
 ## 配置参考
 

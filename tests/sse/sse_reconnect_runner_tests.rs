@@ -20,7 +20,7 @@ use futures_util::StreamExt;
 use http::Method;
 use qubit_http::{
     sse::SseReconnectOptions, HttpClientFactory, HttpClientOptions, HttpError, HttpErrorKind,
-    HttpRequestInterceptor,
+    HttpRequestInterceptor, RetryJitter,
 };
 use tokio::time::timeout;
 
@@ -185,6 +185,7 @@ async fn test_execute_sse_with_reconnect_uses_custom_backoff_parameters() {
             reconnect_delay: Duration::from_millis(80),
             max_reconnect_delay: Duration::from_millis(200),
             reconnect_backoff_multiplier: 3.0,
+            reconnect_jitter: RetryJitter::None,
             reconnect_on_eof: true,
             honor_server_retry: false,
         },
@@ -201,6 +202,56 @@ async fn test_execute_sse_with_reconnect_uses_custom_backoff_parameters() {
         .await
         .expect("server finish timed out");
     assert_eq!(requests.len(), 3);
+}
+
+#[tokio::test]
+async fn test_execute_sse_with_reconnect_falls_back_when_jitter_invalid() {
+    let server = spawn_multi_shot_server(vec![
+        ResponsePlan::Chunked {
+            status: 200,
+            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+            chunks: Vec::new(),
+            finish: true,
+        },
+        ResponsePlan::Chunked {
+            status: 200,
+            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+            chunks: vec![ResponseChunk {
+                delay: Duration::from_millis(0),
+                bytes: b"data: recovered\n\n".to_vec(),
+            }],
+            finish: true,
+        },
+    ])
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.read_timeout = Duration::from_secs(2);
+    options.timeouts.write_timeout = Duration::from_secs(2);
+    let client = HttpClientFactory::new().create(options).unwrap();
+
+    let request = client.request(Method::GET, "/sse-invalid-jitter").build();
+    let mut events = client.execute_sse_with_reconnect(
+        request,
+        SseReconnectOptions {
+            max_reconnects: 1,
+            reconnect_delay: Duration::from_millis(5),
+            reconnect_jitter: RetryJitter::factor(f64::NAN),
+            reconnect_on_eof: true,
+            honor_server_retry: false,
+            ..SseReconnectOptions::default()
+        },
+    );
+
+    let first = events.next().await.unwrap().unwrap();
+    assert_eq!(first.data, "recovered");
+    assert!(events.next().await.is_none());
+
+    let requests = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(requests.len(), 2);
 }
 
 #[tokio::test]

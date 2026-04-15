@@ -14,7 +14,7 @@ use std::time::Duration;
 use bytes::Bytes;
 use futures_util::StreamExt as _;
 use http::{HeaderMap, Method};
-use qubit_http::{sse::SseReconnectOptions, HttpResponse, HttpResult};
+use qubit_http::{sse::SseReconnectOptions, HttpResponse, HttpResult, RetryJitter};
 
 async fn collect_results<T>(stream: impl futures_util::Stream<Item = HttpResult<T>>) -> Vec<T> {
     stream
@@ -67,4 +67,5 @@ fn test_sse_reconnect_options_default_backoff_parameters() {
     let options = SseReconnectOptions::default();
     assert_eq!(options.max_reconnect_delay, Duration::from_secs(30));
     assert_eq!(options.reconnect_backoff_multiplier, 2.0);
+    assert_eq!(options.reconnect_jitter, RetryJitter::None);
 }
