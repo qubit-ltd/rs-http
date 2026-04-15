@@ -8,7 +8,6 @@
  ******************************************************************************/
 //! HTTP client module root.
 
-pub(crate) mod error_mapper;
 mod http_client;
 mod http_client_factory;
 pub mod http_logger;

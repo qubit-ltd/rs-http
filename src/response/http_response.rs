@@ -18,11 +18,11 @@ use serde::de::DeserializeOwned;
 use tokio_util::sync::CancellationToken;
 use url::Url;
 
-use crate::client::error_mapper::{map_reqwest_error, ReqwestErrorPhase};
 use crate::constants::{
     DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES, DEFAULT_SSE_MAX_FRAME_BYTES,
     DEFAULT_SSE_MAX_LINE_BYTES,
 };
+use crate::error::backend_error_mapper::{map_reqwest_error, ReqwestErrorPhase};
 use crate::sse::{DoneMarkerPolicy, SseChunkStream, SseEventStream, SseJsonMode};
 use crate::{HttpByteStream, HttpError, HttpErrorKind, HttpResult};
 
