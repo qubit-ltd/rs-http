@@ -25,8 +25,11 @@ mod sse_chunk_stream;
 mod sse_event;
 mod sse_event_stream;
 mod sse_json_mode;
+mod sse_reconnect_runner;
 
 use crate::HttpByteStream;
+
+pub(crate) use sse_reconnect_runner::SseReconnectRunner;
 
 pub use done_marker_policy::DoneMarkerPolicy;
 pub use sse_chunk::SseChunk;
