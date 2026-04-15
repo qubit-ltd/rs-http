@@ -88,7 +88,7 @@ let client = qubit_http::HttpClientFactory::new().create_default()?;
 
 ```rust
 use std::time::Duration;
-use qubit_http::{Delay, HttpClientFactory, HttpClientOptions, HttpRetryMethodPolicy};
+use qubit_http::{HttpClientFactory, HttpClientOptions, HttpRetryMethodPolicy, RetryDelay};
 
 let mut options = HttpClientOptions::new();
 options.set_base_url("https://api.example.com")?;
@@ -98,7 +98,7 @@ options.timeouts.connect_timeout = Duration::from_secs(3);
 options.timeouts.request_timeout = Some(Duration::from_secs(30));
 options.retry.enabled = true;
 options.retry.max_attempts = 4;
-options.retry.delay_strategy = Delay::Exponential {
+options.retry.delay_strategy = RetryDelay::Exponential {
     initial: Duration::from_millis(100),
     max: Duration::from_secs(2),
     multiplier: 2.0,

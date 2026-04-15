@@ -184,7 +184,7 @@ use std::time::Duration;
 
 use http::Method;
 use qubit_http::{
-    Delay, HttpClientFactory, HttpClientOptions, HttpRetryMethodPolicy,
+    HttpClientFactory, HttpClientOptions, HttpRetryMethodPolicy, RetryDelay,
 };
 
 async fn request_with_retry() -> Result<(), Box<dyn std::error::Error>> {
@@ -198,7 +198,7 @@ async fn request_with_retry() -> Result<(), Box<dyn std::error::Error>> {
 
     options.retry.enabled = true;
     options.retry.max_attempts = 3;
-    options.retry.delay_strategy = Delay::Exponential {
+    options.retry.delay_strategy = RetryDelay::Exponential {
         initial: Duration::from_millis(200),
         max: Duration::from_secs(5),
         multiplier: 2.0,

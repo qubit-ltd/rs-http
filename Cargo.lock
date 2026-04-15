@@ -1017,15 +1017,15 @@ dependencies = [
 
 [[package]]
 name = "qubit-concurrent"
-version = "0.3.2"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef5f8294522861a458c7611eaef446bfdc204f3a711cc2d26c6242383be70a8e"
+checksum = "e1914273ae5e0f4174b934cba6a293a5475c7dad91f56b096e9ff3e076b16138"
 dependencies = [
  "log",
  "parking_lot",
  "qubit-atomic",
  "qubit-common",
- "qubit-function 0.8.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "qubit-function",
  "thiserror 2.0.18",
  "tokio",
 ]
@@ -1054,17 +1054,9 @@ dependencies = [
 
 [[package]]
 name = "qubit-function"
-version = "0.8.2"
-dependencies = [
- "parking_lot",
- "pastey",
-]
-
-[[package]]
-name = "qubit-function"
-version = "0.8.2"
+version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6f29c43790c143fc8f2a7aec97f625ed775387b530ad10a800c99d80e61605a3"
+checksum = "01e30c6a929661b27c7fc1b7438887c035188fed8e3e7f8df7bc4775755fff16"
 dependencies = [
  "parking_lot",
  "pastey",
@@ -1082,7 +1074,7 @@ dependencies = [
  "qubit-common",
  "qubit-concurrent",
  "qubit-config",
- "qubit-function 0.8.2",
+ "qubit-function",
  "qubit-retry",
  "reqwest",
  "serde",
@@ -1097,14 +1089,12 @@ dependencies = [
 
 [[package]]
 name = "qubit-retry"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3df37ec026315a258604bd72f44f5bd0977769d8b0879e95f2581c0ccdfeaf20"
+version = "0.5.0"
 dependencies = [
  "chrono",
  "qubit-common",
  "qubit-config",
- "qubit-function 0.8.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "qubit-function",
  "rand 0.10.1",
  "serde",
  "serde_json",
