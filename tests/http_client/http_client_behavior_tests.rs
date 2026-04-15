@@ -7,6 +7,7 @@
  *
  ******************************************************************************/
 
+use std::error::Error as StdError;
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc, Mutex,
@@ -21,6 +22,13 @@ use qubit_http::{
 use tokio::time::timeout;
 
 use crate::common::{spawn_one_shot_server, ResponsePlan};
+
+fn retry_abort_inner_http(error: &HttpError) -> &HttpError {
+    let boxed = error.source.as_ref().expect("retry abort should chain inner error");
+    (boxed.as_ref() as &(dyn StdError + 'static))
+        .downcast_ref::<HttpError>()
+        .expect("inner should be HttpError")
+}
 
 #[test]
 fn test_http_client_debug_includes_options_and_injectors() {
@@ -460,8 +468,10 @@ async fn test_retry_status_code_allowlist_can_disable_retry_for_503() {
 
     let request = client.request(Method::GET, "/retry-status-filter").build();
     let error = client.execute(request).await.unwrap_err();
-    assert_eq!(error.kind, HttpErrorKind::Status);
-    assert_eq!(error.status, Some(StatusCode::SERVICE_UNAVAILABLE));
+    assert_eq!(error.kind, HttpErrorKind::RetryAborted);
+    let inner = retry_abort_inner_http(&error);
+    assert_eq!(inner.kind, HttpErrorKind::Status);
+    assert_eq!(inner.status, Some(StatusCode::SERVICE_UNAVAILABLE));
     assert_eq!(attempts.load(Ordering::Relaxed), 1);
 }
 
@@ -490,7 +500,9 @@ async fn test_retry_status_code_allowlist_can_enable_retry_for_503() {
 
     let request = client.request(Method::GET, "/retry-status-allow").build();
     let error = client.execute(request).await.unwrap_err();
-    assert_eq!(error.kind, HttpErrorKind::Transport);
+    assert_eq!(error.kind, HttpErrorKind::RetryAborted);
+    let inner = retry_abort_inner_http(&error);
+    assert_eq!(inner.kind, HttpErrorKind::Transport);
     assert_eq!(attempts.load(Ordering::Relaxed), 2);
 }
 
@@ -516,7 +528,9 @@ async fn test_retry_error_kind_allowlist_can_disable_transport_retry() {
         .await
         .expect("execute timed out")
         .unwrap_err();
-    assert_eq!(error.kind, HttpErrorKind::Transport);
+    assert_eq!(error.kind, HttpErrorKind::RetryAborted);
+    let inner = retry_abort_inner_http(&error);
+    assert_eq!(inner.kind, HttpErrorKind::Transport);
     assert_eq!(attempts.load(Ordering::Relaxed), 1);
 }
 

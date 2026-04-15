@@ -284,6 +284,39 @@ impl HttpError {
         Self::new(HttpErrorKind::Cancelled, message)
     }
 
+    /// Builds [`HttpErrorKind::RetryAttemptTimeout`].
+    ///
+    /// # Parameters
+    /// - `message`: Attempt timeout context from the retry layer.
+    ///
+    /// # Returns
+    /// New [`HttpError`].
+    pub fn retry_attempt_timeout(message: impl Into<String>) -> Self {
+        Self::new(HttpErrorKind::RetryAttemptTimeout, message)
+    }
+
+    /// Builds [`HttpErrorKind::RetryMaxElapsedExceeded`].
+    ///
+    /// # Parameters
+    /// - `message`: Max elapsed / budget context from the retry layer.
+    ///
+    /// # Returns
+    /// New [`HttpError`].
+    pub fn retry_max_elapsed_exceeded(message: impl Into<String>) -> Self {
+        Self::new(HttpErrorKind::RetryMaxElapsedExceeded, message)
+    }
+
+    /// Builds [`HttpErrorKind::RetryAborted`].
+    ///
+    /// # Parameters
+    /// - `message`: Why the retry policy aborted further attempts.
+    ///
+    /// # Returns
+    /// New [`HttpError`].
+    pub fn retry_aborted(message: impl Into<String>) -> Self {
+        Self::new(HttpErrorKind::RetryAborted, message)
+    }
+
     /// Builds [`HttpErrorKind::Other`].
     ///
     /// # Parameters

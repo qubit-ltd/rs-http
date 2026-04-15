@@ -10,6 +10,7 @@
 //!
 //! Covers request execution, stream execution, and timeout/error behavior.
 
+use std::error::Error as StdError;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -18,12 +19,19 @@ use futures_util::StreamExt;
 use http::header::{HeaderName, AUTHORIZATION, CONTENT_TYPE};
 use http::{HeaderValue, Method, StatusCode};
 use qubit_http::{
-    HttpClientFactory, HttpClientOptions, HttpErrorKind, HttpHeaderInjector, HttpRetryMethodPolicy,
-    RetryDelay,
+    HttpClientFactory, HttpClientOptions, HttpError, HttpErrorKind, HttpHeaderInjector,
+    HttpRetryMethodPolicy, RetryDelay,
 };
 use tokio::time::timeout;
 
 use crate::common::{spawn_multi_shot_server, spawn_one_shot_server, ResponseChunk, ResponsePlan};
+
+fn retry_abort_inner_http(error: &HttpError) -> &HttpError {
+    let boxed = error.source.as_ref().expect("retry abort should chain inner error");
+    (boxed.as_ref() as &(dyn StdError + 'static))
+        .downcast_ref::<HttpError>()
+        .expect("inner should be HttpError")
+}
 
 #[tokio::test]
 async fn test_execute_success_with_header_injector_and_request_override() {
@@ -872,8 +880,10 @@ async fn test_execute_does_not_retry_non_retryable_status() {
         .expect("execute timed out")
         .unwrap_err();
 
-    assert_eq!(error.kind, HttpErrorKind::Status);
-    assert_eq!(error.status, Some(StatusCode::BAD_REQUEST));
+    assert_eq!(error.kind, HttpErrorKind::RetryAborted);
+    let inner = retry_abort_inner_http(&error);
+    assert_eq!(inner.kind, HttpErrorKind::Status);
+    assert_eq!(inner.status, Some(StatusCode::BAD_REQUEST));
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
@@ -976,7 +986,7 @@ async fn test_execute_retry_max_duration_zero_reports_no_retryable_failure() {
         .expect("execute timed out")
         .unwrap_err();
 
-    assert_eq!(error.kind, HttpErrorKind::Other);
+    assert_eq!(error.kind, HttpErrorKind::RetryMaxElapsedExceeded);
     assert!(error
         .message
         .contains("before a retryable error was captured"));
