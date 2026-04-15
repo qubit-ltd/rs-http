@@ -1,14 +1,23 @@
 # qubit-http User Guide
 
-This guide is based on the current source code and tests. It applies to crate `qubit-http` 0.3.1, imported from Rust code as `qubit_http`.
+This guide is based on the current source code and tests. It applies to crate `qubit-http` 0.3.x, imported from Rust code as `qubit_http`.
 
 `qubit-http` is an asynchronous HTTP client infrastructure crate. It wraps `reqwest` and provides unified client options, request building, response reading, error classification, TRACE logging with sensitive-header masking, retries, proxies, IPv4-only resolution, request/response interceptors, and Server-Sent Events (SSE) decoding and reconnection.
+
+## How To Read This Guide
+
+| Goal | Start with |
+| --- | --- |
+| First integration | “Quick Start”, “Building Requests”, “Reading Responses” |
+| Client configuration | “Creating A Client”, “Loading From qubit-config”, “Configuration Reference” |
+| Failure diagnosis | “Error Model”, “Automatic Retry”, “Logging And Sensitive Headers” |
+| Streaming or SSE | “Reading Responses”, “SSE Decoding” |
 
 ## Installation And Imports
 
 ```toml
 [dependencies]
-qubit-http = "0.3.1"
+qubit-http = "0.3"
 http = "1.4"
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
@@ -130,45 +139,20 @@ let client = HttpClientFactory::new()
     .create_from_config(&config.prefix_view("http"))?;
 ```
 
-Supported configuration keys:
+Common configuration keys:
 
 | Key | Description |
 | --- | --- |
 | `base_url` | Base URL used to resolve relative request paths |
-| `ipv4_only` | Keeps only IPv4 DNS results and rejects IPv6 literal URLs |
-| `error_response_preview_limit` | Body preview byte limit stored on non-2xx errors |
-| `user_agent` | Default User-Agent passed to the reqwest builder |
-| `max_redirects` | Redirect limit |
-| `pool_idle_timeout` | Connection pool idle timeout |
-| `pool_max_idle_per_host` | Max idle connections per host |
-| `sensitive_headers` | String list that replaces the default sensitive-header set |
 | `timeouts.connect_timeout` | Connect timeout |
 | `timeouts.read_timeout` | Per-read wait timeout for body/stream reads |
 | `timeouts.write_timeout` | Send-phase timeout |
 | `timeouts.request_timeout` | Optional whole-request timeout |
 | `proxy.enabled` | Enables outbound proxying |
-| `proxy.proxy_type` | `http`, `https`, `socks5`, or `socks5h` |
-| `proxy.host` | Proxy host |
-| `proxy.port` | Proxy port |
-| `proxy.username` | Proxy Basic Auth username |
-| `proxy.password` | Proxy Basic Auth password; requires username |
 | `logging.enabled` | Allows TRACE HTTP logs |
-| `logging.log_request_header` | Logs request headers |
-| `logging.log_request_body` | Logs request body preview |
-| `logging.log_response_header` | Logs response headers |
-| `logging.log_response_body` | Logs response body preview |
-| `logging.body_size_limit` | Log body preview byte limit |
 | `retry.enabled` | Enables built-in retry |
 | `retry.max_attempts` | Max attempts, including the first request |
-| `retry.max_duration` | Optional total retry duration limit |
 | `retry.delay_strategy` | `NONE`, `FIXED`, `RANDOM`, `EXPONENTIAL_BACKOFF`, or `EXPONENTIAL` |
-| `retry.fixed_delay` | Fixed retry delay |
-| `retry.random_min_delay` | Random delay lower bound |
-| `retry.random_max_delay` | Random delay upper bound |
-| `retry.backoff_initial_delay` | Exponential backoff initial delay |
-| `retry.backoff_max_delay` | Exponential backoff max delay |
-| `retry.backoff_multiplier` | Exponential backoff multiplier |
-| `retry.jitter_factor` | Jitter factor in range `0.0..=1.0` |
 | `retry.method_policy` | `IDEMPOTENT_ONLY`/`IDEMPOTENT`, `ALL_METHODS`/`ALL`, or `NONE`/`DISABLED` |
 | `retry.status_codes` | Retryable status allowlist; defaults to 429 and 5xx when absent |
 | `retry.error_kinds` | Retryable non-status error-kind allowlist; defaults to timeouts and transport when absent |
@@ -176,6 +160,8 @@ Supported configuration keys:
 | `sse.done_marker` | `DISABLED`, `DEFAULT` or `DEFAULT_DONE` map to `DoneMarkerPolicy`; any other non-empty string becomes a `Custom` marker compared to trimmed `data:` text |
 | `sse.max_line_bytes` | SSE single-line byte limit |
 | `sse.max_frame_bytes` | SSE single-frame byte limit |
+
+See “Configuration Reference” at the end of this guide for the full key list.
 
 `default_headers` supports two forms. The subkey form takes precedence:
 
@@ -203,7 +189,7 @@ let request = client
     .query_params([("source", "mobile"), ("debug", "false")])
     .header("x-request-id", "req-001")?
     .json_body(&serde_json::json!({"name": "created"}))?
-    .timeout(Duration::from_secs(10))
+    .request_timeout(Duration::from_secs(10))
     .read_timeout(Duration::from_secs(30))
     .build();
 ```
@@ -224,7 +210,7 @@ Per-request overrides:
 
 | Method | Purpose |
 | --- | --- |
-| `timeout` | Overrides whole-request timeout |
+| `request_timeout` | Overrides whole-request timeout (reqwest per-request deadline) |
 | `write_timeout` | Overrides send-phase timeout |
 | `read_timeout` | Overrides response body/stream read timeout |
 | `base_url` / `clear_base_url` | Overrides or removes base URL for this request |
@@ -264,6 +250,68 @@ client.add_async_header_injector(AsyncHttpHeaderInjector::new(|headers| {
             HeaderName::from_static("x-async-token"),
             HeaderValue::from_static("async-value"),
         );
+        Ok(())
+    })
+}));
+```
+
+Async injectors are useful for headers that must be resolved right before send time, such as authentication tokens. In the example below, `TokenProvider` reuses a cached token while it is still fresh, refreshes it asynchronously when needed, and writes the latest value to `Authorization`. When automatic retry is enabled, async injectors run before each send attempt, so retried requests can pick up a refreshed token too.
+
+```rust
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+use http::header::{AUTHORIZATION, HeaderValue};
+use qubit_http::{AsyncHttpHeaderInjector, HttpError, HttpResult};
+use tokio::sync::RwLock;
+
+struct CachedToken {
+    value: String,
+    expires_at: Instant,
+}
+
+struct TokenProvider {
+    cached: RwLock<Option<CachedToken>>,
+}
+
+impl TokenProvider {
+    fn new() -> Self {
+        Self {
+            cached: RwLock::new(None),
+        }
+    }
+
+    async fn bearer_token(&self) -> HttpResult<String> {
+        if let Some(token) = self.cached.read().await.as_ref() {
+            if token.expires_at > Instant::now() + Duration::from_secs(30) {
+                return Ok(token.value.clone());
+            }
+        }
+
+        let value = refresh_access_token().await?;
+        let expires_at = Instant::now() + Duration::from_secs(3600);
+        *self.cached.write().await = Some(CachedToken {
+            value: value.clone(),
+            expires_at,
+        });
+        Ok(value)
+    }
+}
+
+async fn refresh_access_token() -> HttpResult<String> {
+    // Call your auth service, read secure storage, or run any other async refresh flow.
+    Ok("fresh-token".to_string())
+}
+
+let provider = Arc::new(TokenProvider::new());
+client.add_async_header_injector(AsyncHttpHeaderInjector::new(move |headers| {
+    let provider = Arc::clone(&provider);
+    Box::pin(async move {
+        let token = provider.bearer_token().await?;
+        let value = HeaderValue::from_str(&format!("Bearer {token}")).map_err(|error| {
+            HttpError::other(format!("invalid authorization header: {error}"))
+        })?;
+        headers.insert(AUTHORIZATION, value);
         Ok(())
     })
 }));
@@ -398,6 +446,12 @@ async fn read_sse_examples(client: &qubit_http::HttpClient) -> qubit_http::HttpR
 
 There is only one consumption path for the underlying `reqwest` body on a given `HttpResponse`. After `bytes`, `text`, or `json`, the full payload is buffered and `stream` becomes a one-chunk stream over that cache. If you call `stream` first while the body is not cached, the backend handle moves into that stream—you must finish reading there; a later `bytes` / `text` / `json` will not re-read from the network (you get an empty body), so do not mix “stream first, then full-body read” on the same response. `sse_events` / `sse_chunks` also use that path (they build on `stream`) and they **move** the `HttpResponse`, so you cannot call other body readers on the same value afterward.
 
+| Safe | Avoid |
+| --- | --- |
+| Use `bytes()` / `text()` / `json()` to read and reuse the cached full body | Call `stream()` first, then call `bytes()` / `text()` / `json()` on the same response |
+| Call `stream()` after `bytes()` when a one-chunk cached stream is acceptable | Call `sse_events()` or `sse_chunks()` and then try to read the same response body again |
+| Chain `sse_*` option setters with the SSE consumer on the same expression | Design multiple body-consumption paths for one `HttpResponse` |
+
 `retry_after_hint()` returns a delay when the response status is 429 or 5xx and the response has a valid `Retry-After` header. It supports both `delta-seconds` and HTTP-date formats; HTTP dates in the past resolve to 0 seconds. `HttpResponseMeta` exposes the same method, so response interceptors can read the hint from metadata.
 
 ## Error Model
@@ -419,14 +473,18 @@ Runtime HTTP errors use `HttpError`; the result alias is `HttpResult<T> = Result
 
 Error categories:
 
-```rust
-InvalidUrl, BuildClient, ProxyConfig,
-ConnectTimeout, ReadTimeout, WriteTimeout, RequestTimeout,
-Transport, Status, Decode, SseProtocol, SseDecode,
-Cancelled, Other
-```
+| Group | Error kinds | Typical meaning |
+| --- | --- | --- |
+| URL / configuration | `InvalidUrl`, `BuildClient`, `ProxyConfig` | URL resolution failed, client construction failed, or proxy options are invalid |
+| Timeout / network | `ConnectTimeout`, `ReadTimeout`, `WriteTimeout`, `RequestTimeout`, `Transport` | Connect/read/write/whole-request timeout or lower-level transport failure |
+| HTTP status | `Status` | A non-2xx status code was returned |
+| Decoding / SSE | `Decode`, `SseProtocol`, `SseDecode` | Body decoding failed, SSE framing was invalid, or an SSE JSON chunk could not be decoded |
+| Retry layer | `RetryAttemptTimeout`, `RetryMaxElapsedExceeded`, `RetryAborted` | The retry executor produced an attempt timeout, elapsed-budget failure, or policy abort |
+| Cancellation / fallback | `Cancelled`, `Other` | The request was cancelled, or the failure does not fit another category |
 
-`retry_hint()` marks timeouts, transport errors, 429, and 5xx statuses as retryable hints. Actual retry behavior still depends on `HttpRetryOptions` and the method policy.
+`RetryAttemptTimeout` means one retry-layer attempt exceeded its attempt timeout. `RetryMaxElapsedExceeded` means the total retry elapsed budget was exhausted before a retryable failure was captured. `RetryAborted` means the `qubit-retry` decider stopped early because the current error was not retryable; the original `HttpError` is retained as `source`.
+
+`retry_hint()` marks timeouts, transport errors, 429, and 5xx statuses as retryable hints. The new retry-layer error categories are non-retryable themselves. Actual retry behavior still depends on `HttpRetryOptions` and the method policy.
 
 ## Automatic Retry
 
@@ -442,6 +500,8 @@ Default retryability:
 
 You can configure `retry.status_codes` and `retry.error_kinds` allowlists. Once an allowlist is set, only listed statuses or error kinds are retried.
 
+`retry.error_kinds` accepts config names for every `HttpErrorKind`, including `RETRY_ATTEMPT_TIMEOUT`, `RETRY_MAX_ELAPSED_EXCEEDED`, and `RETRY_ABORTED`. Values are case-insensitive, and hyphens are normalized to underscores.
+
 Per-request override example:
 
 ```rust
@@ -453,7 +513,28 @@ let request = client
     .build();
 ```
 
-`honor_retry_after(true)` is request-level. For retryable 429 or 5xx responses, if `Retry-After` is present, the retry controller waits at least that duration before the next attempt.
+`honor_retry_after(true)` is request-level. For retryable 429 or 5xx responses, if `Retry-After` is present, the retry executor waits at least that duration before the next attempt; if the executor's planned backoff is already longer, no extra delay is added.
+
+When retry is enabled, `execute` runs attempts through `qubit-retry`'s `RetryExecutor`. Retryable failures that exhaust `max_attempts` or `max_duration` return the last HTTP error with exhaustion context appended to `message`. If the current error does not match the active allowlist or retry policy, the executor returns `RetryAborted` and keeps the aborted original `HttpError` as `source`.
+
+| Scenario | Returned error | Notes |
+| --- | --- | --- |
+| Method policy does not allow replay, such as POST under the default policy | Original single-attempt error | Retry flow is not entered |
+| Retry flow is active, but the current error is not retryable | `RetryAborted` | The original `HttpError` is stored in `source` |
+| Retryable failure exhausts `max_attempts` | Last `HttpError` | `message` includes attempts-exhausted context |
+| Retryable failure exhausts `max_duration` | Last `HttpError` or `RetryMaxElapsedExceeded` | Returns the last error if one was captured; otherwise returns `RetryMaxElapsedExceeded` |
+
+To inspect the original status or error kind from `RetryAborted`, downcast the source:
+
+```rust
+if error.kind == qubit_http::HttpErrorKind::RetryAborted {
+    if let Some(source) = error.source.as_deref() {
+        if let Some(inner) = source.downcast_ref::<qubit_http::HttpError>() {
+            eprintln!("original kind={:?}, status={:?}", inner.kind, inner.status);
+        }
+    }
+}
+```
 
 ## Logging And Sensitive Headers
 
@@ -491,6 +572,14 @@ When `ipv4_only = true`:
 - proxy hosts that are IPv6 literals are rejected.
 
 ## SSE Decoding
+
+Choose the SSE API by what you need:
+
+| Goal | Use |
+| --- | --- |
+| Read raw SSE events | `response.sse_events()` |
+| Read OpenAI-style JSON chunks or a `[DONE]` marker | `response.sse_chunks::<T>()` |
+| Reconnect automatically after a long-lived stream drops | `client.execute_sse_with_reconnect(...)` |
 
 SSE event decoding starts from `HttpResponse`:
 
@@ -551,6 +640,8 @@ Protocol behavior:
 - Default line/frame limits come from `HttpClientOptions`. To override them for one response only, chain `sse_max_line_bytes` / `sse_max_frame_bytes` with `sse_events()` on the same expression, as shown under “Configure `sse_events` options” above.
 
 ### SSE JSON Chunks
+
+The following snippets assume `request` is already built, and that `MyChunk` and `handle` are defined by the caller.
 
 `sse_chunks` takes no arguments: the done-marker policy defaults to `DoneMarkerPolicy::DefaultDone` (the `Default` for `DoneMarkerPolicy`), and can be overridden via `HttpClientOptions::sse_done_marker_policy` or `HttpResponse::sse_done_marker_policy`.
 
@@ -614,6 +705,8 @@ let mut events = client.execute_sse_with_reconnect(
     SseReconnectOptions {
         max_reconnects: 5,
         reconnect_delay: std::time::Duration::from_secs(1),
+        max_reconnect_delay: std::time::Duration::from_secs(30),
+        reconnect_backoff_multiplier: 2.0,
         reconnect_on_eof: true,
         honor_server_retry: true,
     },
@@ -625,7 +718,56 @@ while let Some(item) = events.next().await {
 }
 ```
 
-The default reconnect settings are 3 reconnects, 1 second base delay, reconnect on EOF, and honor server `retry:`. Reconnects reuse the original request. If a previous SSE event had an `id:`, the next request includes `Last-Event-ID`. Cancellation does not reconnect. SSE protocol errors do not reconnect by default. Retryable timeout, transport, 429/5xx, and unexpected-EOF-like errors may reconnect.
+The default reconnect settings are 3 reconnects, a 1 second base delay, a 30 second exponential-backoff cap, a 2.0 backoff multiplier, reconnect on EOF, and honor server `retry:`. Reconnects reuse the original request. If a previous SSE event had an `id:`, the next request includes `Last-Event-ID`. Cancellation does not reconnect. SSE protocol errors do not reconnect by default. Retryable timeout, transport, 429/5xx, and unexpected-EOF-like errors may reconnect.
+
+## Configuration Reference
+
+The table below lists every configuration key supported by `HttpClientOptions::from_config`. If you pass `config.prefix_view("http")`, these keys are read relative to that prefix.
+
+| Key | Description |
+| --- | --- |
+| `base_url` | Base URL used to resolve relative request paths |
+| `ipv4_only` | Keeps only IPv4 DNS results and rejects IPv6 literal URLs |
+| `error_response_preview_limit` | Body preview byte limit stored on non-2xx errors |
+| `user_agent` | Default User-Agent passed to the reqwest builder |
+| `max_redirects` | Redirect limit |
+| `pool_idle_timeout` | Connection pool idle timeout |
+| `pool_max_idle_per_host` | Max idle connections per host |
+| `sensitive_headers` | String list that replaces the default sensitive-header set |
+| `timeouts.connect_timeout` | Connect timeout |
+| `timeouts.read_timeout` | Per-read wait timeout for body/stream reads |
+| `timeouts.write_timeout` | Send-phase timeout |
+| `timeouts.request_timeout` | Optional whole-request timeout |
+| `proxy.enabled` | Enables outbound proxying |
+| `proxy.proxy_type` | `http`, `https`, `socks5`, or `socks5h` |
+| `proxy.host` | Proxy host |
+| `proxy.port` | Proxy port |
+| `proxy.username` | Proxy Basic Auth username |
+| `proxy.password` | Proxy Basic Auth password; requires username |
+| `logging.enabled` | Allows TRACE HTTP logs |
+| `logging.log_request_header` | Logs request headers |
+| `logging.log_request_body` | Logs request body preview |
+| `logging.log_response_header` | Logs response headers |
+| `logging.log_response_body` | Logs response body preview |
+| `logging.body_size_limit` | Log body preview byte limit |
+| `retry.enabled` | Enables built-in retry |
+| `retry.max_attempts` | Max attempts, including the first request |
+| `retry.max_duration` | Optional total retry duration limit |
+| `retry.delay_strategy` | `NONE`, `FIXED`, `RANDOM`, `EXPONENTIAL_BACKOFF`, or `EXPONENTIAL` |
+| `retry.fixed_delay` | Fixed retry delay |
+| `retry.random_min_delay` | Random delay lower bound |
+| `retry.random_max_delay` | Random delay upper bound |
+| `retry.backoff_initial_delay` | Exponential backoff initial delay |
+| `retry.backoff_max_delay` | Exponential backoff max delay |
+| `retry.backoff_multiplier` | Exponential backoff multiplier |
+| `retry.jitter_factor` | Jitter factor in range `0.0..=1.0` |
+| `retry.method_policy` | `IDEMPOTENT_ONLY`/`IDEMPOTENT`, `ALL_METHODS`/`ALL`, or `NONE`/`DISABLED` |
+| `retry.status_codes` | Retryable status allowlist; defaults to 429 and 5xx when absent |
+| `retry.error_kinds` | Retryable non-status error-kind allowlist; defaults to timeouts and transport when absent |
+| `sse.json_mode` | `LENIENT` or `STRICT` |
+| `sse.done_marker` | `DISABLED`, `DEFAULT` or `DEFAULT_DONE` map to `DoneMarkerPolicy`; any other non-empty string becomes a `Custom` marker compared to trimmed `data:` text |
+| `sse.max_line_bytes` | SSE single-line byte limit |
+| `sse.max_frame_bytes` | SSE single-frame byte limit |
 
 ## Practical Advice
 
