@@ -173,6 +173,7 @@ let client = HttpClientFactory::new()
 | `retry.status_codes` | 重试状态码白名单；未配置时默认重试 429 和 5xx |
 | `retry.error_kinds` | 非状态错误类型白名单；未配置时默认重试超时和 transport |
 | `sse.json_mode` | `LENIENT` 或 `STRICT` |
+| `sse.done_marker` | `DISABLED`、`DEFAULT`（或 `DEFAULT_DONE`）映射到 `DoneMarkerPolicy`；其它非空字符串视为自定义完成标记（`Custom`），与 trim 后的 `data:` 文本比较 |
 | `sse.max_line_bytes` | SSE 单行字节上限 |
 | `sse.max_frame_bytes` | SSE 单帧字节上限 |
 
@@ -293,23 +294,109 @@ client.add_response_interceptor(HttpResponseInterceptor::new(|meta| {
 
 ## 读取响应
 
-`HttpResponse` 暴露 `meta()`、`status()`、`headers()`、`url()`、`request_url()`、`is_success()`、`retry_after_hint()` 和 body 读取方法。
-
-```rust
-let mut response = client.execute(request).await?;
-let text = response.text().await?;
-```
+`HttpResponse` 暴露 `meta()`、`status()`、`headers()`、`url()`、`request_url()`、`is_success()`、`retry_after_hint()` 以及读 body / 解码 SSE 的 API。`client.execute(...).await?` 得到 `mut response` 后，按下表选择其一消费响应体；**同一 `HttpResponse` 上底层 body 只能走一条路径**（细则见表后「注意」）。表格下方 **「使用示例」** 小节给出表中各方法的典型写法。
 
 body 可用方式：
 
 | 方法 | 行为 |
 | --- | --- |
-| `bytes_body()` | 懒读取完整 body（首次 `await` 时读入并缓存），后续可重复调用 |
-| `text()` | 基于 `bytes_body()`，用 UTF-8 解码完整 body |
-| `json<T>()` | 基于 `bytes_body()`，用 serde JSON 反序列化完整 body |
-| `stream_body()` | 返回 `HttpByteStream`；若 body 已缓存则为单块内存流。未缓存时调用本身**不会**立刻读完整 body，而是把底层响应交给返回的流，**在轮询该流时**按需读取字节块 |
+| `bytes()` | 懒读取完整 body（首次 `await` 时读入并缓存），后续可重复调用 |
+| `text()` | 基于 `bytes()`，用 UTF-8 解码完整 body |
+| `json<T>()` | 基于 `bytes()`，用 serde JSON 反序列化完整 body |
+| `stream()` | 返回 `HttpByteStream`；若 body 已缓存则为单块内存流。未缓存时调用本身**不会**立刻读完整 body，而是把底层响应交给返回的流，**在轮询该流时**按需读取字节块 |
+| `sse_events()` | 消费 `self`，按当前 SSE 行/帧上限等选项将 body 解码为 SSE 事件流（详见下文「SSE 解码」） |
+| `sse_chunks::<T>()` | 消费 `self`，将 SSE `data:` JSON chunk 解码为 `SseChunk<T>` 流（JSON 模式、完成标记等见下文「SSE JSON chunk」） |
 
-注意：底层 `reqwest` 响应体在同一 `HttpResponse` 上只能有一条消费路径。调用 `bytes_body`、`text` 或 `json` 会把完整 body 读入并缓存；之后 `stream_body` 会返回由缓存构成的单块流。若在未缓存时先调用 `stream_body`，底层句柄已交给返回的流，须通过该流读完 body；此时再调用 `bytes_body` / `text` / `json` 不会再从网络补读（会得到空 body），因此不要混用「先流式、再整包读」。
+### 使用示例
+
+**整包读取（`bytes` / `text` / `json`）**：三者都会把完整 body 读入并缓存；下面用三次独立请求各演示一种（同一响应上不要混用多种整包/流式路径）。
+
+```rust
+use http::Method;
+use serde::Deserialize;
+
+#[derive(Deserialize)]
+struct VersionInfo {
+    version: String,
+}
+
+async fn read_whole_body_examples(
+    client: &qubit_http::HttpClient,
+) -> qubit_http::HttpResult<()> {
+    let mut r1 = client
+        .execute(client.request(Method::GET, "/bytes").build())
+        .await?;
+    let _raw = r1.bytes().await?;
+
+    let mut r2 = client
+        .execute(client.request(Method::GET, "/hello.txt").build())
+        .await?;
+    let _text = r2.text().await?;
+
+    let mut r3 = client
+        .execute(client.request(Method::GET, "/version.json").build())
+        .await?;
+    let _json: VersionInfo = r3.json().await?;
+    Ok(())
+}
+```
+
+**流式字节（`stream`）**：在未对同一响应调用过 `bytes` / `text` / `json` 的前提下，通过返回的流按块读取；`?` 在拿到流时展开（例如后端已断开时可能失败）。
+
+```rust
+use futures_util::StreamExt;
+use http::Method;
+
+async fn read_stream_example(client: &qubit_http::HttpClient) -> qubit_http::HttpResult<()> {
+    let mut response = client
+        .execute(client.request(Method::GET, "/stream-bytes").build())
+        .await?;
+
+    let mut stream = response.stream()?;
+    while let Some(item) = stream.next().await {
+        let chunk = item?;
+        let _len = chunk.len();
+    }
+    Ok(())
+}
+```
+
+**SSE（`sse_events` / `sse_chunks`）**：二者都会**消费** `self`（转移所有权），内部仍基于同一条 body 流；若要在解码前调整行/帧上限、JSON 模式、完成标记等，可将各 `sse_*` 配置方法与 `sse_events()` / `sse_chunks::<T>()` 写在同一条链上（完整说明见下文「SSE 解码」「SSE JSON chunk」）。
+
+```rust
+use futures_util::StreamExt;
+use http::Method;
+use qubit_http::sse::SseChunk;
+
+#[derive(Debug, serde::Deserialize)]
+struct Delta {
+    text: String,
+}
+
+async fn read_sse_examples(client: &qubit_http::HttpClient) -> qubit_http::HttpResult<()> {
+    let mut ev = client
+        .execute(client.request(Method::GET, "/events").build())
+        .await?;
+    let mut events = ev.sse_events();
+    while let Some(item) = events.next().await {
+        let _event = item?;
+    }
+
+    let mut jc = client
+        .execute(client.request(Method::GET, "/chat-stream").build())
+        .await?;
+    let mut chunks = jc.sse_chunks::<Delta>();
+    while let Some(item) = chunks.next().await {
+        match item? {
+            SseChunk::Data(_d) => {}
+            SseChunk::Done => break,
+        }
+    }
+    Ok(())
+}
+```
+
+注意：底层 `reqwest` 响应体在同一 `HttpResponse` 上只能有一条消费路径。调用 `bytes`、`text` 或 `json` 会把完整 body 读入并缓存；之后 `stream` 会返回由缓存构成的单块流。若在未缓存时先调用 `stream`，底层句柄已交给返回的流，须通过该流读完 body；此时再调用 `bytes` / `text` / `json` 不会再从网络补读（会得到空 body），因此不要混用「先流式、再整包读」。`sse_events` / `sse_chunks` 也会走这条路径（内部基于 `stream`），且调用后 `HttpResponse` 已被消费，不能再对同一对象调用其它读 body 方法。
 
 `retry_after_hint()` 会在响应状态为 429 或 5xx 且存在合法 `Retry-After` header 时返回延迟。它支持 `delta-seconds` 和 HTTP-date 两种格式；HTTP-date 早于当前时间时返回 0 秒。`HttpResponseMeta` 上也有同名方法，响应拦截器可以在只拿到 metadata 时读取这个提示。
 
@@ -414,7 +501,29 @@ let response = client
     .execute(client.request(Method::GET, "/stream").build())
     .await?;
 
-let mut events = response.decode_sse_events();
+let mut events = response.sse_events();
+while let Some(item) = events.next().await {
+    let event = item?;
+    println!("event={:?} id={:?} data={}", event.event, event.id, event.data);
+}
+```
+
+### 配置 `sse_events` 选项
+
+`sse_max_line_bytes` 与 `sse_max_frame_bytes` 均返回 `HttpResponse`（按值移动后的 `self`），可在消费响应体之前与 `sse_events()` 写在同一条链上，依次写入本响应上的 SSE 解析上限（`sse_events` 会按此时的配置从 `stream()` 解码）：
+
+```rust
+use futures_util::StreamExt;
+use http::Method;
+
+let response = client
+    .execute(client.request(Method::GET, "/stream").build())
+    .await?;
+
+let mut events = response
+    .sse_max_line_bytes(64 * 1024)      // 单行最大字节数
+    .sse_max_frame_bytes(1024 * 1024) // 单帧最大字节数
+    .sse_events();
 while let Some(item) = events.next().await {
     let event = item?;
     println!("event={:?} id={:?} data={}", event.event, event.id, event.data);
@@ -439,16 +548,43 @@ while let Some(item) = events.next().await {
 - 未知字段忽略。
 - `retry:` 只有能解析为 `u64` 时才记录。
 - 流结束时如果还有未 flush 字段，会输出最后一个 event。
-- 单行和单帧上限来自客户端配置，也可调用 `decode_sse_events_with_limits` 覆盖。
+- 单行和单帧上限默认来自 `HttpClientOptions`；若本次响应需要不同上限，在调用 `sse_events` 之前将 `sse_max_line_bytes` / `sse_max_frame_bytes` 与 `sse_events()` 链在同一条表达式上即可（完整示例见本节上文「配置 `sse_events` 选项」）。
 
 ### SSE JSON chunk
 
+`sse_chunks` 无参数：完成标记策略默认为 `DoneMarkerPolicy::DefaultDone`（即 `DoneMarkerPolicy` 的 `Default` 实现），并可通过 `HttpClientOptions::sse_done_marker_policy` 或响应上的 `sse_done_marker_policy` 覆盖。
+
 ```rust
 use futures_util::StreamExt;
-use qubit_http::sse::{DoneMarkerPolicy, SseChunk};
+use qubit_http::sse::SseChunk;
 
 let response = client.execute(request).await?;
-let mut chunks = response.decode_sse_json_chunks::<MyChunk>(DoneMarkerPolicy::DefaultDone);
+let mut chunks = response.sse_chunks::<MyChunk>();
+
+while let Some(item) = chunks.next().await {
+    match item? {
+        SseChunk::Data(data) => handle(data),
+        SseChunk::Done => break,
+    }
+}
+```
+
+### 配置 `sse_chunks` 选项
+
+`sse_json_mode`、`sse_done_marker_policy`、`sse_max_line_bytes`、`sse_max_frame_bytes` 均返回 `HttpResponse`（按值移动后的 `self`），可在调用 `sse_chunks::<T>()` 之前与之一同链式覆盖本响应上的 SSE JSON 模式、完成标记策略与行/帧上限：
+
+```rust
+use futures_util::StreamExt;
+use qubit_http::sse::{DoneMarkerPolicy, SseChunk, SseJsonMode};
+
+let response = client.execute(request).await?;
+
+let mut chunks = response
+    .sse_json_mode(SseJsonMode::Strict)
+    .sse_done_marker_policy(DoneMarkerPolicy::DefaultDone)
+    .sse_max_line_bytes(256)
+    .sse_max_frame_bytes(16 * 1024)
+    .sse_chunks::<MyChunk>();
 
 while let Some(item) = chunks.next().await {
     match item? {
@@ -464,7 +600,7 @@ while let Some(item) = chunks.next().await {
 - `DefaultDone`：`data:` 去除空白后等于 `[DONE]` 时输出 `SseChunk::Done` 并结束。
 - `Custom(String)`：使用自定义完成标记。
 
-`SseJsonMode::Lenient` 会跳过 malformed JSON chunk 并继续；`Strict` 会在第一个 malformed JSON 处返回 `HttpErrorKind::SseDecode`。可以在 `HttpClientOptions` 中设置默认模式，也可以调用 `decode_sse_json_chunks_with_mode` 或 `decode_sse_json_chunks_with_mode_and_limits` 做请求级读取覆盖。
+`SseJsonMode::Lenient` 会跳过 malformed JSON chunk 并继续；`Strict` 会在第一个 malformed JSON 处返回 `HttpErrorKind::SseDecode`。默认的 JSON 模式、完成标记策略与行/帧上限可在 `HttpClientOptions`（及配置里的 `sse.*`）中设置；若仅本次响应需要不同取值，按上文「配置 `sse_chunks` 选项」小节将 `sse_json_mode`、`sse_done_marker_policy`、`sse_max_line_bytes`、`sse_max_frame_bytes` 与 `sse_chunks::<T>()` 链在同一条表达式上即可。
 
 ### SSE 自动重连
 

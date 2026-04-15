@@ -64,9 +64,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 - `HttpClientOptions`：管理 `base_url`、默认 Header、超时、代理、重试、日志、敏感头、错误响应预览、重定向、连接池和 SSE 解码默认项。
 - `HttpClient`：执行请求，提供一致的运行时行为，支持同步/异步 Header Injector、请求拦截器、响应拦截器和 SSE 自动重连。
 - `HttpRequestBuilder`：构建路径、查询参数、Header、Body、请求级超时、请求级重试覆盖、取消 token、请求级 base URL 和 IPv4-only 覆盖。
-- `HttpResponse`：统一响应元数据与惰性读取响应体（`bytes_body().await`、`text().await`、`json().await`、`stream_body()`、`decode_sse_events()`、`decode_sse_json_chunks(...)`）。
+- `HttpResponse`：统一响应元数据与惰性读取响应体（`bytes().await`、`text().await`、`json().await`、`stream()`、`sse_events()`、`sse_chunks::<T>()`）。
 - `HttpResponseMeta`：响应状态码、Header、最终 URL 和请求方法，会传递给响应拦截器。
-- `HttpByteStream`：`HttpResponse::stream_body()` 返回的 boxed 异步字节流。
+- `HttpByteStream`：`HttpResponse::stream()` 返回的 boxed 异步字节流。
 - `qubit_http::sse`：SSE 事件解析、JSON chunk 解码、done marker 策略、JSON 严格/宽松模式和重连配置。
 
 ## 为什么使用本库（对比 `http` 与 `reqwest`）
@@ -311,7 +311,7 @@ async fn consume_raw_stream(client: &qubit_http::HttpClient) -> qubit_http::Http
     let request = client.request(Method::GET, "/v1/stream-bytes").build();
     let mut response = client.execute(request).await?;
 
-    let mut stream = response.stream_body()?;
+    let mut stream = response.stream()?;
     while let Some(item) = stream.next().await {
         let bytes = item?;
         println!("chunk size = {}", bytes.len());
@@ -324,7 +324,7 @@ async fn consume_raw_stream(client: &qubit_http::HttpClient) -> qubit_http::Http
 
 ```rust
 use futures_util::StreamExt;
-use qubit_http::sse::{DoneMarkerPolicy, SseChunk};
+use qubit_http::sse::SseChunk;
 
 #[derive(Debug, serde::Deserialize)]
 struct StreamChunk {
@@ -336,8 +336,7 @@ async fn consume_sse_json(client: &qubit_http::HttpClient) -> qubit_http::HttpRe
         .execute(client.request(http::Method::GET, "/v1/stream").build())
         .await?;
 
-    let mut chunks =
-        response.decode_sse_json_chunks::<StreamChunk>(DoneMarkerPolicy::DefaultDone);
+    let mut chunks = response.sse_chunks::<StreamChunk>();
 
     while let Some(item) = chunks.next().await {
         match item? {
@@ -352,25 +351,26 @@ async fn consume_sse_json(client: &qubit_http::HttpClient) -> qubit_http::HttpRe
 你可以通过 `HttpClientOptions` 配置客户端级 SSE 默认值：
 
 ```rust
-use qubit_http::sse::SseJsonMode;
+use qubit_http::sse::{DoneMarkerPolicy, SseJsonMode};
 
 options.sse_json_mode = SseJsonMode::Strict;
+options.sse_done_marker_policy = DoneMarkerPolicy::DefaultDone;
 options.sse_max_line_bytes = 64 * 1024;
 options.sse_max_frame_bytes = 1024 * 1024;
 ```
 
-你仍可按响应覆盖：使用 `response.decode_sse_json_chunks_with_mode(...)`
-或 `decode_sse_json_chunks_with_mode_and_limits(...)`：
+你仍可按响应覆盖：将 `sse_json_mode`、`sse_done_marker_policy`、`sse_max_line_bytes`、`sse_max_frame_bytes`（均返回 `Self` 以便链式配置）与 `sse_chunks` 写在同一条链上：
 
 ```rust
 use qubit_http::sse::{DoneMarkerPolicy, SseJsonMode};
 
-let chunks = response.decode_sse_json_chunks_with_mode_and_limits::<MyChunk>(
-    DoneMarkerPolicy::DefaultDone,
-    SseJsonMode::Lenient,
-    64 * 1024,   // max_line_bytes
-    1024 * 1024, // max_frame_bytes
-);
+let response = /* ... */;
+let chunks = response
+    .sse_json_mode(SseJsonMode::Lenient)
+    .sse_done_marker_policy(DoneMarkerPolicy::DefaultDone)
+    .sse_max_line_bytes(64 * 1024)
+    .sse_max_frame_bytes(1024 * 1024)
+    .sse_chunks::<MyChunk>();
 ```
 
 ### 9）SSE 自动重连

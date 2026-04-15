@@ -173,6 +173,7 @@ Supported configuration keys:
 | `retry.status_codes` | Retryable status allowlist; defaults to 429 and 5xx when absent |
 | `retry.error_kinds` | Retryable non-status error-kind allowlist; defaults to timeouts and transport when absent |
 | `sse.json_mode` | `LENIENT` or `STRICT` |
+| `sse.done_marker` | `DISABLED`, `DEFAULT` or `DEFAULT_DONE` map to `DoneMarkerPolicy`; any other non-empty string becomes a `Custom` marker compared to trimmed `data:` text |
 | `sse.max_line_bytes` | SSE single-line byte limit |
 | `sse.max_frame_bytes` | SSE single-frame byte limit |
 
@@ -293,23 +294,109 @@ client.add_response_interceptor(HttpResponseInterceptor::new(|meta| {
 
 ## Reading Responses
 
-`HttpResponse` exposes `meta()`, `status()`, `headers()`, `url()`, `request_url()`, `is_success()`, `retry_after_hint()`, and body-reading helpers.
-
-```rust
-let mut response = client.execute(request).await?;
-let text = response.text().await?;
-```
+`HttpResponse` exposes `meta()`, `status()`, `headers()`, `url()`, `request_url()`, `is_success()`, `retry_after_hint()`, and helpers to read the body or decode SSE. After `let mut response = client.execute(...).await?`, pick **one** consumption strategy from the table below; **only one body path applies per `HttpResponse`** (see the note after the table). The **Examples** subsection right after the table shows typical usage for each API listed there.
 
 Body APIs:
 
 | Method | Behavior |
 | --- | --- |
-| `bytes_body()` | Lazily reads the full body on the first `await`, caches it, then reuses the cache |
-| `text()` | Full-body UTF-8 decode via `bytes_body()` |
-| `json<T>()` | Full-body JSON via `bytes_body()` |
-| `stream_body()` | Returns `HttpByteStream`; if the body is cached, yields a one-chunk in-memory stream. Otherwise the call does **not** eagerly read the entire body: it hands the backend response to the returned stream, and bytes are read **while that stream is polled** |
+| `bytes()` | Lazily reads the full body on the first `await`, caches it, then reuses the cache |
+| `text()` | Full-body UTF-8 decode via `bytes()` |
+| `json<T>()` | Full-body JSON via `bytes()` |
+| `stream()` | Returns `HttpByteStream`; if the body is cached, yields a one-chunk in-memory stream. Otherwise the call does **not** eagerly read the entire body: it hands the backend response to the returned stream, and bytes are read **while that stream is polled** |
+| `sse_events()` | Consumes `self` and decodes the body stream into an SSE event stream using the configured line/frame limits (see “SSE Decoding” below) |
+| `sse_chunks::<T>()` | Consumes `self` and decodes SSE JSON `data:` chunks into a `SseChunk<T>` stream (JSON mode, done-marker policy, etc.—see “SSE JSON Chunks” below) |
 
-There is only one consumption path for the underlying `reqwest` body on a given `HttpResponse`. After `bytes_body`, `text`, or `json`, the full payload is buffered and `stream_body` becomes a one-chunk stream over that cache. If you call `stream_body` first while the body is not cached, the backend handle moves into that stream—you must finish reading there; a later `bytes_body` / `text` / `json` will not re-read from the network (you get an empty body), so do not mix “stream first, then full-body read” on the same response.
+### Examples
+
+**Whole-body reads (`bytes` / `text` / `json`)**: each loads the entire body into the cache. The snippet uses **three separate requests** so each line is valid; do not chain conflicting readers on the same response.
+
+```rust
+use http::Method;
+use serde::Deserialize;
+
+#[derive(Deserialize)]
+struct VersionInfo {
+    version: String,
+}
+
+async fn read_whole_body_examples(
+    client: &qubit_http::HttpClient,
+) -> qubit_http::HttpResult<()> {
+    let mut r1 = client
+        .execute(client.request(Method::GET, "/bytes").build())
+        .await?;
+    let _raw = r1.bytes().await?;
+
+    let mut r2 = client
+        .execute(client.request(Method::GET, "/hello.txt").build())
+        .await?;
+    let _text = r2.text().await?;
+
+    let mut r3 = client
+        .execute(client.request(Method::GET, "/version.json").build())
+        .await?;
+    let _json: VersionInfo = r3.json().await?;
+    Ok(())
+}
+```
+
+**Streaming bytes (`stream`)**: poll the returned stream chunk by chunk, as long as you have not already consumed the body with `bytes` / `text` / `json` on that same response. `?` applies when obtaining the stream (e.g. if the backend connection is already gone).
+
+```rust
+use futures_util::StreamExt;
+use http::Method;
+
+async fn read_stream_example(client: &qubit_http::HttpClient) -> qubit_http::HttpResult<()> {
+    let mut response = client
+        .execute(client.request(Method::GET, "/stream-bytes").build())
+        .await?;
+
+    let mut stream = response.stream()?;
+    while let Some(item) = stream.next().await {
+        let chunk = item?;
+        let _len = chunk.len();
+    }
+    Ok(())
+}
+```
+
+**SSE (`sse_events` / `sse_chunks`)**: both **consume** `self` (move the response). To tweak line/frame limits, JSON mode, or done-marker policy before decoding, chain the `sse_*` configuration methods with `sse_events()` or `sse_chunks::<T>()` on the same expression (full details under “SSE Decoding” and “SSE JSON Chunks” below).
+
+```rust
+use futures_util::StreamExt;
+use http::Method;
+use qubit_http::sse::SseChunk;
+
+#[derive(Debug, serde::Deserialize)]
+struct Delta {
+    text: String,
+}
+
+async fn read_sse_examples(client: &qubit_http::HttpClient) -> qubit_http::HttpResult<()> {
+    let mut ev = client
+        .execute(client.request(Method::GET, "/events").build())
+        .await?;
+    let mut events = ev.sse_events();
+    while let Some(item) = events.next().await {
+        let _event = item?;
+    }
+
+    let mut jc = client
+        .execute(client.request(Method::GET, "/chat-stream").build())
+        .await?;
+    let mut chunks = jc.sse_chunks::<Delta>();
+    while let Some(item) = chunks.next().await {
+        match item? {
+            SseChunk::Data(_d) => {}
+            SseChunk::Done => break,
+        }
+    }
+    Ok(())
+}
+```
+
+There is only one consumption path for the underlying `reqwest` body on a given `HttpResponse`. After `bytes`, `text`, or `json`, the full payload is buffered and `stream` becomes a one-chunk stream over that cache. If you call `stream` first while the body is not cached, the backend handle moves into that stream—you must finish reading there; a later `bytes` / `text` / `json` will not re-read from the network (you get an empty body), so do not mix “stream first, then full-body read” on the same response. `sse_events` / `sse_chunks` also use that path (they build on `stream`) and they **move** the `HttpResponse`, so you cannot call other body readers on the same value afterward.
 
 `retry_after_hint()` returns a delay when the response status is 429 or 5xx and the response has a valid `Retry-After` header. It supports both `delta-seconds` and HTTP-date formats; HTTP dates in the past resolve to 0 seconds. `HttpResponseMeta` exposes the same method, so response interceptors can read the hint from metadata.
 
@@ -414,7 +501,29 @@ let response = client
     .execute(client.request(Method::GET, "/stream").build())
     .await?;
 
-let mut events = response.decode_sse_events();
+let mut events = response.sse_events();
+while let Some(item) = events.next().await {
+    let event = item?;
+    println!("event={:?} id={:?} data={}", event.event, event.id, event.data);
+}
+```
+
+### Configure `sse_events` options
+
+`sse_max_line_bytes` and `sse_max_frame_bytes` each return `HttpResponse` (moving `self` back to the caller), so you can chain them with `sse_events()` **before** consuming the body. `sse_events()` decodes from `stream()` using the limits stored on that `HttpResponse` instance:
+
+```rust
+use futures_util::StreamExt;
+use http::Method;
+
+let response = client
+    .execute(client.request(Method::GET, "/stream").build())
+    .await?;
+
+let mut events = response
+    .sse_max_line_bytes(64 * 1024)      // max bytes per SSE line
+    .sse_max_frame_bytes(1024 * 1024) // max bytes per SSE frame
+    .sse_events();
 while let Some(item) = events.next().await {
     let event = item?;
     println!("event={:?} id={:?} data={}", event.event, event.id, event.data);
@@ -439,16 +548,43 @@ Protocol behavior:
 - Unknown fields are ignored.
 - `retry:` is stored only when it parses as `u64`.
 - If the stream ends with pending fields, the final event is emitted.
-- Line and frame limits come from client options, or can be overridden with `decode_sse_events_with_limits`.
+- Default line/frame limits come from `HttpClientOptions`. To override them for one response only, chain `sse_max_line_bytes` / `sse_max_frame_bytes` with `sse_events()` on the same expression, as shown under “Configure `sse_events` options” above.
 
 ### SSE JSON Chunks
 
+`sse_chunks` takes no arguments: the done-marker policy defaults to `DoneMarkerPolicy::DefaultDone` (the `Default` for `DoneMarkerPolicy`), and can be overridden via `HttpClientOptions::sse_done_marker_policy` or `HttpResponse::sse_done_marker_policy`.
+
 ```rust
 use futures_util::StreamExt;
-use qubit_http::sse::{DoneMarkerPolicy, SseChunk};
+use qubit_http::sse::SseChunk;
 
 let response = client.execute(request).await?;
-let mut chunks = response.decode_sse_json_chunks::<MyChunk>(DoneMarkerPolicy::DefaultDone);
+let mut chunks = response.sse_chunks::<MyChunk>();
+
+while let Some(item) = chunks.next().await {
+    match item? {
+        SseChunk::Data(data) => handle(data),
+        SseChunk::Done => break,
+    }
+}
+```
+
+### Configure `sse_chunks` options
+
+`sse_json_mode`, `sse_done_marker_policy`, `sse_max_line_bytes`, and `sse_max_frame_bytes` all return `HttpResponse` (moving `self` back to the caller), so you can chain them with `sse_chunks::<T>()` on the same expression. `sse_chunks` reads the effective options from that same instance:
+
+```rust
+use futures_util::StreamExt;
+use qubit_http::sse::{DoneMarkerPolicy, SseChunk, SseJsonMode};
+
+let response = client.execute(request).await?;
+
+let mut chunks = response
+    .sse_json_mode(SseJsonMode::Strict)
+    .sse_done_marker_policy(DoneMarkerPolicy::DefaultDone)
+    .sse_max_line_bytes(256)
+    .sse_max_frame_bytes(16 * 1024)
+    .sse_chunks::<MyChunk>();
 
 while let Some(item) = chunks.next().await {
     match item? {
@@ -464,7 +600,7 @@ while let Some(item) = chunks.next().await {
 - `DefaultDone`: when trimmed `data:` equals `[DONE]`, emits `SseChunk::Done` and ends.
 - `Custom(String)`: uses a custom done marker.
 
-`SseJsonMode::Lenient` skips malformed JSON chunks and continues. `Strict` returns `HttpErrorKind::SseDecode` on the first malformed JSON chunk. Set the default mode on `HttpClientOptions`, or override it per response read with `decode_sse_json_chunks_with_mode` or `decode_sse_json_chunks_with_mode_and_limits`.
+`SseJsonMode::Lenient` skips malformed JSON chunks and continues. `Strict` returns `HttpErrorKind::SseDecode` on the first malformed JSON chunk. Configure defaults on `HttpClientOptions` (and under `sse.*` in config), or override for one response by chaining `sse_json_mode`, `sse_done_marker_policy`, `sse_max_line_bytes`, and `sse_max_frame_bytes` with `sse_chunks::<T>()` on the same expression, as under “Configure `sse_chunks` options” above.
 
 ### SSE Auto-reconnect
 
