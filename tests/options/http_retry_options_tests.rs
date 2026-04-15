@@ -95,6 +95,22 @@ fn test_http_retry_options_rejects_invalid_status_code_in_allowlist() {
 }
 
 #[test]
+fn test_http_retry_options_rejects_non_numeric_status_code_in_allowlist() {
+    let mut config = Config::new();
+    config
+        .set(
+            "retry.status_codes",
+            vec!["429".to_string(), "not-a-code".to_string()],
+        )
+        .unwrap();
+
+    let error = HttpRetryOptions::from_config(&config.prefix_view("retry")).unwrap_err();
+    assert_eq!(error.kind, HttpConfigErrorKind::InvalidValue);
+    assert!(error.path.contains("status_codes"));
+    assert!(error.message.contains("Invalid retry status code"));
+}
+
+#[test]
 fn test_http_retry_options_rejects_invalid_error_kind_in_allowlist() {
     let mut config = Config::new();
     config
@@ -113,7 +129,9 @@ fn test_http_retry_options_rejects_invalid_error_kind_in_allowlist() {
 fn test_http_retry_options_custom_allowlists_override_default_retryability() {
     let mut options = HttpRetryOptions::default();
     assert!(options.is_retryable_status(StatusCode::INTERNAL_SERVER_ERROR));
+    assert!(options.is_retryable_error_kind(HttpErrorKind::ConnectTimeout));
     assert!(options.is_retryable_error_kind(HttpErrorKind::Transport));
+    assert!(!options.is_retryable_error_kind(HttpErrorKind::Other));
 
     options.retry_status_codes = Some(vec![StatusCode::TOO_MANY_REQUESTS]);
     options.retry_error_kinds = Some(vec![HttpErrorKind::ReadTimeout]);

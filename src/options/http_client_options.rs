@@ -55,6 +55,9 @@ pub struct HttpClientOptions {
     pub pool_idle_timeout: Option<Duration>,
     /// Optional maximum idle connections per host.
     pub pool_max_idle_per_host: Option<usize>,
+    /// Whether to inherit proxy settings from environment variables when
+    /// explicit proxy config is disabled.
+    pub use_env_proxy: bool,
     /// Retry options.
     pub retry: HttpRetryOptions,
     /// Sensitive headers for masking.
@@ -90,6 +93,7 @@ impl Default for HttpClientOptions {
             max_redirects: None,
             pool_idle_timeout: None,
             pool_max_idle_per_host: None,
+            use_env_proxy: false,
             retry: HttpRetryOptions::default(),
             sensitive_headers: SensitiveHttpHeaders::default(),
             ipv4_only: false,
@@ -110,6 +114,7 @@ struct HttpClientRootConfigInput {
     max_redirects: Option<usize>,
     pool_idle_timeout: Option<Duration>,
     pool_max_idle_per_host: Option<usize>,
+    use_env_proxy: Option<bool>,
     sensitive_headers: Option<Vec<String>>,
 }
 
@@ -146,6 +151,7 @@ impl HttpClientOptions {
             max_redirects: config.get_optional("max_redirects")?,
             pool_idle_timeout: config.get_optional("pool_idle_timeout")?,
             pool_max_idle_per_host: config.get_optional("pool_max_idle_per_host")?,
+            use_env_proxy: config.get_optional("use_env_proxy")?,
             sensitive_headers: config.get_optional_string_list("sensitive_headers")?,
         })
     }
@@ -306,6 +312,9 @@ impl HttpClientOptions {
         if let Some(pool_max_idle_per_host) = root.pool_max_idle_per_host {
             opts.pool_max_idle_per_host = Some(pool_max_idle_per_host);
         }
+        if let Some(use_env_proxy) = root.use_env_proxy {
+            opts.use_env_proxy = use_env_proxy;
+        }
 
         // timeouts
         if config.contains_prefix("timeouts") {
@@ -371,21 +380,24 @@ impl HttpClientOptions {
             header_map.insert(header_name.to_string(), value);
         }
         // Also support JSON map form stored at the exact key `default_headers`.
-        if header_map.is_empty() {
-            if let Some(json_str) = config
-                .get_optional_string(headers_prefix)
-                .map_err(HttpConfigError::from)
-                .map_err(|e| Self::resolve_config_error(config, e))?
-            {
-                let parsed: HashMap<String, String> =
-                    serde_json::from_str(&json_str).map_err(|e| {
-                        HttpConfigError::type_error(
-                            config.resolve_key(headers_prefix),
-                            format!("Failed to parse default_headers JSON: {e}"),
-                        )
-                    })?;
-                header_map = parsed;
-            }
+        let json_headers = config
+            .get_optional_string(headers_prefix)
+            .map_err(HttpConfigError::from)
+            .map_err(|e| Self::resolve_config_error(config, e))?;
+        if !header_map.is_empty() && json_headers.is_some() {
+            return Err(HttpConfigError::invalid_value(
+                config.resolve_key(headers_prefix),
+                "default_headers sub-key form and JSON map form cannot be used at the same time",
+            ));
+        }
+        if let Some(json_str) = json_headers {
+            let parsed: HashMap<String, String> = serde_json::from_str(&json_str).map_err(|e| {
+                HttpConfigError::type_error(
+                    config.resolve_key(headers_prefix),
+                    format!("Failed to parse default_headers JSON: {e}"),
+                )
+            })?;
+            header_map = parsed;
         }
         if !header_map.is_empty() {
             opts.default_headers = hashmap_to_headermap(headers_prefix, header_map)?;

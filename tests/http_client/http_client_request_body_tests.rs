@@ -7,14 +7,22 @@
  *
  ******************************************************************************/
 
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
 use std::time::Duration;
 
 use bytes::Bytes;
+use futures_util::stream;
 use http::Method;
-use qubit_http::{HttpClientFactory, HttpClientOptions};
+use qubit_http::{
+    HttpClientFactory, HttpClientOptions, HttpRequestBodyByteStream, HttpRetryMethodPolicy,
+    RetryDelay,
+};
 use tokio::time::timeout;
 
-use crate::common::{spawn_one_shot_server, ResponsePlan};
+use crate::common::{spawn_multi_shot_server, spawn_one_shot_server, ResponsePlan};
 
 #[tokio::test]
 async fn test_execute_with_form_body_and_query_headers_timeout() {
@@ -37,7 +45,7 @@ async fn test_execute_with_form_body_and_query_headers_timeout() {
         .header("x-test", "1")
         .expect("header should be valid")
         .form_body([("name", "alice"), ("city", "shanghai")])
-        .timeout(Duration::from_secs(1))
+        .request_timeout(Duration::from_secs(1))
         .build();
     timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -82,7 +90,7 @@ async fn test_execute_with_multipart_body_and_query_headers_timeout() {
         .expect("header should be valid")
         .multipart_body(payload.clone(), "abc")
         .expect("multipart body should be built")
-        .timeout(Duration::from_secs(1))
+        .request_timeout(Duration::from_secs(1))
         .build();
     timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -137,7 +145,7 @@ async fn test_execute_with_ndjson_body_and_query_headers_timeout() {
             },
         ])
         .expect("ndjson should be encoded")
-        .timeout(Duration::from_secs(1))
+        .request_timeout(Duration::from_secs(1))
         .build();
     timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -182,7 +190,7 @@ async fn test_execute_with_stream_body_uses_chunked_transfer_encoding() {
             Bytes::from_static(b"second-"),
             Bytes::from_static(b"third"),
         ])
-        .timeout(Duration::from_secs(1))
+        .request_timeout(Duration::from_secs(1))
         .build();
     let response = timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -219,7 +227,7 @@ async fn test_execute_with_stream_body_uses_chunked_transfer_encoding_without_ea
         .request(Method::POST, "/stream-upload-streaming")
         .query_param("kind", "stream-body")
         .stream_body([Bytes::from_static(b"a"), Bytes::from_static(b"b")])
-        .timeout(Duration::from_secs(1))
+        .request_timeout(Duration::from_secs(1))
         .build();
     let response = timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -233,6 +241,68 @@ async fn test_execute_with_stream_body_uses_chunked_transfer_encoding_without_ea
     assert_eq!(captured.target, "/stream-upload-streaming?kind=stream-body");
     assert_eq!(
         captured.headers.get("transfer-encoding"),
+        Some(&"chunked".to_string())
+    );
+}
+
+#[tokio::test]
+async fn test_execute_with_streaming_body_factory_supports_retry_rebuild() {
+    let server = spawn_multi_shot_server(vec![
+        ResponsePlan::Immediate {
+            status: 503,
+            headers: vec![],
+            body: b"retry".to_vec(),
+        },
+        ResponsePlan::Immediate {
+            status: 200,
+            headers: vec![],
+            body: b"ok".to_vec(),
+        },
+    ])
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.retry.enabled = true;
+    options.retry.max_attempts = 2;
+    options.retry.delay_strategy = RetryDelay::None;
+    options.retry.method_policy = HttpRetryMethodPolicy::AllMethods;
+    let client = HttpClientFactory::new()
+        .create(options)
+        .expect("client should be created");
+
+    let stream_factory_calls = Arc::new(AtomicUsize::new(0));
+    let stream_factory_calls_for_builder = Arc::clone(&stream_factory_calls);
+    let request = client
+        .request(Method::POST, "/streaming-body-factory")
+        .streaming_body(move || {
+            let stream_factory_calls_for_future = Arc::clone(&stream_factory_calls_for_builder);
+            Box::pin(async move {
+                stream_factory_calls_for_future.fetch_add(1, Ordering::Relaxed);
+                Box::pin(stream::iter(vec![
+                    Ok(Bytes::from_static(b"part-1-")),
+                    Ok(Bytes::from_static(b"part-2")),
+                ])) as HttpRequestBodyByteStream
+            })
+        })
+        .build();
+    let response = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .expect("request should succeed after retry");
+    assert_eq!(response.status().as_u16(), 200);
+    assert_eq!(stream_factory_calls.load(Ordering::Relaxed), 2);
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.len(), 2);
+    assert_eq!(
+        captured[0].headers.get("transfer-encoding"),
+        Some(&"chunked".to_string())
+    );
+    assert_eq!(
+        captured[1].headers.get("transfer-encoding"),
         Some(&"chunked".to_string())
     );
 }

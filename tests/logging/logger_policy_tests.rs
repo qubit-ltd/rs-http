@@ -8,15 +8,17 @@
  ******************************************************************************/
 
 use bytes::Bytes;
+use futures_util::StreamExt;
 use http::header::{AUTHORIZATION, CONTENT_TYPE, SET_COOKIE};
 use http::{HeaderMap, HeaderValue, Method, StatusCode};
 use qubit_http::{
-    HttpClientFactory, HttpClientOptions, HttpLogger, HttpLoggingOptions, HttpRequest,
-    HttpRequestBody, HttpResponse, HttpResponseMeta, SensitiveHttpHeaders,
+    HttpClientFactory, HttpClientOptions, HttpErrorKind, HttpLogger, HttpLoggingOptions,
+    HttpRequest, HttpRequestBody, HttpResponse, HttpResponseMeta, SensitiveHttpHeaders,
 };
+use tokio::time::timeout;
 use url::Url;
 
-use crate::common::capture_trace_logs;
+use crate::common::{capture_trace_logs, spawn_one_shot_server, ResponseChunk, ResponsePlan};
 
 fn logging_request(
     method: Method,
@@ -227,4 +229,346 @@ fn test_log_request_stream_body_logged_as_empty() {
     });
     assert!(logs.contains("--> POST https://example.com/stream-upload"));
     assert!(logs.contains("Request body: <empty>"));
+}
+
+#[test]
+fn test_execute_skips_trace_response_body_for_streaming_or_unknown_size_body() {
+    let logs = capture_trace_logs(|| {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("failed to build tokio runtime");
+        runtime.block_on(async {
+            let server = spawn_one_shot_server(ResponsePlan::Chunked {
+                status: 200,
+                headers: vec![("Content-Type".to_string(), "text/plain".to_string())],
+                chunks: vec![
+                    ResponseChunk {
+                        delay: std::time::Duration::ZERO,
+                        bytes: b"first".to_vec(),
+                    },
+                    ResponseChunk {
+                        delay: std::time::Duration::from_millis(250),
+                        bytes: b"second".to_vec(),
+                    },
+                ],
+                finish: true,
+            })
+            .await;
+
+            let mut options = HttpClientOptions::default();
+            options.base_url = Some(server.base_url());
+            options.timeouts.read_timeout = std::time::Duration::from_millis(80);
+            let client = HttpClientFactory::new()
+                .create(options)
+                .expect("client should be created");
+
+            let request = client.request(Method::GET, "/trace-streaming").build();
+            let mut response = timeout(std::time::Duration::from_secs(3), client.execute(request))
+                .await
+                .expect("execute timed out")
+                .expect("request should start");
+            let mut stream = response.stream().expect("stream body should be available");
+            let first = stream
+                .next()
+                .await
+                .expect("first stream item should exist")
+                .expect("first stream item should be ok");
+            assert_eq!(first, b"first".as_slice());
+            let timeout_error = stream
+                .next()
+                .await
+                .expect("second stream item should exist")
+                .expect_err("second stream item should contain read timeout");
+            assert_eq!(timeout_error.kind, HttpErrorKind::ReadTimeout);
+
+            let _ = timeout(std::time::Duration::from_secs(3), server.finish())
+                .await
+                .expect("server finish timed out");
+        });
+    });
+    assert!(logs.contains("Response body: <skipped: streaming or unknown-size body>"));
+}
+
+#[test]
+fn test_log_stream_response_headers_disabled_emits_nothing() {
+    let mut options = HttpLoggingOptions::default();
+    options.enabled = false;
+    let mut client_options = HttpClientOptions::default();
+    client_options.logging = options;
+    let logger = HttpLogger::new(&client_options);
+    let response_meta = HttpResponseMeta::new(
+        StatusCode::OK,
+        HeaderMap::new(),
+        Url::parse("https://example.com/stream-disabled").expect("URL should parse"),
+        Method::GET,
+    );
+
+    let logs = capture_trace_logs(|| {
+        logger.log_stream_response_headers(&response_meta);
+    });
+    assert!(logs.trim().is_empty());
+}
+
+#[test]
+fn test_log_stream_response_headers_logs_non_utf8_header_values() {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "x-bin",
+        HeaderValue::from_bytes(&[0xFF, 0xFE]).expect("header bytes should be accepted"),
+    );
+    let mut client_options = HttpClientOptions::default();
+    client_options.logging = HttpLoggingOptions::default();
+    let logger = HttpLogger::new(&client_options);
+    let response_meta = HttpResponseMeta::new(
+        StatusCode::OK,
+        headers,
+        Url::parse("https://example.com/stream-non-utf8").expect("URL should parse"),
+        Method::GET,
+    );
+
+    let logs = capture_trace_logs(|| {
+        logger.log_stream_response_headers(&response_meta);
+    });
+    assert!(logs.contains("<-- 200 https://example.com/stream-non-utf8 (stream)"));
+    assert!(logs.contains("x-bin: <non-utf8>"));
+}
+
+#[test]
+fn test_log_request_logs_json_form_multipart_ndjson_and_empty_bodies() {
+    let mut client_options = HttpClientOptions::default();
+    client_options.logging = HttpLoggingOptions::default();
+    let logger = HttpLogger::new(&client_options);
+    let client = HttpClientFactory::new()
+        .create_default()
+        .expect("default options should create client");
+
+    let json_request = client
+        .request(Method::POST, "https://example.com/json-body")
+        .json_body(&serde_json::json!({"n": 7}))
+        .expect("json body should serialize")
+        .build();
+    let json_logs = capture_trace_logs(|| {
+        logger.log_request(&json_request);
+    });
+    assert!(json_logs.contains("Request body: {\"n\":7}"));
+
+    let form_request = client
+        .request(Method::POST, "https://example.com/form-body")
+        .form_body([("a", "1"), ("b", "2")])
+        .build();
+    let form_logs = capture_trace_logs(|| {
+        logger.log_request(&form_request);
+    });
+    assert!(form_logs.contains("Request body: a=1&b=2"));
+
+    let multipart_request = client
+        .request(Method::POST, "https://example.com/multipart-body")
+        .multipart_body(Bytes::from_static(b"--b\r\n\r\nx\r\n--b--"), "b")
+        .expect("multipart body should be accepted")
+        .build();
+    let multipart_logs = capture_trace_logs(|| {
+        logger.log_request(&multipart_request);
+    });
+    assert!(multipart_logs.contains("Request body: --b"));
+
+    let ndjson_request = client
+        .request(Method::POST, "https://example.com/ndjson-body")
+        .ndjson_body(&[serde_json::json!({"id": 1}), serde_json::json!({"id": 2})])
+        .expect("ndjson body should serialize")
+        .build();
+    let ndjson_logs = capture_trace_logs(|| {
+        logger.log_request(&ndjson_request);
+    });
+    assert!(ndjson_logs.contains("Request body: {\"id\":1}"));
+    assert!(ndjson_logs.contains("{\"id\":2}"));
+
+    let empty_request = client
+        .request(Method::GET, "https://example.com/empty-body")
+        .build();
+    let empty_logs = capture_trace_logs(|| {
+        logger.log_request(&empty_request);
+    });
+    assert!(empty_logs.contains("Request body: <empty>"));
+}
+
+#[test]
+fn test_log_response_empty_body_renders_empty_placeholder() {
+    let mut client_options = HttpClientOptions::default();
+    client_options.logging = HttpLoggingOptions::default();
+    let logger = HttpLogger::new(&client_options);
+
+    let logs = capture_trace_logs(|| {
+        let mut response = HttpResponse::new(
+            StatusCode::OK,
+            HeaderMap::new(),
+            Bytes::new(),
+            Url::parse("https://example.com/empty-response").expect("URL should parse"),
+            Method::GET,
+        );
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("failed to build tokio runtime");
+        runtime
+            .block_on(async { logger.log_response(&mut response).await })
+            .expect("response logging should succeed");
+    });
+    assert!(logs.contains("Response body: <empty>"));
+}
+
+#[test]
+fn test_execute_logs_response_body_from_backend_when_trace_enabled() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("failed to build tokio runtime");
+
+    let logs = capture_trace_logs(|| {
+        runtime.block_on(async {
+            let server = spawn_one_shot_server(ResponsePlan::Immediate {
+                status: 200,
+                headers: vec![],
+                body: b"backend-log-body".to_vec(),
+            })
+            .await;
+
+            let mut options = HttpClientOptions::default();
+            options.base_url = Some(server.base_url());
+            let client = HttpClientFactory::new()
+                .create(options)
+                .expect("client should be created");
+            let request = client.request(Method::GET, "/logger-backend-path").build();
+            let mut response = client
+                .execute(request)
+                .await
+                .expect("request should succeed");
+            let text = response
+                .text()
+                .await
+                .expect("response text should be readable");
+            assert_eq!(text, "backend-log-body");
+
+            let captured = server.finish().await;
+            assert_eq!(captured.target, "/logger-backend-path");
+        });
+    });
+    assert!(logs.contains("Response body: backend-log-body"));
+}
+
+#[test]
+fn test_log_request_bytes_body_variant_is_logged() {
+    let mut client_options = HttpClientOptions::default();
+    client_options.logging = HttpLoggingOptions::default();
+    let logger = HttpLogger::new(&client_options);
+    let client = HttpClientFactory::new()
+        .create_default()
+        .expect("default options should create client");
+
+    let bytes_request = client
+        .request(Method::POST, "https://example.com/bytes-body")
+        .bytes_body(Bytes::from_static(b"raw-bytes"))
+        .build();
+    let logs = capture_trace_logs(|| {
+        logger.log_request(&bytes_request);
+    });
+    assert!(logs.contains("Request body: raw-bytes"));
+}
+
+#[test]
+fn test_log_response_skips_body_when_backend_already_consumed() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("failed to build tokio runtime");
+
+    let logs = capture_trace_logs(|| {
+        runtime.block_on(async {
+            let server = spawn_one_shot_server(ResponsePlan::Immediate {
+                status: 200,
+                headers: vec![("Content-Type".to_string(), "text/plain".to_string())],
+                body: b"already-consumed".to_vec(),
+            })
+            .await;
+
+            let mut options = HttpClientOptions::default();
+            options.base_url = Some(server.base_url());
+            options.logging.enabled = false;
+            let client = HttpClientFactory::new()
+                .create(options)
+                .expect("client should be created");
+            let request = client.request(Method::GET, "/consumed-backend").build();
+            let mut response = client
+                .execute(request)
+                .await
+                .expect("request should succeed");
+
+            let mut stream = response.stream().expect("stream should be available");
+            let _ = stream
+                .next()
+                .await
+                .expect("stream should yield one item")
+                .expect("stream item should be valid");
+            assert!(stream.next().await.is_none());
+            drop(stream);
+
+            let mut logger_options = HttpClientOptions::default();
+            logger_options.logging = HttpLoggingOptions::default();
+            let logger = HttpLogger::new(&logger_options);
+            logger
+                .log_response(&mut response)
+                .await
+                .expect("logging should succeed");
+
+            let captured = server.finish().await;
+            assert_eq!(captured.target, "/consumed-backend");
+        });
+    });
+    assert!(logs.contains("Response body: <skipped: streaming or unknown-size body>"));
+}
+
+#[test]
+fn test_log_response_skips_body_for_sse_content_type() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("failed to build tokio runtime");
+
+    let logs = capture_trace_logs(|| {
+        runtime.block_on(async {
+            let server = spawn_one_shot_server(ResponsePlan::Immediate {
+                status: 200,
+                headers: vec![(
+                    "Content-Type".to_string(),
+                    "text/event-stream; charset=utf-8".to_string(),
+                )],
+                body: b"data: hello\n\n".to_vec(),
+            })
+            .await;
+
+            let mut options = HttpClientOptions::default();
+            options.base_url = Some(server.base_url());
+            options.logging.enabled = false;
+            let client = HttpClientFactory::new()
+                .create(options)
+                .expect("client should be created");
+            let request = client.request(Method::GET, "/sse-log-skip").build();
+            let mut response = client
+                .execute(request)
+                .await
+                .expect("request should succeed");
+
+            let mut logger_options = HttpClientOptions::default();
+            logger_options.logging = HttpLoggingOptions::default();
+            let logger = HttpLogger::new(&logger_options);
+            logger
+                .log_response(&mut response)
+                .await
+                .expect("logging should succeed");
+
+            let captured = server.finish().await;
+            assert_eq!(captured.target, "/sse-log-skip");
+        });
+    });
+    assert!(logs.contains("Response body: <skipped: streaming or unknown-size body>"));
 }

@@ -46,8 +46,9 @@ pub use options::{
 };
 pub use qubit_retry::{RetryDelay, RetryJitter};
 pub use request::{
-    AsyncHttpHeaderInjector, HttpHeaderInjector, HttpRequest, HttpRequestBody, HttpRequestBuilder,
-    HttpRequestInterceptor, HttpRequestInterceptors, HttpRequestRetryOverride,
+    AsyncHttpHeaderInjector, HttpHeaderInjector, HttpRequest, HttpRequestBody,
+    HttpRequestBodyByteStream, HttpRequestBuilder, HttpRequestInterceptor, HttpRequestInterceptors,
+    HttpRequestRetryOverride, HttpRequestStreamingBody,
 };
 pub use response::{
     HttpByteStream, HttpResponse, HttpResponseInterceptor, HttpResponseInterceptors,

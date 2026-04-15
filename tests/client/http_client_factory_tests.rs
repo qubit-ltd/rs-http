@@ -23,6 +23,7 @@ fn test_factory_create_uses_default_options() {
 
     assert!(!client.options().ipv4_only);
     assert!(!client.options().proxy.enabled);
+    assert!(!client.options().use_env_proxy);
     assert_eq!(
         client.options().timeouts.request_timeout,
         HttpClientOptions::default().timeouts.request_timeout
@@ -38,6 +39,7 @@ fn test_factory_create_preserves_options() {
     options.max_redirects = Some(5);
     options.pool_idle_timeout = Some(Duration::from_secs(20));
     options.pool_max_idle_per_host = Some(24);
+    options.use_env_proxy = true;
     let client = factory
         .create(options)
         .expect("explicit options should create client");
@@ -55,6 +57,7 @@ fn test_factory_create_preserves_options() {
         Some(Duration::from_secs(20))
     );
     assert_eq!(client.options().pool_max_idle_per_host, Some(24));
+    assert!(client.options().use_env_proxy);
 }
 
 #[test]

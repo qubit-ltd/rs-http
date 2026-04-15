@@ -19,7 +19,7 @@ use std::time::{Duration, Instant};
 use futures_util::StreamExt;
 use http::Method;
 use qubit_http::{
-    sse::SseReconnectOptions, HttpClientFactory, HttpClientOptions, HttpErrorKind,
+    sse::SseReconnectOptions, HttpClientFactory, HttpClientOptions, HttpError, HttpErrorKind,
     HttpRequestInterceptor,
 };
 use tokio::time::timeout;
@@ -64,6 +64,7 @@ async fn test_execute_sse_with_reconnect_propagates_last_event_id() {
             reconnect_delay: Duration::from_millis(1),
             reconnect_on_eof: true,
             honor_server_retry: false,
+            ..SseReconnectOptions::default()
         },
     );
     let first = events.next().await.unwrap().unwrap();
@@ -124,6 +125,7 @@ async fn test_execute_sse_with_reconnect_honors_server_retry_delay() {
             reconnect_delay: Duration::from_millis(1),
             reconnect_on_eof: true,
             honor_server_retry: true,
+            ..SseReconnectOptions::default()
         },
     );
     assert_eq!(events.next().await.unwrap().unwrap().data, "first");
@@ -139,6 +141,66 @@ async fn test_execute_sse_with_reconnect_honors_server_retry_delay() {
         .await
         .expect("server finish timed out");
     assert_eq!(requests.len(), 2);
+}
+
+#[tokio::test]
+async fn test_execute_sse_with_reconnect_uses_custom_backoff_parameters() {
+    let server = spawn_multi_shot_server(vec![
+        ResponsePlan::Chunked {
+            status: 200,
+            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+            chunks: Vec::new(),
+            finish: true,
+        },
+        ResponsePlan::Chunked {
+            status: 200,
+            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+            chunks: Vec::new(),
+            finish: true,
+        },
+        ResponsePlan::Chunked {
+            status: 200,
+            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+            chunks: vec![ResponseChunk {
+                delay: Duration::from_millis(0),
+                bytes: b"data: done\n\n".to_vec(),
+            }],
+            finish: true,
+        },
+    ])
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.read_timeout = Duration::from_secs(2);
+    options.timeouts.write_timeout = Duration::from_secs(2);
+    let client = HttpClientFactory::new().create(options).unwrap();
+
+    let start = Instant::now();
+    let request = client.request(Method::GET, "/sse-custom-backoff").build();
+    let mut events = client.execute_sse_with_reconnect(
+        request,
+        SseReconnectOptions {
+            max_reconnects: 2,
+            reconnect_delay: Duration::from_millis(80),
+            max_reconnect_delay: Duration::from_millis(200),
+            reconnect_backoff_multiplier: 3.0,
+            reconnect_on_eof: true,
+            honor_server_retry: false,
+        },
+    );
+    assert_eq!(events.next().await.unwrap().unwrap().data, "done");
+    assert!(events.next().await.is_none());
+    let elapsed = start.elapsed();
+    assert!(
+        elapsed >= Duration::from_millis(220),
+        "elapsed={elapsed:?} should reflect custom reconnect backoff settings"
+    );
+
+    let requests = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(requests.len(), 3);
 }
 
 #[tokio::test]
@@ -174,6 +236,7 @@ async fn test_execute_sse_with_reconnect_does_not_retry_non_retryable_protocol_e
             reconnect_delay: Duration::from_millis(1),
             reconnect_on_eof: true,
             honor_server_retry: true,
+            ..SseReconnectOptions::default()
         },
     );
 
@@ -216,6 +279,7 @@ async fn test_execute_sse_with_reconnect_reports_invalid_last_event_id_header_va
             reconnect_delay: Duration::from_millis(1),
             reconnect_on_eof: true,
             honor_server_retry: false,
+            ..SseReconnectOptions::default()
         },
     );
 
@@ -230,4 +294,93 @@ async fn test_execute_sse_with_reconnect_reports_invalid_last_event_id_header_va
         .await
         .expect("server finish timed out");
     assert_eq!(captured.target, "/sse-invalid-last-event-id");
+}
+
+#[tokio::test]
+async fn test_execute_sse_with_reconnect_retries_on_unexpected_eof_message() {
+    let server = spawn_one_shot_server(ResponsePlan::Chunked {
+        status: 200,
+        headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+        chunks: vec![ResponseChunk {
+            delay: Duration::from_millis(0),
+            bytes: b"data: recovered\n\n".to_vec(),
+        }],
+        finish: true,
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.read_timeout = Duration::from_secs(2);
+    options.timeouts.write_timeout = Duration::from_secs(2);
+    let mut client = HttpClientFactory::new().create(options).unwrap();
+
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let attempts_for_interceptor = Arc::clone(&attempts);
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request| {
+        let current = attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
+        if current == 0 {
+            Err(HttpError::other(
+                "unexpected eof while preparing local SSE pipeline",
+            ))
+        } else {
+            Ok(())
+        }
+    }));
+
+    let request = client.request(Method::GET, "/sse-unexpected-eof").build();
+    let mut events = client.execute_sse_with_reconnect(
+        request,
+        SseReconnectOptions {
+            max_reconnects: 1,
+            reconnect_delay: Duration::from_millis(1),
+            reconnect_on_eof: false,
+            honor_server_retry: false,
+            ..SseReconnectOptions::default()
+        },
+    );
+
+    let first = events.next().await.unwrap().unwrap();
+    assert_eq!(first.data, "recovered");
+    assert!(events.next().await.is_none());
+    assert_eq!(attempts.load(Ordering::Relaxed), 2);
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.target, "/sse-unexpected-eof");
+}
+
+#[tokio::test]
+async fn test_execute_sse_with_reconnect_does_not_retry_cancelled_error() {
+    let mut options = HttpClientOptions::default();
+    options
+        .set_base_url("http://127.0.0.1:18080")
+        .expect("base URL should parse");
+    options.timeouts.read_timeout = Duration::from_secs(1);
+    options.timeouts.write_timeout = Duration::from_secs(1);
+    let mut client = HttpClientFactory::new().create(options).unwrap();
+
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let attempts_for_interceptor = Arc::clone(&attempts);
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request| {
+        attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
+        Err(HttpError::cancelled("cancelled before SSE send"))
+    }));
+
+    let request = client.request(Method::GET, "/sse-cancelled").build();
+    let mut events = client.execute_sse_with_reconnect(
+        request,
+        SseReconnectOptions {
+            max_reconnects: 3,
+            reconnect_delay: Duration::from_millis(1),
+            reconnect_on_eof: true,
+            honor_server_retry: true,
+            ..SseReconnectOptions::default()
+        },
+    );
+
+    let error = events.next().await.unwrap().unwrap_err();
+    assert_eq!(error.kind, HttpErrorKind::Cancelled);
+    assert_eq!(attempts.load(Ordering::Relaxed), 1);
 }

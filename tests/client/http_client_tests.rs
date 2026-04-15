@@ -189,7 +189,7 @@ fn test_request_builder_methods_override_client_default_options() {
         .request(Method::GET, "/override")
         .base_url(url::Url::parse("https://override.example.com/root/").unwrap())
         .ipv4_only(false)
-        .timeout(Duration::from_secs(5))
+        .request_timeout(Duration::from_secs(5))
         .build();
 
     assert_eq!(
@@ -374,7 +374,7 @@ async fn test_execute_with_text_body_and_request_timeout() {
 
     let request = client
         .request(Method::POST, "/text")
-        .timeout(Duration::from_secs(1))
+        .request_timeout(Duration::from_secs(1))
         .text_body("hello text")
         .build();
 
@@ -448,7 +448,7 @@ async fn test_execute_stream_post_json_body_with_query_and_timeout() {
     let request = client
         .request(Method::POST, "/stream-post")
         .query_param("mode", "events")
-        .timeout(Duration::from_secs(1))
+        .request_timeout(Duration::from_secs(1))
         .json_body(&serde_json::json!({"hello":"stream"}))
         .unwrap()
         .build();

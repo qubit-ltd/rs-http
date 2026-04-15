@@ -174,3 +174,41 @@ async fn test_execute_rejects_ipv6_url_when_ipv4_only() {
     assert_eq!(error.kind, HttpErrorKind::InvalidUrl);
     assert!(error.message.contains("IPv6 literal host is not allowed"));
 }
+
+#[tokio::test]
+async fn test_execute_status_error_preview_reports_body_read_failure() {
+    let server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
+        status: 503,
+        headers: vec![],
+        total_length: 64,
+        prefix: b"partial-error-body".to_vec(),
+        delay: Duration::from_millis(5),
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.read_timeout = Duration::from_secs(1);
+    let client = HttpClientFactory::new()
+        .create(options)
+        .expect("client should be created");
+    let request = client
+        .request(Method::GET, "/status-preview-read-error")
+        .build();
+
+    let error = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .expect_err("response status 503 should fail");
+
+    assert_eq!(error.kind, HttpErrorKind::Status);
+    let preview = error
+        .response_body_preview
+        .expect("response body preview should be recorded");
+    assert!(preview.contains("failed to read response body"));
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.target, "/status-preview-read-error");
+}

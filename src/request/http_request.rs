@@ -22,7 +22,8 @@ use url::Url;
 
 use crate::error::backend_error_mapper::{map_reqwest_error, ReqwestErrorPhase};
 use crate::{
-    AsyncHttpHeaderInjector, HttpError, HttpErrorKind, HttpHeaderInjector, HttpLogger, HttpResult,
+    AsyncHttpHeaderInjector, HttpError, HttpErrorKind, HttpHeaderInjector, HttpLogger,
+    HttpRequestStreamingBody, HttpResult,
 };
 
 use super::http_request_body::HttpRequestBody;
@@ -75,6 +76,8 @@ pub struct HttpRequest {
     headers: HeaderMap,
     /// Serialized body variant.
     body: HttpRequestBody,
+    /// Deferred per-attempt streaming body factory.
+    streaming_body: Option<HttpRequestStreamingBody>,
     /// Lazily maintained cache for the currently resolved URL.
     resolved_url: RwLock<Option<Url>>,
     /// Attempt-scoped cache of merged outbound headers after applying
@@ -102,6 +105,7 @@ impl HttpRequest {
             query: builder.query,
             headers: builder.headers,
             body: builder.body,
+            streaming_body: builder.streaming_body,
             resolved_url: RwLock::new(None),
             effective_headers: None,
             execution_options: HttpRequestExecutionOptions {
@@ -285,6 +289,20 @@ impl HttpRequest {
     /// `self` for method chaining.
     pub fn set_body(&mut self, body: HttpRequestBody) -> &mut Self {
         self.body = body;
+        self.streaming_body = None;
+        self
+    }
+
+    /// Sets deferred streaming upload body factory for this request.
+    ///
+    /// # Parameters
+    /// - `streaming_body`: Deferred body stream factory reused across retries.
+    ///
+    /// # Returns
+    /// `self` for method chaining.
+    pub fn set_streaming_body(&mut self, streaming_body: HttpRequestStreamingBody) -> &mut Self {
+        self.streaming_body = Some(streaming_body);
+        self.body = HttpRequestBody::Empty;
         self
     }
 
@@ -507,7 +525,11 @@ impl HttpRequest {
         if let Some(timeout) = self.execution_options.request_timeout {
             builder = builder.timeout(timeout);
         }
-        builder = Self::apply_request_body(builder, self.take_body());
+        if let Some(streaming_body) = self.streaming_body.as_ref() {
+            builder = builder.body(streaming_body.to_reqwest_body().await);
+        } else {
+            builder = Self::apply_request_body(builder, self.take_body());
+        }
 
         let send_future =
             tokio::time::timeout(self.execution_options.write_timeout, builder.send());
@@ -553,19 +575,20 @@ impl HttpRequest {
     /// missing for a relative path, joining fails, or [`Self::ipv4_only`]
     /// rejects an IPv6 literal host.
     pub(crate) fn resolved_url(&self) -> Result<Url, HttpError> {
-        if let Some(url) = self
+        let cached = self
             .resolved_url
             .read()
-            .expect("resolved_url read lock poisoned")
-            .as_ref()
-        {
+            .map_err(|_| HttpError::other("Resolved URL cache read lock poisoned"))?
+            .clone();
+        if let Some(url) = cached.as_ref() {
             return Ok(url.clone());
         }
         let resolved = self.compute_resolved_url()?;
         *self
             .resolved_url
             .write()
-            .expect("resolved_url write lock poisoned") = Some(resolved.clone());
+            .map_err(|_| HttpError::other("Resolved URL cache write lock poisoned"))? =
+            Some(resolved.clone());
         Ok(resolved)
     }
 
@@ -573,16 +596,15 @@ impl HttpRequest {
     pub fn resolved_url_cached(&self) -> Option<Url> {
         self.resolved_url
             .read()
-            .expect("resolved_url read lock poisoned")
-            .clone()
+            .map(|guard| guard.clone())
+            .unwrap_or_default()
     }
 
     /// Recomputes and stores the current resolved URL.
     fn refresh_resolved_url_cache(&mut self) {
-        *self
-            .resolved_url
-            .write()
-            .expect("resolved_url write lock poisoned") = self.compute_resolved_url().ok();
+        if let Ok(mut guard) = self.resolved_url.write() {
+            *guard = self.compute_resolved_url().ok();
+        }
     }
 
     /// Computes the resolved URL from current path/base/ipv4 settings.
@@ -658,10 +680,9 @@ impl HttpRequest {
         if self.effective_headers.is_none() {
             self.effective_headers = Some(self.compute_effective_headers().await?);
         }
-        Ok(self
-            .effective_headers
-            .as_ref()
-            .expect("effective_headers must exist after successful effective_headers"))
+        self.effective_headers.as_ref().ok_or_else(|| {
+            HttpError::other("Effective headers cache is unexpectedly empty after computation")
+        })
     }
 
     /// Returns cached merged outbound headers when available.
@@ -771,6 +792,7 @@ impl Clone for HttpRequest {
             query: self.query.clone(),
             headers: self.headers.clone(),
             body: self.body.clone(),
+            streaming_body: self.streaming_body.clone(),
             resolved_url: RwLock::new(self.resolved_url_cached()),
             effective_headers: self.effective_headers.clone(),
             execution_options: self.execution_options.clone(),

@@ -69,6 +69,26 @@ fn test_sse_event_decode_json_with_mode_lenient_returns_none_for_bad_json() {
 }
 
 #[test]
+fn test_sse_event_decode_json_with_mode_lenient_returns_some_for_valid_json() {
+    let event = SseEvent {
+        event: Some("response.output_text.delta".to_string()),
+        data: r#"{"delta":"ok"}"#.to_string(),
+        id: Some("evt-lenient-ok".to_string()),
+        retry: None,
+    };
+
+    let payload = event
+        .decode_json_with_mode::<TestPayload>(SseJsonMode::Lenient)
+        .expect("lenient mode should decode valid JSON");
+    assert_eq!(
+        payload,
+        Some(TestPayload {
+            delta: "ok".to_string(),
+        })
+    );
+}
+
+#[test]
 fn test_sse_event_decode_json_with_mode_strict_fails_for_bad_json() {
     let event = SseEvent {
         event: Some("response.output_text.delta".to_string()),

@@ -9,6 +9,8 @@
 //! Integration tests for `src/sse/mod.rs` (`decode_events`).
 //! File layout: `tests/sse/mod_tests.rs` mirrors `src/sse/mod.rs`.
 
+use std::time::Duration;
+
 use bytes::Bytes;
 use futures_util::StreamExt as _;
 use http::{HeaderMap, Method};
@@ -58,4 +60,11 @@ async fn test_decode_events_ignores_comment_lines() {
 #[test]
 fn test_sse_reconnect_options_new_matches_default() {
     assert_eq!(SseReconnectOptions::new(), SseReconnectOptions::default());
+}
+
+#[test]
+fn test_sse_reconnect_options_default_backoff_parameters() {
+    let options = SseReconnectOptions::default();
+    assert_eq!(options.max_reconnect_delay, Duration::from_secs(30));
+    assert_eq!(options.reconnect_backoff_multiplier, 2.0);
 }

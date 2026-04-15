@@ -62,7 +62,7 @@ async fn test_request_level_timeout_overrides_client_level_timeout() {
     let client = HttpClientFactory::new().create(options).unwrap();
     let request = client
         .request(Method::GET, "/request-timeout-override")
-        .timeout(Duration::from_millis(80))
+        .request_timeout(Duration::from_millis(80))
         .build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -269,4 +269,46 @@ async fn test_request_level_read_timeout_overrides_client_level_for_stream_body(
         .expect("second stream item should exist")
         .expect_err("second stream item should be read timeout");
     assert_eq!(timeout_error.kind, HttpErrorKind::ReadTimeout);
+}
+
+#[tokio::test]
+async fn test_buffered_bytes_read_timeout_is_applied_per_chunk_wait() {
+    let server = spawn_one_shot_server(ResponsePlan::Chunked {
+        status: 200,
+        headers: vec![("Content-Type".to_string(), "text/plain".to_string())],
+        chunks: vec![
+            ResponseChunk {
+                delay: Duration::from_millis(20),
+                bytes: b"first".to_vec(),
+            },
+            ResponseChunk {
+                delay: Duration::from_millis(80),
+                bytes: b"second".to_vec(),
+            },
+        ],
+        finish: true,
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.read_timeout = Duration::from_millis(120);
+    let client = HttpClientFactory::new().create(options).unwrap();
+
+    let request = client
+        .request(Method::GET, "/bytes-per-chunk-timeout")
+        .build();
+    let mut response = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .expect("request should start");
+    let body = response
+        .bytes()
+        .await
+        .expect("buffered body should be readable");
+    assert_eq!(body, b"firstsecond".as_slice());
+
+    let _ = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
 }

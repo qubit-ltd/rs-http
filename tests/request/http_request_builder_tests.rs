@@ -246,10 +246,10 @@ fn test_request_builder_json_body_sets_content_type_and_payload() {
 }
 
 #[test]
-fn test_request_builder_bytes_body_and_timeout() {
+fn test_request_builder_bytes_body_and_request_timeout() {
     let request = new_builder(Method::PUT, "/v1/blob")
         .bytes_body(Bytes::from_static(b"abc123"))
-        .timeout(Duration::from_secs(5))
+        .request_timeout(Duration::from_secs(5))
         .build();
 
     assert_eq!(request.request_timeout(), Some(Duration::from_secs(5)));
