@@ -15,14 +15,15 @@
 //! Haixing Hu
 
 use bytes::Bytes;
-use http::{HeaderMap, Method, StatusCode};
-use url::Url;
-
 use crate::constants::{
     SENSITIVE_HEADER_MASK_EDGE_CHARS, SENSITIVE_HEADER_MASK_PLACEHOLDER,
     SENSITIVE_HEADER_MASK_SHORT_LEN,
 };
-use crate::{HttpClientOptions, HttpLoggingOptions, HttpRequestBody, SensitiveHeaders};
+use crate::{
+    BufferedHttpResponse, HttpClientOptions, HttpLoggingOptions, HttpRequest, HttpRequestBody,
+    HttpResponseMeta,
+    SensitiveHeaders,
+};
 
 /// HTTP logger bound to one pair of logging options and sensitive header policy.
 #[derive(Debug, Clone, Copy)]
@@ -50,25 +51,25 @@ impl<'a> HttpLogger<'a> {
     /// Emits TRACE logs for an outbound request when logging is enabled and TRACE is active.
     ///
     /// # Parameters
-    /// - `method`: HTTP method.
-    /// - `url`: Full request URL.
-    /// - `headers`: Outgoing headers (values may be masked).
-    /// - `body`: Request body variant used for optional preview output.
+    /// - `request`: Prepared request snapshot; expected to carry resolved URL
+    ///   and attempt-level merged headers.
     ///
     /// # Returns
     /// Nothing; no-op when disabled or TRACE off.
-    pub fn log_request(
-        &self,
-        method: &Method,
-        url: &Url,
-        headers: &HeaderMap,
-        body: &HttpRequestBody,
-    ) {
+    pub fn log_request(&self, request: &HttpRequest) {
         if !self.is_trace_enabled() {
             return;
         }
 
-        tracing::trace!("--> {} {}", method, url);
+        let url = request
+            .resolved_url_cached()
+            .map(|url| url.to_string())
+            .unwrap_or_else(|| request.path().to_string());
+        tracing::trace!("--> {} {}", request.method(), url);
+
+        let headers = request
+            .effective_headers_cached()
+            .unwrap_or_else(|| request.headers());
 
         if self.options.log_request_header {
             for (name, value) in headers {
@@ -79,7 +80,7 @@ impl<'a> HttpLogger<'a> {
         }
 
         if self.options.log_request_body {
-            match Self::clone_request_body_for_log(body) {
+            match Self::clone_request_body_for_log(request.body()) {
                 Some(bytes) => tracing::trace!("Request body: {}", self.render_body(&bytes)),
                 None => tracing::trace!("Request body: <empty>"),
             }
@@ -89,22 +90,19 @@ impl<'a> HttpLogger<'a> {
     /// Emits TRACE logs for a completed response (headers and optional body preview).
     ///
     /// # Parameters
-    /// - `status`: Response status.
-    /// - `url`: Response URL.
-    /// - `headers`: Response headers (masked per policy).
-    /// - `body`: Full body bytes for optional preview.
+    /// - `response`: Buffered response (status/url/headers/body) for logging.
     ///
     /// # Returns
     /// Nothing; no-op when disabled or TRACE off.
-    pub fn log_response(&self, status: StatusCode, url: &Url, headers: &HeaderMap, body: &Bytes) {
+    pub fn log_response(&self, response: &BufferedHttpResponse) {
         if !self.is_trace_enabled() {
             return;
         }
 
-        tracing::trace!("<-- {} {}", status.as_u16(), url);
+        tracing::trace!("<-- {} {}", response.status().as_u16(), response.url());
 
         if self.options.log_response_header {
-            for (name, value) in headers {
+            for (name, value) in response.headers() {
                 let value = value.to_str().unwrap_or("<non-utf8>");
                 let masked = self.mask_header_value(name.as_str(), value);
                 tracing::trace!("{}: {}", name.as_str(), masked);
@@ -112,28 +110,30 @@ impl<'a> HttpLogger<'a> {
         }
 
         if self.options.log_response_body {
-            tracing::trace!("Response body: {}", self.render_body(body));
+            tracing::trace!("Response body: {}", self.render_body(&response.body));
         }
     }
 
     /// Logs response line and headers for a streaming call without reading the body stream.
     ///
     /// # Parameters
-    /// - `status`: Response status.
-    /// - `url`: Response URL.
-    /// - `headers`: Response headers.
+    /// - `response_meta`: Response metadata (status/url/headers).
     ///
     /// # Returns
     /// Nothing; no-op when disabled or TRACE off.
-    pub fn log_stream_response_headers(&self, status: StatusCode, url: &Url, headers: &HeaderMap) {
+    pub fn log_stream_response_headers(&self, response_meta: &HttpResponseMeta) {
         if !self.is_trace_enabled() {
             return;
         }
 
-        tracing::trace!("<-- {} {} (stream)", status.as_u16(), url);
+        tracing::trace!(
+            "<-- {} {} (stream)",
+            response_meta.status.as_u16(),
+            &response_meta.url
+        );
 
         if self.options.log_response_header {
-            for (name, value) in headers {
+            for (name, value) in &response_meta.headers {
                 let value = value.to_str().unwrap_or("<non-utf8>");
                 let masked = self.mask_header_value(name.as_str(), value);
                 tracing::trace!("{}: {}", name.as_str(), masked);
