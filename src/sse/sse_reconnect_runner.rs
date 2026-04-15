@@ -14,19 +14,19 @@ use async_stream::stream;
 use futures_util::StreamExt;
 use http::header::{HeaderName, HeaderValue};
 
-use crate::sse::{SseEventStream, SseReconnectOptions};
+use super::{SseEventStream, SseReconnectOptions};
 use crate::{HttpClient, HttpError, HttpErrorKind, HttpRequest, HttpResult, RetryHint};
 
 /// Header name used for SSE resume token propagation.
 const LAST_EVENT_ID_HEADER: &str = "last-event-id";
 
 /// Stateful SSE reconnect runner for one stream invocation.
-pub(super) struct SseReconnectRunner {
+pub(crate) struct SseReconnectRunner {
     /// HTTP client used to execute each stream attempt.
     client: HttpClient,
     /// Request template cloned for every reconnect attempt; a `Last-Event-ID`
     /// header may be applied on resume.
-    request: HttpRequest,
+    request_template: HttpRequest,
     /// Reconnect limits, backoff, and stream behavior flags.
     options: SseReconnectOptions,
 }
@@ -41,10 +41,14 @@ impl SseReconnectRunner {
     ///
     /// # Returns
     /// New SSE reconnect runner.
-    pub(super) fn new(client: HttpClient, request: HttpRequest, options: SseReconnectOptions) -> Self {
+    pub(crate) fn new(
+        client: HttpClient,
+        request: HttpRequest,
+        options: SseReconnectOptions,
+    ) -> Self {
         Self {
             client,
-            request,
+            request_template: request,
             options,
         }
     }
@@ -53,30 +57,29 @@ impl SseReconnectRunner {
     ///
     /// # Returns
     /// SSE event stream yielding events from one or more reconnect sessions.
-    pub(super) fn run(self) -> SseEventStream {
+    pub(crate) fn run(self) -> SseEventStream {
         let client = self.client;
-        let request = self.request;
+        let request_template = self.request_template;
         let options = self.options;
         let output = stream! {
-            let mut reconnect_count: u32 = 0;
-            let mut reconnect_delay = options.reconnect_delay;
+            let mut count: u32 = 0;
+            let mut delay = options.reconnect_delay;
             let mut last_event_id: Option<String> = None;
             loop {
-                let mut attempt_request = request.clone();
+                let mut request = request_template.clone();
                 if let Some(last_event_id) = last_event_id.as_deref() {
-                    if let Err(error) = apply_last_event_id_header(&mut attempt_request, last_event_id) {
+                    if let Err(error) = apply_last_event_id_header(&mut request, last_event_id) {
                         yield Err(error);
                         return;
                     }
                 }
 
-                let response = match client.execute(attempt_request).await {
+                let response = match client.execute(request).await {
                     Ok(response) => response,
                     Err(error) => {
-                        if should_reconnect_sse_error(&error)
-                            && reconnect_count < options.max_reconnects {
-                            reconnect_count += 1;
-                            tokio::time::sleep(reconnect_delay).await;
+                        if (count < options.max_reconnects) && should_reconnect_sse_error(&error) {
+                            count += 1;
+                            tokio::time::sleep(delay).await;
                             continue;
                         }
                         yield Err(error);
@@ -94,7 +97,7 @@ impl SseReconnectRunner {
                             }
                             if options.honor_server_retry {
                                 if let Some(retry_ms) = event.retry {
-                                    reconnect_delay = Duration::from_millis(retry_ms.max(1));
+                                    delay = Duration::from_millis(retry_ms.max(1));
                                 }
                             }
                             yield Ok(event);
@@ -107,18 +110,18 @@ impl SseReconnectRunner {
                 }
 
                 if let Some(error) = stream_error {
-                    if should_reconnect_sse_error(&error) && reconnect_count < options.max_reconnects {
-                        reconnect_count += 1;
-                        tokio::time::sleep(reconnect_delay).await;
+                    if (count < options.max_reconnects) && should_reconnect_sse_error(&error) {
+                        count += 1;
+                        tokio::time::sleep(delay).await;
                         continue;
                     }
                     yield Err(error);
                     return;
                 }
 
-                if options.reconnect_on_eof && reconnect_count < options.max_reconnects {
-                    reconnect_count += 1;
-                    tokio::time::sleep(reconnect_delay).await;
+                if options.reconnect_on_eof && (count < options.max_reconnects) {
+                    count += 1;
+                    tokio::time::sleep(delay).await;
                     continue;
                 }
                 return;

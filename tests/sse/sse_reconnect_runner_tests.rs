@@ -19,8 +19,8 @@ use std::time::{Duration, Instant};
 use futures_util::StreamExt;
 use http::Method;
 use qubit_http::{
-    sse::SseReconnectOptions,
-    HttpClientFactory, HttpClientOptions, HttpErrorKind, HttpRequestInterceptor,
+    sse::SseReconnectOptions, HttpClientFactory, HttpClientOptions, HttpErrorKind,
+    HttpRequestInterceptor,
 };
 use tokio::time::timeout;
 

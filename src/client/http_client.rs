@@ -22,7 +22,7 @@ use std::time::Duration;
 use qubit_concurrent::Lock;
 use qubit_retry::{RetryAttemptFailure, RetryError, RetryResult};
 
-use super::sse_reconnect_runner::SseReconnectRunner;
+use crate::sse::SseReconnectRunner;
 use crate::{
     response::HttpResponseOptions,
     sse::{SseEventStream, SseReconnectOptions},
