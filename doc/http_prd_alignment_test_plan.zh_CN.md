@@ -213,7 +213,7 @@
 ### 3.2 测试分层
 
 1. 单元测试：验证配置解析、脱敏、纯解码器、错误分类。
-2. 组件测试：验证 `HttpClientFactory`、`HttpClient`、`HeaderInjector`、timeout 包装。
+2. 组件测试：验证 `HttpClientFactory`、`HttpClient`、`HttpHeaderInjector`、timeout 包装。
 3. 集成测试：验证真实 HTTP server / proxy / stream / SSE 行为。
 4. 受限场景测试：`socks5`、IPv4-only 等需要额外 harness 或 feature gating 的场景。
 
