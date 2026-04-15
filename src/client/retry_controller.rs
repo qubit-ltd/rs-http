@@ -11,7 +11,7 @@
 use std::time::Duration;
 
 use qubit_concurrent::{ArcMutex, Lock};
-use qubit_retry::{AttemptFailure, RetryError, RetryExecutor, RetryResult};
+use qubit_retry::{RetryAttemptFailure, RetryError, RetryExecutor, RetryResult};
 
 use crate::{
     HttpClient, HttpError, HttpRequest, HttpResponse, HttpResult, HttpRetryOptions,
@@ -46,13 +46,13 @@ impl RetryController {
     ) -> HttpResult<Self> {
         let mut builder = RetryExecutor::<HttpError>::builder()
             .options(retry_options.to_executor_options()?)
-            .classify_error(retry_options.to_executor_error_classifier());
+            .retry_decide(retry_options.to_executor_error_decider());
 
         if honor_retry_after {
             let pending_retry_after_delay: PendingRetryAfterDelay = ArcMutex::new(None);
             let pending_for_listener = pending_retry_after_delay.clone();
             builder = builder.on_retry(move |context, failure| {
-                let AttemptFailure::Error(error) = failure else {
+                let RetryAttemptFailure::Error(error) = failure else {
                     return;
                 };
                 let Some(retry_after) = error.retry_after else {
@@ -197,7 +197,7 @@ fn map_retry_result<T>(result: RetryResult<T, HttpError>) -> HttpResult<T> {
     }
 }
 
-/// Maps a single retry [`AttemptFailure`] into [`HttpResult`].
+/// Maps a single retry [`RetryAttemptFailure`] into [`HttpResult`].
 ///
 /// # Parameters
 /// - `failure`: Single attempt outcome from the retry layer.
@@ -205,7 +205,7 @@ fn map_retry_result<T>(result: RetryResult<T, HttpError>) -> HttpResult<T> {
 /// # Returns
 /// Always `Err`: either the wrapped [`HttpError`] or a synthesized timeout
 /// message.
-fn map_retry_failure<T>(failure: AttemptFailure<HttpError>) -> HttpResult<T> {
+fn map_retry_failure<T>(failure: RetryAttemptFailure<HttpError>) -> HttpResult<T> {
     Err(map_retry_failure_to_error(failure))
 }
 
@@ -216,10 +216,10 @@ fn map_retry_failure<T>(failure: AttemptFailure<HttpError>) -> HttpResult<T> {
 ///
 /// # Returns
 /// Mapped [`HttpError`] with timeout context when applicable.
-fn map_retry_failure_to_error(failure: AttemptFailure<HttpError>) -> HttpError {
+fn map_retry_failure_to_error(failure: RetryAttemptFailure<HttpError>) -> HttpError {
     match failure {
-        AttemptFailure::Error(error) => error,
-        AttemptFailure::AttemptTimeout { elapsed, timeout } => HttpError::other(format!(
+        RetryAttemptFailure::Error(error) => error,
+        RetryAttemptFailure::AttemptTimeout { elapsed, timeout } => HttpError::other(format!(
             "HTTP retry attempt timeout after {elapsed:?} (timeout: {timeout:?})"
         )),
     }

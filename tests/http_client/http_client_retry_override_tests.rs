@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 use futures_util::StreamExt;
 use http::{Method, StatusCode};
 use qubit_http::{
-    Delay, HttpClientFactory, HttpClientOptions, HttpErrorKind, HttpRetryMethodPolicy,
+    HttpClientFactory, HttpClientOptions, HttpErrorKind, HttpRetryMethodPolicy, RetryDelay,
 };
 use tokio::time::timeout;
 
@@ -40,7 +40,7 @@ async fn test_request_retry_override_force_enable_and_all_methods_for_post() {
     options.base_url = Some(server.base_url());
     options.retry.enabled = false;
     options.retry.max_attempts = 2;
-    options.retry.delay_strategy = Delay::None;
+    options.retry.delay_strategy = RetryDelay::None;
     let client = HttpClientFactory::new()
         .create(options)
         .expect("client should be created");
@@ -77,7 +77,7 @@ async fn test_request_retry_override_disable_retry_skips_client_retry_policy() {
     options.base_url = Some(server.base_url());
     options.retry.enabled = true;
     options.retry.max_attempts = 3;
-    options.retry.delay_strategy = Delay::None;
+    options.retry.delay_strategy = RetryDelay::None;
     let client = HttpClientFactory::new()
         .create(options)
         .expect("client should be created");
@@ -119,7 +119,7 @@ async fn test_request_retry_override_method_policy_allows_post_without_global_ov
     options.base_url = Some(server.base_url());
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
-    options.retry.delay_strategy = Delay::None;
+    options.retry.delay_strategy = RetryDelay::None;
     options.retry.method_policy = HttpRetryMethodPolicy::IdempotentOnly;
     let client = HttpClientFactory::new()
         .create(options)
@@ -161,7 +161,7 @@ async fn test_request_retry_override_honor_retry_after_waits_before_retrying() {
     options.base_url = Some(server.base_url());
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
-    options.retry.delay_strategy = Delay::None;
+    options.retry.delay_strategy = RetryDelay::None;
     let client = HttpClientFactory::new()
         .create(options)
         .expect("client should be created");
@@ -208,7 +208,7 @@ async fn test_request_retry_override_honor_retry_after_waits_before_retrying_on_
     options.base_url = Some(server.base_url());
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
-    options.retry.delay_strategy = Delay::None;
+    options.retry.delay_strategy = RetryDelay::None;
     let client = HttpClientFactory::new()
         .create(options)
         .expect("client should be created");
@@ -259,7 +259,7 @@ async fn test_request_retry_override_honor_retry_after_waits_before_body_stream_
     options.base_url = Some(server.base_url());
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
-    options.retry.delay_strategy = Delay::None;
+    options.retry.delay_strategy = RetryDelay::None;
     let client = HttpClientFactory::new()
         .create(options)
         .expect("client should be created");
@@ -314,7 +314,7 @@ async fn test_request_retry_override_honor_retry_after_without_header_does_not_a
     options.base_url = Some(server.base_url());
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
-    options.retry.delay_strategy = Delay::None;
+    options.retry.delay_strategy = RetryDelay::None;
     let client = HttpClientFactory::new()
         .create(options)
         .expect("client should be created");
@@ -361,7 +361,7 @@ async fn test_request_retry_override_honor_retry_after_does_not_block_runtime_th
     options.base_url = Some(server.base_url());
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
-    options.retry.delay_strategy = Delay::None;
+    options.retry.delay_strategy = RetryDelay::None;
     let client = HttpClientFactory::new()
         .create(options)
         .expect("client should be created");

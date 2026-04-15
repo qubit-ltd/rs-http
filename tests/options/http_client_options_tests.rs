@@ -17,8 +17,8 @@ use qubit_http::{
         DEFAULT_SSE_MAX_LINE_BYTES, DEFAULT_WRITE_TIMEOUT_SECS,
     },
     sse::{DoneMarkerPolicy, SseJsonMode},
-    Delay, HttpClientOptions, HttpConfigErrorKind, HttpErrorKind, HttpRetryMethodPolicy,
-    HttpRetryOptions, ProxyType,
+    HttpClientOptions, HttpConfigErrorKind, HttpErrorKind, HttpRetryMethodPolicy,
+    HttpRetryOptions, ProxyType, RetryDelay,
 };
 
 #[test]
@@ -434,7 +434,7 @@ fn test_http_client_options_retry_section() {
     assert_eq!(opts.retry.method_policy, HttpRetryMethodPolicy::AllMethods);
     assert_eq!(
         opts.retry.delay_strategy,
-        Delay::Exponential {
+        RetryDelay::Exponential {
             initial: Duration::from_millis(50),
             max: Duration::from_secs(2),
             multiplier: 1.5,
@@ -454,7 +454,7 @@ fn test_http_retry_options_delay_strategies_from_config() {
     let fixed = HttpRetryOptions::from_config(&fixed_config.prefix_view("retry")).unwrap();
     assert_eq!(
         fixed.delay_strategy,
-        Delay::Fixed(Duration::from_millis(250))
+        RetryDelay::Fixed(Duration::from_millis(250))
     );
 
     let mut random_config = Config::new();
@@ -470,7 +470,7 @@ fn test_http_retry_options_delay_strategies_from_config() {
     let random = HttpRetryOptions::from_config(&random_config.prefix_view("retry")).unwrap();
     assert_eq!(
         random.delay_strategy,
-        Delay::Random {
+        RetryDelay::Random {
             min: Duration::from_millis(10),
             max: Duration::from_millis(20),
         }
@@ -481,7 +481,7 @@ fn test_http_retry_options_delay_strategies_from_config() {
         .set("retry.delay_strategy", "NONE".to_string())
         .unwrap();
     let none = HttpRetryOptions::from_config(&none_config.prefix_view("retry")).unwrap();
-    assert_eq!(none.delay_strategy, Delay::None);
+    assert_eq!(none.delay_strategy, RetryDelay::None);
 }
 
 #[test]
@@ -591,7 +591,7 @@ fn test_http_retry_options_validate_rejects_invalid_values() {
     assert_eq!(err.path, "jitter_factor");
 
     let mut options = HttpRetryOptions::default();
-    options.delay_strategy = Delay::Fixed(Duration::ZERO);
+    options.delay_strategy = RetryDelay::Fixed(Duration::ZERO);
     let err = options.validate().unwrap_err();
     assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
     assert_eq!(err.path, "delay_strategy");

@@ -18,8 +18,8 @@ use futures_util::StreamExt;
 use http::header::{HeaderName, AUTHORIZATION, CONTENT_TYPE};
 use http::{HeaderValue, Method, StatusCode};
 use qubit_http::{
-    Delay, HttpClientFactory, HttpClientOptions, HttpErrorKind, HttpHeaderInjector,
-    HttpRetryMethodPolicy,
+    HttpClientFactory, HttpClientOptions, HttpErrorKind, HttpHeaderInjector, HttpRetryMethodPolicy,
+    RetryDelay,
 };
 use tokio::time::timeout;
 
@@ -858,7 +858,7 @@ async fn test_execute_retries_retryable_status_until_success() {
     options.base_url = Some(server.base_url());
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
-    options.retry.delay_strategy = Delay::None;
+    options.retry.delay_strategy = RetryDelay::None;
     let mut client = HttpClientFactory::new()
         .create(options)
         .unwrap();
@@ -906,7 +906,7 @@ async fn test_execute_does_not_retry_non_retryable_status() {
     options.base_url = Some(server.base_url());
     options.retry.enabled = true;
     options.retry.max_attempts = 3;
-    options.retry.delay_strategy = Delay::None;
+    options.retry.delay_strategy = RetryDelay::None;
     let client = HttpClientFactory::new()
         .create(options)
         .unwrap();
@@ -951,7 +951,7 @@ async fn test_execute_returns_last_error_after_retry_attempts_exhausted() {
     options.base_url = Some(server.base_url());
     options.retry.enabled = true;
     options.retry.max_attempts = 3;
-    options.retry.delay_strategy = Delay::None;
+    options.retry.delay_strategy = RetryDelay::None;
     let client = HttpClientFactory::new()
         .create(options)
         .unwrap();
@@ -986,7 +986,7 @@ async fn test_execute_retry_max_duration_returns_last_error_after_retry_delay() 
     options.retry.enabled = true;
     options.retry.max_attempts = 3;
     options.retry.max_duration = Some(Duration::from_millis(100));
-    options.retry.delay_strategy = Delay::Fixed(Duration::from_millis(120));
+    options.retry.delay_strategy = RetryDelay::Fixed(Duration::from_millis(120));
     let client = HttpClientFactory::new()
         .create(options)
         .unwrap();
@@ -1016,7 +1016,7 @@ async fn test_execute_retry_max_duration_zero_reports_no_retryable_failure() {
     options.retry.enabled = true;
     options.retry.max_attempts = 3;
     options.retry.max_duration = Some(Duration::ZERO);
-    options.retry.delay_strategy = Delay::None;
+    options.retry.delay_strategy = RetryDelay::None;
     let client = HttpClientFactory::new()
         .create(options)
         .unwrap();
@@ -1051,7 +1051,7 @@ async fn test_execute_does_not_retry_post_by_default() {
     options.base_url = Some(server.base_url());
     options.retry.enabled = true;
     options.retry.max_attempts = 3;
-    options.retry.delay_strategy = Delay::None;
+    options.retry.delay_strategy = RetryDelay::None;
     let client = HttpClientFactory::new()
         .create(options)
         .unwrap();
@@ -1091,7 +1091,7 @@ async fn test_execute_retries_post_when_all_methods_policy_is_enabled() {
     options.base_url = Some(server.base_url());
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
-    options.retry.delay_strategy = Delay::None;
+    options.retry.delay_strategy = RetryDelay::None;
     options.retry.method_policy = HttpRetryMethodPolicy::AllMethods;
     let client = HttpClientFactory::new()
         .create(options)
@@ -1134,7 +1134,7 @@ async fn test_execute_retries_write_timeout_until_success() {
     options.timeouts.write_timeout = Duration::from_millis(30);
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
-    options.retry.delay_strategy = Delay::None;
+    options.retry.delay_strategy = RetryDelay::None;
     let client = HttpClientFactory::new()
         .create(options)
         .unwrap();
@@ -1180,7 +1180,7 @@ async fn test_execute_stream_retries_initial_status_until_success() {
     options.base_url = Some(server.base_url());
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
-    options.retry.delay_strategy = Delay::None;
+    options.retry.delay_strategy = RetryDelay::None;
     let client = HttpClientFactory::new()
         .create(options)
         .unwrap();
@@ -1230,7 +1230,7 @@ async fn test_execute_stream_does_not_retry_after_stream_is_returned() {
     options.timeouts.read_timeout = Duration::from_millis(30);
     options.retry.enabled = true;
     options.retry.max_attempts = 3;
-    options.retry.delay_strategy = Delay::None;
+    options.retry.delay_strategy = RetryDelay::None;
     let client = HttpClientFactory::new()
         .create(options)
         .unwrap();

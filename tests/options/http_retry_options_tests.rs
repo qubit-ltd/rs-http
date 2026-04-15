@@ -27,7 +27,7 @@ fn test_http_retry_options_alias_exponential_dash_normalizes_to_exponential_back
     let options = HttpRetryOptions::from_config(&config.prefix_view("retry")).unwrap();
     assert_eq!(
         options.delay_strategy,
-        qubit_retry::Delay::Exponential {
+        qubit_retry::RetryDelay::Exponential {
             initial: Duration::from_millis(40),
             max: Duration::from_secs(1),
             multiplier: 2.0,

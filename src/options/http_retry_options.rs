@@ -12,7 +12,7 @@ use std::time::Duration;
 use http::StatusCode;
 use qubit_config::{ConfigReader, ConfigResult};
 use qubit_retry::{
-    AttemptContext, Delay, Jitter, RetryDecision, RetryOptions,
+    RetryAttemptContext, RetryDelay, RetryJitter, RetryDecision, RetryOptions,
 };
 
 use super::http_retry_method_policy::HttpRetryMethodPolicy;
@@ -35,7 +35,7 @@ pub struct HttpRetryOptions {
     /// Optional maximum total retry duration.
     pub max_duration: Option<Duration>,
     /// Delay strategy between attempts.
-    pub delay_strategy: Delay,
+    pub delay_strategy: RetryDelay,
     /// Jitter factor passed to the retry delay strategy.
     pub jitter_factor: f64,
     /// Method replay policy.
@@ -247,22 +247,22 @@ impl HttpRetryOptions {
             self.max_attempts,
             self.max_duration,
             self.delay_strategy.clone(),
-            Jitter::factor(self.jitter_factor),
+            RetryJitter::factor(self.jitter_factor),
         )
         .map_err(|error| HttpError::other(format!("Invalid HTTP retry options: {error}")))
     }
 
-    /// Returns an error classifier for [`qubit_retry::RetryExecutor::builder`] /
-    /// [`qubit_retry::RetryExecutorBuilder::classify_error`].
+    /// Returns a [`qubit_retry::RetryDecider`] closure for [`qubit_retry::RetryExecutor::builder`] /
+    /// [`qubit_retry::RetryExecutorBuilder::retry_decide`].
     ///
     /// The closure captures clones of the status and error-kind allowlists only
     /// and delegates to [`is_retryable_status`] and [`is_retryable_error_kind`].
-    pub fn to_executor_error_classifier(
+    pub fn to_executor_error_decider(
         &self,
-    ) -> impl Fn(&HttpError, &AttemptContext) -> RetryDecision + Send + Sync + 'static {
+    ) -> impl Fn(&HttpError, &RetryAttemptContext) -> RetryDecision + Send + Sync + 'static {
         let retry_status_codes = self.retry_status_codes.clone();
         let retry_error_kinds = self.retry_error_kinds.clone();
-        move |error: &HttpError, _context: &AttemptContext| {
+        move |error: &HttpError, _context: &RetryAttemptContext| {
             let retryable = if error.kind == HttpErrorKind::Status {
                 error.status.is_some_and(|status| {
                     is_retryable_status(status, retry_status_codes.as_deref())
@@ -285,7 +285,7 @@ impl Default for HttpRetryOptions {
             enabled: false,
             max_attempts: DEFAULT_RETRY_MAX_ATTEMPTS,
             max_duration: None,
-            delay_strategy: Delay::Exponential {
+            delay_strategy: RetryDelay::Exponential {
                 initial: DEFAULT_RETRY_INITIAL_DELAY,
                 max: DEFAULT_RETRY_MAX_DELAY,
                 multiplier: DEFAULT_RETRY_MULTIPLIER,
@@ -318,18 +318,18 @@ struct HttpRetryConfigInput {
 fn parse_retry_delay_strategy(
     value: &str,
     raw: &HttpRetryConfigInput,
-) -> Result<Delay, HttpConfigError> {
+) -> Result<RetryDelay, HttpConfigError> {
     let normalized = value.trim().to_ascii_uppercase().replace('-', "_");
     match normalized.as_str() {
-        "NONE" => Ok(Delay::None),
-        "FIXED" => Ok(Delay::Fixed(
+        "NONE" => Ok(RetryDelay::None),
+        "FIXED" => Ok(RetryDelay::Fixed(
             raw.fixed_delay.unwrap_or(DEFAULT_RETRY_INITIAL_DELAY),
         )),
-        "RANDOM" => Ok(Delay::Random {
+        "RANDOM" => Ok(RetryDelay::Random {
             min: raw.random_min_delay.unwrap_or(DEFAULT_RETRY_INITIAL_DELAY),
             max: raw.random_max_delay.unwrap_or(DEFAULT_RETRY_MAX_DELAY),
         }),
-        "EXPONENTIAL_BACKOFF" | "EXPONENTIAL" => Ok(Delay::Exponential {
+        "EXPONENTIAL_BACKOFF" | "EXPONENTIAL" => Ok(RetryDelay::Exponential {
             initial: raw
                 .backoff_initial_delay
                 .unwrap_or(DEFAULT_RETRY_INITIAL_DELAY),
