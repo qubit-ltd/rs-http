@@ -41,13 +41,13 @@ pub use constants::DEFAULT_SENSITIVE_HEADER_NAMES;
 pub use error::{HttpError, HttpErrorKind, HttpResult, RetryHint};
 pub use options::{
     HttpClientOptions, HttpConfigError, HttpConfigErrorKind, HttpLoggingOptions,
-    HttpRetryMethodPolicy, HttpRetryOptions, HttpTimeoutOptions, ProxyOptions, ProxyType,
-    SensitiveHttpHeaders,
+    HttpRetryMethodPolicy, HttpRetryOptions, HttpTimeoutOptions, PendingHttpRetryAfterDelay,
+    ProxyOptions, ProxyType, SensitiveHttpHeaders,
 };
 pub use qubit_retry::{RetryDelay, RetryJitter};
 pub use request::{
-    AsyncHttpHeaderInjector, HttpHeaderInjector, HttpRequest, HttpRequestBody,
-    HttpRequestBuilder, HttpRequestInterceptor, HttpRequestInterceptors, HttpRequestRetryOverride,
+    AsyncHttpHeaderInjector, HttpHeaderInjector, HttpRequest, HttpRequestBody, HttpRequestBuilder,
+    HttpRequestInterceptor, HttpRequestInterceptors, HttpRequestRetryOverride,
 };
 pub use response::{
     HttpByteStream, HttpResponse, HttpResponseInterceptor, HttpResponseInterceptors,

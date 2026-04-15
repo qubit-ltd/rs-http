@@ -14,7 +14,7 @@
 //!
 //! Haixing Hu
 
-use super::retry_controller::RetryController;
+use super::http_retry_executor::HttpRetryExecutor;
 use super::sse_reconnect::SseReconnectRunner;
 use crate::{
     response::HttpResponseOptions,
@@ -323,11 +323,11 @@ impl HttpClient {
     async fn execute_with_retry(
         &self,
         request: HttpRequest,
-        retry_options: HttpRetryOptions,
+        options: HttpRetryOptions,
     ) -> HttpResult<HttpResponse> {
         let honor_retry_after = request.retry_override().should_honor_retry_after();
-        let retry_controller = RetryController::new(&retry_options, honor_retry_after)?;
-        retry_controller.run_response(self, request).await
+        let executor = HttpRetryExecutor::new(self, &options, honor_retry_after)?;
+        executor.execute(request).await
     }
 }
 

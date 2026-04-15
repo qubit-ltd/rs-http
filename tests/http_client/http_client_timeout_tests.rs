@@ -32,9 +32,7 @@ async fn test_client_level_request_timeout_triggers_timeout_classification() {
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.request_timeout = Some(Duration::from_millis(80));
 
-    let client = HttpClientFactory::new()
-        .create(options)
-        .unwrap();
+    let client = HttpClientFactory::new().create(options).unwrap();
     let request = client.request(Method::GET, "/request-timeout").build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -61,9 +59,7 @@ async fn test_request_level_timeout_overrides_client_level_timeout() {
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.request_timeout = Some(Duration::from_secs(5));
 
-    let client = HttpClientFactory::new()
-        .create(options)
-        .unwrap();
+    let client = HttpClientFactory::new().create(options).unwrap();
     let request = client
         .request(Method::GET, "/request-timeout-override")
         .timeout(Duration::from_millis(80))
@@ -93,9 +89,7 @@ async fn test_client_level_write_timeout_triggers_write_timeout_error() {
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.request_timeout = Some(Duration::from_secs(5));
 
-    let client = HttpClientFactory::new()
-        .create(options)
-        .unwrap();
+    let client = HttpClientFactory::new().create(options).unwrap();
     let request = client.request(Method::GET, "/client-write-timeout").build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -122,9 +116,7 @@ async fn test_request_level_write_timeout_overrides_client_level_timeout() {
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.request_timeout = Some(Duration::from_secs(5));
 
-    let client = HttpClientFactory::new()
-        .create(options)
-        .unwrap();
+    let client = HttpClientFactory::new().create(options).unwrap();
     let request = client
         .request(Method::GET, "/request-write-timeout")
         .write_timeout(Duration::from_millis(80))
@@ -154,9 +146,7 @@ async fn test_timeout_classification_is_retryable_in_deterministic_path() {
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.request_timeout = Some(Duration::from_millis(80));
 
-    let client = HttpClientFactory::new()
-        .create(options)
-        .unwrap();
+    let client = HttpClientFactory::new().create(options).unwrap();
     let request = client
         .request(Method::GET, "/deterministic-timeout")
         .build();
@@ -185,9 +175,7 @@ async fn test_request_timeout_during_body_read_is_classified_as_read_timeout() {
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.request_timeout = Some(Duration::from_secs(5));
 
-    let client = HttpClientFactory::new()
-        .create(options)
-        .unwrap();
+    let client = HttpClientFactory::new().create(options).unwrap();
     let request = client
         .request(Method::GET, "/request-timeout-read-phase")
         .build();
@@ -218,9 +206,7 @@ async fn test_request_level_read_timeout_overrides_client_level_for_buffered_exe
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.request_timeout = Some(Duration::from_secs(5));
 
-    let client = HttpClientFactory::new()
-        .create(options)
-        .unwrap();
+    let client = HttpClientFactory::new().create(options).unwrap();
     let request = client
         .request(Method::GET, "/request-read-timeout-override-buffered")
         .read_timeout(Duration::from_millis(80))
@@ -259,9 +245,7 @@ async fn test_request_level_read_timeout_overrides_client_level_for_stream_body(
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.request_timeout = Some(Duration::from_secs(5));
 
-    let client = HttpClientFactory::new()
-        .create(options)
-        .unwrap();
+    let client = HttpClientFactory::new().create(options).unwrap();
     let request = client
         .request(Method::GET, "/request-read-timeout-override-stream")
         .read_timeout(Duration::from_millis(80))
@@ -271,9 +255,7 @@ async fn test_request_level_read_timeout_overrides_client_level_for_stream_body(
         .expect("execute timed out")
         .expect("request should start");
 
-    let mut stream = response
-        .stream()
-        .expect("stream body should be available");
+    let mut stream = response.stream().expect("stream body should be available");
     let first = stream
         .next()
         .await
