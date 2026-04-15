@@ -249,7 +249,7 @@
 | PRD 需求ID | 对齐设计章节 | 对齐说明 |
 | --- | --- | --- |
 | PRD-HTTP-001 | 5.1 | `HttpClientOptions` 结构与默认值 |
-| PRD-HTTP-002 | 5.2 | `HttpClientFactory`、`create()` 与 `create_with_options(...)` |
+| PRD-HTTP-002 | 5.2 | `HttpClientFactory`、`create_default()` 与 `create(...)` |
 | PRD-HTTP-003 | 5.3 | `request/execute/execute_stream` |
 | PRD-HTTP-004 | 5.4 | Header 注入机制与顺序 |
 | PRD-HTTP-005 | 5.1, 8.1 | 代理字段与 `reqwest` 映射 |

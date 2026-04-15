@@ -117,8 +117,8 @@ pub struct ProxyOptions {
 pub struct HttpClientFactory;
 
 impl HttpClientFactory {
-    pub fn create(&self) -> Result<HttpClient, HttpError>;
-    pub fn create_with_options(
+    pub fn create_default(&self) -> Result<HttpClient, HttpError>;
+    pub fn create(
         &self,
         options: HttpClientOptions,
     ) -> Result<HttpClient, HttpError>;
@@ -132,7 +132,7 @@ impl HttpClientFactory {
 
 - `HttpClientFactory` 当前明确是基于 `reqwest` 的具体工厂类型。
 - 工厂负责把统一 options 映射到底层 `reqwest::ClientBuilder`。
-- `create()` 等价于使用 `HttpClientOptions::default()` 调用 `create_with_options(...)`。
+- `create_default()` 等价于使用 `HttpClientOptions::default()` 调用 `create(...)`。
 
 ### 5.3 请求与响应
 

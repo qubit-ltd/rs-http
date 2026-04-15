@@ -39,7 +39,7 @@ async fn main() -> qubit_http::HttpResult<()> {
     options.set_base_url("https://api.example.com")?;
     options.add_header("x-app", "demo")?;
 
-    let client = HttpClientFactory::new().create_with_options(options)?;
+    let client = HttpClientFactory::new().create(options)?;
     let request = client
         .request(Method::GET, "/users/42")
         .query_param("expand", "profile")
@@ -59,7 +59,7 @@ async fn main() -> qubit_http::HttpResult<()> {
 ### 默认客户端
 
 ```rust
-let client = qubit_http::HttpClientFactory::new().create()?;
+let client = qubit_http::HttpClientFactory::new().create_default()?;
 ```
 
 默认行为：
@@ -105,10 +105,10 @@ options.retry.delay_strategy = Delay::Exponential {
 };
 options.retry.method_policy = HttpRetryMethodPolicy::IdempotentOnly;
 
-let client = HttpClientFactory::new().create_with_options(options)?;
+let client = HttpClientFactory::new().create(options)?;
 ```
 
-`create_with_options` 会先执行校验。常见校验包括：超时必须大于 0；启用代理时必须有非空 host 和非 0 port；只有设置 username 时才能设置 password；日志记录请求体或响应体时 `body_size_limit` 必须大于 0；`user_agent` 不能为空并且必须是合法 header value；SSE 行/帧上限必须大于 0。
+`create` 会先执行校验。常见校验包括：超时必须大于 0；启用代理时必须有非空 host 和非 0 port；只有设置 username 时才能设置 password；日志记录请求体或响应体时 `body_size_limit` 必须大于 0；`user_agent` 不能为空并且必须是合法 header value；SSE 行/帧上限必须大于 0。
 
 ### 从 qubit-config 读取
 
@@ -304,14 +304,12 @@ body 可用方式：
 
 | 方法 | 行为 |
 | --- | --- |
-| `bytes_body()` | 懒读取完整 body，读取后缓存，后续可重复调用 |
-| `text()` | 用 UTF-8 解码完整 body |
-| `json<T>()` | 用 serde JSON 反序列化完整 body |
-| `stream_body()` | 返回 `HttpByteStream`；如果 body 尚未缓存，会消费底层响应流 |
-| `buffered_body()` | 查看是否已经缓存完整 body |
-| `into_error_body_preview(max_bytes)` | 消费响应并生成有限长度的错误 body 预览 |
+| `bytes_body()` | 懒读取完整 body（首次 `await` 时读入并缓存），后续可重复调用 |
+| `text()` | 基于 `bytes_body()`，用 UTF-8 解码完整 body |
+| `json<T>()` | 基于 `bytes_body()`，用 serde JSON 反序列化完整 body |
+| `stream_body()` | 返回 `HttpByteStream`；若 body 已缓存则为单块内存流。未缓存时调用本身**不会**立刻读完整 body，而是把底层响应交给返回的流，**在轮询该流时**按需读取字节块 |
 
-注意：底层响应体只能消费一次。调用 `bytes_body`、`text` 或 `json` 会把完整 body 缓存起来；之后 `stream_body` 会返回缓存内容构成的单块流。如果先调用 `stream_body` 且流未被缓存，后续完整 body 读取将没有原始后端可读。
+注意：底层 `reqwest` 响应体在同一 `HttpResponse` 上只能有一条消费路径。调用 `bytes_body`、`text` 或 `json` 会把完整 body 读入并缓存；之后 `stream_body` 会返回由缓存构成的单块流。若在未缓存时先调用 `stream_body`，底层句柄已交给返回的流，须通过该流读完 body；此时再调用 `bytes_body` / `text` / `json` 不会再从网络补读（会得到空 body），因此不要混用「先流式、再整包读」。
 
 `retry_after_hint()` 会在响应状态为 429 或 5xx 且存在合法 `Retry-After` header 时返回延迟。它支持 `delta-seconds` 和 HTTP-date 两种格式；HTTP-date 早于当前时间时返回 0 秒。`HttpResponseMeta` 上也有同名方法，响应拦截器可以在只拿到 metadata 时读取这个提示。
 

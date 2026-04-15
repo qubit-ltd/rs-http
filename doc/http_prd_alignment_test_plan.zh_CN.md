@@ -36,7 +36,7 @@
 | PRD 编号 | 结论 | 说明 |
 | --- | --- | --- |
 | `PRD-HTTP-001` | 对齐 | `HttpClientOptions`、默认值、配置加载与校验已落地。 |
-| `PRD-HTTP-002` | 对齐 | `HttpClientFactory` 的 `create()`、`create_with_options(...)` 与 `create_from_config()` 已落地。 |
+| `PRD-HTTP-002` | 对齐 | `HttpClientFactory` 的 `create_default()`、`create(...)` 与 `create_from_config()` 已落地。 |
 | `PRD-HTTP-003` | 对齐 | `request / execute / execute_stream` 已具备，URL 解析与非法 URL 错误已实现。 |
 | `PRD-HTTP-004` | 对齐 | 默认头、注入器、请求级覆盖顺序已实现并已有集成测试。 |
 | `PRD-HTTP-005` | 部分对齐 | `http / https` 代理路径具备；`socks5` 只停留在配置和枚举层，未闭环。 |
@@ -270,7 +270,7 @@
 | 用例 ID | 当前状态 | 级别 | 场景 | 关键断言 | 建议文件 |
 | --- | --- | --- | --- | --- | --- |
 | `FAC-001` | 已有 | 组件 | `create()` 使用默认 options 创建 client | 成功返回 `HttpClient` | `tests/factory/reqwest_http_client_factory_tests.rs` |
-| `FAC-001B` | 已有 | 组件 | `create_with_options(...)` 使用显式 options 创建 client | 成功返回 `HttpClient` 并保留 options | `tests/factory/reqwest_http_client_factory_tests.rs` |
+| `FAC-001B` | 已有 | 组件 | `create(...)` 使用显式 options 创建 client | 成功返回 `HttpClient` 并保留 options | `tests/factory/reqwest_http_client_factory_tests.rs` |
 | `FAC-002` | 已有 | 组件 | `create_from_config()` | prefix path 保留，配置校验前置 | `tests/factory/reqwest_http_client_factory_tests.rs` |
 | `FAC-003` | 需补 | 组件 | client build 失败映射 | 失败应转为 `HttpError::BuildClient` 或配置错误 | `tests/factory/reqwest_http_client_factory_tests.rs` |
 | `FAC-004` | 需补 | 组件 | `proxy.enabled=false` | 不继承环境代理 | `tests/factory/reqwest_http_client_factory_tests.rs` |
