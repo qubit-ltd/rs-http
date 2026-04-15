@@ -84,9 +84,13 @@ async fn test_execute_request_can_be_cancelled_while_reading_response_body() {
         .request(Method::GET, "/cancel-reading")
         .cancellation_token(token)
         .build();
-    let error = timeout(Duration::from_secs(3), client.execute(request))
+    let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")
+        .expect("request should start");
+    let error = response
+        .bytes_body()
+        .await
         .expect_err("request should be cancelled while reading body");
     assert_eq!(error.kind, HttpErrorKind::Cancelled);
     assert!(error.message.contains("cancelled"));
@@ -140,7 +144,7 @@ async fn test_execute_request_can_be_cancelled_while_sending() {
 }
 
 #[tokio::test]
-async fn test_execute_stream_can_be_cancelled_after_first_chunk() {
+async fn test_execute_stream_body_can_be_cancelled_after_first_chunk() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
         headers: vec![("Content-Type".to_string(), "text/plain".to_string())],
@@ -170,12 +174,14 @@ async fn test_execute_stream_can_be_cancelled_after_first_chunk() {
         .request(Method::GET, "/cancel-stream")
         .cancellation_token(token.clone())
         .build();
-    let response = timeout(Duration::from_secs(3), client.execute_stream(request))
+    let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
-        .expect("execute_stream timed out")
-        .expect("streaming request should start");
+        .expect("execute timed out")
+        .expect("request should start");
 
-    let mut stream = response.into_stream();
+    let mut stream = response
+        .stream_body()
+        .expect("stream body should be available");
     let first = stream
         .next()
         .await

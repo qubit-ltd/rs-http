@@ -12,7 +12,7 @@
 use bytes::Bytes;
 use futures_util::StreamExt as _;
 use http::{HeaderMap, Method};
-use qubit_http::{sse::SseReconnectOptions, HttpResult, StreamingHttpResponse};
+use qubit_http::{sse::SseReconnectOptions, HttpResponse, HttpResult};
 
 async fn collect_results<T>(stream: impl futures_util::Stream<Item = HttpResult<T>>) -> Vec<T> {
     stream
@@ -21,17 +21,13 @@ async fn collect_results<T>(stream: impl futures_util::Stream<Item = HttpResult<
         .await
 }
 
-fn stream_response_from_chunks(chunks: Vec<&'static str>) -> StreamingHttpResponse {
-    let stream = futures_util::stream::iter(
-        chunks
-            .into_iter()
-            .map(|text| Ok::<Bytes, qubit_http::HttpError>(Bytes::from(text.to_string()))),
-    );
-    StreamingHttpResponse::new_stream(
+fn stream_response_from_chunks(chunks: Vec<&'static str>) -> HttpResponse {
+    let body = chunks.join("");
+    HttpResponse::new(
         http::StatusCode::OK,
         HeaderMap::new(),
+        Bytes::from(body),
         url::Url::parse("https://example.com/stream").unwrap(),
-        Box::pin(stream),
         Method::GET,
     )
 }
@@ -41,7 +37,7 @@ async fn test_decode_events_parses_fields_and_multiline_data() {
     let response = stream_response_from_chunks(vec![
         "event: message\r\nid: evt-1\r\ndata: line-1\r\ndata: line-2\r\nretry: 123\r\n\r\n",
     ]);
-    let events = collect_results(response.decode_events()).await;
+    let events = collect_results(response.decode_sse_events()).await;
 
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].event.as_deref(), Some("message"));
@@ -54,7 +50,7 @@ async fn test_decode_events_parses_fields_and_multiline_data() {
 async fn test_decode_events_ignores_comment_lines() {
     let response =
         stream_response_from_chunks(vec![": keep-alive\n", "data: {\"value\": 7}\n", "\n"]);
-    let events = collect_results(response.decode_events()).await;
+    let events = collect_results(response.decode_sse_events()).await;
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].data, "{\"value\": 7}");
 }

@@ -19,8 +19,7 @@ use futures_util::StreamExt;
 use http::{HeaderMap, Method, StatusCode};
 use qubit_http::{
     sse::{DoneMarkerPolicy, SseChunk, SseJsonMode, SseReconnectOptions},
-    HttpClientFactory, HttpClientOptions, HttpError, HttpErrorKind, StreamingHttpResponse,
-    RequestInterceptor,
+    HttpClientFactory, HttpClientOptions, HttpErrorKind, HttpResponse, RequestInterceptor,
 };
 use tokio::time::timeout;
 
@@ -31,17 +30,13 @@ struct TestChunk {
     value: i32,
 }
 
-fn stream_response_from_chunks(chunks: Vec<Vec<u8>>) -> StreamingHttpResponse {
-    let stream = futures_util::stream::iter(
-        chunks
-            .into_iter()
-            .map(|bytes| Ok::<Bytes, qubit_http::HttpError>(Bytes::from(bytes))),
-    );
-    StreamingHttpResponse::new_stream(
+fn stream_response_from_chunks(chunks: Vec<Vec<u8>>) -> HttpResponse {
+    let body = chunks.into_iter().flatten().collect::<Vec<u8>>();
+    HttpResponse::new(
         StatusCode::OK,
         HeaderMap::new(),
+        Bytes::from(body),
         url::Url::parse("https://example.com/stream").unwrap(),
-        Box::pin(stream),
         Method::GET,
     )
 }
@@ -49,7 +44,7 @@ fn stream_response_from_chunks(chunks: Vec<Vec<u8>>) -> StreamingHttpResponse {
 #[tokio::test]
 async fn test_decode_events_reports_sse_protocol_error_on_non_utf8_line() {
     let response = stream_response_from_chunks(vec![vec![0xFF, b'\n']]);
-    let mut events = response.decode_events();
+    let mut events = response.decode_sse_events();
     let error = events.next().await.unwrap().unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::SseProtocol);
 }
@@ -62,7 +57,7 @@ async fn test_decode_events_handles_chunk_boundaries_and_trailing_flush() {
         b"\n".to_vec(),
         b"data: {\"value\":2}".to_vec(),
     ]);
-    let mut events = response.decode_events();
+    let mut events = response.decode_sse_events();
 
     let first = events.next().await.unwrap().unwrap();
     assert_eq!(first.data, "{\"value\":1}");
@@ -72,21 +67,11 @@ async fn test_decode_events_handles_chunk_boundaries_and_trailing_flush() {
 }
 
 #[tokio::test]
-async fn test_decode_events_propagates_upstream_stream_error() {
-    let stream = futures_util::stream::iter(vec![Err::<Bytes, HttpError>(HttpError::transport(
-        "upstream broken",
-    ))]);
-    let response = StreamingHttpResponse::new_stream(
-        StatusCode::OK,
-        HeaderMap::new(),
-        url::Url::parse("https://example.com/stream").unwrap(),
-        Box::pin(stream),
-        Method::GET,
-    );
-
-    let mut events = response.decode_events();
+async fn test_decode_events_reports_frame_limit_error() {
+    let response = stream_response_from_chunks(vec![b"data: one\ndata: two\n\n".to_vec()]);
+    let mut events = response.decode_sse_events_with_limits(1024, 8);
     let error = events.next().await.unwrap().unwrap_err();
-    assert_eq!(error.kind, HttpErrorKind::Transport);
+    assert_eq!(error.kind, HttpErrorKind::SseProtocol);
 }
 
 #[tokio::test]
@@ -117,11 +102,11 @@ async fn test_execute_stream_with_decode_events_end_to_end() {
         .unwrap();
 
     let request = client.request(Method::GET, "/sse").build();
-    let stream_response = timeout(Duration::from_secs(3), client.execute_stream(request))
+    let stream_response = timeout(Duration::from_secs(3), client.execute(request))
         .await
-        .expect("execute_stream timed out")
+        .expect("execute timed out")
         .unwrap();
-    let mut events = stream_response.decode_events();
+    let mut events = stream_response.decode_sse_events();
 
     let first = events.next().await.unwrap().unwrap();
     assert_eq!(first.data, "{\"value\":1}");
@@ -163,8 +148,8 @@ async fn test_execute_stream_decode_events_reports_read_timeout_when_interrupted
         .unwrap();
 
     let request = client.request(Method::GET, "/sse-timeout").build();
-    let stream_response = client.execute_stream(request).await.unwrap();
-    let mut events = stream_response.decode_events();
+    let stream_response = client.execute(request).await.unwrap();
+    let mut events = stream_response.decode_sse_events();
 
     let first = events.next().await.unwrap().unwrap();
     assert_eq!(first.data, "{\"value\":1}");
@@ -202,8 +187,8 @@ async fn test_execute_stream_decode_json_chunks_uses_client_default_strict_mode(
         .unwrap();
 
     let request = client.request(Method::GET, "/sse-strict").build();
-    let stream_response = client.execute_stream(request).await.unwrap();
-    let mut chunks = stream_response.decode_json_chunks::<TestChunk>(DoneMarkerPolicy::DefaultDone);
+    let stream_response = client.execute(request).await.unwrap();
+    let mut chunks = stream_response.decode_sse_json_chunks::<TestChunk>(DoneMarkerPolicy::DefaultDone);
 
     let first = chunks.next().await.unwrap().unwrap();
     assert_eq!(first, SseChunk::Data(TestChunk { value: 1 }));
@@ -235,8 +220,8 @@ async fn test_execute_stream_decode_events_uses_client_default_sse_limits() {
         .unwrap();
 
     let request = client.request(Method::GET, "/sse-limits").build();
-    let stream_response = client.execute_stream(request).await.unwrap();
-    let mut events = stream_response.decode_events();
+    let stream_response = client.execute(request).await.unwrap();
+    let mut events = stream_response.decode_sse_events();
 
     let error = events.next().await.unwrap().unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::SseProtocol);

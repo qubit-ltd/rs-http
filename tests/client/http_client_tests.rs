@@ -13,6 +13,7 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use bytes::Bytes;
 use futures_util::StreamExt;
 use http::header::{HeaderName, AUTHORIZATION, CONTENT_TYPE};
 use http::{HeaderValue, Method, StatusCode};
@@ -60,12 +61,12 @@ async fn test_execute_success_with_header_injector_and_request_override() {
         .unwrap()
         .build();
 
-    let response = timeout(Duration::from_secs(3), client.execute(request))
+    let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")
         .unwrap();
     assert_eq!(response.meta.status, StatusCode::OK);
-    let json = response.json::<serde_json::Value>().unwrap();
+    let json = response.json::<serde_json::Value>().await.unwrap();
     assert_eq!(json["ok"], true);
     assert_eq!(json["value"], 7);
 
@@ -243,10 +244,11 @@ async fn test_execute_read_timeout_on_buffered_body() {
         .create_with_options(options)
         .unwrap();
     let request = client.request(Method::GET, "/slow-body").build();
-    let error = timeout(Duration::from_secs(3), client.execute(request))
+    let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")
-        .unwrap_err();
+        .unwrap();
+    let error = response.bytes_body().await.unwrap_err();
 
     assert_eq!(error.kind, HttpErrorKind::ReadTimeout);
     assert_eq!(error.method, Some(Method::GET));
@@ -283,9 +285,9 @@ async fn test_execute_stream_success_reads_all_chunks() {
         .unwrap();
 
     let request = client.request(Method::GET, "/stream").build();
-    let stream_response = timeout(Duration::from_secs(3), client.execute_stream(request))
+    let mut stream_response = timeout(Duration::from_secs(3), client.execute(request))
         .await
-        .expect("execute_stream timed out")
+        .expect("execute timed out")
         .unwrap();
     assert_eq!(stream_response.status(), StatusCode::OK);
     assert_eq!(
@@ -294,7 +296,9 @@ async fn test_execute_stream_success_reads_all_chunks() {
     );
 
     let mut body = Vec::new();
-    let mut stream = stream_response.into_stream();
+    let mut stream = stream_response
+        .stream_body()
+        .expect("stream body should be available");
     while let Some(item) = stream.next().await {
         let bytes = item.unwrap();
         body.extend_from_slice(&bytes);
@@ -335,11 +339,13 @@ async fn test_execute_stream_read_timeout() {
         .create_with_options(options)
         .unwrap();
     let request = client.request(Method::GET, "/stream-timeout").build();
-    let response = timeout(Duration::from_secs(3), client.execute_stream(request))
+    let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
-        .expect("execute_stream timed out")
+        .expect("execute timed out")
         .unwrap();
-    let mut stream = response.into_stream();
+    let mut stream = response
+        .stream_body()
+        .expect("stream body should be available");
 
     let first = stream.next().await.unwrap().unwrap();
     assert_eq!(first, b"first".as_slice());
@@ -375,7 +381,7 @@ async fn test_execute_with_text_body_and_request_timeout() {
         .text_body("hello text")
         .build();
 
-    let response = timeout(Duration::from_secs(3), client.execute(request))
+    let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")
         .unwrap();
@@ -413,7 +419,7 @@ async fn test_execute_with_bytes_body() {
         .bytes_body(vec![1_u8, 2, 3, 4])
         .build();
 
-    let response = timeout(Duration::from_secs(3), client.execute(request))
+    let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")
         .unwrap();
@@ -454,12 +460,13 @@ async fn test_execute_stream_post_json_body_with_query_and_timeout() {
         .unwrap()
         .build();
 
-    let response = timeout(Duration::from_secs(3), client.execute_stream(request))
+    let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
-        .expect("execute_stream timed out")
+        .expect("execute timed out")
         .unwrap();
     let body = response
-        .into_stream()
+        .stream_body()
+        .expect("stream body should be available")
         .collect::<Vec<_>>()
         .await
         .into_iter()
@@ -505,12 +512,13 @@ async fn test_execute_stream_with_text_body() {
         .text_body("hello stream")
         .build();
 
-    let response = timeout(Duration::from_secs(3), client.execute_stream(request))
+    let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
-        .expect("execute_stream timed out")
+        .expect("execute timed out")
         .unwrap();
     let body = response
-        .into_stream()
+        .stream_body()
+        .expect("stream body should be available")
         .collect::<Vec<_>>()
         .await
         .into_iter()
@@ -558,12 +566,13 @@ async fn test_execute_stream_with_bytes_body() {
         .bytes_body(vec![9_u8, 8, 7])
         .build();
 
-    let response = timeout(Duration::from_secs(3), client.execute_stream(request))
+    let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
-        .expect("execute_stream timed out")
+        .expect("execute timed out")
         .unwrap();
     let body = response
-        .into_stream()
+        .stream_body()
+        .expect("stream body should be available")
         .collect::<Vec<_>>()
         .await
         .into_iter()
@@ -596,9 +605,9 @@ async fn test_execute_stream_maps_non_success_status_to_http_error() {
         .unwrap();
     let request = client.request(Method::GET, "/stream-status").build();
 
-    let error = timeout(Duration::from_secs(3), client.execute_stream(request))
+    let error = timeout(Duration::from_secs(3), client.execute(request))
         .await
-        .expect("execute_stream timed out")
+        .expect("execute timed out")
         .unwrap_err();
 
     assert_eq!(error.kind, HttpErrorKind::Status);
@@ -807,11 +816,11 @@ async fn test_execute_maps_truncated_response_body_to_decode_error() {
         .create_with_options(options)
         .unwrap();
     let request = client.request(Method::GET, "/truncated-body").build();
-
-    let error = timeout(Duration::from_secs(3), client.execute(request))
+    let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")
-        .unwrap_err();
+        .unwrap();
+    let error = response.bytes_body().await.unwrap_err();
 
     assert_eq!(error.kind, HttpErrorKind::Decode);
     assert_eq!(error.method, Some(Method::GET));
@@ -864,13 +873,13 @@ async fn test_execute_retries_retryable_status_until_success() {
     }));
 
     let request = client.request(Method::GET, "/retry-status").build();
-    let response = timeout(Duration::from_secs(3), client.execute(request))
+    let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")
         .unwrap();
 
     assert_eq!(response.meta.status, StatusCode::OK);
-    assert_eq!(response.body, b"ok".as_slice());
+    assert_eq!(response.bytes_body().await.unwrap(), Bytes::from_static(b"ok"));
     assert_eq!(*injector_count.lock().unwrap(), 2);
 
     let captured = timeout(Duration::from_secs(3), server.finish())
@@ -1086,7 +1095,7 @@ async fn test_execute_retries_post_when_all_methods_policy_is_enabled() {
         .unwrap();
 
     let request = client.request(Method::POST, "/post-all").build();
-    let response = timeout(Duration::from_secs(3), client.execute(request))
+    let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")
         .unwrap();
@@ -1128,13 +1137,13 @@ async fn test_execute_retries_write_timeout_until_success() {
         .unwrap();
 
     let request = client.request(Method::GET, "/write-timeout-retry").build();
-    let response = timeout(Duration::from_secs(3), client.execute(request))
+    let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")
         .unwrap();
 
     assert_eq!(response.meta.status, StatusCode::OK);
-    assert_eq!(response.body, b"ok".as_slice());
+    assert_eq!(response.bytes_body().await.unwrap(), Bytes::from_static(b"ok"));
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
         .expect("server finish timed out");
@@ -1171,12 +1180,13 @@ async fn test_execute_stream_retries_initial_status_until_success() {
         .unwrap();
 
     let request = client.request(Method::GET, "/stream-retry").build();
-    let response = timeout(Duration::from_secs(3), client.execute_stream(request))
+    let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
-        .expect("execute_stream timed out")
+        .expect("execute timed out")
         .unwrap();
     let body = response
-        .into_stream()
+        .stream_body()
+        .expect("stream body should be available")
         .collect::<Vec<_>>()
         .await
         .into_iter()
@@ -1220,12 +1230,13 @@ async fn test_execute_stream_does_not_retry_after_stream_is_returned() {
         .unwrap();
 
     let request = client.request(Method::GET, "/stream-read-timeout").build();
-    let response = timeout(Duration::from_secs(3), client.execute_stream(request))
+    let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
-        .expect("execute_stream timed out")
+        .expect("execute timed out")
         .unwrap();
-
-    let mut stream = response.into_stream();
+    let mut stream = response
+        .stream_body()
+        .expect("stream body should be available");
     let first = stream
         .next()
         .await

@@ -49,12 +49,12 @@ async fn test_ipv4_only_with_localhost_request_is_accessible() {
         .create_with_options(options)
         .unwrap();
     let request = client.request(Method::GET, "/ipv4-check").build();
-    let response = timeout(Duration::from_secs(3), client.execute(request))
+    let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")
         .unwrap();
     assert_eq!(response.meta.status.as_u16(), 200);
-    assert_eq!(response.text().unwrap(), "ipv4-only-ok");
+    assert_eq!(response.text().await.unwrap(), "ipv4-only-ok");
 }
 
 #[tokio::test]

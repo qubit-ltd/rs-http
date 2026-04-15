@@ -11,7 +11,7 @@ use bytes::Bytes;
 use http::header::{AUTHORIZATION, CONTENT_TYPE, SET_COOKIE};
 use http::{HeaderMap, HeaderValue, Method, StatusCode};
 use qubit_http::{
-    BufferedHttpResponse, HttpClientFactory, HttpClientOptions, HttpLogger, HttpLoggingOptions,
+    HttpClientFactory, HttpClientOptions, HttpLogger, HttpLoggingOptions, HttpResponse,
     HttpRequest, HttpRequestBody, HttpResponseMeta, SensitiveHeaders,
 };
 use url::Url;
@@ -100,7 +100,7 @@ fn test_log_response_masks_sensitive_headers() {
     let logger = HttpLogger::new(&client_options);
 
     let logs = capture_trace_logs(|| {
-        let response = BufferedHttpResponse::new(
+        let response = HttpResponse::new(
             StatusCode::OK,
             headers.clone(),
             Bytes::from_static(b"ok"),
@@ -127,7 +127,7 @@ fn test_log_response_binary_body_and_truncation() {
     let logger = HttpLogger::new(&client_options);
 
     let logs = capture_trace_logs(|| {
-        let response = BufferedHttpResponse::new(
+        let response = HttpResponse::new(
             StatusCode::OK,
             headers.clone(),
             Bytes::from_static(&[0xFF, 0xFE, 0xFD, 0xFC, 0xFB]),

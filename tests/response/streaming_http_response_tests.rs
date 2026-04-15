@@ -10,18 +10,16 @@
 use bytes::Bytes;
 use futures_util::StreamExt;
 use http::{HeaderMap, Method, StatusCode};
-use qubit_http::StreamingHttpResponse;
+use qubit_http::HttpResponse;
 use url::Url;
 
 #[test]
 fn test_http_stream_response_is_success_and_new() {
-    let response = StreamingHttpResponse::new_stream(
+    let response = HttpResponse::new(
         StatusCode::CREATED,
         HeaderMap::new(),
+        Bytes::from_static(b"ok"),
         Url::parse("https://example.com/stream").unwrap(),
-        Box::pin(futures_util::stream::once(async {
-            Ok(Bytes::from_static(b"ok"))
-        })),
         Method::GET,
     );
 
@@ -35,22 +33,19 @@ fn test_http_stream_response_is_success_and_new() {
 
 #[tokio::test]
 async fn test_http_stream_response_into_stream_consumes_body() {
-    let response = StreamingHttpResponse::new_stream(
+    let mut response = HttpResponse::new(
         StatusCode::OK,
         HeaderMap::new(),
+        Bytes::from_static(b"part-1part-2"),
         Url::parse("https://example.com/stream").unwrap(),
-        Box::pin(futures_util::stream::iter(vec![
-            Ok(Bytes::from_static(b"part-1")),
-            Ok(Bytes::from_static(b"part-2")),
-        ])),
         Method::GET,
     );
 
-    let mut stream = response.into_stream();
+    let mut stream = response.stream_body().expect("stream body should be available");
     let mut chunks = Vec::new();
     while let Some(item) = stream.next().await {
         chunks.push(item.expect("stream item should decode"));
     }
 
-    assert_eq!(chunks, vec![b"part-1".to_vec(), b"part-2".to_vec()]);
+    assert_eq!(chunks, vec![Bytes::from_static(b"part-1part-2")]);
 }

@@ -236,7 +236,7 @@ async fn test_request_retry_override_honor_retry_after_waits_before_retrying_on_
 }
 
 #[tokio::test]
-async fn test_request_retry_override_honor_retry_after_waits_before_stream_retrying() {
+async fn test_request_retry_override_honor_retry_after_waits_before_body_stream_retrying() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Immediate {
             status: 429,
@@ -269,13 +269,14 @@ async fn test_request_retry_override_honor_retry_after_waits_before_stream_retry
         .honor_retry_after(true)
         .build();
     let start = Instant::now();
-    let response = timeout(Duration::from_secs(4), client.execute_stream(request))
+    let mut response = timeout(Duration::from_secs(4), client.execute(request))
         .await
-        .expect("execute_stream timed out")
+        .expect("execute timed out")
         .expect("request should succeed after retry");
     let elapsed = start.elapsed();
     let body = response
-        .into_stream()
+        .stream_body()
+        .expect("stream body should be available")
         .collect::<Vec<_>>()
         .await
         .into_iter()
