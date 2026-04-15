@@ -22,7 +22,7 @@ use std::time::Duration;
 use qubit_concurrent::Lock;
 use qubit_retry::{RetryAttemptFailure, RetryError, RetryResult};
 
-use super::sse_reconnect::SseReconnectRunner;
+use super::sse_reconnect_runner::SseReconnectRunner;
 use crate::{
     response::HttpResponseOptions,
     sse::{SseEventStream, SseReconnectOptions},
@@ -251,39 +251,6 @@ impl HttpClient {
         } else {
             self.execute_once(request).await
         }
-    }
-
-    /// Opens an SSE stream and reconnects automatically on retryable stream
-    /// failures.
-    ///
-    /// Reconnect behavior:
-    /// - retryable transport/read failures trigger reconnects;
-    /// - optional reconnect on clean EOF (`reconnect_on_eof`);
-    /// - `Last-Event-ID` is set from the latest parsed SSE `id:` field;
-    /// - optional use of SSE `retry:` as next reconnect delay.
-    ///
-    /// # Parameters
-    /// - `request`: SSE request template reused on reconnect.
-    /// - `reconnect_options`: Reconnect limits and delay policy.
-    ///
-    /// # Returns
-    /// SSE event stream yielding events from one or more reconnect sessions.
-    ///
-    /// # Errors
-    /// Stream items are `Result`; `Err` covers per-item failures such as:
-    /// - initial stream-open failures when not reconnectable or retries exhausted;
-    /// - SSE protocol errors (non-reconnectable by default);
-    /// - transport/read errors after reconnect budget is exhausted.
-    ///
-    /// # Side effects
-    /// Performs repeated HTTP requests and reads on reconnect; may sleep between
-    /// attempts according to reconnect options.
-    pub fn execute_sse_with_reconnect(
-        &self,
-        request: HttpRequest,
-        reconnect_options: SseReconnectOptions,
-    ) -> SseEventStream {
-        SseReconnectRunner::new(self.clone(), request, reconnect_options).run()
     }
 
     /// Performs one non-retrying execution: request interceptors, resolve URL,
@@ -556,6 +523,39 @@ impl HttpClient {
                 "HTTP retry max duration exceeded before a retryable error was captured: {elapsed:?}/{max_elapsed:?}"
             )),
         }
+    }
+
+    /// Opens an SSE stream and reconnects automatically on retryable stream
+    /// failures.
+    ///
+    /// Reconnect behavior:
+    /// - retryable transport/read failures trigger reconnects;
+    /// - optional reconnect on clean EOF (`reconnect_on_eof`);
+    /// - `Last-Event-ID` is set from the latest parsed SSE `id:` field;
+    /// - optional use of SSE `retry:` as next reconnect delay.
+    ///
+    /// # Parameters
+    /// - `request`: SSE request template reused on reconnect.
+    /// - `options`: Reconnect limits and delay policy.
+    ///
+    /// # Returns
+    /// SSE event stream yielding events from one or more reconnect sessions.
+    ///
+    /// # Errors
+    /// Stream items are `Result`; `Err` covers per-item failures such as:
+    /// - initial stream-open failures when not reconnectable or retries exhausted;
+    /// - SSE protocol errors (non-reconnectable by default);
+    /// - transport/read errors after reconnect budget is exhausted.
+    ///
+    /// # Side effects
+    /// Performs repeated HTTP requests and reads on reconnect; may sleep between
+    /// attempts according to reconnect options.
+    pub fn execute_sse_with_reconnect(
+        &self,
+        request: HttpRequest,
+        options: SseReconnectOptions,
+    ) -> SseEventStream {
+        SseReconnectRunner::new(self.clone(), request, options).run()
     }
 }
 
