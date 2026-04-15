@@ -6,112 +6,74 @@
  *    All rights reserved.
  *
  ******************************************************************************/
-//! Retry controller used by `HttpClient` to run normal/stream requests.
+//! HTTP retry executor used by `HttpClient` to run normal/stream requests.
 
 use std::time::Duration;
 
-use qubit_concurrent::{ArcMutex, Lock};
+use qubit_concurrent::Lock;
 use qubit_retry::{RetryAttemptFailure, RetryError, RetryExecutor, RetryResult};
 
 use crate::{
     HttpClient, HttpError, HttpRequest, HttpResponse, HttpResult, HttpRetryOptions,
+    PendingHttpRetryAfterDelay,
 };
 
-/// Shared state used to carry extra `Retry-After` delay into the next async
-/// retry attempt.
-type PendingRetryAfterDelay = ArcMutex<Option<Duration>>;
-
-/// Retry coordinator for one resolved retry policy.
-pub(super) struct RetryController {
+/// HTTP retry executor for one resolved retry policy.
+pub(super) struct HttpRetryExecutor {
+    client: HttpClient,
     executor: RetryExecutor<HttpError>,
-    pending_retry_after_delay: Option<PendingRetryAfterDelay>,
+    pending_after_delay: Option<PendingHttpRetryAfterDelay>,
 }
 
-impl RetryController {
-    /// Builds one retry controller from effective retry options.
+impl HttpRetryExecutor {
+    /// Builds one HTTP retry executor from effective retry options.
     ///
     /// # Parameters
+    /// - `client`: HTTP client used to run each attempt (stored by clone).
     /// - `retry_options`: Effective retry options for this request.
     /// - `honor_retry_after`: Whether to honor `Retry-After` on retryable
     ///   status responses (`429` and `5xx`).
     ///
     /// # Returns
-    /// Configured retry controller.
+    /// Configured HTTP retry executor.
     ///
     /// # Errors
     /// Returns [`HttpError`] when retry options or executor configuration is invalid.
     pub(super) fn new(
-        retry_options: &HttpRetryOptions,
+        client: &HttpClient,
+        options: &HttpRetryOptions,
         honor_retry_after: bool,
     ) -> HttpResult<Self> {
-        let mut builder = RetryExecutor::<HttpError>::builder()
-            .options(retry_options.to_executor_options()?)
-            .retry_decide(retry_options.to_executor_error_decider());
-
-        if honor_retry_after {
-            let pending_retry_after_delay: PendingRetryAfterDelay = ArcMutex::new(None);
-            let pending_for_listener = pending_retry_after_delay.clone();
-            builder = builder.on_retry(move |context, failure| {
-                let RetryAttemptFailure::Error(error) = failure else {
-                    return;
-                };
-                let Some(retry_after) = error.retry_after else {
-                    return;
-                };
-                if retry_after > context.next_delay {
-                    set_pending_retry_after_delay(
-                        &pending_for_listener,
-                        retry_after - context.next_delay,
-                    );
-                }
-            });
-            return builder
-                .build()
-                .map(|executor| Self {
-                    executor,
-                    pending_retry_after_delay: Some(pending_retry_after_delay),
-                })
-                .map_err(|error| {
-                    HttpError::other(format!("Invalid HTTP retry executor: {error}"))
-                });
-        }
-
-        builder
-            .build()
-            .map(|executor| Self {
-                executor,
-                pending_retry_after_delay: None,
-            })
-            .map_err(|error| HttpError::other(format!("Invalid HTTP retry executor: {error}")))
+        let (executor, pending_after_delay) = options.build_executor(honor_retry_after)?;
+        Ok(Self {
+            client: client.clone(),
+            executor,
+            pending_after_delay,
+        })
     }
 
-    /// Runs [`HttpClient::execute_once`] under the configured retry policy.
+    /// Executes [`HttpClient::execute_once`] under the configured retry policy.
     ///
     /// # Parameters
-    /// - `client`: HTTP client used to run attempts.
     /// - `request`: Built request passed to each [`HttpClient::execute_once`]
     ///   attempt.
     ///
     /// # Returns
     /// Same as a successful single attempt, or a mapped [`HttpError`] when
     /// retries abort or limits are exceeded.
-    pub(super) async fn run_response(
-        &self,
-        client: &HttpClient,
-        request: HttpRequest,
-    ) -> HttpResult<HttpResponse> {
-        let client = client.clone();
-        let pending_retry_after_delay = self.pending_retry_after_delay.clone();
+    pub(super) async fn execute(&self, request: HttpRequest) -> HttpResult<HttpResponse> {
+        let client = self.client.clone();
+        let pending_after_delay = self.pending_after_delay.clone();
         let result = self
             .executor
             .run_async(move || {
                 let client = client.clone();
                 let request = request.clone();
-                let pending_retry_after_delay = pending_retry_after_delay.clone();
+                let pending_after_delay = pending_after_delay.clone();
                 async move {
-                    if let Some(delay) = pending_retry_after_delay
+                    if let Some(delay) = pending_after_delay
                         .as_ref()
-                        .and_then(take_pending_retry_after_delay)
+                        .and_then(take_pending_after_delay)
                     {
                         tokio::time::sleep(delay).await;
                     }
@@ -123,16 +85,6 @@ impl RetryController {
     }
 }
 
-/// Stores the extra `Retry-After` delay that should be applied before the next
-/// retry attempt.
-///
-/// # Parameters
-/// - `pending`: Shared state carrying a pending delay.
-/// - `delay`: Extra delay to store.
-fn set_pending_retry_after_delay(pending: &PendingRetryAfterDelay, delay: Duration) {
-    pending.write(|slot| *slot = Some(delay));
-}
-
 /// Takes and clears the pending extra `Retry-After` delay.
 ///
 /// # Parameters
@@ -140,7 +92,7 @@ fn set_pending_retry_after_delay(pending: &PendingRetryAfterDelay, delay: Durati
 ///
 /// # Returns
 /// Pending delay if one exists.
-fn take_pending_retry_after_delay(pending: &PendingRetryAfterDelay) -> Option<Duration> {
+fn take_pending_after_delay(pending: &PendingHttpRetryAfterDelay) -> Option<Duration> {
     pending.write(Option::take)
 }
 

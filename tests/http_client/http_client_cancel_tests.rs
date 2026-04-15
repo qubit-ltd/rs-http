@@ -179,9 +179,7 @@ async fn test_execute_stream_body_can_be_cancelled_after_first_chunk() {
         .expect("execute timed out")
         .expect("request should start");
 
-    let mut stream = response
-        .stream()
-        .expect("stream body should be available");
+    let mut stream = response.stream().expect("stream body should be available");
     let first = stream
         .next()
         .await

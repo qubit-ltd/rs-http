@@ -91,4 +91,3 @@ fn classify_reqwest_timeout_kind(
         None => HttpErrorKind::RequestTimeout,
     }
 }
-

@@ -10,9 +10,11 @@
 use std::time::Duration;
 
 use http::StatusCode;
+use qubit_concurrent::{ArcMutex, Lock};
 use qubit_config::{ConfigReader, ConfigResult};
 use qubit_retry::{
-    RetryAttemptContext, RetryDelay, RetryJitter, RetryDecision, RetryOptions,
+    RetryAttemptContext, RetryAttemptFailure, RetryDecision, RetryDelay, RetryExecutor,
+    RetryJitter, RetryOptions,
 };
 
 use super::http_retry_method_policy::HttpRetryMethodPolicy;
@@ -24,6 +26,11 @@ const DEFAULT_RETRY_INITIAL_DELAY: Duration = Duration::from_millis(200);
 const DEFAULT_RETRY_MAX_DELAY: Duration = Duration::from_secs(5);
 const DEFAULT_RETRY_MULTIPLIER: f64 = 2.0;
 const DEFAULT_RETRY_JITTER_FACTOR: f64 = 0.1;
+
+/// Shared state used to carry extra `Retry-After` delay into the next async retry
+/// attempt when [`HttpRetryOptions::build_executor`] is called with
+/// `honor_retry_after: true`.
+pub type PendingHttpRetryAfterDelay = ArcMutex<Option<Duration>>;
 
 /// Retry settings for [`crate::HttpClient`].
 #[derive(Debug, Clone, PartialEq)]
@@ -64,7 +71,10 @@ fn is_retryable_status(status: StatusCode, retry_status_codes: Option<&[StatusCo
 /// Returns whether `kind` is retryable for the given optional allowlist.
 ///
 /// When `retry_error_kinds` is `None`, uses [`default_retryable_error_kind`].
-fn is_retryable_error_kind(kind: HttpErrorKind, retry_error_kinds: Option<&[HttpErrorKind]>) -> bool {
+fn is_retryable_error_kind(
+    kind: HttpErrorKind,
+    retry_error_kinds: Option<&[HttpErrorKind]>,
+) -> bool {
     if let Some(error_kinds) = retry_error_kinds {
         error_kinds.contains(&kind)
     } else {
@@ -242,7 +252,7 @@ impl HttpRetryOptions {
     ///
     /// # Errors
     /// Returns [`HttpError`] when executor limits or delay/jitter settings are invalid.
-    pub fn to_executor_options(&self) -> HttpResult<RetryOptions> {
+    fn to_executor_options(&self) -> HttpResult<RetryOptions> {
         RetryOptions::new(
             self.max_attempts,
             self.max_duration,
@@ -257,7 +267,7 @@ impl HttpRetryOptions {
     ///
     /// The closure captures clones of the status and error-kind allowlists only
     /// and delegates to [`is_retryable_status`] and [`is_retryable_error_kind`].
-    pub fn to_executor_error_decider(
+    fn to_retry_decider(
         &self,
     ) -> impl Fn(&HttpError, &RetryAttemptContext) -> RetryDecision + Send + Sync + 'static {
         let retry_status_codes = self.retry_status_codes.clone();
@@ -276,6 +286,54 @@ impl HttpRetryOptions {
                 RetryDecision::Abort
             }
         }
+    }
+
+    /// Builds a [`RetryExecutor`] for [`HttpError`] from these options.
+    ///
+    /// # Parameters
+    /// - `honor_retry_after`: When `true`, installs an `on_retry` listener on the executor
+    ///   builder that records extra delay from HTTP `Retry-After` when it exceeds the
+    ///   executor's next backoff, and returns [`Some`] shared state the caller must consult
+    ///   before each attempt.
+    ///
+    /// # Errors
+    /// Returns [`HttpError`] when executor limits or delay/jitter settings are invalid.
+    pub fn build_executor(
+        &self,
+        honor_retry_after: bool,
+    ) -> HttpResult<(RetryExecutor<HttpError>, Option<PendingHttpRetryAfterDelay>)> {
+        let mut builder = RetryExecutor::<HttpError>::builder()
+            .options(self.to_executor_options()?)
+            .retry_decide(self.to_retry_decider());
+
+        if honor_retry_after {
+            let pending_after_delay: PendingHttpRetryAfterDelay = ArcMutex::new(None);
+            let pending_for_listener = pending_after_delay.clone();
+            builder = builder.on_retry(move |context, failure| {
+                let RetryAttemptFailure::Error(error) = failure else {
+                    return;
+                };
+                let Some(retry_after) = error.retry_after else {
+                    return;
+                };
+                if retry_after > context.next_delay {
+                    pending_for_listener.write(|slot| {
+                        *slot = Some(retry_after - context.next_delay);
+                    });
+                }
+            });
+            return builder
+                .build()
+                .map(|executor| (executor, Some(pending_after_delay)))
+                .map_err(|error| {
+                    HttpError::other(format!("Invalid HTTP retry executor: {error}"))
+                });
+        }
+
+        builder
+            .build()
+            .map(|executor| (executor, None))
+            .map_err(|error| HttpError::other(format!("Invalid HTTP retry executor: {error}")))
     }
 }
 

@@ -12,7 +12,7 @@ pub(crate) mod error_mapper;
 mod http_client;
 mod http_client_factory;
 pub mod http_logger;
-mod retry_controller;
+mod http_retry_executor;
 mod sse_reconnect;
 
 pub use http_client::HttpClient;

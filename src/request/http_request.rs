@@ -509,7 +509,8 @@ impl HttpRequest {
         }
         builder = Self::apply_request_body(builder, self.take_body());
 
-        let send_future = tokio::time::timeout(self.execution_options.write_timeout, builder.send());
+        let send_future =
+            tokio::time::timeout(self.execution_options.write_timeout, builder.send());
         let next = if let Some(token) = self.execution_options.cancellation_token.as_ref() {
             tokio::select! {
                 _ = token.cancelled() => {

@@ -17,8 +17,8 @@ use qubit_http::{
         DEFAULT_SSE_MAX_LINE_BYTES, DEFAULT_WRITE_TIMEOUT_SECS,
     },
     sse::{DoneMarkerPolicy, SseJsonMode},
-    HttpClientOptions, HttpConfigErrorKind, HttpErrorKind, HttpRetryMethodPolicy,
-    HttpRetryOptions, ProxyType, RetryDelay,
+    HttpClientOptions, HttpConfigErrorKind, HttpErrorKind, HttpRetryMethodPolicy, HttpRetryOptions,
+    ProxyType, RetryDelay,
 };
 
 #[test]

@@ -1090,6 +1090,8 @@ dependencies = [
 [[package]]
 name = "qubit-retry"
 version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "92404ad95580f91febe2075e2c2b17400228de930a62fd8d5d8257ae317909e9"
 dependencies = [
  "chrono",
  "qubit-common",

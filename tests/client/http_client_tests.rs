@@ -100,9 +100,7 @@ async fn test_execute_maps_non_success_status_to_http_error() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
 
-    let client = HttpClientFactory::new()
-        .create(options)
-        .unwrap();
+    let client = HttpClientFactory::new().create(options).unwrap();
     let request = client.request(Method::GET, "/health").build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -206,9 +204,7 @@ async fn test_execute_write_timeout() {
     options.timeouts.write_timeout = Duration::from_millis(80);
     options.timeouts.read_timeout = Duration::from_secs(1);
 
-    let client = HttpClientFactory::new()
-        .create(options)
-        .unwrap();
+    let client = HttpClientFactory::new().create(options).unwrap();
     let request = client.request(Method::GET, "/delayed").build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -240,9 +236,7 @@ async fn test_execute_read_timeout_on_buffered_body() {
     options.timeouts.write_timeout = Duration::from_secs(1);
     options.timeouts.read_timeout = Duration::from_millis(80);
 
-    let client = HttpClientFactory::new()
-        .create(options)
-        .unwrap();
+    let client = HttpClientFactory::new().create(options).unwrap();
     let request = client.request(Method::GET, "/slow-body").build();
     let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -280,9 +274,7 @@ async fn test_execute_stream_success_reads_all_chunks() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let client = HttpClientFactory::new()
-        .create(options)
-        .unwrap();
+    let client = HttpClientFactory::new().create(options).unwrap();
 
     let request = client.request(Method::GET, "/stream").build();
     let mut stream_response = timeout(Duration::from_secs(3), client.execute(request))
@@ -335,17 +327,13 @@ async fn test_execute_stream_read_timeout() {
     options.timeouts.read_timeout = Duration::from_millis(80);
     options.timeouts.write_timeout = Duration::from_secs(1);
 
-    let client = HttpClientFactory::new()
-        .create(options)
-        .unwrap();
+    let client = HttpClientFactory::new().create(options).unwrap();
     let request = client.request(Method::GET, "/stream-timeout").build();
     let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")
         .unwrap();
-    let mut stream = response
-        .stream()
-        .expect("stream body should be available");
+    let mut stream = response.stream().expect("stream body should be available");
 
     let first = stream.next().await.unwrap().unwrap();
     assert_eq!(first, b"first".as_slice());
@@ -371,9 +359,7 @@ async fn test_execute_with_text_body_and_request_timeout() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let client = HttpClientFactory::new()
-        .create(options)
-        .unwrap();
+    let client = HttpClientFactory::new().create(options).unwrap();
 
     let request = client
         .request(Method::POST, "/text")
@@ -410,9 +396,7 @@ async fn test_execute_with_bytes_body() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let client = HttpClientFactory::new()
-        .create(options)
-        .unwrap();
+    let client = HttpClientFactory::new().create(options).unwrap();
 
     let request = client
         .request(Method::PUT, "/bytes")
@@ -448,9 +432,7 @@ async fn test_execute_stream_post_json_body_with_query_and_timeout() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let client = HttpClientFactory::new()
-        .create(options)
-        .unwrap();
+    let client = HttpClientFactory::new().create(options).unwrap();
 
     let request = client
         .request(Method::POST, "/stream-post")
@@ -503,9 +485,7 @@ async fn test_execute_stream_with_text_body() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let client = HttpClientFactory::new()
-        .create(options)
-        .unwrap();
+    let client = HttpClientFactory::new().create(options).unwrap();
 
     let request = client
         .request(Method::POST, "/stream-text")
@@ -557,9 +537,7 @@ async fn test_execute_stream_with_bytes_body() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let client = HttpClientFactory::new()
-        .create(options)
-        .unwrap();
+    let client = HttpClientFactory::new().create(options).unwrap();
 
     let request = client
         .request(Method::PUT, "/stream-bytes")
@@ -600,9 +578,7 @@ async fn test_execute_stream_maps_non_success_status_to_http_error() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let client = HttpClientFactory::new()
-        .create(options)
-        .unwrap();
+    let client = HttpClientFactory::new().create(options).unwrap();
     let request = client.request(Method::GET, "/stream-status").build();
 
     let error = timeout(Duration::from_secs(3), client.execute(request))
@@ -639,9 +615,7 @@ async fn test_execute_non_success_error_body_preview_is_truncated_by_limit() {
     options.base_url = Some(server.base_url());
     options.error_response_preview_limit = 8;
 
-    let client = HttpClientFactory::new()
-        .create(options)
-        .unwrap();
+    let client = HttpClientFactory::new().create(options).unwrap();
     let request = client.request(Method::GET, "/status-truncated").build();
     let error = client.execute(request).await.unwrap_err();
 
@@ -676,9 +650,7 @@ async fn test_execute_non_success_error_body_preview_truncates_when_limit_reache
     options.base_url = Some(server.base_url());
     options.error_response_preview_limit = 3;
 
-    let client = HttpClientFactory::new()
-        .create(options)
-        .unwrap();
+    let client = HttpClientFactory::new().create(options).unwrap();
     let request = client
         .request(Method::GET, "/status-truncated-next-chunk")
         .build();
@@ -706,9 +678,7 @@ async fn test_execute_error_body_preview_limit_is_decoupled_from_logging_limit()
     options.logging.body_size_limit = 4;
     options.error_response_preview_limit = 12;
 
-    let client = HttpClientFactory::new()
-        .create(options)
-        .unwrap();
+    let client = HttpClientFactory::new().create(options).unwrap();
     let request = client
         .request(Method::GET, "/status-decoupled-limit")
         .build();
@@ -734,9 +704,7 @@ async fn test_execute_non_success_error_body_preview_for_binary_body() {
     options.base_url = Some(server.base_url());
     options.error_response_preview_limit = 16;
 
-    let client = HttpClientFactory::new()
-        .create(options)
-        .unwrap();
+    let client = HttpClientFactory::new().create(options).unwrap();
     let request = client.request(Method::GET, "/status-binary").build();
     let error = client.execute(request).await.unwrap_err();
 
@@ -759,9 +727,7 @@ async fn test_execute_non_success_error_body_preview_for_empty_body() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
 
-    let client = HttpClientFactory::new()
-        .create(options)
-        .unwrap();
+    let client = HttpClientFactory::new().create(options).unwrap();
     let request = client.request(Method::GET, "/status-empty").build();
     let error = client.execute(request).await.unwrap_err();
 
@@ -785,9 +751,7 @@ async fn test_execute_non_success_error_body_preview_timeout_placeholder() {
     options.timeouts.read_timeout = Duration::from_millis(30);
     options.timeouts.write_timeout = Duration::from_secs(1);
 
-    let client = HttpClientFactory::new()
-        .create(options)
-        .unwrap();
+    let client = HttpClientFactory::new().create(options).unwrap();
     let request = client.request(Method::GET, "/status-timeout").build();
     let error = client.execute(request).await.unwrap_err();
 
@@ -812,9 +776,7 @@ async fn test_execute_maps_truncated_response_body_to_decode_error() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let client = HttpClientFactory::new()
-        .create(options)
-        .unwrap();
+    let client = HttpClientFactory::new().create(options).unwrap();
     let request = client.request(Method::GET, "/truncated-body").build();
     let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -859,9 +821,7 @@ async fn test_execute_retries_retryable_status_until_success() {
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
     options.retry.delay_strategy = RetryDelay::None;
-    let mut client = HttpClientFactory::new()
-        .create(options)
-        .unwrap();
+    let mut client = HttpClientFactory::new().create(options).unwrap();
     client.add_header_injector(HttpHeaderInjector::new(move |headers| {
         let mut count = injector_count_clone.lock().unwrap();
         *count += 1;
@@ -879,10 +839,7 @@ async fn test_execute_retries_retryable_status_until_success() {
         .unwrap();
 
     assert_eq!(response.meta.status, StatusCode::OK);
-    assert_eq!(
-        response.bytes().await.unwrap(),
-        Bytes::from_static(b"ok")
-    );
+    assert_eq!(response.bytes().await.unwrap(), Bytes::from_static(b"ok"));
     assert_eq!(*injector_count.lock().unwrap(), 2);
 
     let captured = timeout(Duration::from_secs(3), server.finish())
@@ -907,9 +864,7 @@ async fn test_execute_does_not_retry_non_retryable_status() {
     options.retry.enabled = true;
     options.retry.max_attempts = 3;
     options.retry.delay_strategy = RetryDelay::None;
-    let client = HttpClientFactory::new()
-        .create(options)
-        .unwrap();
+    let client = HttpClientFactory::new().create(options).unwrap();
 
     let request = client.request(Method::GET, "/bad-request").build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
@@ -952,9 +907,7 @@ async fn test_execute_returns_last_error_after_retry_attempts_exhausted() {
     options.retry.enabled = true;
     options.retry.max_attempts = 3;
     options.retry.delay_strategy = RetryDelay::None;
-    let client = HttpClientFactory::new()
-        .create(options)
-        .unwrap();
+    let client = HttpClientFactory::new().create(options).unwrap();
 
     let request = client.request(Method::GET, "/exhausted").build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
@@ -987,9 +940,7 @@ async fn test_execute_retry_max_duration_returns_last_error_after_retry_delay() 
     options.retry.max_attempts = 3;
     options.retry.max_duration = Some(Duration::from_millis(100));
     options.retry.delay_strategy = RetryDelay::Fixed(Duration::from_millis(120));
-    let client = HttpClientFactory::new()
-        .create(options)
-        .unwrap();
+    let client = HttpClientFactory::new().create(options).unwrap();
 
     let request = client.request(Method::GET, "/max-duration-after").build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
@@ -1017,9 +968,7 @@ async fn test_execute_retry_max_duration_zero_reports_no_retryable_failure() {
     options.retry.max_attempts = 3;
     options.retry.max_duration = Some(Duration::ZERO);
     options.retry.delay_strategy = RetryDelay::None;
-    let client = HttpClientFactory::new()
-        .create(options)
-        .unwrap();
+    let client = HttpClientFactory::new().create(options).unwrap();
 
     let request = client.request(Method::GET, "/max-duration-zero").build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
@@ -1052,9 +1001,7 @@ async fn test_execute_does_not_retry_post_by_default() {
     options.retry.enabled = true;
     options.retry.max_attempts = 3;
     options.retry.delay_strategy = RetryDelay::None;
-    let client = HttpClientFactory::new()
-        .create(options)
-        .unwrap();
+    let client = HttpClientFactory::new().create(options).unwrap();
 
     let request = client.request(Method::POST, "/post-default").build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
@@ -1093,9 +1040,7 @@ async fn test_execute_retries_post_when_all_methods_policy_is_enabled() {
     options.retry.max_attempts = 2;
     options.retry.delay_strategy = RetryDelay::None;
     options.retry.method_policy = HttpRetryMethodPolicy::AllMethods;
-    let client = HttpClientFactory::new()
-        .create(options)
-        .unwrap();
+    let client = HttpClientFactory::new().create(options).unwrap();
 
     let request = client.request(Method::POST, "/post-all").build();
     let response = timeout(Duration::from_secs(3), client.execute(request))
@@ -1135,9 +1080,7 @@ async fn test_execute_retries_write_timeout_until_success() {
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
     options.retry.delay_strategy = RetryDelay::None;
-    let client = HttpClientFactory::new()
-        .create(options)
-        .unwrap();
+    let client = HttpClientFactory::new().create(options).unwrap();
 
     let request = client.request(Method::GET, "/write-timeout-retry").build();
     let mut response = timeout(Duration::from_secs(3), client.execute(request))
@@ -1146,10 +1089,7 @@ async fn test_execute_retries_write_timeout_until_success() {
         .unwrap();
 
     assert_eq!(response.meta.status, StatusCode::OK);
-    assert_eq!(
-        response.bytes().await.unwrap(),
-        Bytes::from_static(b"ok")
-    );
+    assert_eq!(response.bytes().await.unwrap(), Bytes::from_static(b"ok"));
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
         .expect("server finish timed out");
@@ -1181,9 +1121,7 @@ async fn test_execute_stream_retries_initial_status_until_success() {
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
     options.retry.delay_strategy = RetryDelay::None;
-    let client = HttpClientFactory::new()
-        .create(options)
-        .unwrap();
+    let client = HttpClientFactory::new().create(options).unwrap();
 
     let request = client.request(Method::GET, "/stream-retry").build();
     let mut response = timeout(Duration::from_secs(3), client.execute(request))
@@ -1231,18 +1169,14 @@ async fn test_execute_stream_does_not_retry_after_stream_is_returned() {
     options.retry.enabled = true;
     options.retry.max_attempts = 3;
     options.retry.delay_strategy = RetryDelay::None;
-    let client = HttpClientFactory::new()
-        .create(options)
-        .unwrap();
+    let client = HttpClientFactory::new().create(options).unwrap();
 
     let request = client.request(Method::GET, "/stream-read-timeout").build();
     let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")
         .unwrap();
-    let mut stream = response
-        .stream()
-        .expect("stream body should be available");
+    let mut stream = response.stream().expect("stream body should be available");
     let first = stream
         .next()
         .await
