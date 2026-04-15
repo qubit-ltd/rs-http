@@ -45,9 +45,10 @@ async fn test_decode_json_chunks_lenient_skips_bad_json_and_respects_done() {
         "data: [DONE]\n\n",
         "data: {\"value\": 9}\n\n",
     ]);
-    let chunks =
-        collect_results(response.decode_sse_json_chunks::<TestChunk>(DoneMarkerPolicy::DefaultDone))
-            .await;
+    let chunks = collect_results(
+        response.decode_sse_json_chunks::<TestChunk>(DoneMarkerPolicy::DefaultDone),
+    )
+    .await;
 
     assert_eq!(chunks.len(), 2);
     assert_eq!(chunks[0], SseChunk::Data(TestChunk { value: 1 }));

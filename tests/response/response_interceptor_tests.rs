@@ -61,9 +61,8 @@ fn test_response_interceptor_apply_receives_context() {
 
 #[test]
 fn test_response_interceptor_apply_propagates_error() {
-    let interceptor = ResponseInterceptor::new(|_meta| {
-        Err(HttpError::other("response interceptor failure"))
-    });
+    let interceptor =
+        ResponseInterceptor::new(|_meta| Err(HttpError::other("response interceptor failure")));
     let mut meta = HttpResponseMeta::new(
         StatusCode::OK,
         HeaderMap::new(),

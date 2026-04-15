@@ -283,25 +283,21 @@ async fn test_response_interceptor_order_is_stable_and_short_circuits() {
 
     let events = Arc::new(Mutex::new(Vec::new()));
     let first_events = Arc::clone(&events);
-    client.add_response_interceptor(ResponseInterceptor::new(
-        move |_meta| {
-            first_events
-                .lock()
-                .expect("lock response interceptor events for first")
-                .push("first".to_string());
-            Ok(())
-        },
-    ));
+    client.add_response_interceptor(ResponseInterceptor::new(move |_meta| {
+        first_events
+            .lock()
+            .expect("lock response interceptor events for first")
+            .push("first".to_string());
+        Ok(())
+    }));
     let second_events = Arc::clone(&events);
-    client.add_response_interceptor(ResponseInterceptor::new(
-        move |_meta| {
-            second_events
-                .lock()
-                .expect("lock response interceptor events for second")
-                .push("second".to_string());
-            Err(HttpError::other("response blocked by interceptor"))
-        },
-    ));
+    client.add_response_interceptor(ResponseInterceptor::new(move |_meta| {
+        second_events
+            .lock()
+            .expect("lock response interceptor events for second")
+            .push("second".to_string());
+        Err(HttpError::other("response blocked by interceptor"))
+    }));
 
     let request = client.request(Method::GET, "/response-order").build();
     let error = client.execute(request).await.unwrap_err();
@@ -331,9 +327,9 @@ async fn test_clear_response_interceptors_restores_success_path() {
     let mut client = HttpClientFactory::new()
         .create_with_options(options)
         .unwrap();
-    client.add_response_interceptor(ResponseInterceptor::new(
-        |_meta| Err(HttpError::other("should be cleared")),
-    ));
+    client.add_response_interceptor(ResponseInterceptor::new(|_meta| {
+        Err(HttpError::other("should be cleared"))
+    }));
     client.clear_response_interceptors();
 
     let request = client.request(Method::GET, "/response-clear").build();
@@ -357,12 +353,10 @@ async fn test_execute_applies_response_interceptor_for_unconsumed_body() {
         .unwrap();
     let called = Arc::new(AtomicUsize::new(0));
     let called_for_interceptor = Arc::clone(&called);
-    client.add_response_interceptor(ResponseInterceptor::new(
-        move |_meta| {
-            called_for_interceptor.fetch_add(1, Ordering::Relaxed);
-            Ok(())
-        },
-    ));
+    client.add_response_interceptor(ResponseInterceptor::new(move |_meta| {
+        called_for_interceptor.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+    }));
 
     let request = client
         .request(Method::GET, "/stream-response-interceptor")
@@ -394,7 +388,10 @@ async fn test_request_url_can_differ_from_response_meta_url() {
     }));
 
     let request = client.request(Method::GET, "/request-url-diff").build();
-    let response = client.execute(request).await.expect("request should succeed");
+    let response = client
+        .execute(request)
+        .await
+        .expect("request should succeed");
     let expected_request_url = server
         .base_url()
         .join("request-url-diff")
@@ -432,9 +429,8 @@ async fn test_request_url_is_used_in_buffered_read_error() {
     let mut client = HttpClientFactory::new()
         .create_with_options(options)
         .expect("valid options should create client");
-    let interceptor_url =
-        url::Url::parse("https://interceptor.example/context-url-rewritten")
-            .expect("static interceptor URL should parse");
+    let interceptor_url = url::Url::parse("https://interceptor.example/context-url-rewritten")
+        .expect("static interceptor URL should parse");
     let expected_request_url = server
         .base_url()
         .join("context-url-timeout")

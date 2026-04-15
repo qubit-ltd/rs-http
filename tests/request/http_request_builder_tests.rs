@@ -61,7 +61,9 @@ fn test_request_builder_copies_write_timeout_default_from_client_options() {
     let client = HttpClientFactory::new()
         .create_with_options(options)
         .expect("client should be created");
-    let request = client.request(Method::GET, "/v1/default-write-timeout").build();
+    let request = client
+        .request(Method::GET, "/v1/default-write-timeout")
+        .build();
 
     assert_eq!(request.write_timeout(), Duration::from_millis(321));
 }
@@ -90,7 +92,9 @@ fn test_request_builder_copies_read_timeout_default_from_client_options() {
     let client = HttpClientFactory::new()
         .create_with_options(options)
         .expect("client should be created");
-    let request = client.request(Method::GET, "/v1/default-read-timeout").build();
+    let request = client
+        .request(Method::GET, "/v1/default-read-timeout")
+        .build();
 
     assert_eq!(request.read_timeout(), Duration::from_millis(432));
 }
