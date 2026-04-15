@@ -14,6 +14,7 @@
 //!
 //! Haixing Hu
 
+pub(crate) mod backend_error_mapper;
 mod http_error;
 mod http_error_kind;
 mod http_result;
