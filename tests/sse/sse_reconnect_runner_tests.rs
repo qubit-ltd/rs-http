@@ -735,6 +735,55 @@ async fn test_execute_sse_with_reconnect_fails_fast_on_non_sse_content_type() {
 }
 
 #[tokio::test]
+async fn test_execute_sse_with_reconnect_rejects_content_type_prefix_collision() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 200,
+        headers: vec![(
+            "Content-Type".to_string(),
+            "text/event-streaming; charset=utf-8".to_string(),
+        )],
+        body: b"plain-text".to_vec(),
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.read_timeout = Duration::from_secs(2);
+    options.timeouts.write_timeout = Duration::from_secs(2);
+    let client = HttpClientFactory::new().create(options).unwrap();
+
+    let request = client
+        .request(Method::GET, "/sse-content-type-prefix-collision")
+        .build();
+    let mut events = client.execute_sse_with_reconnect(
+        request,
+        SseReconnectOptions {
+            retry: build_retry_options(
+                3,
+                RetryDelay::fixed(Duration::from_millis(1)),
+                RetryJitter::None,
+            ),
+            reconnect_on_eof: true,
+            honor_server_retry: true,
+            ..SseReconnectOptions::default()
+        },
+    );
+
+    let error = events
+        .next()
+        .await
+        .expect("invalid SSE media type should emit an error item")
+        .expect_err("content-type prefix collision should fail fast");
+    assert_eq!(error.kind, HttpErrorKind::SseProtocol);
+    assert!(error.message.contains("text/event-stream"));
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.target, "/sse-content-type-prefix-collision");
+}
+
+#[tokio::test]
 async fn test_execute_sse_with_reconnect_uses_custom_backoff_parameters() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Chunked {
