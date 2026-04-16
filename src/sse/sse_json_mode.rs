@@ -13,7 +13,7 @@
 //! Haixing Hu
 
 use serde::{Deserialize, Serialize};
-use strum::{Display, EnumString};
+use parse_display::FromStr as DeriveFromStr;
 
 /// How to handle JSON parse failures on SSE `data:` lines.
 #[derive(
@@ -24,14 +24,15 @@ use strum::{Display, EnumString};
     Eq,
     Serialize,
     Deserialize,
-    Display,
-    EnumString,
+    DeriveFromStr,
 )]
 #[serde(rename_all = "snake_case")]
-#[strum(ascii_case_insensitive, serialize_all = "snake_case")]
+#[display(style = "snake_case")]
 pub enum SseJsonMode {
     /// Skip bad chunks and continue.
+    #[from_str(regex = "(?i)lenient")]
     Lenient,
     /// Propagate [`crate::HttpError::sse_decode`] on first failure.
+    #[from_str(regex = "(?i)strict")]
     Strict,
 }

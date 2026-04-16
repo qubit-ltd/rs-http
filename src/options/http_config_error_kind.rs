@@ -15,7 +15,7 @@
 //! Haixing Hu
 
 use serde::{Deserialize, Serialize};
-use strum::{Display, EnumString};
+use parse_display::{Display, FromStr as DeriveFromStr};
 
 /// Category of HTTP configuration errors.
 #[derive(
@@ -27,24 +27,29 @@ use strum::{Display, EnumString};
     Serialize,
     Deserialize,
     Display,
-    EnumString,
+    DeriveFromStr,
 )]
 #[serde(rename_all = "snake_case")]
-#[strum(ascii_case_insensitive, serialize_all = "snake_case")]
+#[display(style = "snake_case")]
 pub enum HttpConfigErrorKind {
     /// A required configuration key is missing.
-    #[strum(to_string = "missing field")]
+    #[display("missing field")]
+    #[from_str(regex = "(?i)missing\\s+field")]
     MissingField,
     /// The value exists but cannot be converted to the expected type.
-    #[strum(to_string = "type error")]
+    #[display("type error")]
+    #[from_str(regex = "(?i)type\\s+error")]
     TypeError,
     /// The value is present and well-typed but semantically invalid.
-    #[strum(to_string = "invalid value")]
+    #[display("invalid value")]
+    #[from_str(regex = "(?i)invalid\\s+value")]
     InvalidValue,
     /// A header name or value cannot be converted to an HTTP header.
-    #[strum(to_string = "invalid header")]
+    #[display("invalid header")]
+    #[from_str(regex = "(?i)invalid\\s+header")]
     InvalidHeader,
     /// An underlying `qubit-config` error occurred.
-    #[strum(to_string = "config error")]
+    #[display("config error")]
+    #[from_str(regex = "(?i)config\\s+error")]
     ConfigError,
 }

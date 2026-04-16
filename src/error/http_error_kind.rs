@@ -9,7 +9,7 @@
 //! HTTP error category enum.
 
 use serde::{Deserialize, Serialize};
-use strum::{Display, EnumString};
+use parse_display::{Display, FromStr as DeriveFromStr};
 
 /// Category of HTTP errors.
 #[derive(
@@ -21,10 +21,10 @@ use strum::{Display, EnumString};
     Serialize,
     Deserialize,
     Display,
-    EnumString,
+    DeriveFromStr,
 )]
 #[serde(rename_all = "snake_case")]
-#[strum(serialize_all = "snake_case")]
+#[display(style = "snake_case")]
 pub enum HttpErrorKind {
     /// URL is invalid or cannot be resolved.
     InvalidUrl,

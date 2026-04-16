@@ -8,7 +8,7 @@
  ******************************************************************************/
 
 use serde::{Deserialize, Serialize};
-use strum::{Display, EnumString};
+use parse_display::FromStr as DeriveFromStr;
 
 /// URL scheme selector used when constructing the proxy URL for reqwest.
 #[derive(
@@ -20,21 +20,23 @@ use strum::{Display, EnumString};
     Default,
     Serialize,
     Deserialize,
-    Display,
-    EnumString,
+    DeriveFromStr,
 )]
 #[serde(rename_all = "snake_case")]
-#[strum(serialize_all = "snake_case")]
+#[display(style = "snake_case")]
 pub enum ProxyType {
     /// HTTP proxy.
     #[default]
-    #[strum(to_string = "http")]
+    #[display("http")]
+    #[from_str(regex = "(?i)http")]
     Http,
     /// HTTPS proxy.
-    #[strum(to_string = "https")]
+    #[display("https")]
+    #[from_str(regex = "(?i)https")]
     Https,
     /// SOCKS5 proxy.
-    #[strum(serialize = "socks5h", serialize = "socks5")]
+    #[display("socks5h")]
+    #[from_str(regex = "(?i)socks5h|socks5")]
     Socks5,
 }
 

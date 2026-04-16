@@ -1,6 +1,6 @@
 [package]
 name = "qubit-http"
-version = "0.3.2"
+version = "0.3.3"
 edition = "2021"
 rust-version = "1.70"
 authors = ["Haixing Hu <starfish.hu@gmail.com>"]
@@ -36,6 +36,7 @@ url = "2.5"
 bytes = { version = "1.11", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
 strum = { version = "0.27", features = ["derive"] }
+parse-display = "0.7"
 serde_json = "1.0"
 tokio = { version = "1.52", features = ["time", "net", "macros"] }
 tokio-util = { version = "0.7", features = ["rt"] }

@@ -7,6 +7,8 @@
  *
  ******************************************************************************/
 
+use std::str::FromStr;
+
 use qubit_http::HttpConfigErrorKind;
 
 #[test]
@@ -24,5 +26,21 @@ fn test_http_config_error_kind_display() {
         HttpConfigErrorKind::InvalidHeader.to_string(),
         "invalid header"
     );
-    assert_eq!(HttpConfigErrorKind::ConfigError.to_string(), "config error");
+    assert_eq!(
+        HttpConfigErrorKind::ConfigError.to_string(),
+        "config error"
+    );
+}
+
+#[test]
+fn test_http_config_error_kind_from_str() {
+    assert_eq!(
+        HttpConfigErrorKind::from_str("missing field").expect("missing field"),
+        HttpConfigErrorKind::MissingField
+    );
+    assert_eq!(
+        HttpConfigErrorKind::from_str("TYPE ERROR").expect("type error"),
+        HttpConfigErrorKind::TypeError
+    );
+    assert!(HttpConfigErrorKind::from_str("unknown").is_err());
 }

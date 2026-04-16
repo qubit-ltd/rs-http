@@ -7,6 +7,7 @@
  *
  ******************************************************************************/
 
+use std::str::FromStr;
 use std::time::Duration;
 
 use http::StatusCode;
@@ -377,17 +378,17 @@ fn parse_retry_delay_strategy(
     value: &str,
     raw: &HttpRetryConfigInput,
 ) -> Result<RetryDelay, HttpConfigError> {
-    let normalized = value.trim().to_ascii_uppercase().replace('-', "_");
+    let normalized = value.trim().to_ascii_lowercase().replace('-', "_");
     match normalized.as_str() {
-        "NONE" => Ok(RetryDelay::None),
-        "FIXED" => Ok(RetryDelay::Fixed(
+        "none" => Ok(RetryDelay::None),
+        "fixed" => Ok(RetryDelay::Fixed(
             raw.fixed_delay.unwrap_or(DEFAULT_RETRY_INITIAL_DELAY),
         )),
-        "RANDOM" => Ok(RetryDelay::Random {
+        "random" => Ok(RetryDelay::Random {
             min: raw.random_min_delay.unwrap_or(DEFAULT_RETRY_INITIAL_DELAY),
             max: raw.random_max_delay.unwrap_or(DEFAULT_RETRY_MAX_DELAY),
         }),
-        "EXPONENTIAL_BACKOFF" | "EXPONENTIAL" => Ok(RetryDelay::Exponential {
+        "exponential_backoff" | "exponential" => Ok(RetryDelay::Exponential {
             initial: raw
                 .backoff_initial_delay
                 .unwrap_or(DEFAULT_RETRY_INITIAL_DELAY),
@@ -464,7 +465,8 @@ fn parse_retry_error_kinds(values: &[String]) -> Result<Vec<HttpErrorKind>, Http
                 "Retry error_kinds cannot contain blank values",
             ));
         }
-        let kind = parse_retry_error_kind(trimmed).ok_or_else(|| {
+        let normalized = trimmed.replace('-', "_");
+        let kind = HttpErrorKind::from_str(&normalized).map_err(|_| {
             HttpConfigError::invalid_value(
                 "error_kinds",
                 format!("Unsupported retry error kind: {trimmed}"),
@@ -475,37 +477,6 @@ fn parse_retry_error_kinds(values: &[String]) -> Result<Vec<HttpErrorKind>, Http
         }
     }
     Ok(result)
-}
-
-/// Parses one retry error-kind token.
-///
-/// # Parameters
-/// - `value`: Config token for one error kind.
-///
-/// # Returns
-/// Parsed error kind, or `None` when unsupported.
-fn parse_retry_error_kind(value: &str) -> Option<HttpErrorKind> {
-    let normalized = value.trim().to_ascii_uppercase().replace('-', "_");
-    match normalized.as_str() {
-        "INVALID_URL" => Some(HttpErrorKind::InvalidUrl),
-        "BUILD_CLIENT" => Some(HttpErrorKind::BuildClient),
-        "PROXY_CONFIG" => Some(HttpErrorKind::ProxyConfig),
-        "CONNECT_TIMEOUT" => Some(HttpErrorKind::ConnectTimeout),
-        "READ_TIMEOUT" => Some(HttpErrorKind::ReadTimeout),
-        "WRITE_TIMEOUT" => Some(HttpErrorKind::WriteTimeout),
-        "REQUEST_TIMEOUT" => Some(HttpErrorKind::RequestTimeout),
-        "TRANSPORT" => Some(HttpErrorKind::Transport),
-        "STATUS" => Some(HttpErrorKind::Status),
-        "DECODE" => Some(HttpErrorKind::Decode),
-        "SSE_PROTOCOL" => Some(HttpErrorKind::SseProtocol),
-        "SSE_DECODE" => Some(HttpErrorKind::SseDecode),
-        "CANCELLED" => Some(HttpErrorKind::Cancelled),
-        "RETRY_ATTEMPT_TIMEOUT" => Some(HttpErrorKind::RetryAttemptTimeout),
-        "RETRY_MAX_ELAPSED_EXCEEDED" => Some(HttpErrorKind::RetryMaxElapsedExceeded),
-        "RETRY_ABORTED" => Some(HttpErrorKind::RetryAborted),
-        "OTHER" => Some(HttpErrorKind::Other),
-        _ => None,
-    }
 }
 
 /// Returns default retryable status policy when no explicit status allowlist is
