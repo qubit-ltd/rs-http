@@ -378,11 +378,6 @@ async fn test_execute_sse_with_reconnect_respects_retry_max_elapsed() {
             headers: vec![],
             body: b"server-error-2".to_vec(),
         },
-        ResponsePlan::Immediate {
-            status: 500,
-            headers: vec![],
-            body: b"server-error-3".to_vec(),
-        },
     ])
     .await;
 
@@ -425,7 +420,61 @@ async fn test_execute_sse_with_reconnect_respects_retry_max_elapsed() {
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
         .expect("server finish timed out");
-    assert_eq!(captured.len(), 3);
+    assert_eq!(captured.len(), 2);
+}
+
+#[tokio::test]
+async fn test_execute_sse_with_reconnect_checks_max_elapsed_before_eof_reconnect_sleep() {
+    let server = spawn_one_shot_server(ResponsePlan::Chunked {
+        status: 200,
+        headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+        chunks: Vec::new(),
+        finish: true,
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.read_timeout = Duration::from_secs(2);
+    options.timeouts.write_timeout = Duration::from_secs(2);
+    let client = HttpClientFactory::new().create(options).unwrap();
+
+    let request = client
+        .request(Method::GET, "/sse-max-elapsed-before-eof-reconnect")
+        .build();
+    let mut events = client.execute_sse_with_reconnect(
+        request,
+        SseReconnectOptions {
+            retry: build_retry_options_with_max_elapsed(
+                5,
+                Duration::from_millis(100),
+                RetryDelay::fixed(Duration::from_millis(150)),
+                RetryJitter::None,
+            ),
+            reconnect_on_eof: true,
+            honor_server_retry: false,
+            ..SseReconnectOptions::default()
+        },
+    );
+
+    let error = events
+        .next()
+        .await
+        .expect("reconnect should stop with max_elapsed error")
+        .expect_err("max_elapsed should block reconnect sleep before second request");
+    assert_eq!(error.kind, HttpErrorKind::RetryMaxElapsedExceeded);
+    assert!(
+        error
+            .message
+            .contains("SSE reconnect max duration exceeded"),
+        "error message should mention max elapsed budget: {}",
+        error.message
+    );
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.target, "/sse-max-elapsed-before-eof-reconnect");
 }
 
 #[tokio::test]

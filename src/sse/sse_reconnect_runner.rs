@@ -123,15 +123,21 @@ impl SseReconnectRunner {
                     Ok(response) => response,
                     Err(mut error) => {
                         if should_reconnect_sse_error(&error) {
-                            match reconnect_decision(count, max_reconnects, started_at, &retry_options) {
+                            let sleep_delay = reconnect_sleep_delay(
+                                delay,
+                                delay_source,
+                                &retry_options,
+                                &options,
+                            );
+                            match reconnect_decision(
+                                count,
+                                max_reconnects,
+                                started_at,
+                                &retry_options,
+                                sleep_delay,
+                            ) {
                                 ReconnectDecision::Allowed => {
                                     count += 1;
-                                    let sleep_delay = reconnect_sleep_delay(
-                                        delay,
-                                        delay_source,
-                                        &retry_options,
-                                        &options,
-                                    );
                                     if let Err(cancelled) = sleep_reconnect_delay(
                                         sleep_delay,
                                         cancellation_token.as_ref(),
@@ -190,15 +196,21 @@ impl SseReconnectRunner {
 
                 if let Some(error) = stream_error {
                     if should_reconnect_sse_error(&error) {
-                        match reconnect_decision(count, max_reconnects, started_at, &retry_options) {
+                        let sleep_delay = reconnect_sleep_delay(
+                            delay,
+                            delay_source,
+                            &retry_options,
+                            &options,
+                        );
+                        match reconnect_decision(
+                            count,
+                            max_reconnects,
+                            started_at,
+                            &retry_options,
+                            sleep_delay,
+                        ) {
                             ReconnectDecision::Allowed => {
                                 count += 1;
-                                let sleep_delay = reconnect_sleep_delay(
-                                    delay,
-                                    delay_source,
-                                    &retry_options,
-                                    &options,
-                                );
                                 if let Err(cancelled) = sleep_reconnect_delay(
                                     sleep_delay,
                                     cancellation_token.as_ref(),
@@ -231,15 +243,17 @@ impl SseReconnectRunner {
                 }
 
                 if options.reconnect_on_eof {
-                    match reconnect_decision(count, max_reconnects, started_at, &retry_options) {
+                    let sleep_delay =
+                        reconnect_sleep_delay(delay, delay_source, &retry_options, &options);
+                    match reconnect_decision(
+                        count,
+                        max_reconnects,
+                        started_at,
+                        &retry_options,
+                        sleep_delay,
+                    ) {
                         ReconnectDecision::Allowed => {
                             count += 1;
-                            let sleep_delay = reconnect_sleep_delay(
-                                delay,
-                                delay_source,
-                                &retry_options,
-                                &options,
-                            );
                             if let Err(cancelled) = sleep_reconnect_delay(
                                 sleep_delay,
                                 cancellation_token.as_ref(),
@@ -336,6 +350,7 @@ fn next_reconnect_delay(retry_options: &RetryOptions, current: Duration) -> Dura
 /// - `max_reconnects`: Maximum reconnect count.
 /// - `started_at`: Runner start time.
 /// - `retry_options`: Retry options containing optional elapsed-time budget.
+/// - `sleep_delay`: Planned reconnect sleep duration for the next attempt.
 ///
 /// # Returns
 /// Reconnect decision for the next reconnect attempt.
@@ -344,13 +359,14 @@ fn reconnect_decision(
     max_reconnects: u32,
     started_at: Instant,
     retry_options: &RetryOptions,
+    sleep_delay: Duration,
 ) -> ReconnectDecision {
     if count >= max_reconnects {
         return ReconnectDecision::MaxReconnectsReached;
     }
     if let Some(max_elapsed) = retry_options.max_elapsed() {
         let elapsed = started_at.elapsed();
-        if elapsed >= max_elapsed {
+        if (elapsed >= max_elapsed) || will_exceed_elapsed(elapsed, sleep_delay, max_elapsed) {
             return ReconnectDecision::MaxElapsedExceeded {
                 elapsed,
                 max_elapsed,
@@ -358,6 +374,23 @@ fn reconnect_decision(
         }
     }
     ReconnectDecision::Allowed
+}
+
+/// Returns whether sleeping one more reconnect delay would exceed the elapsed
+/// budget.
+///
+/// # Parameters
+/// - `elapsed`: Already-consumed elapsed duration.
+/// - `sleep_delay`: Planned reconnect sleep duration.
+/// - `max_elapsed`: Total elapsed budget.
+///
+/// # Returns
+/// `true` when `elapsed + sleep_delay` is greater than or equal to
+/// `max_elapsed`, or when the addition overflows.
+fn will_exceed_elapsed(elapsed: Duration, sleep_delay: Duration, max_elapsed: Duration) -> bool {
+    elapsed
+        .checked_add(sleep_delay)
+        .map_or(true, |next_elapsed| next_elapsed >= max_elapsed)
 }
 
 /// Returns the initial reconnect delay from retry options.
