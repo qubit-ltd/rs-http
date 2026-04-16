@@ -14,38 +14,37 @@
 //!
 //! Haixing Hu
 
-use std::fmt;
+use serde::{Deserialize, Serialize};
+use strum::{Display, EnumString};
 
 /// Category of HTTP configuration errors.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    Display,
+    EnumString,
+)]
+#[serde(rename_all = "snake_case")]
+#[strum(ascii_case_insensitive, serialize_all = "snake_case")]
 pub enum HttpConfigErrorKind {
     /// A required configuration key is missing.
+    #[strum(to_string = "missing field")]
     MissingField,
     /// The value exists but cannot be converted to the expected type.
+    #[strum(to_string = "type error")]
     TypeError,
     /// The value is present and well-typed but semantically invalid.
+    #[strum(to_string = "invalid value")]
     InvalidValue,
     /// A header name or value cannot be converted to an HTTP header.
+    #[strum(to_string = "invalid header")]
     InvalidHeader,
     /// An underlying `qubit-config` error occurred.
+    #[strum(to_string = "config error")]
     ConfigError,
-}
-
-impl fmt::Display for HttpConfigErrorKind {
-    /// Writes a short human-readable label for this error kind.
-    ///
-    /// # Parameters
-    /// - `f`: Destination formatter.
-    ///
-    /// # Returns
-    /// [`fmt::Result`] from the write operations.
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            HttpConfigErrorKind::MissingField => write!(f, "missing field"),
-            HttpConfigErrorKind::TypeError => write!(f, "type error"),
-            HttpConfigErrorKind::InvalidValue => write!(f, "invalid value"),
-            HttpConfigErrorKind::InvalidHeader => write!(f, "invalid header"),
-            HttpConfigErrorKind::ConfigError => write!(f, "config error"),
-        }
-    }
 }

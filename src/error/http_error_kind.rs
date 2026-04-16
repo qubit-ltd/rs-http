@@ -8,8 +8,23 @@
  ******************************************************************************/
 //! HTTP error category enum.
 
+use serde::{Deserialize, Serialize};
+use strum::{Display, EnumString};
+
 /// Category of HTTP errors.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    Display,
+    EnumString,
+)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 pub enum HttpErrorKind {
     /// URL is invalid or cannot be resolved.
     InvalidUrl,

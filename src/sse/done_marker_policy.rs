@@ -14,15 +14,33 @@
 //!
 //! Haixing Hu
 
+use serde::{Deserialize, Serialize};
+use strum::{Display, EnumString};
+
 /// Policy for stream completion marker matching.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Default,
+    Serialize,
+    Deserialize,
+    Display,
+    EnumString,
+)]
+#[serde(rename_all = "snake_case")]
+#[strum(ascii_case_insensitive, serialize_all = "snake_case")]
 pub enum DoneMarkerPolicy {
     /// Disable done marker recognition.
+    #[strum(serialize = "disable")]
     Disabled,
     /// Use default marker: `[DONE]`.
     #[default]
+    #[strum(serialize = "default")]
     DefaultDone,
     /// Use a custom marker string.
+    #[strum(disabled)]
     Custom(String),
 }
 

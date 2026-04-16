@@ -12,8 +12,23 @@
 //!
 //! Haixing Hu
 
+use serde::{Deserialize, Serialize};
+use strum::{Display, EnumString};
+
 /// How to handle JSON parse failures on SSE `data:` lines.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    Display,
+    EnumString,
+)]
+#[serde(rename_all = "snake_case")]
+#[strum(ascii_case_insensitive, serialize_all = "snake_case")]
 pub enum SseJsonMode {
     /// Skip bad chunks and continue.
     Lenient,
