@@ -47,7 +47,7 @@ qubit-common = "0.5"
 qubit-config = "0.8"
 qubit-concurrent = "0.3"
 qubit-function = "0.8"
-qubit-retry = { version = "0.6", path = "../rs-retry" }
+qubit-retry = { version = "0.7", path = "../rs-retry" }
 
 [dev-dependencies]
 tokio = { version = "1.52", features = ["full", "test-util"] }
