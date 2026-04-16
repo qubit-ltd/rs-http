@@ -112,7 +112,7 @@ impl SseReconnectRunner {
 
                 let response = match client.execute(request).await {
                     Ok(response) => response,
-                    Err(mut error) => {
+                    Err(error) => {
                         if should_reconnect_sse_error(&error) {
                             let sleep_delay = reconnect_sleep_delay(
                                 backoff_delay,
@@ -148,7 +148,15 @@ impl SseReconnectRunner {
                                     elapsed,
                                     max_elapsed,
                                 } => {
-                                    error = with_max_elapsed_exceeded_message(error, elapsed, max_elapsed);
+                                    let error = max_elapsed_exceeded_error_with_last_error(
+                                        error,
+                                        elapsed,
+                                        max_elapsed,
+                                        &request_method,
+                                        request_url.as_ref(),
+                                    );
+                                    yield Err(error);
+                                    return;
                                 }
                                 ReconnectDecision::MaxReconnectsReached => {}
                             }
@@ -221,8 +229,13 @@ impl SseReconnectRunner {
                                 elapsed,
                                 max_elapsed,
                             } => {
-                                let error =
-                                    with_max_elapsed_exceeded_message(error, elapsed, max_elapsed);
+                                let error = max_elapsed_exceeded_error_with_last_error(
+                                    error,
+                                    elapsed,
+                                    max_elapsed,
+                                    &request_method,
+                                    request_url.as_ref(),
+                                );
                                 yield Err(error);
                                 return;
                             }
@@ -519,27 +532,6 @@ fn default_server_retry_max_delay(retry_options: &RetryOptions) -> Duration {
     .max(Duration::from_millis(1))
 }
 
-/// Adds reconnect max-elapsed context suffix to one existing HTTP error.
-///
-/// # Parameters
-/// - `error`: Original reconnect-triggering error.
-/// - `elapsed`: Current elapsed reconnect duration.
-/// - `max_elapsed`: Configured max elapsed reconnect duration.
-///
-/// # Returns
-/// Error with appended max-elapsed context.
-fn with_max_elapsed_exceeded_message(
-    mut error: HttpError,
-    elapsed: Duration,
-    max_elapsed: Duration,
-) -> HttpError {
-    error.message = format!(
-        "{} (SSE reconnect max duration exceeded: {elapsed:?}/{max_elapsed:?})",
-        error.message
-    );
-    error
-}
-
 /// Builds one reconnect max-elapsed error for reconnect-on-EOF path.
 ///
 /// # Parameters
@@ -563,6 +555,47 @@ fn max_elapsed_exceeded_error(
     if let Some(url) = request_url {
         error = error.with_url(url);
     }
+    error
+}
+
+/// Builds one reconnect max-elapsed error while preserving one original retry
+/// error as source context.
+///
+/// # Parameters
+/// - `last_error`: Last reconnect-triggering retryable error.
+/// - `elapsed`: Current elapsed reconnect duration.
+/// - `max_elapsed`: Configured max elapsed reconnect duration.
+/// - `request_method`: Request method for diagnostics fallback.
+/// - `request_url`: Optional request URL for diagnostics fallback.
+///
+/// # Returns
+/// Reconnect max-elapsed error with original error preserved in source chain.
+fn max_elapsed_exceeded_error_with_last_error(
+    last_error: HttpError,
+    elapsed: Duration,
+    max_elapsed: Duration,
+    request_method: &http::Method,
+    request_url: Option<&url::Url>,
+) -> HttpError {
+    let mut error = max_elapsed_exceeded_error(elapsed, max_elapsed, request_method, request_url);
+    if let Some(method) = last_error.method.as_ref() {
+        error = error.with_method(method);
+    }
+    if let Some(url) = last_error.url.as_ref() {
+        error = error.with_url(url);
+    }
+    if let Some(status) = last_error.status {
+        error = error.with_status(status);
+    }
+    let mut message = format!(
+        "{}; last retryable error: {}",
+        error.message, last_error.message
+    );
+    if let Some(status) = last_error.status {
+        message = format!("{message} (status: {status})");
+    }
+    error.message = message;
+    error.source = Some(Box::new(last_error));
     error
 }
 

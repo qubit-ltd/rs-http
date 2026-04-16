@@ -513,12 +513,19 @@ async fn test_execute_sse_with_reconnect_respects_retry_max_elapsed() {
         .await
         .expect("max_elapsed exhaustion should surface an error item")
         .expect_err("stream should fail when max_elapsed is exhausted");
-    assert_eq!(error.kind, HttpErrorKind::Status);
+    assert_eq!(error.kind, HttpErrorKind::RetryMaxElapsedExceeded);
+    assert_eq!(error.status, Some(http::StatusCode::INTERNAL_SERVER_ERROR));
+    assert!(error.source.is_some(), "last retryable error should be chained");
     assert!(
         error
             .message
             .contains("SSE reconnect max duration exceeded"),
         "error message should mention max elapsed budget: {}",
+        error.message
+    );
+    assert!(
+        error.message.contains("last retryable error"),
+        "error message should preserve last error context: {}",
         error.message
     );
 
