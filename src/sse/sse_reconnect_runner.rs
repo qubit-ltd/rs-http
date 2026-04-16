@@ -592,10 +592,12 @@ fn validate_sse_response_content_type(response: &HttpResponse) -> HttpResult<()>
             .with_method(&method)
             .with_url(&url)
     })?;
-    if content_type
-        .to_ascii_lowercase()
-        .starts_with("text/event-stream")
-    {
+    let media_type = content_type
+        .split(';')
+        .next()
+        .map(str::trim)
+        .unwrap_or_default();
+    if media_type.eq_ignore_ascii_case("text/event-stream") {
         return Ok(());
     }
     Err(HttpError::sse_protocol(format!(
