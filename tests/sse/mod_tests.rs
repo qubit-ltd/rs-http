@@ -72,3 +72,27 @@ fn test_sse_reconnect_options_default_backoff_parameters() {
     );
     assert_eq!(options.retry.jitter(), RetryJitter::None);
 }
+
+#[test]
+fn test_sse_reconnect_options_default_server_retry_controls() {
+    let options = SseReconnectOptions::default();
+    assert!(options.honor_server_retry);
+    assert_eq!(options.server_retry_max_delay, None);
+    assert!(options.apply_jitter_to_server_retry);
+}
+
+#[test]
+fn test_sse_reconnect_options_can_override_server_retry_controls() {
+    let options = SseReconnectOptions {
+        honor_server_retry: false,
+        server_retry_max_delay: Some(Duration::from_millis(250)),
+        apply_jitter_to_server_retry: false,
+        ..SseReconnectOptions::default()
+    };
+    assert!(!options.honor_server_retry);
+    assert_eq!(
+        options.server_retry_max_delay,
+        Some(Duration::from_millis(250))
+    );
+    assert!(!options.apply_jitter_to_server_retry);
+}
