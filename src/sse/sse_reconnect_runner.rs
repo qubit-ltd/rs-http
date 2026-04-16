@@ -16,6 +16,7 @@ use std::time::Instant;
 use async_stream::stream;
 use futures_util::StreamExt;
 use http::header::{HeaderName, HeaderValue};
+use tokio_util::sync::CancellationToken;
 
 use super::{
     SseEventStream, SseReconnectOptions, DEFAULT_SSE_MAX_RECONNECT_DELAY,
@@ -89,6 +90,8 @@ impl SseReconnectRunner {
             let retry_options = normalize_retry_options(options.retry);
             let max_reconnects = retry_options.max_attempts.get().saturating_sub(1);
             let request_url = request_template.resolved_url_cached();
+            let request_method = request_template.method().clone();
+            let cancellation_token = request_template.cancellation_token().cloned();
             let started_at = Instant::now();
             let mut count: u32 = 0;
             let mut delay = initial_reconnect_delay(&retry_options);
@@ -109,7 +112,17 @@ impl SseReconnectRunner {
                             match reconnect_decision(count, max_reconnects, started_at, &retry_options) {
                                 ReconnectDecision::Allowed => {
                                     count += 1;
-                                    tokio::time::sleep(retry_options.jittered_delay(delay)).await;
+                                    if let Err(cancelled) = sleep_reconnect_delay(
+                                        retry_options.jittered_delay(delay),
+                                        cancellation_token.as_ref(),
+                                        &request_method,
+                                        request_url.as_ref(),
+                                    )
+                                    .await
+                                    {
+                                        yield Err(cancelled);
+                                        return;
+                                    }
                                     delay = next_reconnect_delay(&retry_options, delay);
                                     continue;
                                 }
@@ -154,7 +167,17 @@ impl SseReconnectRunner {
                         match reconnect_decision(count, max_reconnects, started_at, &retry_options) {
                             ReconnectDecision::Allowed => {
                                 count += 1;
-                                tokio::time::sleep(retry_options.jittered_delay(delay)).await;
+                                if let Err(cancelled) = sleep_reconnect_delay(
+                                    retry_options.jittered_delay(delay),
+                                    cancellation_token.as_ref(),
+                                    &request_method,
+                                    request_url.as_ref(),
+                                )
+                                .await
+                                {
+                                    yield Err(cancelled);
+                                    return;
+                                }
                                 delay = next_reconnect_delay(&retry_options, delay);
                                 continue;
                             }
@@ -178,7 +201,17 @@ impl SseReconnectRunner {
                     match reconnect_decision(count, max_reconnects, started_at, &retry_options) {
                         ReconnectDecision::Allowed => {
                             count += 1;
-                            tokio::time::sleep(retry_options.jittered_delay(delay)).await;
+                            if let Err(cancelled) = sleep_reconnect_delay(
+                                retry_options.jittered_delay(delay),
+                                cancellation_token.as_ref(),
+                                &request_method,
+                                request_url.as_ref(),
+                            )
+                            .await
+                            {
+                                yield Err(cancelled);
+                                return;
+                            }
                             delay = next_reconnect_delay(&retry_options, delay);
                             continue;
                         }
@@ -298,6 +331,46 @@ fn initial_reconnect_delay(retry_options: &RetryOptions) -> Duration {
     retry_options
         .base_delay_for_attempt(1)
         .max(Duration::from_millis(1))
+}
+
+/// Sleeps before reconnect, while honoring cancellation token when provided.
+///
+/// # Parameters
+/// - `delay`: Reconnect delay to wait.
+/// - `cancellation_token`: Optional cancellation token.
+/// - `request_method`: Request method for cancellation error context.
+/// - `request_url`: Optional request URL for cancellation error context.
+///
+/// # Returns
+/// `Ok(())` after sleep completes.
+///
+/// # Errors
+/// Returns [`HttpErrorKind::Cancelled`] if cancellation is triggered during the
+/// reconnect sleep window.
+async fn sleep_reconnect_delay(
+    delay: Duration,
+    cancellation_token: Option<&CancellationToken>,
+    request_method: &http::Method,
+    request_url: Option<&url::Url>,
+) -> HttpResult<()> {
+    if let Some(token) = cancellation_token {
+        tokio::select! {
+            _ = token.cancelled() => {
+                let mut error = HttpError::cancelled(
+                    "SSE reconnect cancelled while waiting before next attempt",
+                )
+                .with_method(request_method);
+                if let Some(url) = request_url {
+                    error = error.with_url(url);
+                }
+                Err(error)
+            }
+            _ = tokio::time::sleep(delay) => Ok(()),
+        }
+    } else {
+        tokio::time::sleep(delay).await;
+        Ok(())
+    }
 }
 
 /// Adds reconnect max-elapsed context suffix to one existing HTTP error.
