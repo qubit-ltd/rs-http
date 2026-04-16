@@ -11,6 +11,7 @@
 use std::error::Error as StdError;
 use std::io::ErrorKind;
 use std::time::Duration;
+use std::time::Instant;
 
 use async_stream::stream;
 use futures_util::StreamExt;
@@ -27,6 +28,21 @@ use crate::{
 
 /// Header name used for SSE resume token propagation.
 const LAST_EVENT_ID_HEADER: &str = "last-event-id";
+
+/// Reconnect gate decision before scheduling one more reconnect attempt.
+enum ReconnectDecision {
+    /// Reconnect is allowed by both attempt count and elapsed-time budget.
+    Allowed,
+    /// Reconnect is blocked because maximum reconnect count is reached.
+    MaxReconnectsReached,
+    /// Reconnect is blocked because elapsed-time budget is exhausted.
+    MaxElapsedExceeded {
+        /// Elapsed wall-clock time since runner start.
+        elapsed: Duration,
+        /// Configured maximum elapsed time.
+        max_elapsed: Duration,
+    },
+}
 
 /// Stateful SSE reconnect runner for one stream invocation.
 pub(crate) struct SseReconnectRunner {
@@ -72,6 +88,8 @@ impl SseReconnectRunner {
         let output = stream! {
             let retry_options = normalize_retry_options(options.retry);
             let max_reconnects = retry_options.max_attempts.get().saturating_sub(1);
+            let request_url = request_template.resolved_url_cached();
+            let started_at = Instant::now();
             let mut count: u32 = 0;
             let mut delay = initial_reconnect_delay(&retry_options);
             let mut last_event_id: Option<String> = None;
@@ -86,12 +104,23 @@ impl SseReconnectRunner {
 
                 let response = match client.execute(request).await {
                     Ok(response) => response,
-                    Err(error) => {
-                        if (count < max_reconnects) && should_reconnect_sse_error(&error) {
-                            count += 1;
-                            tokio::time::sleep(retry_options.jittered_delay(delay)).await;
-                            delay = next_reconnect_delay(&retry_options, delay);
-                            continue;
+                    Err(mut error) => {
+                        if should_reconnect_sse_error(&error) {
+                            match reconnect_decision(count, max_reconnects, started_at, &retry_options) {
+                                ReconnectDecision::Allowed => {
+                                    count += 1;
+                                    tokio::time::sleep(retry_options.jittered_delay(delay)).await;
+                                    delay = next_reconnect_delay(&retry_options, delay);
+                                    continue;
+                                }
+                                ReconnectDecision::MaxElapsedExceeded {
+                                    elapsed,
+                                    max_elapsed,
+                                } => {
+                                    error = with_max_elapsed_exceeded_message(error, elapsed, max_elapsed);
+                                }
+                                ReconnectDecision::MaxReconnectsReached => {}
+                            }
                         }
                         yield Err(error);
                         return;
@@ -121,21 +150,53 @@ impl SseReconnectRunner {
                 }
 
                 if let Some(error) = stream_error {
-                    if (count < max_reconnects) && should_reconnect_sse_error(&error) {
-                        count += 1;
-                        tokio::time::sleep(retry_options.jittered_delay(delay)).await;
-                        delay = next_reconnect_delay(&retry_options, delay);
-                        continue;
+                    if should_reconnect_sse_error(&error) {
+                        match reconnect_decision(count, max_reconnects, started_at, &retry_options) {
+                            ReconnectDecision::Allowed => {
+                                count += 1;
+                                tokio::time::sleep(retry_options.jittered_delay(delay)).await;
+                                delay = next_reconnect_delay(&retry_options, delay);
+                                continue;
+                            }
+                            ReconnectDecision::MaxElapsedExceeded {
+                                elapsed,
+                                max_elapsed,
+                            } => {
+                                let error =
+                                    with_max_elapsed_exceeded_message(error, elapsed, max_elapsed);
+                                yield Err(error);
+                                return;
+                            }
+                            ReconnectDecision::MaxReconnectsReached => {}
+                        }
                     }
                     yield Err(error);
                     return;
                 }
 
-                if options.reconnect_on_eof && (count < max_reconnects) {
-                    count += 1;
-                    tokio::time::sleep(retry_options.jittered_delay(delay)).await;
-                    delay = next_reconnect_delay(&retry_options, delay);
-                    continue;
+                if options.reconnect_on_eof {
+                    match reconnect_decision(count, max_reconnects, started_at, &retry_options) {
+                        ReconnectDecision::Allowed => {
+                            count += 1;
+                            tokio::time::sleep(retry_options.jittered_delay(delay)).await;
+                            delay = next_reconnect_delay(&retry_options, delay);
+                            continue;
+                        }
+                        ReconnectDecision::MaxElapsedExceeded {
+                            elapsed,
+                            max_elapsed,
+                        } => {
+                            let error = max_elapsed_exceeded_error(
+                                elapsed,
+                                max_elapsed,
+                                request_template.method(),
+                                request_url.as_ref(),
+                            );
+                            yield Err(error);
+                            return;
+                        }
+                        ReconnectDecision::MaxReconnectsReached => return,
+                    }
                 }
                 return;
             }
@@ -194,6 +255,38 @@ fn next_reconnect_delay(retry_options: &RetryOptions, current: Duration) -> Dura
         .max(Duration::from_millis(1))
 }
 
+/// Returns one reconnect decision by checking reconnect count and elapsed-time
+/// budget.
+///
+/// # Parameters
+/// - `count`: Current reconnect count already consumed.
+/// - `max_reconnects`: Maximum reconnect count.
+/// - `started_at`: Runner start time.
+/// - `retry_options`: Retry options containing optional elapsed-time budget.
+///
+/// # Returns
+/// Reconnect decision for the next reconnect attempt.
+fn reconnect_decision(
+    count: u32,
+    max_reconnects: u32,
+    started_at: Instant,
+    retry_options: &RetryOptions,
+) -> ReconnectDecision {
+    if count >= max_reconnects {
+        return ReconnectDecision::MaxReconnectsReached;
+    }
+    if let Some(max_elapsed) = retry_options.max_elapsed {
+        let elapsed = started_at.elapsed();
+        if elapsed >= max_elapsed {
+            return ReconnectDecision::MaxElapsedExceeded {
+                elapsed,
+                max_elapsed,
+            };
+        }
+    }
+    ReconnectDecision::Allowed
+}
+
 /// Returns the initial reconnect delay from retry options.
 ///
 /// # Parameters
@@ -205,6 +298,53 @@ fn initial_reconnect_delay(retry_options: &RetryOptions) -> Duration {
     retry_options
         .base_delay_for_attempt(1)
         .max(Duration::from_millis(1))
+}
+
+/// Adds reconnect max-elapsed context suffix to one existing HTTP error.
+///
+/// # Parameters
+/// - `error`: Original reconnect-triggering error.
+/// - `elapsed`: Current elapsed reconnect duration.
+/// - `max_elapsed`: Configured max elapsed reconnect duration.
+///
+/// # Returns
+/// Error with appended max-elapsed context.
+fn with_max_elapsed_exceeded_message(
+    mut error: HttpError,
+    elapsed: Duration,
+    max_elapsed: Duration,
+) -> HttpError {
+    error.message = format!(
+        "{} (SSE reconnect max duration exceeded: {elapsed:?}/{max_elapsed:?})",
+        error.message
+    );
+    error
+}
+
+/// Builds one reconnect max-elapsed error for reconnect-on-EOF path.
+///
+/// # Parameters
+/// - `elapsed`: Current elapsed reconnect duration.
+/// - `max_elapsed`: Configured max elapsed reconnect duration.
+/// - `request_method`: Request method for diagnostics.
+/// - `request_url`: Optional request URL for diagnostics.
+///
+/// # Returns
+/// Reconnect max-elapsed error with method/url context when available.
+fn max_elapsed_exceeded_error(
+    elapsed: Duration,
+    max_elapsed: Duration,
+    request_method: &http::Method,
+    request_url: Option<&url::Url>,
+) -> HttpError {
+    let mut error = HttpError::retry_max_elapsed_exceeded(format!(
+        "SSE reconnect max duration exceeded: {elapsed:?}/{max_elapsed:?}"
+    ))
+    .with_method(request_method);
+    if let Some(url) = request_url {
+        error = error.with_url(url);
+    }
+    error
 }
 
 /// Normalizes retry options from reconnect settings.
