@@ -19,8 +19,8 @@ use std::time::{Duration, Instant};
 use futures_util::StreamExt;
 use http::Method;
 use qubit_http::{
-    sse::SseReconnectOptions, HttpClientFactory, HttpClientOptions, HttpError, HttpErrorKind,
-    HttpRequestInterceptor, RetryDelay, RetryJitter, RetryOptions,
+    sse::SseReconnectOptions, CancellationToken, HttpClientFactory, HttpClientOptions, HttpError,
+    HttpErrorKind, HttpRequestInterceptor, RetryDelay, RetryJitter, RetryOptions,
 };
 use tokio::time::timeout;
 
@@ -245,6 +245,65 @@ async fn test_execute_sse_with_reconnect_respects_retry_max_elapsed() {
         .await
         .expect("server finish timed out");
     assert_eq!(captured.len(), 3);
+}
+
+#[tokio::test]
+async fn test_execute_sse_with_reconnect_sleep_can_be_cancelled() {
+    let server = spawn_one_shot_server(ResponsePlan::Chunked {
+        status: 200,
+        headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+        chunks: Vec::new(),
+        finish: true,
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.read_timeout = Duration::from_secs(2);
+    options.timeouts.write_timeout = Duration::from_secs(2);
+    let client = HttpClientFactory::new().create(options).unwrap();
+
+    let token = CancellationToken::new();
+    let token_for_task = token.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        token_for_task.cancel();
+    });
+
+    let request = client
+        .request(Method::GET, "/sse-cancel-reconnect-sleep")
+        .cancellation_token(token)
+        .build();
+
+    let start = Instant::now();
+    let mut events = client.execute_sse_with_reconnect(
+        request,
+        SseReconnectOptions {
+            retry: build_retry_options(
+                1,
+                RetryDelay::fixed(Duration::from_secs(1)),
+                RetryJitter::None,
+            ),
+            reconnect_on_eof: true,
+            honor_server_retry: false,
+        },
+    );
+    let error = events
+        .next()
+        .await
+        .expect("cancelled reconnect should emit one error item")
+        .expect_err("cancelled reconnect sleep should fail");
+    let elapsed = start.elapsed();
+    assert_eq!(error.kind, HttpErrorKind::Cancelled);
+    assert!(
+        elapsed < Duration::from_millis(500),
+        "elapsed={elapsed:?} should fail fast on cancellation"
+    );
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.target, "/sse-cancel-reconnect-sleep");
 }
 
 #[tokio::test]
