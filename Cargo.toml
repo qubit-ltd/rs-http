@@ -33,8 +33,9 @@ reqwest = { version = "0.13", features = ["json", "stream", "query", "socks"] }
 http = "1.4"
 httpdate = "1.0"
 url = "2.5"
-bytes = "1.11"
+bytes = { version = "1.11", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
+strum = { version = "0.27", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1.52", features = ["time", "net", "macros"] }
 tokio-util = { version = "0.7", features = ["rt"] }
@@ -45,7 +46,7 @@ qubit-common = "0.5"
 qubit-config = "0.8"
 qubit-concurrent = "0.3"
 qubit-function = "0.8"
-qubit-retry = "0.5"
+qubit-retry = { version = "0.6", path = "../rs-retry" }
 
 [dev-dependencies]
 tokio = { version = "1.52", features = ["full", "test-util"] }
