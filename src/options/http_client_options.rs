@@ -12,6 +12,7 @@ use std::time::Duration;
 
 use http::HeaderMap;
 use http::HeaderValue;
+use std::str::FromStr;
 use qubit_config::{ConfigReader, ConfigResult};
 use url::Url;
 
@@ -176,12 +177,7 @@ impl HttpClientOptions {
                 "Value must not be empty",
             ));
         }
-        let normalized = trimmed.to_ascii_uppercase().replace('-', "_");
-        match normalized.as_str() {
-            "DISABLED" | "DISABLE" => Ok(DoneMarkerPolicy::Disabled),
-            "DEFAULT_DONE" | "DEFAULT" => Ok(DoneMarkerPolicy::DefaultDone),
-            _ => Ok(DoneMarkerPolicy::Custom(trimmed.to_string())),
-        }
+        DoneMarkerPolicy::from_str(trimmed).or_else(|_| Ok(DoneMarkerPolicy::Custom(trimmed.to_string())))
     }
 
     fn parse_base_url(base_url: &str) -> Result<Url, HttpConfigError> {
@@ -191,15 +187,12 @@ impl HttpClientOptions {
     }
 
     fn parse_sse_json_mode(value: &str) -> Result<SseJsonMode, HttpConfigError> {
-        let normalized = value.trim().to_ascii_uppercase().replace('-', "_");
-        match normalized.as_str() {
-            "LENIENT" => Ok(SseJsonMode::Lenient),
-            "STRICT" => Ok(SseJsonMode::Strict),
-            _ => Err(HttpConfigError::invalid_value(
+        SseJsonMode::from_str(value.trim()).map_err(|_| {
+            HttpConfigError::invalid_value(
                 "json_mode",
                 format!("Unsupported SSE JSON mode: {value}"),
-            )),
-        }
+            )
+        })
     }
 
     fn validate_positive_limit(path: &str, value: usize) -> Result<usize, HttpConfigError> {

@@ -15,33 +15,48 @@
 //! Haixing Hu
 
 use serde::{Deserialize, Serialize};
-use strum::{Display, EnumString};
+use std::fmt;
+use std::str::FromStr;
 
 /// Policy for stream completion marker matching.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Default,
-    Serialize,
-    Deserialize,
-    Display,
-    EnumString,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-#[strum(ascii_case_insensitive, serialize_all = "snake_case")]
 pub enum DoneMarkerPolicy {
     /// Disable done marker recognition.
-    #[strum(serialize = "disable")]
     Disabled,
     /// Use default marker: `[DONE]`.
     #[default]
-    #[strum(serialize = "default")]
     DefaultDone,
     /// Use a custom marker string.
-    #[strum(disabled)]
     Custom(String),
+}
+
+impl fmt::Display for DoneMarkerPolicy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Disabled => write!(f, "disable"),
+            Self::DefaultDone => write!(f, "default"),
+            Self::Custom(value) => write!(f, "{value}"),
+        }
+    }
+}
+
+impl FromStr for DoneMarkerPolicy {
+    type Err = parse_display::ParseError;
+
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        let trimmed = input.trim();
+        if trimmed.eq_ignore_ascii_case("disable") {
+            return Ok(Self::Disabled);
+        }
+        if trimmed.eq_ignore_ascii_case("disabled") {
+            return Ok(Self::Disabled);
+        }
+        if trimmed.eq_ignore_ascii_case("default") {
+            return Ok(Self::DefaultDone);
+        }
+        Ok(Self::Custom(trimmed.to_string()))
+    }
 }
 
 impl DoneMarkerPolicy {

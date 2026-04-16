@@ -12,6 +12,7 @@ use qubit_config::{ConfigReader, ConfigResult};
 use super::HttpConfigError;
 
 use super::proxy_type::ProxyType;
+use std::str::FromStr;
 
 /// Outbound proxy configuration applied when building the reqwest client.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -166,16 +167,13 @@ impl ProxyOptions {
 }
 
 fn parse_proxy_type(path: &str, s: &str) -> Result<ProxyType, HttpConfigError> {
-    match s.to_lowercase().as_str() {
-        "http" => Ok(ProxyType::Http),
-        "https" => Ok(ProxyType::Https),
-        "socks5" | "socks5h" => Ok(ProxyType::Socks5),
-        other => Err(HttpConfigError::invalid_value(
+    ProxyType::from_str(s.trim()).map_err(|_| {
+        HttpConfigError::invalid_value(
             path,
             format!(
                 "Unknown proxy type '{}'; expected http, https, or socks5",
-                other
+                s,
             ),
-        )),
-    }
+        )
+    })
 }
