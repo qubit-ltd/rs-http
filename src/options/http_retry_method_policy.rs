@@ -7,34 +7,51 @@
  *
  ******************************************************************************/
 
+use std::str::FromStr;
+
 use http::Method;
+use serde::{Deserialize, Serialize};
+use strum::{Display, EnumString};
 
 use super::HttpConfigError;
 
 /// HTTP method policy used to decide whether a request can be retried.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Default,
+    Serialize,
+    Deserialize,
+    Display,
+    EnumString,
+)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[strum(ascii_case_insensitive)]
 pub enum HttpRetryMethodPolicy {
     /// Retry only HTTP methods that are safe to replay by default.
     #[default]
+    #[strum(serialize = "IDEMPOTENT_ONLY", serialize = "IDEMPOTENT")]
     IdempotentOnly,
     /// Retry all HTTP methods, including `POST` and `PATCH`.
+    #[strum(serialize = "ALL_METHODS", serialize = "ALL")]
     AllMethods,
     /// Disable method-level retry eligibility.
+    #[strum(serialize = "NONE", serialize = "DISABLED")]
     None,
 }
 
 impl HttpRetryMethodPolicy {
     pub(super) fn from_config_value(value: &str) -> Result<Self, HttpConfigError> {
         let normalized = value.trim().to_ascii_uppercase().replace('-', "_");
-        match normalized.as_str() {
-            "IDEMPOTENT_ONLY" | "IDEMPOTENT" => Ok(Self::IdempotentOnly),
-            "ALL_METHODS" | "ALL" => Ok(Self::AllMethods),
-            "NONE" | "DISABLED" => Ok(Self::None),
-            _ => Err(HttpConfigError::invalid_value(
+        Self::from_str(&normalized).map_err(|_| {
+            HttpConfigError::invalid_value(
                 "method_policy",
                 format!("Unsupported retry method policy: {value}"),
-            )),
-        }
+            )
+        })
     }
 
     /// Returns whether the retry executor permits replaying `method`.

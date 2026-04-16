@@ -7,15 +7,34 @@
  *
  ******************************************************************************/
 
+use serde::{Deserialize, Serialize};
+use strum::{Display, EnumString};
+
 /// URL scheme selector used when constructing the proxy URL for reqwest.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Default,
+    Serialize,
+    Deserialize,
+    Display,
+    EnumString,
+)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 pub enum ProxyType {
     /// HTTP proxy.
     #[default]
+    #[strum(to_string = "http")]
     Http,
     /// HTTPS proxy.
+    #[strum(to_string = "https")]
     Https,
     /// SOCKS5 proxy.
+    #[strum(serialize = "socks5h", serialize = "socks5")]
     Socks5,
 }
 

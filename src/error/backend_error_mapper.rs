@@ -8,13 +8,27 @@
  ******************************************************************************/
 //! Reqwest/HTTP error mapping helpers used by `HttpClient` internals.
 
+use serde::{Deserialize, Serialize};
+use strum::{Display, EnumString};
 use url::Url;
 
 use crate::{HttpError, HttpErrorKind};
 
 /// Maps a [`reqwest::Error`] into [`HttpError`] with best-effort
 /// [`HttpErrorKind`] and optional context.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    Display,
+    EnumString,
+)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 pub(crate) enum ReqwestErrorPhase {
     /// Error happened while sending request / waiting first response bytes.
     Send,
