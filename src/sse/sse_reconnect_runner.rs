@@ -15,7 +15,7 @@ use std::time::Instant;
 
 use async_stream::stream;
 use futures_util::StreamExt;
-use http::header::{HeaderName, HeaderValue};
+use http::header::{HeaderName, HeaderValue, CONTENT_TYPE};
 use tokio_util::sync::CancellationToken;
 
 use super::{
@@ -23,8 +23,8 @@ use super::{
     DEFAULT_SSE_RECONNECT_BACKOFF_MULTIPLIER,
 };
 use crate::{
-    HttpClient, HttpError, HttpErrorKind, HttpRequest, HttpResult, RetryDelay, RetryHint,
-    RetryJitter, RetryOptions,
+    HttpClient, HttpError, HttpErrorKind, HttpRequest, HttpResponse, HttpResult, RetryDelay,
+    RetryHint, RetryJitter, RetryOptions,
 };
 
 /// Header name used for SSE resume token propagation.
@@ -88,7 +88,7 @@ impl SseReconnectRunner {
         let options = self.options;
         let output = stream! {
             let retry_options = normalize_retry_options(options.retry);
-            let max_reconnects = retry_options.max_attempts.get().saturating_sub(1);
+            let max_reconnects = retry_options.max_attempts().saturating_sub(1);
             let request_url = request_template.resolved_url_cached();
             let request_method = request_template.method().clone();
             let cancellation_token = request_template.cancellation_token().cloned();
@@ -143,6 +143,10 @@ impl SseReconnectRunner {
                         return;
                     }
                 };
+                if let Err(error) = validate_sse_response_content_type(&response) {
+                    yield Err(error);
+                    return;
+                }
 
                 let mut events = response.sse_events();
                 let mut stream_error: Option<HttpError> = None;
@@ -312,7 +316,7 @@ fn reconnect_decision(
     if count >= max_reconnects {
         return ReconnectDecision::MaxReconnectsReached;
     }
-    if let Some(max_elapsed) = retry_options.max_elapsed {
+    if let Some(max_elapsed) = retry_options.max_elapsed() {
         let elapsed = started_at.elapsed();
         if elapsed >= max_elapsed {
             return ReconnectDecision::MaxElapsedExceeded {
@@ -424,6 +428,46 @@ fn max_elapsed_exceeded_error(
     error
 }
 
+/// Validates whether response content type is SSE media type.
+///
+/// # Parameters
+/// - `response`: HTTP response to validate.
+///
+/// # Returns
+/// `Ok(())` when content type is `text/event-stream`.
+///
+/// # Errors
+/// Returns [`HttpErrorKind::SseProtocol`] when `Content-Type` is missing,
+/// non-UTF8, or not SSE media type.
+fn validate_sse_response_content_type(response: &HttpResponse) -> HttpResult<()> {
+    let method = response.meta.method.clone();
+    let url = response.request_url().clone();
+    let Some(value) = response.headers().get(CONTENT_TYPE) else {
+        return Err(HttpError::sse_protocol("Missing Content-Type header for SSE response")
+            .with_status(response.status())
+            .with_method(&method)
+            .with_url(&url));
+    };
+    let content_type = value.to_str().map_err(|_| {
+        HttpError::sse_protocol("Invalid non-UTF8 Content-Type header for SSE response")
+            .with_status(response.status())
+            .with_method(&method)
+            .with_url(&url)
+    })?;
+    if content_type
+        .to_ascii_lowercase()
+        .starts_with("text/event-stream")
+    {
+        return Ok(());
+    }
+    Err(HttpError::sse_protocol(format!(
+        "Expected Content-Type 'text/event-stream' for SSE response, got '{content_type}'"
+    ))
+    .with_status(response.status())
+    .with_method(&method)
+    .with_url(&url))
+}
+
 /// Normalizes retry options from reconnect settings.
 ///
 /// # Parameters
@@ -431,18 +475,23 @@ fn max_elapsed_exceeded_error(
 ///
 /// # Returns
 /// Valid retry options, falling back to SSE reconnect defaults when invalid.
-fn normalize_retry_options(mut value: RetryOptions) -> RetryOptions {
-    if value.delay.validate().is_err() {
-        value.delay = RetryDelay::exponential(
+fn normalize_retry_options(value: RetryOptions) -> RetryOptions {
+    let delay = if value.delay().validate().is_err() {
+        RetryDelay::exponential(
             Duration::from_secs(1),
             DEFAULT_SSE_MAX_RECONNECT_DELAY,
             DEFAULT_SSE_RECONNECT_BACKOFF_MULTIPLIER,
-        );
-    }
-    if value.jitter.validate().is_err() {
-        value.jitter = RetryJitter::None;
-    }
-    value
+        )
+    } else {
+        value.delay().clone()
+    };
+    let jitter = if value.jitter().validate().is_err() {
+        RetryJitter::None
+    } else {
+        value.jitter()
+    };
+    RetryOptions::new(value.max_attempts(), value.max_elapsed(), delay, jitter)
+        .expect("normalized SSE retry options must be valid")
 }
 
 /// Returns whether an HTTP error represents an unexpected stream EOF that is

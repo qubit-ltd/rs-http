@@ -354,6 +354,49 @@ async fn test_execute_sse_with_reconnect_disables_inner_http_retry() {
 }
 
 #[tokio::test]
+async fn test_execute_sse_with_reconnect_fails_fast_on_non_sse_content_type() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 200,
+        headers: vec![("Content-Type".to_string(), "text/plain".to_string())],
+        body: b"plain-text".to_vec(),
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.read_timeout = Duration::from_secs(2);
+    options.timeouts.write_timeout = Duration::from_secs(2);
+    let client = HttpClientFactory::new().create(options).unwrap();
+
+    let request = client.request(Method::GET, "/sse-content-type-check").build();
+    let mut events = client.execute_sse_with_reconnect(
+        request,
+        SseReconnectOptions {
+            retry: build_retry_options(
+                3,
+                RetryDelay::fixed(Duration::from_millis(1)),
+                RetryJitter::None,
+            ),
+            reconnect_on_eof: true,
+            honor_server_retry: true,
+        },
+    );
+
+    let error = events
+        .next()
+        .await
+        .expect("non-SSE response should emit an error item")
+        .expect_err("non-SSE content type should fail fast");
+    assert_eq!(error.kind, HttpErrorKind::SseProtocol);
+    assert!(error.message.contains("text/event-stream"));
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.target, "/sse-content-type-check");
+}
+
+#[tokio::test]
 async fn test_execute_sse_with_reconnect_uses_custom_backoff_parameters() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Chunked {
@@ -412,59 +455,6 @@ async fn test_execute_sse_with_reconnect_uses_custom_backoff_parameters() {
         .await
         .expect("server finish timed out");
     assert_eq!(requests.len(), 3);
-}
-
-#[tokio::test]
-async fn test_execute_sse_with_reconnect_falls_back_when_jitter_invalid() {
-    let server = spawn_multi_shot_server(vec![
-        ResponsePlan::Chunked {
-            status: 200,
-            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
-            chunks: Vec::new(),
-            finish: true,
-        },
-        ResponsePlan::Chunked {
-            status: 200,
-            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
-            chunks: vec![ResponseChunk {
-                delay: Duration::from_millis(0),
-                bytes: b"data: recovered\n\n".to_vec(),
-            }],
-            finish: true,
-        },
-    ])
-    .await;
-
-    let mut options = HttpClientOptions::default();
-    options.base_url = Some(server.base_url());
-    options.timeouts.read_timeout = Duration::from_secs(2);
-    options.timeouts.write_timeout = Duration::from_secs(2);
-    let client = HttpClientFactory::new().create(options).unwrap();
-    let mut invalid_retry = build_retry_options(
-        1,
-        RetryDelay::fixed(Duration::from_millis(5)),
-        RetryJitter::None,
-    );
-    invalid_retry.jitter = RetryJitter::factor(f64::NAN);
-
-    let request = client.request(Method::GET, "/sse-invalid-jitter").build();
-    let mut events = client.execute_sse_with_reconnect(
-        request,
-        SseReconnectOptions {
-            retry: invalid_retry,
-            reconnect_on_eof: true,
-            honor_server_retry: false,
-        },
-    );
-
-    let first = events.next().await.unwrap().unwrap();
-    assert_eq!(first.data, "recovered");
-    assert!(events.next().await.is_none());
-
-    let requests = timeout(Duration::from_secs(3), server.finish())
-        .await
-        .expect("server finish timed out");
-    assert_eq!(requests.len(), 2);
 }
 
 #[tokio::test]
