@@ -20,11 +20,29 @@ use futures_util::StreamExt;
 use http::Method;
 use qubit_http::{
     sse::SseReconnectOptions, HttpClientFactory, HttpClientOptions, HttpError, HttpErrorKind,
-    HttpRequestInterceptor, RetryJitter,
+    HttpRequestInterceptor, RetryDelay, RetryJitter, RetryOptions,
 };
 use tokio::time::timeout;
 
 use crate::common::{spawn_multi_shot_server, spawn_one_shot_server, ResponseChunk, ResponsePlan};
+
+/// Builds retry options for SSE reconnect tests.
+///
+/// # Parameters
+/// - `max_reconnects`: Maximum reconnect attempts after the initial attempt.
+/// - `delay`: Delay strategy for reconnect attempts.
+/// - `jitter`: Jitter strategy for reconnect delays.
+///
+/// # Returns
+/// Retry options with `max_attempts = max_reconnects + 1`.
+fn build_retry_options(
+    max_reconnects: u32,
+    delay: RetryDelay,
+    jitter: RetryJitter,
+) -> RetryOptions {
+    RetryOptions::new(max_reconnects + 1, None, delay, jitter)
+        .expect("SSE reconnect test retry options should be valid")
+}
 
 #[tokio::test]
 async fn test_execute_sse_with_reconnect_propagates_last_event_id() {
@@ -60,11 +78,13 @@ async fn test_execute_sse_with_reconnect_propagates_last_event_id() {
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
-            max_reconnects: 1,
-            reconnect_delay: Duration::from_millis(1),
+            retry: build_retry_options(
+                1,
+                RetryDelay::fixed(Duration::from_millis(1)),
+                RetryJitter::None,
+            ),
             reconnect_on_eof: true,
             honor_server_retry: false,
-            ..SseReconnectOptions::default()
         },
     );
     let first = events.next().await.unwrap().unwrap();
@@ -121,11 +141,13 @@ async fn test_execute_sse_with_reconnect_honors_server_retry_delay() {
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
-            max_reconnects: 1,
-            reconnect_delay: Duration::from_millis(1),
+            retry: build_retry_options(
+                1,
+                RetryDelay::fixed(Duration::from_millis(1)),
+                RetryJitter::None,
+            ),
             reconnect_on_eof: true,
             honor_server_retry: true,
-            ..SseReconnectOptions::default()
         },
     );
     assert_eq!(events.next().await.unwrap().unwrap().data, "first");
@@ -181,11 +203,11 @@ async fn test_execute_sse_with_reconnect_uses_custom_backoff_parameters() {
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
-            max_reconnects: 2,
-            reconnect_delay: Duration::from_millis(80),
-            max_reconnect_delay: Duration::from_millis(200),
-            reconnect_backoff_multiplier: 3.0,
-            reconnect_jitter: RetryJitter::None,
+            retry: build_retry_options(
+                2,
+                RetryDelay::exponential(Duration::from_millis(80), Duration::from_millis(200), 3.0),
+                RetryJitter::None,
+            ),
             reconnect_on_eof: true,
             honor_server_retry: false,
         },
@@ -230,17 +252,20 @@ async fn test_execute_sse_with_reconnect_falls_back_when_jitter_invalid() {
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.write_timeout = Duration::from_secs(2);
     let client = HttpClientFactory::new().create(options).unwrap();
+    let mut invalid_retry = build_retry_options(
+        1,
+        RetryDelay::fixed(Duration::from_millis(5)),
+        RetryJitter::None,
+    );
+    invalid_retry.jitter = RetryJitter::factor(f64::NAN);
 
     let request = client.request(Method::GET, "/sse-invalid-jitter").build();
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
-            max_reconnects: 1,
-            reconnect_delay: Duration::from_millis(5),
-            reconnect_jitter: RetryJitter::factor(f64::NAN),
+            retry: invalid_retry,
             reconnect_on_eof: true,
             honor_server_retry: false,
-            ..SseReconnectOptions::default()
         },
     );
 
@@ -283,11 +308,13 @@ async fn test_execute_sse_with_reconnect_does_not_retry_non_retryable_protocol_e
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
-            max_reconnects: 3,
-            reconnect_delay: Duration::from_millis(1),
+            retry: build_retry_options(
+                3,
+                RetryDelay::fixed(Duration::from_millis(1)),
+                RetryJitter::None,
+            ),
             reconnect_on_eof: true,
             honor_server_retry: true,
-            ..SseReconnectOptions::default()
         },
     );
 
@@ -326,11 +353,13 @@ async fn test_execute_sse_with_reconnect_reports_invalid_last_event_id_header_va
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
-            max_reconnects: 1,
-            reconnect_delay: Duration::from_millis(1),
+            retry: build_retry_options(
+                1,
+                RetryDelay::fixed(Duration::from_millis(1)),
+                RetryJitter::None,
+            ),
             reconnect_on_eof: true,
             honor_server_retry: false,
-            ..SseReconnectOptions::default()
         },
     );
 
@@ -383,11 +412,13 @@ async fn test_execute_sse_with_reconnect_retries_on_unexpected_eof_message() {
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
-            max_reconnects: 1,
-            reconnect_delay: Duration::from_millis(1),
+            retry: build_retry_options(
+                1,
+                RetryDelay::fixed(Duration::from_millis(1)),
+                RetryJitter::None,
+            ),
             reconnect_on_eof: false,
             honor_server_retry: false,
-            ..SseReconnectOptions::default()
         },
     );
 
@@ -423,11 +454,13 @@ async fn test_execute_sse_with_reconnect_does_not_retry_cancelled_error() {
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
-            max_reconnects: 3,
-            reconnect_delay: Duration::from_millis(1),
+            retry: build_retry_options(
+                3,
+                RetryDelay::fixed(Duration::from_millis(1)),
+                RetryJitter::None,
+            ),
             reconnect_on_eof: true,
             honor_server_retry: true,
-            ..SseReconnectOptions::default()
         },
     );
 

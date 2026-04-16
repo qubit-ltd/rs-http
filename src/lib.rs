@@ -44,7 +44,7 @@ pub use options::{
     HttpRetryMethodPolicy, HttpRetryOptions, HttpTimeoutOptions, PendingHttpRetryAfterDelay,
     ProxyOptions, ProxyType, SensitiveHttpHeaders,
 };
-pub use qubit_retry::{RetryDelay, RetryJitter};
+pub use qubit_retry::{RetryDelay, RetryJitter, RetryOptions};
 pub use request::{
     AsyncHttpHeaderInjector, HttpHeaderInjector, HttpRequest, HttpRequestBody,
     HttpRequestBodyByteStream, HttpRequestBuilder, HttpRequestInterceptor, HttpRequestInterceptors,

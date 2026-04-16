@@ -698,17 +698,22 @@ while let Some(item) = chunks.next().await {
 ```rust
 use futures_util::StreamExt;
 use qubit_http::sse::SseReconnectOptions;
-use qubit_http::RetryJitter;
+use qubit_http::{RetryDelay, RetryJitter, RetryOptions};
 
 let request = client.request(Method::GET, "/events").build();
 let mut events = client.execute_sse_with_reconnect(
     request,
     SseReconnectOptions {
-        max_reconnects: 5,
-        reconnect_delay: std::time::Duration::from_secs(1),
-        max_reconnect_delay: std::time::Duration::from_secs(30),
-        reconnect_backoff_multiplier: 2.0,
-        reconnect_jitter: RetryJitter::None,
+        retry: RetryOptions::new(
+            6, // max_attempts = initial connect + 5 reconnects
+            None,
+            RetryDelay::exponential(
+                std::time::Duration::from_secs(1),
+                std::time::Duration::from_secs(30),
+                2.0,
+            ),
+            RetryJitter::None,
+        ).expect("valid SSE retry options"),
         reconnect_on_eof: true,
         honor_server_retry: true,
     },
@@ -720,7 +725,7 @@ while let Some(item) = events.next().await {
 }
 ```
 
-The default reconnect settings are 3 reconnects, a 1 second base delay, a 30 second exponential-backoff cap, a 2.0 backoff multiplier, no jitter, reconnect on EOF, and honor server `retry:`. Reconnects reuse the original request. If a previous SSE event had an `id:`, the next request includes `Last-Event-ID`. Cancellation does not reconnect. SSE protocol errors do not reconnect by default. Retryable timeout, transport, 429/5xx, and unexpected-EOF-like errors may reconnect.
+The default reconnect settings are `retry.max_attempts = 4` (that is, at most 3 reconnects), `RetryDelay::Exponential { initial=1s, max=30s, multiplier=2.0 }`, `RetryJitter::None`, reconnect on EOF, and honor server `retry:`. Reconnects reuse the original request. If a previous SSE event had an `id:`, the next request includes `Last-Event-ID`. Cancellation does not reconnect. SSE protocol errors do not reconnect by default. Retryable timeout, transport, 429/5xx, and unexpected-EOF-like errors may reconnect.
 
 ## Configuration Reference
 
