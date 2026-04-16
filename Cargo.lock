@@ -1147,18 +1147,14 @@ dependencies = [
 name = "qubit-retry"
 version = "0.6.0"
 dependencies = [
- "chrono",
  "parse-display 0.9.1",
  "qubit-common",
  "qubit-config",
  "qubit-function",
  "rand 0.10.1",
  "serde",
- "serde_json",
  "strum",
- "thiserror 2.0.18",
  "tokio",
- "tracing",
 ]
 
 [[package]]

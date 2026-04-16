@@ -12,7 +12,7 @@
 
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
-    Arc,
+    Arc, Mutex,
 };
 use std::time::{Duration, Instant};
 
@@ -105,6 +105,7 @@ async fn test_execute_sse_with_reconnect_propagates_last_event_id() {
             ),
             reconnect_on_eof: true,
             honor_server_retry: false,
+            ..SseReconnectOptions::default()
         },
     );
     let first = events.next().await.unwrap().unwrap();
@@ -168,6 +169,7 @@ async fn test_execute_sse_with_reconnect_honors_server_retry_delay() {
             ),
             reconnect_on_eof: true,
             honor_server_retry: true,
+            ..SseReconnectOptions::default()
         },
     );
     assert_eq!(events.next().await.unwrap().unwrap().data, "first");
@@ -183,6 +185,184 @@ async fn test_execute_sse_with_reconnect_honors_server_retry_delay() {
         .await
         .expect("server finish timed out");
     assert_eq!(requests.len(), 2);
+}
+
+#[tokio::test]
+async fn test_execute_sse_with_reconnect_caps_server_retry_delay() {
+    let server = spawn_multi_shot_server(vec![
+        ResponsePlan::Chunked {
+            status: 200,
+            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+            chunks: vec![ResponseChunk {
+                delay: Duration::from_millis(0),
+                bytes: b"retry: 800\ndata: first\n\n".to_vec(),
+            }],
+            finish: false,
+        },
+        ResponsePlan::Chunked {
+            status: 200,
+            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+            chunks: vec![ResponseChunk {
+                delay: Duration::from_millis(0),
+                bytes: b"data: second\n\n".to_vec(),
+            }],
+            finish: true,
+        },
+    ])
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.read_timeout = Duration::from_secs(2);
+    options.timeouts.write_timeout = Duration::from_secs(2);
+    let mut client = HttpClientFactory::new().create(options).unwrap();
+
+    let request_starts = Arc::new(Mutex::new(Vec::new()));
+    let request_starts_for_interceptor = Arc::clone(&request_starts);
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request| {
+        request_starts_for_interceptor
+            .lock()
+            .expect("request_starts mutex should not be poisoned")
+            .push(Instant::now());
+        Ok(())
+    }));
+
+    let request = client.request(Method::GET, "/sse-server-retry-cap").build();
+    let mut events = client.execute_sse_with_reconnect(
+        request,
+        SseReconnectOptions {
+            retry: build_retry_options(
+                1,
+                RetryDelay::fixed(Duration::from_millis(1)),
+                RetryJitter::None,
+            ),
+            reconnect_on_eof: true,
+            honor_server_retry: true,
+            server_retry_max_delay: Some(Duration::from_millis(80)),
+            apply_jitter_to_server_retry: false,
+        },
+    );
+
+    assert_eq!(events.next().await.unwrap().unwrap().data, "first");
+    assert_eq!(events.next().await.unwrap().unwrap().data, "second");
+    assert!(events.next().await.is_none());
+
+    let requests = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(requests.len(), 2);
+
+    let starts = request_starts
+        .lock()
+        .expect("request_starts mutex should not be poisoned");
+    assert_eq!(starts.len(), 2);
+    let reconnect_delay = starts[1].saturating_duration_since(starts[0]);
+    assert!(
+        reconnect_delay >= Duration::from_millis(65),
+        "reconnect delay should honor server retry cap lower bound: {reconnect_delay:?}"
+    );
+    assert!(
+        reconnect_delay < Duration::from_millis(220),
+        "reconnect delay should be capped instead of waiting near 800ms: {reconnect_delay:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_execute_sse_with_reconnect_can_disable_server_retry_jitter() {
+    let reconnect_count: usize = 8;
+    let mut plans = Vec::with_capacity(reconnect_count + 1);
+    for index in 0..reconnect_count {
+        plans.push(ResponsePlan::Chunked {
+            status: 200,
+            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+            chunks: vec![ResponseChunk {
+                delay: Duration::from_millis(0),
+                bytes: format!("retry: 120\ndata: tick-{index}\n\n").into_bytes(),
+            }],
+            finish: false,
+        });
+    }
+    plans.push(ResponsePlan::Chunked {
+        status: 200,
+        headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+        chunks: vec![ResponseChunk {
+            delay: Duration::from_millis(0),
+            bytes: b"data: done\n\n".to_vec(),
+        }],
+        finish: true,
+    });
+    let server = spawn_multi_shot_server(plans).await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.read_timeout = Duration::from_secs(2);
+    options.timeouts.write_timeout = Duration::from_secs(2);
+    let mut client = HttpClientFactory::new().create(options).unwrap();
+
+    let request_starts = Arc::new(Mutex::new(Vec::new()));
+    let request_starts_for_interceptor = Arc::clone(&request_starts);
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request| {
+        request_starts_for_interceptor
+            .lock()
+            .expect("request_starts mutex should not be poisoned")
+            .push(Instant::now());
+        Ok(())
+    }));
+
+    let request = client
+        .request(Method::GET, "/sse-disable-server-retry-jitter")
+        .build();
+    let mut events = client.execute_sse_with_reconnect(
+        request,
+        SseReconnectOptions {
+            retry: build_retry_options(
+                reconnect_count as u32,
+                RetryDelay::fixed(Duration::from_millis(1)),
+                RetryJitter::factor(1.0),
+            ),
+            reconnect_on_eof: true,
+            honor_server_retry: true,
+            server_retry_max_delay: Some(Duration::from_millis(120)),
+            apply_jitter_to_server_retry: false,
+        },
+    );
+
+    for index in 0..reconnect_count {
+        let event = events
+            .next()
+            .await
+            .expect("tick event should be present")
+            .expect("tick event should decode");
+        assert_eq!(event.data, format!("tick-{index}"));
+    }
+    let final_event = events
+        .next()
+        .await
+        .expect("final done event should be present")
+        .expect("final done event should decode");
+    assert_eq!(final_event.data, "done");
+    assert!(events.next().await.is_none());
+
+    let requests = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(requests.len(), reconnect_count + 1);
+
+    let starts = request_starts
+        .lock()
+        .expect("request_starts mutex should not be poisoned");
+    assert_eq!(starts.len(), reconnect_count + 1);
+    for (index, pair) in starts.windows(2).enumerate() {
+        let reconnect_delay = pair[1].saturating_duration_since(pair[0]);
+        assert!(
+            reconnect_delay >= Duration::from_millis(95),
+            "reconnect #{index} should not be shortened by jitter: {reconnect_delay:?}"
+        );
+        assert!(
+            reconnect_delay <= Duration::from_millis(230),
+            "reconnect #{index} should stay near configured server retry delay: {reconnect_delay:?}"
+        );
+    }
 }
 
 #[tokio::test]
@@ -224,6 +404,7 @@ async fn test_execute_sse_with_reconnect_respects_retry_max_elapsed() {
             ),
             reconnect_on_eof: true,
             honor_server_retry: false,
+            ..SseReconnectOptions::default()
         },
     );
 
@@ -286,6 +467,7 @@ async fn test_execute_sse_with_reconnect_sleep_can_be_cancelled() {
             ),
             reconnect_on_eof: true,
             honor_server_retry: false,
+            ..SseReconnectOptions::default()
         },
     );
     let error = events
@@ -337,6 +519,7 @@ async fn test_execute_sse_with_reconnect_disables_inner_http_retry() {
             ),
             reconnect_on_eof: true,
             honor_server_retry: false,
+            ..SseReconnectOptions::default()
         },
     );
 
@@ -379,6 +562,7 @@ async fn test_execute_sse_with_reconnect_fails_fast_on_non_sse_content_type() {
             ),
             reconnect_on_eof: true,
             honor_server_retry: true,
+            ..SseReconnectOptions::default()
         },
     );
 
@@ -441,6 +625,7 @@ async fn test_execute_sse_with_reconnect_uses_custom_backoff_parameters() {
             ),
             reconnect_on_eof: true,
             honor_server_retry: false,
+            ..SseReconnectOptions::default()
         },
     );
     assert_eq!(events.next().await.unwrap().unwrap().data, "done");
@@ -493,6 +678,7 @@ async fn test_execute_sse_with_reconnect_does_not_retry_non_retryable_protocol_e
             ),
             reconnect_on_eof: true,
             honor_server_retry: true,
+            ..SseReconnectOptions::default()
         },
     );
 
@@ -538,6 +724,7 @@ async fn test_execute_sse_with_reconnect_reports_invalid_last_event_id_header_va
             ),
             reconnect_on_eof: true,
             honor_server_retry: false,
+            ..SseReconnectOptions::default()
         },
     );
 
@@ -597,6 +784,7 @@ async fn test_execute_sse_with_reconnect_retries_on_unexpected_eof_message() {
             ),
             reconnect_on_eof: false,
             honor_server_retry: false,
+            ..SseReconnectOptions::default()
         },
     );
 
@@ -639,6 +827,7 @@ async fn test_execute_sse_with_reconnect_does_not_retry_cancelled_error() {
             ),
             reconnect_on_eof: true,
             honor_server_retry: true,
+            ..SseReconnectOptions::default()
         },
     );
 
