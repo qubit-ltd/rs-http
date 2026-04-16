@@ -55,6 +55,16 @@ pub struct SseReconnectOptions {
     pub reconnect_on_eof: bool,
     /// Whether to honor SSE `retry:` field as the next reconnect delay.
     pub honor_server_retry: bool,
+    /// Optional upper bound applied to SSE `retry:` delay values from server
+    /// events.
+    ///
+    /// When `None`, reconnect runner derives a cap from retry delay strategy
+    /// when it has explicit max (`Random` / `Exponential`), otherwise it uses
+    /// internal default bound.
+    pub server_retry_max_delay: Option<Duration>,
+    /// Whether jitter should be applied when the reconnect delay comes from SSE
+    /// `retry:` field.
+    pub apply_jitter_to_server_retry: bool,
 }
 
 impl Default for SseReconnectOptions {
@@ -67,6 +77,8 @@ impl Default for SseReconnectOptions {
             retry: default_sse_retry_options(),
             reconnect_on_eof: true,
             honor_server_retry: true,
+            server_retry_max_delay: None,
+            apply_jitter_to_server_retry: true,
         }
     }
 }

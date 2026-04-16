@@ -45,6 +45,15 @@ enum ReconnectDecision {
     },
 }
 
+/// Source of the current reconnect delay value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReconnectDelaySource {
+    /// Delay comes from local retry strategy/backoff.
+    RetryBackoff,
+    /// Delay comes from SSE `retry:` field from server events.
+    ServerRetry,
+}
+
 /// Stateful SSE reconnect runner for one stream invocation.
 pub(crate) struct SseReconnectRunner {
     /// HTTP client used to execute each stream attempt.
@@ -87,7 +96,7 @@ impl SseReconnectRunner {
         let request_template = self.request_template;
         let options = self.options;
         let output = stream! {
-            let retry_options = normalize_retry_options(options.retry);
+            let retry_options = normalize_retry_options(options.retry.clone());
             let max_reconnects = retry_options.max_attempts().saturating_sub(1);
             let request_url = request_template.resolved_url_cached();
             let request_method = request_template.method().clone();
@@ -95,6 +104,7 @@ impl SseReconnectRunner {
             let started_at = Instant::now();
             let mut count: u32 = 0;
             let mut delay = initial_reconnect_delay(&retry_options);
+            let mut delay_source = ReconnectDelaySource::RetryBackoff;
             let mut last_event_id: Option<String> = None;
             loop {
                 let mut request = request_template.clone();
@@ -116,8 +126,14 @@ impl SseReconnectRunner {
                             match reconnect_decision(count, max_reconnects, started_at, &retry_options) {
                                 ReconnectDecision::Allowed => {
                                     count += 1;
+                                    let sleep_delay = reconnect_sleep_delay(
+                                        delay,
+                                        delay_source,
+                                        &retry_options,
+                                        &options,
+                                    );
                                     if let Err(cancelled) = sleep_reconnect_delay(
-                                        retry_options.jittered_delay(delay),
+                                        sleep_delay,
                                         cancellation_token.as_ref(),
                                         &request_method,
                                         request_url.as_ref(),
@@ -128,6 +144,7 @@ impl SseReconnectRunner {
                                         return;
                                     }
                                     delay = next_reconnect_delay(&retry_options, delay);
+                                    delay_source = ReconnectDelaySource::RetryBackoff;
                                     continue;
                                 }
                                 ReconnectDecision::MaxElapsedExceeded {
@@ -158,7 +175,8 @@ impl SseReconnectRunner {
                             }
                             if options.honor_server_retry {
                                 if let Some(retry_ms) = event.retry {
-                                    delay = Duration::from_millis(retry_ms.max(1));
+                                    delay = server_retry_delay(retry_ms, &retry_options, &options);
+                                    delay_source = ReconnectDelaySource::ServerRetry;
                                 }
                             }
                             yield Ok(event);
@@ -175,8 +193,14 @@ impl SseReconnectRunner {
                         match reconnect_decision(count, max_reconnects, started_at, &retry_options) {
                             ReconnectDecision::Allowed => {
                                 count += 1;
+                                let sleep_delay = reconnect_sleep_delay(
+                                    delay,
+                                    delay_source,
+                                    &retry_options,
+                                    &options,
+                                );
                                 if let Err(cancelled) = sleep_reconnect_delay(
-                                    retry_options.jittered_delay(delay),
+                                    sleep_delay,
                                     cancellation_token.as_ref(),
                                     &request_method,
                                     request_url.as_ref(),
@@ -187,6 +211,7 @@ impl SseReconnectRunner {
                                     return;
                                 }
                                 delay = next_reconnect_delay(&retry_options, delay);
+                                delay_source = ReconnectDelaySource::RetryBackoff;
                                 continue;
                             }
                             ReconnectDecision::MaxElapsedExceeded {
@@ -209,8 +234,14 @@ impl SseReconnectRunner {
                     match reconnect_decision(count, max_reconnects, started_at, &retry_options) {
                         ReconnectDecision::Allowed => {
                             count += 1;
+                            let sleep_delay = reconnect_sleep_delay(
+                                delay,
+                                delay_source,
+                                &retry_options,
+                                &options,
+                            );
                             if let Err(cancelled) = sleep_reconnect_delay(
-                                retry_options.jittered_delay(delay),
+                                sleep_delay,
                                 cancellation_token.as_ref(),
                                 &request_method,
                                 request_url.as_ref(),
@@ -221,6 +252,7 @@ impl SseReconnectRunner {
                                 return;
                             }
                             delay = next_reconnect_delay(&retry_options, delay);
+                            delay_source = ReconnectDelaySource::RetryBackoff;
                             continue;
                         }
                         ReconnectDecision::MaxElapsedExceeded {
@@ -341,6 +373,32 @@ fn initial_reconnect_delay(retry_options: &RetryOptions) -> Duration {
         .max(Duration::from_millis(1))
 }
 
+/// Returns one reconnect sleep delay by applying configured jitter rules.
+///
+/// # Parameters
+/// - `delay`: Base reconnect delay before optional jitter.
+/// - `source`: Delay source (retry backoff vs server retry).
+/// - `retry_options`: Retry options containing jitter strategy.
+/// - `options`: SSE reconnect options that control server-retry jitter behavior.
+///
+/// # Returns
+/// Effective sleep delay for the next reconnect wait.
+fn reconnect_sleep_delay(
+    delay: Duration,
+    source: ReconnectDelaySource,
+    retry_options: &RetryOptions,
+    options: &SseReconnectOptions,
+) -> Duration {
+    let delay = if (source == ReconnectDelaySource::ServerRetry)
+        && !options.apply_jitter_to_server_retry
+    {
+        delay
+    } else {
+        retry_options.jittered_delay(delay)
+    };
+    delay.max(Duration::from_millis(1))
+}
+
 /// Sleeps before reconnect, while honoring cancellation token when provided.
 ///
 /// # Parameters
@@ -379,6 +437,55 @@ async fn sleep_reconnect_delay(
         tokio::time::sleep(delay).await;
         Ok(())
     }
+}
+
+/// Returns reconnect delay derived from one SSE `retry:` value.
+///
+/// # Parameters
+/// - `retry_ms`: Milliseconds from SSE `retry:` field.
+/// - `retry_options`: Retry options used for fallback cap derivation.
+/// - `options`: SSE reconnect options with optional server-retry cap override.
+///
+/// # Returns
+/// Capped reconnect delay from server retry value.
+fn server_retry_delay(
+    retry_ms: u64,
+    retry_options: &RetryOptions,
+    options: &SseReconnectOptions,
+) -> Duration {
+    let raw = Duration::from_millis(retry_ms.max(1));
+    let cap = server_retry_max_delay(retry_options, options);
+    raw.min(cap).max(Duration::from_millis(1))
+}
+
+/// Returns max allowed delay for SSE `retry:` values.
+///
+/// # Parameters
+/// - `retry_options`: Retry options used for derived cap.
+/// - `options`: SSE reconnect options with optional explicit cap.
+///
+/// # Returns
+/// Maximum server retry delay.
+fn server_retry_max_delay(retry_options: &RetryOptions, options: &SseReconnectOptions) -> Duration {
+    options
+        .server_retry_max_delay
+        .unwrap_or_else(|| default_server_retry_max_delay(retry_options))
+        .max(Duration::from_millis(1))
+}
+
+/// Returns fallback server-retry cap derived from retry delay strategy.
+///
+/// # Parameters
+/// - `retry_options`: Retry options whose delay strategy is inspected.
+///
+/// # Returns
+/// Fallback cap for server-provided `retry:` delay.
+fn default_server_retry_max_delay(retry_options: &RetryOptions) -> Duration {
+    match retry_options.delay() {
+        RetryDelay::None | RetryDelay::Fixed(_) => DEFAULT_SSE_MAX_RECONNECT_DELAY,
+        RetryDelay::Random { max, .. } | RetryDelay::Exponential { max, .. } => *max,
+    }
+    .max(Duration::from_millis(1))
 }
 
 /// Adds reconnect max-elapsed context suffix to one existing HTTP error.
