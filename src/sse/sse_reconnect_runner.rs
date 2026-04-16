@@ -98,6 +98,10 @@ impl SseReconnectRunner {
             let mut last_event_id: Option<String> = None;
             loop {
                 let mut request = request_template.clone();
+                // SSE reconnect loop already retries at stream level. Disable
+                // inner HTTP retry to avoid multiplicative retry attempts.
+                let retry_override = request.retry_override().clone().force_disable();
+                request.set_retry_override(retry_override);
                 if let Some(last_event_id) = last_event_id.as_deref() {
                     if let Err(error) = apply_last_event_id_header(&mut request, last_event_id) {
                         yield Err(error);

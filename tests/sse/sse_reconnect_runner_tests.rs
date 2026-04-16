@@ -307,6 +307,53 @@ async fn test_execute_sse_with_reconnect_sleep_can_be_cancelled() {
 }
 
 #[tokio::test]
+async fn test_execute_sse_with_reconnect_disables_inner_http_retry() {
+    let mut options = HttpClientOptions::default();
+    options
+        .set_base_url("http://127.0.0.1:18080")
+        .expect("base URL should parse");
+    options.timeouts.read_timeout = Duration::from_secs(2);
+    options.timeouts.write_timeout = Duration::from_secs(2);
+    options.retry.enabled = true;
+    options.retry.max_attempts = 3;
+    options.retry.delay_strategy = RetryDelay::None;
+    let mut client = HttpClientFactory::new().create(options).unwrap();
+
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let attempts_for_interceptor = Arc::clone(&attempts);
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request| {
+        attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
+        Err(HttpError::transport("injector transient transport failure"))
+    }));
+
+    let request = client.request(Method::GET, "/sse-disable-inner-retry").build();
+    let mut events = client.execute_sse_with_reconnect(
+        request,
+        SseReconnectOptions {
+            retry: build_retry_options(
+                1,
+                RetryDelay::fixed(Duration::from_millis(1)),
+                RetryJitter::None,
+            ),
+            reconnect_on_eof: true,
+            honor_server_retry: false,
+        },
+    );
+
+    let error = events
+        .next()
+        .await
+        .expect("stream should yield one failure item")
+        .expect_err("transport failure should stop after reconnect budget is exhausted");
+    assert_eq!(error.kind, HttpErrorKind::Transport);
+    assert_eq!(
+        attempts.load(Ordering::Relaxed),
+        2,
+        "inner retry must be disabled; only outer reconnect attempts should run"
+    );
+}
+
+#[tokio::test]
 async fn test_execute_sse_with_reconnect_uses_custom_backoff_parameters() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Chunked {
