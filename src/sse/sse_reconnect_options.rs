@@ -14,7 +14,7 @@
 
 use std::time::Duration;
 
-use crate::RetryJitter;
+use crate::{RetryDelay, RetryJitter, RetryOptions};
 
 /// Default upper bound for SSE reconnect delay backoff.
 pub(crate) const DEFAULT_SSE_MAX_RECONNECT_DELAY: Duration = Duration::from_secs(30);
@@ -22,19 +22,35 @@ pub(crate) const DEFAULT_SSE_MAX_RECONNECT_DELAY: Duration = Duration::from_secs
 /// Default exponential backoff multiplier for SSE reconnect delay growth.
 pub(crate) const DEFAULT_SSE_RECONNECT_BACKOFF_MULTIPLIER: f64 = 2.0;
 
+/// Default maximum reconnect attempts after the initial stream open.
+pub(crate) const DEFAULT_SSE_MAX_RECONNECTS: u32 = 3;
+
+/// Builds default retry options for SSE reconnect.
+///
+/// # Returns
+/// Retry options matching SSE reconnect defaults.
+fn default_sse_retry_options() -> RetryOptions {
+    RetryOptions::new(
+        DEFAULT_SSE_MAX_RECONNECTS + 1,
+        None,
+        RetryDelay::exponential(
+            Duration::from_secs(1),
+            DEFAULT_SSE_MAX_RECONNECT_DELAY,
+            DEFAULT_SSE_RECONNECT_BACKOFF_MULTIPLIER,
+        ),
+        RetryJitter::None,
+    )
+    .expect("SSE default retry options must be valid")
+}
+
 /// Reconnect behavior options for [`crate::HttpClient::execute_sse_with_reconnect`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct SseReconnectOptions {
-    /// Maximum reconnect attempts after the first connection.
-    pub max_reconnects: u32,
-    /// Base reconnect delay between attempts.
-    pub reconnect_delay: Duration,
-    /// Upper bound for exponential reconnect backoff delay.
-    pub max_reconnect_delay: Duration,
-    /// Exponential backoff multiplier applied after each reconnect sleep.
-    pub reconnect_backoff_multiplier: f64,
-    /// Retry jitter strategy applied to each reconnect delay.
-    pub reconnect_jitter: RetryJitter,
+    /// Retry options used by SSE reconnect delay calculation.
+    ///
+    /// `max_attempts` includes the initial stream-open attempt, so if callers
+    /// want at most `N` reconnects they should pass `max_attempts = N + 1`.
+    pub retry: RetryOptions,
     /// Whether to reconnect when the SSE stream ends without an explicit error.
     pub reconnect_on_eof: bool,
     /// Whether to honor SSE `retry:` field as the next reconnect delay.
@@ -48,11 +64,7 @@ impl Default for SseReconnectOptions {
     /// Default reconnect options with bounded reconnect attempts.
     fn default() -> Self {
         Self {
-            max_reconnects: 3,
-            reconnect_delay: Duration::from_secs(1),
-            max_reconnect_delay: DEFAULT_SSE_MAX_RECONNECT_DELAY,
-            reconnect_backoff_multiplier: DEFAULT_SSE_RECONNECT_BACKOFF_MULTIPLIER,
-            reconnect_jitter: RetryJitter::None,
+            retry: default_sse_retry_options(),
             reconnect_on_eof: true,
             honor_server_retry: true,
         }

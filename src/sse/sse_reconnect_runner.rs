@@ -21,7 +21,8 @@ use super::{
     DEFAULT_SSE_RECONNECT_BACKOFF_MULTIPLIER,
 };
 use crate::{
-    HttpClient, HttpError, HttpErrorKind, HttpRequest, HttpResult, RetryHint, RetryJitter,
+    HttpClient, HttpError, HttpErrorKind, HttpRequest, HttpResult, RetryDelay, RetryHint,
+    RetryJitter, RetryOptions,
 };
 
 /// Header name used for SSE resume token propagation.
@@ -69,13 +70,10 @@ impl SseReconnectRunner {
         let request_template = self.request_template;
         let options = self.options;
         let output = stream! {
+            let retry_options = normalize_retry_options(options.retry);
+            let max_reconnects = retry_options.max_attempts.get().saturating_sub(1);
             let mut count: u32 = 0;
-            let mut delay = options.reconnect_delay.max(Duration::from_millis(1));
-            let max_reconnect_delay = normalize_max_reconnect_delay(options.max_reconnect_delay);
-            let reconnect_backoff_multiplier = normalize_reconnect_backoff_multiplier(
-                options.reconnect_backoff_multiplier,
-            );
-            let reconnect_jitter = normalize_reconnect_jitter(options.reconnect_jitter);
+            let mut delay = initial_reconnect_delay(&retry_options);
             let mut last_event_id: Option<String> = None;
             loop {
                 let mut request = request_template.clone();
@@ -89,14 +87,10 @@ impl SseReconnectRunner {
                 let response = match client.execute(request).await {
                     Ok(response) => response,
                     Err(error) => {
-                        if (count < options.max_reconnects) && should_reconnect_sse_error(&error) {
+                        if (count < max_reconnects) && should_reconnect_sse_error(&error) {
                             count += 1;
-                            tokio::time::sleep(reconnect_jitter.apply(delay)).await;
-                            delay = next_reconnect_delay(
-                                delay,
-                                max_reconnect_delay,
-                                reconnect_backoff_multiplier,
-                            );
+                            tokio::time::sleep(retry_options.jittered_delay(delay)).await;
+                            delay = next_reconnect_delay(&retry_options, delay);
                             continue;
                         }
                         yield Err(error);
@@ -127,28 +121,20 @@ impl SseReconnectRunner {
                 }
 
                 if let Some(error) = stream_error {
-                    if (count < options.max_reconnects) && should_reconnect_sse_error(&error) {
+                    if (count < max_reconnects) && should_reconnect_sse_error(&error) {
                         count += 1;
-                        tokio::time::sleep(reconnect_jitter.apply(delay)).await;
-                        delay = next_reconnect_delay(
-                            delay,
-                            max_reconnect_delay,
-                            reconnect_backoff_multiplier,
-                        );
+                        tokio::time::sleep(retry_options.jittered_delay(delay)).await;
+                        delay = next_reconnect_delay(&retry_options, delay);
                         continue;
                     }
                     yield Err(error);
                     return;
                 }
 
-                if options.reconnect_on_eof && (count < options.max_reconnects) {
+                if options.reconnect_on_eof && (count < max_reconnects) {
                     count += 1;
-                    tokio::time::sleep(reconnect_jitter.apply(delay)).await;
-                    delay = next_reconnect_delay(
-                        delay,
-                        max_reconnect_delay,
-                        reconnect_backoff_multiplier,
-                    );
+                    tokio::time::sleep(retry_options.jittered_delay(delay)).await;
+                    delay = next_reconnect_delay(&retry_options, delay);
                     continue;
                 }
                 return;
@@ -197,69 +183,49 @@ fn should_reconnect_sse_error(error: &HttpError) -> bool {
 /// Returns the next reconnect delay after one reconnect sleep.
 ///
 /// # Parameters
+/// - `retry_options`: Retry options for reconnect delay strategy.
 /// - `current`: Current reconnect delay.
-/// - `max_reconnect_delay`: Upper bound for exponential backoff delay.
-/// - `reconnect_backoff_multiplier`: Backoff multiplier for delay growth.
 ///
 /// # Returns
-/// Exponential backoff delay capped by `max_reconnect_delay`.
-fn next_reconnect_delay(
-    current: Duration,
-    max_reconnect_delay: Duration,
-    reconnect_backoff_multiplier: f64,
-) -> Duration {
-    let bounded_current = current.min(max_reconnect_delay);
-    let next = bounded_current.mul_f64(reconnect_backoff_multiplier);
-    if next > max_reconnect_delay {
-        max_reconnect_delay
-    } else {
-        next
-    }
+/// Next reconnect base delay.
+fn next_reconnect_delay(retry_options: &RetryOptions, current: Duration) -> Duration {
+    retry_options
+        .next_base_delay_from_current(current)
+        .max(Duration::from_millis(1))
 }
 
-/// Normalizes reconnect backoff multiplier from options.
+/// Returns the initial reconnect delay from retry options.
 ///
 /// # Parameters
-/// - `value`: Raw multiplier supplied in [`SseReconnectOptions`].
+/// - `retry_options`: Retry options for reconnect delay strategy.
 ///
 /// # Returns
-/// Valid multiplier (`>= 1.0` and finite), or the default value.
-fn normalize_reconnect_backoff_multiplier(value: f64) -> f64 {
-    if value.is_finite() && (value >= 1.0) {
-        value
-    } else {
-        DEFAULT_SSE_RECONNECT_BACKOFF_MULTIPLIER
-    }
+/// Initial reconnect base delay.
+fn initial_reconnect_delay(retry_options: &RetryOptions) -> Duration {
+    retry_options
+        .base_delay_for_attempt(1)
+        .max(Duration::from_millis(1))
 }
 
-/// Normalizes maximum reconnect delay from options.
+/// Normalizes retry options from reconnect settings.
 ///
 /// # Parameters
-/// - `value`: Raw maximum reconnect delay in [`SseReconnectOptions`].
+/// - `value`: Raw retry options supplied in [`SseReconnectOptions`].
 ///
 /// # Returns
-/// Non-zero delay upper bound; falls back to default when value is zero.
-fn normalize_max_reconnect_delay(value: Duration) -> Duration {
-    if value.is_zero() {
-        DEFAULT_SSE_MAX_RECONNECT_DELAY
-    } else {
-        value.max(Duration::from_millis(1))
+/// Valid retry options, falling back to SSE reconnect defaults when invalid.
+fn normalize_retry_options(mut value: RetryOptions) -> RetryOptions {
+    if value.delay.validate().is_err() {
+        value.delay = RetryDelay::exponential(
+            Duration::from_secs(1),
+            DEFAULT_SSE_MAX_RECONNECT_DELAY,
+            DEFAULT_SSE_RECONNECT_BACKOFF_MULTIPLIER,
+        );
     }
-}
-
-/// Normalizes reconnect jitter strategy from options.
-///
-/// # Parameters
-/// - `value`: Raw jitter supplied in [`SseReconnectOptions`].
-///
-/// # Returns
-/// Valid jitter strategy, or [`RetryJitter::None`] when invalid.
-fn normalize_reconnect_jitter(value: RetryJitter) -> RetryJitter {
-    if value.validate().is_ok() {
-        value
-    } else {
-        RetryJitter::None
+    if value.jitter.validate().is_err() {
+        value.jitter = RetryJitter::None;
     }
+    value
 }
 
 /// Returns whether an HTTP error represents an unexpected stream EOF that is
