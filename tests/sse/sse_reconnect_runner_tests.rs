@@ -44,6 +44,26 @@ fn build_retry_options(
         .expect("SSE reconnect test retry options should be valid")
 }
 
+/// Builds retry options for SSE reconnect tests with max elapsed-time limit.
+///
+/// # Parameters
+/// - `max_reconnects`: Maximum reconnect attempts after the initial attempt.
+/// - `max_elapsed`: Maximum elapsed reconnect duration.
+/// - `delay`: Delay strategy for reconnect attempts.
+/// - `jitter`: Jitter strategy for reconnect delays.
+///
+/// # Returns
+/// Retry options with `max_attempts = max_reconnects + 1`.
+fn build_retry_options_with_max_elapsed(
+    max_reconnects: u32,
+    max_elapsed: Duration,
+    delay: RetryDelay,
+    jitter: RetryJitter,
+) -> RetryOptions {
+    RetryOptions::new(max_reconnects + 1, Some(max_elapsed), delay, jitter)
+        .expect("SSE reconnect test retry options should be valid")
+}
+
 #[tokio::test]
 async fn test_execute_sse_with_reconnect_propagates_last_event_id() {
     let server = spawn_multi_shot_server(vec![
@@ -163,6 +183,68 @@ async fn test_execute_sse_with_reconnect_honors_server_retry_delay() {
         .await
         .expect("server finish timed out");
     assert_eq!(requests.len(), 2);
+}
+
+#[tokio::test]
+async fn test_execute_sse_with_reconnect_respects_retry_max_elapsed() {
+    let server = spawn_multi_shot_server(vec![
+        ResponsePlan::Immediate {
+            status: 500,
+            headers: vec![],
+            body: b"server-error-1".to_vec(),
+        },
+        ResponsePlan::Immediate {
+            status: 500,
+            headers: vec![],
+            body: b"server-error-2".to_vec(),
+        },
+        ResponsePlan::Immediate {
+            status: 500,
+            headers: vec![],
+            body: b"server-error-3".to_vec(),
+        },
+    ])
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.read_timeout = Duration::from_secs(2);
+    options.timeouts.write_timeout = Duration::from_secs(2);
+    let client = HttpClientFactory::new().create(options).unwrap();
+
+    let request = client.request(Method::GET, "/sse-max-elapsed").build();
+    let mut events = client.execute_sse_with_reconnect(
+        request,
+        SseReconnectOptions {
+            retry: build_retry_options_with_max_elapsed(
+                5,
+                Duration::from_millis(80),
+                RetryDelay::fixed(Duration::from_millis(60)),
+                RetryJitter::None,
+            ),
+            reconnect_on_eof: true,
+            honor_server_retry: false,
+        },
+    );
+
+    let error = events
+        .next()
+        .await
+        .expect("max_elapsed exhaustion should surface an error item")
+        .expect_err("stream should fail when max_elapsed is exhausted");
+    assert_eq!(error.kind, HttpErrorKind::Status);
+    assert!(
+        error
+            .message
+            .contains("SSE reconnect max duration exceeded"),
+        "error message should mention max elapsed budget: {}",
+        error.message
+    );
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.len(), 3);
 }
 
 #[tokio::test]
