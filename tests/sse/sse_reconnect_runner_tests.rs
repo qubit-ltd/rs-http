@@ -188,6 +188,111 @@ async fn test_execute_sse_with_reconnect_honors_server_retry_delay() {
 }
 
 #[tokio::test]
+async fn test_execute_sse_with_reconnect_server_retry_overrides_once_and_preserves_backoff_progression(
+) {
+    let server = spawn_multi_shot_server(vec![
+        ResponsePlan::Chunked {
+            status: 200,
+            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+            chunks: vec![ResponseChunk {
+                delay: Duration::from_millis(0),
+                bytes: b"retry: 120\ndata: first\n\n".to_vec(),
+            }],
+            finish: false,
+        },
+        ResponsePlan::Chunked {
+            status: 200,
+            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+            chunks: vec![ResponseChunk {
+                delay: Duration::from_millis(0),
+                bytes: b"data: second\n\n".to_vec(),
+            }],
+            finish: false,
+        },
+        ResponsePlan::Chunked {
+            status: 200,
+            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+            chunks: vec![ResponseChunk {
+                delay: Duration::from_millis(0),
+                bytes: b"data: done\n\n".to_vec(),
+            }],
+            finish: true,
+        },
+    ])
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.read_timeout = Duration::from_secs(2);
+    options.timeouts.write_timeout = Duration::from_secs(2);
+    let mut client = HttpClientFactory::new().create(options).unwrap();
+
+    let request_starts = Arc::new(Mutex::new(Vec::new()));
+    let request_starts_for_interceptor = Arc::clone(&request_starts);
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request| {
+        request_starts_for_interceptor
+            .lock()
+            .expect("request_starts mutex should not be poisoned")
+            .push(Instant::now());
+        Ok(())
+    }));
+
+    let request = client
+        .request(Method::GET, "/sse-server-retry-once-then-backoff")
+        .build();
+    let mut events = client.execute_sse_with_reconnect(
+        request,
+        SseReconnectOptions {
+            retry: build_retry_options(
+                2,
+                RetryDelay::exponential(
+                    Duration::from_millis(40),
+                    Duration::from_millis(200),
+                    2.0,
+                ),
+                RetryJitter::None,
+            ),
+            reconnect_on_eof: true,
+            honor_server_retry: true,
+            apply_jitter_to_server_retry: false,
+            ..SseReconnectOptions::default()
+        },
+    );
+    assert_eq!(events.next().await.unwrap().unwrap().data, "first");
+    assert_eq!(events.next().await.unwrap().unwrap().data, "second");
+    assert_eq!(events.next().await.unwrap().unwrap().data, "done");
+    assert!(events.next().await.is_none());
+
+    let requests = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(requests.len(), 3);
+
+    let starts = request_starts
+        .lock()
+        .expect("request_starts mutex should not be poisoned");
+    assert_eq!(starts.len(), 3);
+    let first_reconnect_delay = starts[1].saturating_duration_since(starts[0]);
+    let second_reconnect_delay = starts[2].saturating_duration_since(starts[1]);
+    assert!(
+        first_reconnect_delay >= Duration::from_millis(95),
+        "first reconnect should honor server retry: {first_reconnect_delay:?}"
+    );
+    assert!(
+        first_reconnect_delay <= Duration::from_millis(220),
+        "first reconnect delay should stay near 120ms: {first_reconnect_delay:?}"
+    );
+    assert!(
+        second_reconnect_delay >= Duration::from_millis(55),
+        "second reconnect should follow local backoff progression: {second_reconnect_delay:?}"
+    );
+    assert!(
+        second_reconnect_delay <= Duration::from_millis(150),
+        "second reconnect delay should stay near 80ms: {second_reconnect_delay:?}"
+    );
+}
+
+#[tokio::test]
 async fn test_execute_sse_with_reconnect_caps_server_retry_delay() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Chunked {
