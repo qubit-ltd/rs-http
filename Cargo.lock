@@ -953,11 +953,11 @@ dependencies = [
 
 [[package]]
 name = "parse-display"
-version = "0.9.1"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "914a1c2265c98e2446911282c6ac86d8524f495792c38c5bd884f80499c7538a"
+checksum = "287d8d3ebdce117b8539f59411e4ed9ec226e0a4153c7f55495c6070d68e6f72"
 dependencies = [
- "parse-display-derive 0.9.1",
+ "parse-display-derive 0.10.0",
  "regex",
  "regex-syntax 0.8.10",
 ]
@@ -979,9 +979,9 @@ dependencies = [
 
 [[package]]
 name = "parse-display-derive"
-version = "0.9.1"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2ae7800a4c974efd12df917266338e79a7a74415173caf7e70aa0a0707345281"
+checksum = "7fc048687be30d79502dea2f623d052f3a074012c6eac41726b7ab17213616b1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1070,6 +1070,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "qubit-common"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4e25dc20c07b3f91f1ab570ec1946c136d288793352b52bbdb27f3f32792538b"
+dependencies = [
+ "bigdecimal",
+ "chrono",
+ "num-bigint",
+ "parse-display 0.7.0",
+ "regex",
+ "serde",
+ "serde_json",
+ "url",
+]
+
+[[package]]
 name = "qubit-concurrent"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1078,8 +1094,8 @@ dependencies = [
  "log",
  "parking_lot",
  "qubit-atomic",
- "qubit-common",
- "qubit-function",
+ "qubit-common 0.5.4",
+ "qubit-function 0.8.3",
  "thiserror 2.0.18",
  "tokio",
 ]
@@ -1094,7 +1110,7 @@ dependencies = [
  "chrono",
  "dotenvy",
  "num-bigint",
- "qubit-common",
+ "qubit-common 0.5.4",
  "qubit-value",
  "regex",
  "serde",
@@ -1117,6 +1133,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "qubit-function"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5dee4b9323ede3c42a8fc1b0bd17cf39ca4b8d4ebaec52d06c52f71d26fa01c6"
+dependencies = [
+ "parking_lot",
+ "pastey",
+]
+
+[[package]]
 name = "qubit-http"
 version = "0.4.0"
 dependencies = [
@@ -1126,15 +1152,15 @@ dependencies = [
  "http",
  "httpdate",
  "parse-display 0.7.0",
- "qubit-common",
+ "qubit-common 0.5.4",
  "qubit-concurrent",
  "qubit-config",
- "qubit-function",
+ "qubit-function 0.8.3",
  "qubit-retry",
  "reqwest",
  "serde",
  "serde_json",
- "strum",
+ "strum 0.27.2",
  "thiserror 2.0.18",
  "tokio",
  "tokio-util",
@@ -1145,16 +1171,14 @@ dependencies = [
 
 [[package]]
 name = "qubit-retry"
-version = "0.7.0"
+version = "0.7.2"
 dependencies = [
- "parse-display 0.9.1",
- "qubit-common",
- "qubit-config",
- "qubit-function",
+ "parse-display 0.10.0",
+ "qubit-common 0.6.1",
+ "qubit-function 0.10.1",
  "rand 0.10.1",
  "serde",
- "strum",
- "tokio",
+ "strum 0.28.0",
 ]
 
 [[package]]
@@ -1167,7 +1191,7 @@ dependencies = [
  "chrono",
  "num-bigint",
  "num-traits",
- "qubit-common",
+ "qubit-common 0.5.4",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -1729,7 +1753,16 @@ version = "0.27.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "af23d6f6c1a224baef9d3f61e287d2761385a5b88fdab4eb4c6f11aeb54c4bcf"
 dependencies = [
- "strum_macros",
+ "strum_macros 0.27.2",
+]
+
+[[package]]
+name = "strum"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9628de9b8791db39ceda2b119bbe13134770b56c138ec1d3af810d045c04f9bd"
+dependencies = [
+ "strum_macros 0.28.0",
 ]
 
 [[package]]
@@ -1737,6 +1770,18 @@ name = "strum_macros"
 version = "0.27.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7695ce3845ea4b33927c055a39dc438a45b059f7c1b3d91d38d10355fb8cbca7"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "strum_macros"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab85eea0270ee17587ed4156089e10b9e6880ee688791d45a905f5b1ca36f664"
 dependencies = [
  "heck",
  "proc-macro2",

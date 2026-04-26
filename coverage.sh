@@ -36,9 +36,10 @@ echo "📁 Coverage will only include files in: $CURRENT_CRATE_DIR"
 CURRENT_CRATE_NAME=$(basename "$CURRENT_CRATE_DIR")
 WORKSPACE_ROOT=$(cd "$(dirname "$0")/.." && pwd)
 
-# Create list of other workspace crates to exclude
+# Create list of other workspace crates to exclude (sibling directories under workspace root)
 OTHER_CRATES=""
-for crate_dir in "$WORKSPACE_ROOT"/rust-*/; do
+for crate_dir in "$WORKSPACE_ROOT"/*/; do
+    [ -d "$crate_dir" ] || continue
     crate_name=$(basename "$crate_dir")
     if [ "$crate_name" != "$CURRENT_CRATE_NAME" ]; then
         if [ -z "$OTHER_CRATES" ]; then
@@ -62,7 +63,7 @@ if [ -n "$OTHER_CRATES" ]; then
 else
     EXCLUDE_PATTERN="(\.cargo/registry|\.rustup/)"
 fi
-echo "🚫 Excluding: .cargo/registry, .rustup, and sibling rust-* crates under workspace root"
+echo "🚫 Excluding: .cargo/registry, .rustup, and sibling crates under workspace root"
 
 # Parse arguments, check if cleanup is needed
 CLEAN_FLAG=""
@@ -89,6 +90,9 @@ if [ "$CLEAN_FLAG" = "yes" ]; then
 else
     echo "ℹ️  Using cached build (use --clean option if you need to clean cache)"
 fi
+
+# cargo-llvm-cov does not create parent directories for --json/--lcov/--cobertura outputs
+mkdir -p target/llvm-cov
 
 # Run tests and generate coverage reports
 case "$FORMAT_ARG" in
