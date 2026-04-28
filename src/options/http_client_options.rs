@@ -12,8 +12,8 @@ use std::time::Duration;
 
 use http::HeaderMap;
 use http::HeaderValue;
-use std::str::FromStr;
 use qubit_config::{ConfigReader, ConfigResult};
+use std::str::FromStr;
 use url::Url;
 
 use super::from_config_helpers::hashmap_to_headermap;
@@ -177,7 +177,8 @@ impl HttpClientOptions {
                 "Value must not be empty",
             ));
         }
-        DoneMarkerPolicy::from_str(trimmed).or_else(|_| Ok(DoneMarkerPolicy::Custom(trimmed.to_string())))
+        DoneMarkerPolicy::from_str(trimmed)
+            .or_else(|_| Ok(DoneMarkerPolicy::Custom(trimmed.to_string())))
     }
 
     fn parse_base_url(base_url: &str) -> Result<Url, HttpConfigError> {
@@ -393,7 +394,8 @@ impl HttpClientOptions {
             header_map = parsed;
         }
         if !header_map.is_empty() {
-            opts.default_headers = hashmap_to_headermap(headers_prefix, header_map)?;
+            opts.default_headers =
+                hashmap_to_headermap(&config.resolve_key(headers_prefix), header_map)?;
         }
 
         if let Some(names) = root.sensitive_headers {

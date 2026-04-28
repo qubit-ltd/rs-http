@@ -206,7 +206,7 @@ impl HttpResponse {
         let method = self.meta.method.clone();
         let url = self.request_url().clone();
         let error_preview_limit = self.options.error_response_preview_limit;
-        let body_preview = self.into_error_body_preview(error_preview_limit).await;
+        let body_preview = self.into_error_body_preview(error_preview_limit).await?;
         let message = format!(
             "{} with status {} for {} {}; response body preview: {}",
             message_prefix, status, method, url, body_preview
@@ -222,16 +222,37 @@ impl HttpResponse {
     }
 
     /// Consumes this response and returns a bounded body preview for status errors.
-    pub(crate) async fn into_error_body_preview(mut self, max_bytes: usize) -> String {
+    ///
+    /// # Errors
+    /// Returns [`HttpErrorKind::Cancelled`](crate::HttpErrorKind::Cancelled)
+    /// when the request cancellation token fires while preview bytes are being
+    /// read.
+    pub(crate) async fn into_error_body_preview(mut self, max_bytes: usize) -> HttpResult<String> {
         let limit = max_bytes.max(1);
+        if let Some(error) = self.cancelled_error_if_needed(
+            "Request cancelled while reading status error response body preview",
+        ) {
+            return Err(error);
+        }
         if let Some(body) = self.buffered_body.take() {
             let end = body.len().min(limit);
-            return Self::render_error_body_preview(&body[..end], body.len() > limit);
+            return Ok(Self::render_error_body_preview(
+                &body[..end],
+                body.len() > limit,
+            ));
         }
         let Some(backend) = self.backend.take() else {
-            return "<empty>".to_string();
+            return Ok("<empty>".to_string());
         };
-        Self::read_error_body_preview(backend, self.runtime.read_timeout, limit).await
+        Self::read_error_body_preview(
+            backend,
+            self.runtime.read_timeout,
+            self.runtime.cancellation_token.clone(),
+            self.meta.method.clone(),
+            self.runtime.request_url.clone(),
+            limit,
+        )
+        .await
     }
 
     /// Returns full body bytes, consuming backend stream lazily on first call.
@@ -479,17 +500,38 @@ impl HttpResponse {
     }
 
     /// Reads bounded preview bytes from a response body for status error messages.
+    ///
+    /// # Errors
+    /// Returns [`HttpErrorKind::Cancelled`](crate::HttpErrorKind::Cancelled)
+    /// when the supplied cancellation token fires while waiting for preview
+    /// bytes.
     async fn read_error_body_preview(
         mut response: reqwest::Response,
         read_timeout: Duration,
+        cancellation_token: Option<CancellationToken>,
+        method: Method,
+        url: Url,
         max_bytes: usize,
-    ) -> String {
+    ) -> HttpResult<String> {
         let limit = max_bytes.max(1);
         let mut preview = Vec::new();
         let mut truncated = false;
 
         loop {
-            let next = tokio::time::timeout(read_timeout, response.chunk()).await;
+            let next = if let Some(token) = cancellation_token.as_ref() {
+                tokio::select! {
+                    _ = token.cancelled() => {
+                        return Err(HttpError::cancelled(
+                            "Request cancelled while reading status error response body preview",
+                        )
+                        .with_method(&method)
+                        .with_url(&url));
+                    }
+                    item = tokio::time::timeout(read_timeout, response.chunk()) => item,
+                }
+            } else {
+                tokio::time::timeout(read_timeout, response.chunk()).await
+            };
             match next {
                 Ok(Ok(Some(chunk))) => {
                     if preview.len() >= limit {
@@ -506,20 +548,45 @@ impl HttpResponse {
                 }
                 Ok(Ok(None)) => break,
                 Ok(Err(error)) => {
-                    return format!(
+                    return Ok(format!(
                         "<error body unavailable: failed to read response body: {}>",
                         error
-                    );
+                    ));
                 }
                 Err(_) => {
-                    return format!(
+                    return Ok(format!(
                         "<error body unavailable: read timeout after {:?}>",
                         read_timeout
-                    );
+                    ));
                 }
             }
         }
-        Self::render_error_body_preview(&preview, truncated)
+        Ok(Self::render_error_body_preview(&preview, truncated))
+    }
+
+    /// Returns a cancellation error with response read context when cancelled.
+    ///
+    /// # Parameters
+    /// - `message`: Cancellation message to include in the error.
+    ///
+    /// # Returns
+    /// `Some(HttpError)` when this response has a cancelled token; otherwise
+    /// `None`.
+    fn cancelled_error_if_needed(&self, message: &str) -> Option<HttpError> {
+        if self
+            .runtime
+            .cancellation_token
+            .as_ref()
+            .is_some_and(CancellationToken::is_cancelled)
+        {
+            Some(
+                HttpError::cancelled(message.to_string())
+                    .with_method(&self.meta.method)
+                    .with_url(&self.runtime.request_url),
+            )
+        } else {
+            None
+        }
     }
 
     /// Returns `Content-Length` parsed from response headers when present and valid.

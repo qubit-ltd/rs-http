@@ -26,10 +26,7 @@ fn test_http_config_error_kind_display() {
         HttpConfigErrorKind::InvalidHeader.to_string(),
         "invalid header"
     );
-    assert_eq!(
-        HttpConfigErrorKind::ConfigError.to_string(),
-        "config error"
-    );
+    assert_eq!(HttpConfigErrorKind::ConfigError.to_string(), "config error");
 }
 
 #[test]

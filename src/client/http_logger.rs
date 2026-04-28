@@ -61,9 +61,9 @@ impl<'a> HttpLogger<'a> {
         }
 
         let url = request
-            .resolved_url_cached()
+            .resolved_url_with_query()
             .map(|url| url.to_string())
-            .unwrap_or_else(|| request.path().to_string());
+            .unwrap_or_else(|_| request.path().to_string());
         tracing::trace!("--> {} {}", request.method(), url);
 
         let headers = request

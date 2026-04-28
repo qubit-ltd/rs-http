@@ -245,11 +245,7 @@ async fn test_execute_sse_with_reconnect_server_retry_overrides_once_and_preserv
         SseReconnectOptions {
             retry: build_retry_options(
                 2,
-                RetryDelay::exponential(
-                    Duration::from_millis(40),
-                    Duration::from_millis(200),
-                    2.0,
-                ),
+                RetryDelay::exponential(Duration::from_millis(40), Duration::from_millis(200), 2.0),
                 RetryJitter::None,
             ),
             reconnect_on_eof: true,
@@ -515,7 +511,10 @@ async fn test_execute_sse_with_reconnect_respects_retry_max_elapsed() {
         .expect_err("stream should fail when max_elapsed is exhausted");
     assert_eq!(error.kind, HttpErrorKind::RetryMaxElapsedExceeded);
     assert_eq!(error.status, Some(http::StatusCode::INTERNAL_SERVER_ERROR));
-    assert!(error.source.is_some(), "last retryable error should be chained");
+    assert!(
+        error.source.is_some(),
+        "last retryable error should be chained"
+    );
     assert!(
         error
             .message
@@ -669,7 +668,9 @@ async fn test_execute_sse_with_reconnect_disables_inner_http_retry() {
         Err(HttpError::transport("injector transient transport failure"))
     }));
 
-    let request = client.request(Method::GET, "/sse-disable-inner-retry").build();
+    let request = client
+        .request(Method::GET, "/sse-disable-inner-retry")
+        .build();
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
@@ -712,7 +713,9 @@ async fn test_execute_sse_with_reconnect_fails_fast_on_non_sse_content_type() {
     options.timeouts.write_timeout = Duration::from_secs(2);
     let client = HttpClientFactory::new().create(options).unwrap();
 
-    let request = client.request(Method::GET, "/sse-content-type-check").build();
+    let request = client
+        .request(Method::GET, "/sse-content-type-check")
+        .build();
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {

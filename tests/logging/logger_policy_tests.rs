@@ -186,6 +186,25 @@ fn test_log_stream_response_headers_respects_toggle() {
 }
 
 #[test]
+fn test_log_request_includes_builder_query_params() {
+    let client = HttpClientFactory::new()
+        .create_default()
+        .expect("default options should create client");
+    let logger_options = HttpClientOptions::default();
+    let logger = HttpLogger::new(&logger_options);
+    let request = client
+        .request(Method::GET, "https://example.com/api?existing=1")
+        .query_param("added", "two words")
+        .build();
+
+    let logs = capture_trace_logs(|| {
+        logger.log_request(&request);
+    });
+
+    assert!(logs.contains("--> GET https://example.com/api?existing=1&added=two+words"));
+}
+
+#[test]
 fn test_log_request_text_body() {
     let options = HttpLoggingOptions::default();
     let headers = HeaderMap::new();
