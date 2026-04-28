@@ -10,14 +10,15 @@
 
 mod http_byte_stream;
 mod http_response;
+mod http_response_interceptors;
 mod http_response_meta;
-mod response_interceptor;
+mod http_response_options;
 
 pub use http_byte_stream::HttpByteStream;
 pub use http_response::HttpResponse;
-pub(crate) use http_response::HttpResponseOptions;
+pub use http_response_interceptors::{HttpResponseInterceptor, HttpResponseInterceptors};
 pub use http_response_meta::HttpResponseMeta;
-pub use response_interceptor::{HttpResponseInterceptor, HttpResponseInterceptors};
+pub(crate) use http_response_options::HttpResponseOptions;
 
 #[cfg(coverage)]
 #[doc(hidden)]

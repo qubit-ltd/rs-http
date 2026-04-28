@@ -17,11 +17,11 @@ use std::str::FromStr;
 use url::Url;
 
 use super::from_config_helpers::hashmap_to_headermap;
+use super::http_logging_options::HttpLoggingOptions;
 use super::http_retry_options::HttpRetryOptions;
-use super::logging_options::HttpLoggingOptions;
+use super::http_timeout_options::HttpTimeoutOptions;
 use super::proxy_options::ProxyOptions;
-use super::sensitive_headers::SensitiveHttpHeaders;
-use super::timeout_options::HttpTimeoutOptions;
+use super::sensitive_http_headers::SensitiveHttpHeaders;
 use super::HttpConfigError;
 use crate::{
     constants::{

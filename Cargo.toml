@@ -35,8 +35,8 @@ httpdate = "1.0"
 url = "2.5"
 bytes = { version = "1.11", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
-strum = { version = "0.27", features = ["derive"] }
-parse-display = "0.7"
+strum = { version = "0.28", features = ["derive"] }
+parse-display = "0.10"
 serde_json = "1.0"
 tokio = { version = "1.52", features = ["time", "net", "macros"] }
 tokio-util = { version = "0.7", features = ["rt"] }
@@ -45,7 +45,7 @@ futures-util = "0.3"
 
 qubit-common = "0.6"
 qubit-config = "0.9"
-qubit-function = "0.10"
+qubit-function = "0.11"
 qubit-retry = { version = "0.9", features = ["tokio"] }
 
 [dev-dependencies]
