@@ -33,7 +33,7 @@ pub use http_client_options::HttpClientOptions;
 pub use http_config_error::HttpConfigError;
 pub use http_config_error_kind::HttpConfigErrorKind;
 pub use http_retry_method_policy::HttpRetryMethodPolicy;
-pub use http_retry_options::{HttpRetryOptions, PendingHttpRetryAfterDelay};
+pub use http_retry_options::HttpRetryOptions;
 pub use logging_options::HttpLoggingOptions;
 pub use proxy_options::ProxyOptions;
 pub use proxy_type::ProxyType;

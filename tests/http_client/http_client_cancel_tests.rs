@@ -11,12 +11,13 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc,
 };
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use futures_util::StreamExt;
 use http::Method;
 use qubit_http::{
-    CancellationToken, HttpClientFactory, HttpClientOptions, HttpError, HttpErrorKind, RetryHint,
+    AsyncHttpHeaderInjector, CancellationToken, HttpClientFactory, HttpClientOptions, HttpError,
+    HttpErrorKind, RetryDelay, RetryHint,
 };
 use tokio::time::timeout;
 
@@ -97,6 +98,48 @@ async fn test_execute_request_with_pre_cancelled_token_skips_request_interceptor
             .query(),
         Some("trace=yes")
     );
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert!(captured.is_empty());
+}
+
+#[tokio::test]
+async fn test_execute_request_can_be_cancelled_while_preparing_async_headers() {
+    let server = spawn_multi_shot_server(vec![]).await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.write_timeout = Duration::from_secs(5);
+    let mut client = HttpClientFactory::new()
+        .create(options)
+        .expect("client should be created");
+    client.add_async_header_injector(AsyncHttpHeaderInjector::new(|_headers| {
+        Box::pin(async move {
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            Ok(())
+        })
+    }));
+
+    let token = CancellationToken::new();
+    let token_for_task = token.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        token_for_task.cancel();
+    });
+
+    let request = client
+        .request(Method::GET, "/cancel-preparing-headers")
+        .cancellation_token(token)
+        .build();
+    let error = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .expect_err("request should be cancelled while preparing headers");
+
+    assert_eq!(error.kind, HttpErrorKind::Cancelled);
+    assert!(error.message.contains("preparing request"));
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
@@ -208,6 +251,55 @@ async fn test_execute_request_can_be_cancelled_while_reading_status_error_previe
         .await
         .expect("server finish timed out");
     assert_eq!(captured.target, "/cancel-status-preview?phase=preview");
+}
+
+#[tokio::test]
+async fn test_execute_retry_sleep_can_be_cancelled() {
+    let server = spawn_multi_shot_server(vec![ResponsePlan::Immediate {
+        status: 503,
+        headers: vec![],
+        body: b"retry later".to_vec(),
+    }])
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.retry.enabled = true;
+    options.retry.max_attempts = 3;
+    options.retry.delay_strategy = RetryDelay::Fixed(Duration::from_secs(5));
+    let client = HttpClientFactory::new()
+        .create(options)
+        .expect("client should be created");
+
+    let token = CancellationToken::new();
+    let token_for_task = token.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        token_for_task.cancel();
+    });
+
+    let request = client
+        .request(Method::GET, "/cancel-retry-sleep")
+        .cancellation_token(token)
+        .build();
+    let started_at = Instant::now();
+    let error = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .expect_err("request should be cancelled during retry sleep");
+
+    assert_eq!(error.kind, HttpErrorKind::Cancelled);
+    assert!(error.message.contains("waiting before next attempt"));
+    assert!(
+        started_at.elapsed() < Duration::from_secs(1),
+        "retry cancellation should not wait for the whole backoff"
+    );
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.len(), 1);
+    assert_eq!(captured[0].target, "/cancel-retry-sleep");
 }
 
 #[tokio::test]

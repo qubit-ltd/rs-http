@@ -17,7 +17,6 @@
 //!
 //! Haixing Hu
 
-use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use qubit_retry::{
@@ -55,13 +54,6 @@ pub struct HttpClient {
     request_interceptors: HttpRequestInterceptors,
     /// Response interceptors applied on successful responses before return.
     response_interceptors: HttpResponseInterceptors,
-}
-
-/// Internal reason recorded when an HTTP-specific guard stops retry execution.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum HttpRetryStopReason {
-    /// HTTP wall-clock max duration would be exceeded before the next attempt.
-    MaxDurationExceeded,
 }
 
 impl HttpClient {
@@ -124,7 +116,7 @@ impl HttpClient {
     }
 
     /// Appends a response interceptor run only after a successful HTTP status
-    /// (see [`HttpClient::execute_once`]) and before response body logging.
+    /// (after the internal `execute_once` step) and before response body logging.
     /// Mutates `self` in place.
     ///
     /// # Parameters
@@ -239,7 +231,8 @@ impl HttpClient {
     /// Sends the request and returns a unified [`HttpResponse`].
     ///
     /// Chooses retry vs single attempt from resolved [`HttpRetryOptions`] for
-    /// this request. Performs network I/O and may await [`HttpClient::execute_once`]
+    /// this request. Performs network I/O and may await the internal
+    /// `execute_once` path
     /// multiple times with backoff between attempts when retry is enabled.
     ///
     /// # Parameters
@@ -251,8 +244,7 @@ impl HttpClient {
     ///   ([`http::StatusCode::is_success`]).
     /// - `Err(HttpError)` when any attempt fails for URL/header validation,
     ///   cancellation, interceptor failure, transport/timeout, non-success
-    ///   status, or when the retry executor aborts or exceeds limits (see
-    ///   [`HttpClient::execute_with_retry`] and [`HttpClient::execute_once`]).
+    ///   status, or when the retry executor aborts or exceeds limits.
     pub async fn execute(&self, request: HttpRequest) -> HttpResult<HttpResponse> {
         let retry_options = self.options.retry.resolve(&request);
         if retry_options.should_retry(&request) {
@@ -379,16 +371,7 @@ impl HttpClient {
         let honor_retry_after = request.retry_override().should_honor_retry_after();
         let retry_options = options.to_executor_options()?;
         let started_at = Instant::now();
-        if Self::retry_max_duration_exceeded(started_at, options.max_duration) {
-            return Err(Self::map_retry_max_duration_exceeded(
-                started_at,
-                options.max_duration,
-                None,
-            ));
-        }
 
-        let stop_reason = Arc::new(Mutex::new(None));
-        let stop_reason_for_policy = Arc::clone(&stop_reason);
         let retry_policy_options = options.clone();
         let retry_delay_options = retry_options.clone();
         let retry_policy = Retry::<HttpError>::builder()
@@ -396,29 +379,21 @@ impl HttpClient {
             .retry_after_from_error(move |error| {
                 honor_retry_after.then_some(error.retry_after).flatten()
             })
-            .on_failure(move |failure: &AttemptFailure<HttpError>, context: &RetryContext| {
-                let Some(error) = failure.as_error() else {
-                    return AttemptFailureDecision::UseDefault;
-                };
-                if !Self::is_retryable_error(error, &retry_policy_options) {
-                    return AttemptFailureDecision::Abort;
-                }
-
-                let base_delay = retry_delay_options.delay_for_attempt(context.attempt());
-                let sleep_delay =
-                    Self::retry_sleep_delay(base_delay, context.retry_after_hint());
-                if Self::retry_sleep_exceeds_max_duration(
-                    started_at,
-                    sleep_delay,
-                    retry_policy_options.max_duration,
-                ) {
-                    if let Ok(mut reason) = stop_reason_for_policy.lock() {
-                        *reason = Some(HttpRetryStopReason::MaxDurationExceeded);
+            .on_failure(
+                move |failure: &AttemptFailure<HttpError>, context: &RetryContext| {
+                    let Some(error) = failure.as_error() else {
+                        return AttemptFailureDecision::UseDefault;
+                    };
+                    if !Self::is_retryable_error(error, &retry_policy_options) {
+                        return AttemptFailureDecision::Abort;
                     }
-                    return AttemptFailureDecision::Abort;
-                }
-                AttemptFailureDecision::RetryAfter(sleep_delay)
-            })
+
+                    let base_delay = retry_delay_options.delay_for_attempt(context.attempt());
+                    let sleep_delay =
+                        Self::retry_sleep_delay(base_delay, context.retry_after_hint());
+                    AttemptFailureDecision::RetryAfter(sleep_delay)
+                },
+            )
             .build()
             .map_err(|error| HttpError::other(format!("Invalid HTTP retry executor: {error}")))?;
 
@@ -452,7 +427,6 @@ impl HttpClient {
                 started_at,
                 options.max_duration,
                 options.max_attempts,
-                stop_reason,
             )
         })
     }
@@ -487,41 +461,6 @@ impl HttpClient {
         retry_after_hint
             .map(|retry_after| retry_after.max(base_delay))
             .unwrap_or(base_delay)
-    }
-
-    /// Returns whether the retry max-duration budget is already exhausted.
-    ///
-    /// # Parameters
-    /// - `started_at`: Start instant of the retry flow.
-    /// - `max_duration`: Optional total retry duration budget.
-    ///
-    /// # Returns
-    /// `true` when the elapsed wall-clock duration has reached the budget.
-    fn retry_max_duration_exceeded(started_at: Instant, max_duration: Option<Duration>) -> bool {
-        max_duration.is_some_and(|max_duration| started_at.elapsed() >= max_duration)
-    }
-
-    /// Returns whether sleeping would exhaust the retry max-duration budget.
-    ///
-    /// # Parameters
-    /// - `started_at`: Start instant of the retry flow.
-    /// - `sleep_delay`: Delay selected before the next attempt.
-    /// - `max_duration`: Optional total retry duration budget.
-    ///
-    /// # Returns
-    /// `true` when `elapsed + sleep_delay` reaches the configured budget, or
-    /// when the addition overflows.
-    fn retry_sleep_exceeds_max_duration(
-        started_at: Instant,
-        sleep_delay: Duration,
-        max_duration: Option<Duration>,
-    ) -> bool {
-        max_duration.is_some_and(|max_duration| {
-            started_at
-                .elapsed()
-                .checked_add(sleep_delay)
-                .is_none_or(|elapsed| elapsed >= max_duration)
-        })
     }
 
     /// Adds retry-attempt exhaustion context to the last attempt error.
@@ -601,10 +540,9 @@ impl HttpClient {
     ///
     /// # Parameters
     /// - `error`: Terminal retry error from `qubit-retry`.
-    /// - `started_at`: Wall-clock start of the HTTP retry flow.
-    /// - `max_duration`: Optional HTTP wall-clock retry budget.
+    /// - `started_at`: Monotonic start instant of the HTTP retry flow.
+    /// - `max_duration`: Optional HTTP total retry budget.
     /// - `max_attempts`: Configured maximum HTTP attempts.
-    /// - `stop_reason`: HTTP-specific stop reason recorded by retry listeners.
     ///
     /// # Returns
     /// A rich [`HttpError`] preserving the last attempt error when available.
@@ -613,17 +551,11 @@ impl HttpClient {
         started_at: Instant,
         max_duration: Option<Duration>,
         max_attempts: u32,
-        stop_reason: Arc<Mutex<Option<HttpRetryStopReason>>>,
     ) -> HttpError {
         let attempts = error.attempts();
         let reason = error.reason();
-        let http_stop_reason = stop_reason.lock().ok().and_then(|guard| *guard);
         let (_, last_failure, _) = error.into_parts();
         let last_error = last_failure.and_then(AttemptFailure::into_error);
-
-        if http_stop_reason == Some(HttpRetryStopReason::MaxDurationExceeded) {
-            return Self::map_retry_max_duration_exceeded(started_at, max_duration, last_error);
-        }
 
         match reason {
             RetryErrorReason::AttemptsExceeded => last_error
@@ -633,7 +565,8 @@ impl HttpClient {
                         "HTTP retry attempts exhausted without a captured HTTP error: {attempts}/{max_attempts}"
                     ))
                 }),
-            RetryErrorReason::MaxElapsedExceeded => {
+            RetryErrorReason::MaxOperationElapsedExceeded
+            | RetryErrorReason::MaxTotalElapsedExceeded => {
                 Self::map_retry_max_duration_exceeded(started_at, max_duration, last_error)
             }
             RetryErrorReason::Aborted => match last_error {

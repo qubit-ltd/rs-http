@@ -22,9 +22,8 @@ type HttpRequestBodyStreamFactoryFn =
 
 /// Deferred streaming upload body source.
 ///
-/// Each call to [`HttpRequestStreamingBody::to_reqwest_body`] obtains a fresh
-/// byte stream from the stored async factory, so retries can rebuild the
-/// outbound body stream deterministically.
+/// Each send attempt obtains a fresh byte stream from the stored async factory,
+/// so retries can rebuild the outbound body stream deterministically.
 #[derive(Clone)]
 pub struct HttpRequestStreamingBody {
     /// Async factory producing one stream for one request attempt.

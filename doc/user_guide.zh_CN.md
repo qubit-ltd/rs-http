@@ -515,7 +515,7 @@ let request = client
 
 `honor_retry_after(true)` 只在请求级启用。遇到可重试的 429 或 5xx 时，如果响应里有 `Retry-After`，重试执行器会确保下一次尝试至少等待该 header 指定的时间；如果执行器计划的退避时间已经更长，则不会额外等待。
 
-开启重试后，`execute` 会把每次尝试交给 `qubit-retry` 的 `RetryExecutor`。可重试错误在耗尽 `max_attempts` 或 `max_duration` 后返回最后一次 HTTP 错误，并在 `message` 中追加耗尽原因；如果错误不满足当前重试白名单或方法策略，执行器会返回 `RetryAborted`，并把被中止的原始 `HttpError` 作为 `source` 保留。
+开启重试后，`execute` 会把每次尝试交给 `qubit-retry` 的 `Retry`。HTTP `max_duration` 会映射到 `qubit-retry` 的 `max_total_elapsed`，因此它使用单调时间统计，并包含 attempt 执行、retry 退避 sleep、`Retry-After` sleep 以及 retry 控制路径 listener 时间。可重试错误在耗尽 `max_attempts` 或 `max_duration` 后返回最后一次 HTTP 错误，并在 `message` 中追加耗尽原因；如果错误不满足当前重试白名单或方法策略，执行器会返回 `RetryAborted`，并把被中止的原始 `HttpError` 作为 `source` 保留。
 
 | 场景 | 返回错误 | 说明 |
 | --- | --- | --- |
@@ -706,6 +706,7 @@ let mut events = client.execute_sse_with_reconnect(
     SseReconnectOptions {
         retry: RetryOptions::new(
             6, // max_attempts = 1 次初始连接 + 5 次重连
+            None,
             None,
             RetryDelay::exponential(
                 std::time::Duration::from_secs(1),

@@ -41,8 +41,8 @@ pub use constants::DEFAULT_SENSITIVE_HEADER_NAMES;
 pub use error::{HttpError, HttpErrorKind, HttpResult, RetryHint};
 pub use options::{
     HttpClientOptions, HttpConfigError, HttpConfigErrorKind, HttpLoggingOptions,
-    HttpRetryMethodPolicy, HttpRetryOptions, HttpTimeoutOptions, PendingHttpRetryAfterDelay,
-    ProxyOptions, ProxyType, SensitiveHttpHeaders,
+    HttpRetryMethodPolicy, HttpRetryOptions, HttpTimeoutOptions, ProxyOptions, ProxyType,
+    SensitiveHttpHeaders,
 };
 pub use qubit_retry::{RetryDelay, RetryJitter, RetryOptions};
 pub use request::{

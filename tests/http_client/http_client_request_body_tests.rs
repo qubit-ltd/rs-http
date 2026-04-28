@@ -306,3 +306,38 @@ async fn test_execute_with_streaming_body_factory_supports_retry_rebuild() {
         Some(&"chunked".to_string())
     );
 }
+
+#[tokio::test]
+async fn test_streaming_body_factory_preparation_respects_write_timeout() {
+    let server = spawn_multi_shot_server(vec![]).await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.write_timeout = Duration::from_millis(50);
+    let client = HttpClientFactory::new()
+        .create(options)
+        .expect("client should be created");
+
+    let request = client
+        .request(Method::POST, "/streaming-body-timeout")
+        .streaming_body(|| {
+            Box::pin(async move {
+                tokio::time::sleep(Duration::from_secs(5)).await;
+                Box::pin(stream::empty::<Result<Bytes, std::io::Error>>())
+                    as HttpRequestBodyByteStream
+            })
+        })
+        .build();
+    let error = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .expect_err("streaming body preparation should hit write timeout");
+
+    assert_eq!(error.kind, qubit_http::HttpErrorKind::WriteTimeout);
+    assert!(error.message.contains("streaming request body"));
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert!(captured.is_empty());
+}
