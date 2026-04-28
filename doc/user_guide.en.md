@@ -1,6 +1,6 @@
 # qubit-http User Guide
 
-This guide is based on the current source code and tests. It applies to crate `qubit-http` 0.3.x, imported from Rust code as `qubit_http`.
+This guide is based on the current source code and tests. It applies to crate `qubit-http` 0.4.x, imported from Rust code as `qubit_http`.
 
 `qubit-http` is an asynchronous HTTP client infrastructure crate. It wraps `reqwest` and provides unified client options, request building, response reading, error classification, TRACE logging with sensitive-header masking, retries, proxies, IPv4-only resolution, request/response interceptors, and Server-Sent Events (SSE) decoding and reconnection.
 
@@ -17,10 +17,12 @@ This guide is based on the current source code and tests. It applies to crate `q
 
 ```toml
 [dependencies]
-qubit-http = "0.3"
+qubit-http = "0.4"
 http = "1.4"
+qubit-config = "0.9"
 serde = { version = "1", features = ["derive"] }
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
 futures-util = "0.3"
 ```
 
@@ -43,7 +45,7 @@ struct User {
 }
 
 #[tokio::main]
-async fn main() -> qubit_http::HttpResult<()> {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut options = HttpClientOptions::new();
     options.set_base_url("https://api.example.com")?;
     options.add_header("x-app", "demo")?;
@@ -80,7 +82,7 @@ Default behavior:
 | Read timeout | 120 seconds |
 | Write timeout | 120 seconds |
 | Whole-request timeout | None |
-| Proxy | Disabled; calls reqwest `no_proxy()`, so environment proxies are not inherited |
+| Proxy | Explicit proxy disabled, and `use_env_proxy = false`; calls reqwest `no_proxy()`, so environment proxies are not inherited |
 | Logging | Enabled, but logs are emitted only when tracing TRACE is active |
 | Log body preview | 16 KiB |
 | Non-success response preview | 16 KiB |
@@ -90,6 +92,7 @@ Default behavior:
 | Sensitive headers | Built-in common auth/token/cookie/secret/password names |
 | IPv4-only | Disabled |
 | SSE JSON mode | `Lenient` |
+| SSE done-marker policy | `DefaultDone`, recognizing `[DONE]` |
 | SSE line limit | 64 KiB |
 | SSE frame limit | 1 MiB |
 
@@ -117,7 +120,7 @@ options.retry.method_policy = HttpRetryMethodPolicy::IdempotentOnly;
 let client = HttpClientFactory::new().create(options)?;
 ```
 
-`create` validates options before building the client. Validation includes: all timeout values must be greater than zero; enabled proxies require a non-empty host and non-zero port; a proxy password requires a username; `logging.body_size_limit` must be greater than zero when request or response body logging is enabled; `user_agent` must be non-empty and a valid header value; SSE line and frame limits must be greater than zero.
+`create` validates options before building the client. Validation includes: all timeout values must be greater than zero; enabled proxies require a non-empty host and non-zero port; a proxy password requires a username; `logging.body_size_limit` must be greater than zero when request or response body logging is enabled; `retry.max_attempts` must be greater than zero; `retry.jitter_factor` must be in `0.0..=1.0`; `error_response_preview_limit` must be greater than zero; `user_agent` must be non-empty and a valid header value; SSE line and frame limits must be greater than zero.
 
 ### Loading From qubit-config
 
@@ -146,9 +149,10 @@ Common configuration keys:
 | `base_url` | Base URL used to resolve relative request paths |
 | `timeouts.connect_timeout` | Connect timeout |
 | `timeouts.read_timeout` | Per-read wait timeout for body/stream reads |
-| `timeouts.write_timeout` | Send-phase timeout |
+| `timeouts.write_timeout` | Pre-send preparation and send-phase timeout |
 | `timeouts.request_timeout` | Optional whole-request timeout |
 | `proxy.enabled` | Enables outbound proxying |
+| `use_env_proxy` | Whether to inherit environment proxies when explicit proxying is disabled |
 | `logging.enabled` | Allows TRACE HTTP logs |
 | `retry.enabled` | Enables built-in retry |
 | `retry.max_attempts` | Max attempts, including the first request |
@@ -157,20 +161,20 @@ Common configuration keys:
 | `retry.status_codes` | Retryable status allowlist; defaults to 429 and 5xx when absent |
 | `retry.error_kinds` | Retryable non-status error-kind allowlist; defaults to timeouts and transport when absent |
 | `sse.json_mode` | `LENIENT` or `STRICT` |
-| `sse.done_marker` | `DISABLED`, `DEFAULT` or `DEFAULT_DONE` map to `DoneMarkerPolicy`; any other non-empty string becomes a `Custom` marker compared to trimmed `data:` text |
+| `sse.done_marker` | `DISABLED` or `DISABLE` disables done markers; `DEFAULT` uses `[DONE]`; any other non-empty string becomes a `Custom` marker compared to trimmed `data:` text |
 | `sse.max_line_bytes` | SSE single-line byte limit |
 | `sse.max_frame_bytes` | SSE single-frame byte limit |
 
 See “Configuration Reference” at the end of this guide for the full key list.
 
-`default_headers` supports two forms. The subkey form takes precedence:
+`default_headers` supports two forms, but they cannot be used at the same time. The subkey form is:
 
 ```rust
 config.set("http.default_headers.authorization", "Bearer token".to_string())?;
 config.set("http.default_headers.x-request-id", "abc-123".to_string())?;
 ```
 
-If there are no `default_headers.*` subkeys, `default_headers` can be a JSON map string:
+`default_headers` can also be a JSON map string; parsing fails if the JSON map and `default_headers.*` subkeys are both configured:
 
 ```rust
 config.set(
@@ -199,7 +203,8 @@ Request body builders:
 | Method | Behavior |
 | --- | --- |
 | `bytes_body` | Raw bytes; does not set `Content-Type` |
-| `stream_body` | Sends ordered byte chunks through reqwest streaming body support |
+| `stream_body` | Sends already-buffered ordered byte chunks through reqwest streaming body support |
+| `streaming_body` | Installs an async factory that creates a fresh byte stream for each send attempt; useful for true streaming uploads and retryable upload streams |
 | `text_body` | Text body; sets `text/plain; charset=utf-8` when `Content-Type` is absent |
 | `json_body` | Serializes JSON; sets `application/json` when `Content-Type` is absent |
 | `form_body` | `application/x-www-form-urlencoded` |
@@ -211,7 +216,7 @@ Per-request overrides:
 | Method | Purpose |
 | --- | --- |
 | `request_timeout` | Overrides whole-request timeout (reqwest per-request deadline) |
-| `write_timeout` | Overrides send-phase timeout |
+| `write_timeout` | Overrides pre-send preparation and send-phase timeout |
 | `read_timeout` | Overrides response body/stream read timeout |
 | `base_url` / `clear_base_url` | Overrides or removes base URL for this request |
 | `ipv4_only` | Overrides IPv4-only URL validation for this request |
@@ -389,7 +394,7 @@ async fn read_whole_body_examples(
 }
 ```
 
-**Streaming bytes (`stream`)**: poll the returned stream chunk by chunk, as long as you have not already consumed the body with `bytes` / `text` / `json` on that same response. `?` applies when obtaining the stream (e.g. if the backend connection is already gone).
+**Streaming bytes (`stream`)**: poll the returned stream chunk by chunk, as long as you have not already consumed the body with `bytes` / `text` / `json` on that same response. `?` applies when obtaining the stream, for example if a request cancellation token has already fired before body reading starts.
 
 ```rust
 use futures_util::StreamExt;
@@ -500,7 +505,7 @@ Default retryability:
 
 You can configure `retry.status_codes` and `retry.error_kinds` allowlists. Once an allowlist is set, only listed statuses or error kinds are retried.
 
-`retry.error_kinds` accepts config names for every `HttpErrorKind`, including `RETRY_ATTEMPT_TIMEOUT`, `RETRY_MAX_ELAPSED_EXCEEDED`, and `RETRY_ABORTED`. Values are case-insensitive, and hyphens are normalized to underscores.
+`retry.error_kinds` accepts config names for every `HttpErrorKind`, including `retry_attempt_timeout`, `retry_max_elapsed_exceeded`, and `retry_aborted`. Values are trimmed; hyphenated names such as `read-timeout` are normalized to `read_timeout`. Use lowercase snake_case or the equivalent hyphenated form.
 
 Per-request override example:
 
@@ -543,15 +548,15 @@ HTTP logs use `tracing::trace!`. Both conditions must be true:
 1. `options.logging.enabled = true`.
 2. The active tracing subscriber enables TRACE.
 
-Request headers, request body, response headers, and response body can be toggled separately. Body logs include only the first `logging.body_size_limit` bytes and show a truncation marker for the remainder. Binary bodies are rendered as `<binary N bytes>`.
+Request headers, request body, response headers, and response body can be toggled separately. Body logs include only the first `logging.body_size_limit` bytes and show a truncation marker for the remainder. Binary bodies are rendered as `<binary N bytes>`. Request-body logging previews buffered body variants (`bytes_body`, `text_body`, `json_body`, `form_body`, `multipart_body`, and `ndjson_body`); `stream_body` and `streaming_body` are logged as `<empty>` because the logger does not consume upload streams.
 
 Sensitive headers are masked. The default set includes common auth, token, cookie, secret, and password header names. Short values are rendered as `****`; longer values keep the first and last 2 characters and replace the middle with `****`. Configuring `sensitive_headers` replaces the default set; code can also manage a `SensitiveHttpHeaders` set directly.
 
-Important: if TRACE logging is active and `log_response_body = true`, `execute` reads and caches the full response body before returning. Such a response is no longer an untouched backend stream.
+Important: if TRACE logging is active and `log_response_body = true`, response-body logging reads and caches the full body only when it is already buffered, or when the response is not SSE, has `Content-Length`, and the declared length is no greater than `logging.body_size_limit`. Unknown-size, over-limit, and SSE responses are logged as skipped instead of being consumed for logging.
 
 ## Proxy And IPv4-only
 
-Proxying is disabled by default. When disabled, the client calls `no_proxy()`, so environment proxy variables are ignored. Enabled proxies require host and port.
+Proxying is disabled by default. `use_env_proxy` is also `false` by default, so the client calls `no_proxy()` and ignores environment proxy variables. To inherit `HTTP_PROXY` / `HTTPS_PROXY` and similar variables when no explicit proxy is configured, set `options.use_env_proxy = true` or configure `use_env_proxy = true`. Enabled explicit proxies require host and port.
 
 ```rust
 use qubit_http::{ProxyType, HttpClientOptions};
@@ -585,6 +590,7 @@ SSE event decoding starts from `HttpResponse`:
 
 ```rust
 use futures_util::StreamExt;
+use http::Method;
 
 let response = client
     .execute(client.request(Method::GET, "/stream").build())
@@ -643,7 +649,7 @@ Protocol behavior:
 
 The following snippets assume `request` is already built, and that `MyChunk` and `handle` are defined by the caller.
 
-`sse_chunks` takes no arguments: the done-marker policy defaults to `DoneMarkerPolicy::DefaultDone` (the `Default` for `DoneMarkerPolicy`), and can be overridden via `HttpClientOptions::sse_done_marker_policy` or `HttpResponse::sse_done_marker_policy`.
+`sse_chunks` takes no arguments: the done-marker policy defaults to `DoneMarkerPolicy::DefaultDone` (the `Default` for `DoneMarkerPolicy`, recognizing trimmed `data:` equal to `[DONE]`), and can be overridden via `HttpClientOptions::sse_done_marker_policy` or `HttpResponse::sse_done_marker_policy`.
 
 ```rust
 use futures_util::StreamExt;
@@ -697,6 +703,7 @@ while let Some(item) = chunks.next().await {
 
 ```rust
 use futures_util::StreamExt;
+use http::Method;
 use qubit_http::sse::SseReconnectOptions;
 use qubit_http::{RetryDelay, RetryJitter, RetryOptions};
 
@@ -717,6 +724,8 @@ let mut events = client.execute_sse_with_reconnect(
         ).expect("valid SSE retry options"),
         reconnect_on_eof: true,
         honor_server_retry: true,
+        server_retry_max_delay: None,
+        apply_jitter_to_server_retry: true,
     },
 );
 
@@ -726,7 +735,7 @@ while let Some(item) = events.next().await {
 }
 ```
 
-The default reconnect settings are `retry.max_attempts = 4` (that is, at most 3 reconnects), `RetryDelay::Exponential { initial=1s, max=30s, multiplier=2.0 }`, `RetryJitter::None`, reconnect on EOF, and honor server `retry:`. Reconnects reuse the original request. If a previous SSE event had an `id:`, the next request includes `Last-Event-ID`. Cancellation does not reconnect. SSE protocol errors do not reconnect by default. Retryable timeout, transport, 429/5xx, and unexpected-EOF-like errors may reconnect.
+The default reconnect settings are `retry.max_attempts = 4` (that is, at most 3 reconnects), `RetryDelay::Exponential { initial=1s, max=30s, multiplier=2.0 }`, `RetryJitter::None`, reconnect on EOF, and honor server `retry:`. Server `retry:` delays are capped by `server_retry_max_delay`; when it is `None`, the cap is derived from the retry delay strategy's max value, or falls back to 30 seconds when no max is available. `apply_jitter_to_server_retry` is enabled by default, but the default reconnect jitter is `RetryJitter::None`, so server-provided delays are unchanged unless you provide a jittered `RetryOptions`. Reconnects reuse the original request and disable inner HTTP retry, avoiding multiplicative HTTP retry plus SSE reconnect attempts. If a previous SSE event had an `id:`, the next request includes `Last-Event-ID`. `execute_sse_with_reconnect` requires response `Content-Type` to be `text/event-stream`. Cancellation does not reconnect. SSE protocol errors do not reconnect by default. Retryable timeout, transport, 429/5xx, and unexpected-EOF-like errors may reconnect.
 
 ## Configuration Reference
 
@@ -741,10 +750,13 @@ The table below lists every configuration key supported by `HttpClientOptions::f
 | `max_redirects` | Redirect limit |
 | `pool_idle_timeout` | Connection pool idle timeout |
 | `pool_max_idle_per_host` | Max idle connections per host |
+| `use_env_proxy` | Whether to inherit environment proxies when explicit proxying is disabled; defaults to `false` |
 | `sensitive_headers` | String list that replaces the default sensitive-header set |
+| `default_headers` | JSON map string of default request headers; cannot be combined with `default_headers.<name>` |
+| `default_headers.<name>` | One default request header subkey; cannot be combined with the `default_headers` JSON map |
 | `timeouts.connect_timeout` | Connect timeout |
 | `timeouts.read_timeout` | Per-read wait timeout for body/stream reads |
-| `timeouts.write_timeout` | Send-phase timeout |
+| `timeouts.write_timeout` | Pre-send preparation and send-phase timeout |
 | `timeouts.request_timeout` | Optional whole-request timeout |
 | `proxy.enabled` | Enables outbound proxying |
 | `proxy.proxy_type` | `http`, `https`, `socks5`, or `socks5h` |
@@ -773,7 +785,7 @@ The table below lists every configuration key supported by `HttpClientOptions::f
 | `retry.status_codes` | Retryable status allowlist; defaults to 429 and 5xx when absent |
 | `retry.error_kinds` | Retryable non-status error-kind allowlist; defaults to timeouts and transport when absent |
 | `sse.json_mode` | `LENIENT` or `STRICT` |
-| `sse.done_marker` | `DISABLED`, `DEFAULT` or `DEFAULT_DONE` map to `DoneMarkerPolicy`; any other non-empty string becomes a `Custom` marker compared to trimmed `data:` text |
+| `sse.done_marker` | `DISABLED` or `DISABLE` disables done markers; `DEFAULT` uses `[DONE]`; any other non-empty string becomes a `Custom` marker compared to trimmed `data:` text |
 | `sse.max_line_bytes` | SSE single-line byte limit |
 | `sse.max_frame_bytes` | SSE single-frame byte limit |
 
@@ -781,6 +793,6 @@ The table below lists every configuration key supported by `HttpClientOptions::f
 
 - Enable global retry for read-only or idempotent APIs. Use `AllMethods` or per-request force retry for POST/PATCH only when the operation is safe to replay.
 - Set a realistic `read_timeout` for long-lived streams/SSE; too short a value turns a slow but healthy stream into `ReadTimeout`.
-- Disable `logging.log_response_body` when you need true streaming consumption, because TRACE response-body logging pre-reads and caches the full body.
-- Keep `proxy.enabled = false` when you want proxying fully disabled; the crate will not inherit environment proxies.
+- TRACE response-body logging only pre-reads and caches known-size non-SSE bodies within the log limit; unknown-size streaming responses and SSE are not consumed for logging.
+- Keep `proxy.enabled = false` and `use_env_proxy = false` when you want proxying fully disabled; explicitly enable `use_env_proxy` when environment proxy inheritance is desired.
 - Prefer passing a scoped `prefix_view("http")` to `from_config`/`create_from_config`, so error paths preserve useful context.
