@@ -39,3 +39,13 @@ fn test_done_marker_policy_from_str_parses_aliases_and_custom() {
         DoneMarkerPolicy::Custom("[FIN]".to_string())
     );
 }
+
+#[test]
+fn test_done_marker_policy_display_formats_variants() {
+    assert_eq!(DoneMarkerPolicy::Disabled.to_string(), "disable");
+    assert_eq!(DoneMarkerPolicy::DefaultDone.to_string(), "default");
+    assert_eq!(
+        DoneMarkerPolicy::Custom("[FIN]".to_string()).to_string(),
+        "[FIN]"
+    );
+}

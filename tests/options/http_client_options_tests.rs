@@ -296,7 +296,7 @@ fn test_http_client_options_non_string_header_value_from_config() {
 fn test_http_client_options_add_header_and_add_headers_are_atomic() {
     let mut opts = HttpClientOptions::new();
     opts.add_header("x-app", "qubit").unwrap();
-    opts.add_headers([("x-env", "test"), ("x-region", "cn")])
+    opts.add_headers(&[("x-env", "test"), ("x-region", "cn")])
         .unwrap();
 
     assert_eq!(opts.default_headers.get("x-app").unwrap(), "qubit");
@@ -304,7 +304,7 @@ fn test_http_client_options_add_header_and_add_headers_are_atomic() {
     assert_eq!(opts.default_headers.get("x-region").unwrap(), "cn");
 
     let error = opts
-        .add_headers([("x-keep", "value"), ("bad header", "boom")])
+        .add_headers(&[("x-keep", "value"), ("bad header", "boom")])
         .unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::Other);
     assert!(!opts.default_headers.contains_key("x-keep"));
@@ -621,6 +621,41 @@ fn test_http_client_options_sse_limits_zero_is_prefixed() {
 }
 
 #[test]
+fn test_http_client_options_sse_max_frame_zero_is_prefixed() {
+    let mut config = Config::new();
+    config.set("http.sse.max_frame_bytes", 0usize).unwrap();
+
+    let err = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap_err();
+
+    assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
+    assert_eq!(err.path, "http.sse.max_frame_bytes");
+}
+
+#[test]
+fn test_http_client_options_sse_max_frame_invalid_type_is_prefixed() {
+    let mut config = Config::new();
+    config
+        .set("http.sse.max_frame_bytes", "large".to_string())
+        .unwrap();
+
+    let err = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap_err();
+
+    assert_eq!(err.kind, HttpConfigErrorKind::TypeError);
+    assert_eq!(err.path, "http.sse.max_frame_bytes");
+}
+
+#[test]
+fn test_http_client_options_default_headers_map_invalid_type_is_prefixed() {
+    let mut config = Config::new();
+    config.set("http.default_headers", 42_i32).unwrap();
+
+    let err = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap_err();
+
+    assert_eq!(err.kind, HttpConfigErrorKind::TypeError);
+    assert_eq!(err.path, "http.default_headers");
+}
+
+#[test]
 fn test_http_retry_options_validate_rejects_invalid_values() {
     let mut options = HttpRetryOptions::default();
     options.max_attempts = 0;
@@ -770,6 +805,118 @@ fn test_from_config_empty_prefix() {
     let opts = HttpClientOptions::from_config(&config).unwrap();
     assert!(opts.base_url.is_some());
     assert!(opts.ipv4_only);
+}
+
+#[test]
+fn test_http_client_options_from_root_config_all_sections() {
+    let mut config = Config::new();
+    config
+        .set("base_url", "https://root.example.com/api/".to_string())
+        .unwrap();
+    config.set("ipv4_only", true).unwrap();
+    config
+        .set("error_response_preview_limit", 1024usize)
+        .unwrap();
+    config
+        .set("user_agent", "qubit-http-root/1.0".to_string())
+        .unwrap();
+    config.set("max_redirects", 5usize).unwrap();
+    config
+        .set("pool_idle_timeout", Duration::from_secs(20))
+        .unwrap();
+    config.set("pool_max_idle_per_host", 9usize).unwrap();
+    config.set("use_env_proxy", true).unwrap();
+    config
+        .set("default_headers.x-root", "root-value".to_string())
+        .unwrap();
+    config
+        .set("sensitive_headers", vec!["X-Root-Secret".to_string()])
+        .unwrap();
+    config
+        .set("timeouts.connect_timeout", Duration::from_secs(3))
+        .unwrap();
+    config
+        .set("timeouts.read_timeout", Duration::from_secs(4))
+        .unwrap();
+    config
+        .set("timeouts.write_timeout", Duration::from_secs(5))
+        .unwrap();
+    config
+        .set("timeouts.request_timeout", Duration::from_secs(6))
+        .unwrap();
+    config.set("proxy.enabled", true).unwrap();
+    config
+        .set("proxy.host", "proxy.root.example".to_string())
+        .unwrap();
+    config.set("proxy.port", 8080u16).unwrap();
+    config
+        .set("proxy.username", "root-user".to_string())
+        .unwrap();
+    config
+        .set("proxy.password", "root-pass".to_string())
+        .unwrap();
+    config.set("logging.enabled", false).unwrap();
+    config.set("logging.log_request_header", false).unwrap();
+    config.set("logging.log_request_body", false).unwrap();
+    config.set("logging.log_response_header", false).unwrap();
+    config.set("logging.log_response_body", false).unwrap();
+    config.set("logging.body_size_limit", 2048usize).unwrap();
+    config.set("retry.enabled", true).unwrap();
+    config.set("retry.max_attempts", 2u32).unwrap();
+    config
+        .set("retry.delay_strategy", "fixed".to_string())
+        .unwrap();
+    config
+        .set("retry.fixed_delay", Duration::from_millis(25))
+        .unwrap();
+    config
+        .set("retry.status_codes", vec!["503".to_string()])
+        .unwrap();
+    config
+        .set("retry.error_kinds", vec!["transport".to_string()])
+        .unwrap();
+    config.set("sse.json_mode", "strict".to_string()).unwrap();
+    config.set("sse.done_marker", "[END]".to_string()).unwrap();
+    config.set("sse.max_line_bytes", 4096usize).unwrap();
+    config.set("sse.max_frame_bytes", 8192usize).unwrap();
+
+    let opts = HttpClientOptions::from_config(&config).unwrap();
+
+    assert_eq!(
+        opts.base_url.expect("base_url should be set").as_str(),
+        "https://root.example.com/api/"
+    );
+    assert!(opts.ipv4_only);
+    assert_eq!(opts.error_response_preview_limit, 1024);
+    assert_eq!(opts.user_agent.as_deref(), Some("qubit-http-root/1.0"));
+    assert_eq!(opts.max_redirects, Some(5));
+    assert_eq!(opts.pool_idle_timeout, Some(Duration::from_secs(20)));
+    assert_eq!(opts.pool_max_idle_per_host, Some(9));
+    assert!(opts.use_env_proxy);
+    assert!(opts.default_headers.contains_key("x-root"));
+    assert!(opts.sensitive_headers.contains("x-root-secret"));
+    assert_eq!(opts.timeouts.connect_timeout, Duration::from_secs(3));
+    assert_eq!(opts.timeouts.request_timeout, Some(Duration::from_secs(6)));
+    assert!(opts.proxy.enabled);
+    assert_eq!(opts.proxy.username.as_deref(), Some("root-user"));
+    assert!(!opts.logging.enabled);
+    assert!(!opts.logging.log_request_header);
+    assert!(opts.retry.enabled);
+    assert_eq!(
+        opts.retry.retry_status_codes,
+        Some(vec![http::StatusCode::SERVICE_UNAVAILABLE])
+    );
+    assert_eq!(
+        opts.retry.retry_error_kinds,
+        Some(vec![HttpErrorKind::Transport])
+    );
+    assert_eq!(opts.sse_json_mode, SseJsonMode::Strict);
+    assert_eq!(
+        opts.sse_done_marker_policy,
+        DoneMarkerPolicy::Custom("[END]".to_string())
+    );
+    assert_eq!(opts.sse_max_line_bytes, 4096);
+    assert_eq!(opts.sse_max_frame_bytes, 8192);
 }
 
 #[test]

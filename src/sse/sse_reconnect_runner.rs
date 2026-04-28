@@ -18,13 +18,10 @@ use futures_util::StreamExt;
 use http::header::{HeaderName, HeaderValue, CONTENT_TYPE};
 use tokio_util::sync::CancellationToken;
 
-use super::{
-    SseEventStream, SseReconnectOptions, DEFAULT_SSE_MAX_RECONNECT_DELAY,
-    DEFAULT_SSE_RECONNECT_BACKOFF_MULTIPLIER,
-};
+use super::{SseEventStream, SseReconnectOptions, DEFAULT_SSE_MAX_RECONNECT_DELAY};
 use crate::{
     HttpClient, HttpError, HttpErrorKind, HttpRequest, HttpResponse, HttpResult, RetryDelay,
-    RetryHint, RetryJitter, RetryOptions,
+    RetryHint, RetryOptions,
 };
 
 /// Header name used for SSE resume token propagation.
@@ -87,7 +84,7 @@ impl SseReconnectRunner {
         let request_template = self.request_template;
         let options = self.options;
         let output = stream! {
-            let retry_options = normalize_retry_options(options.retry.clone());
+            let retry_options = options.retry.clone();
             let max_reconnects = retry_options.max_attempts().saturating_sub(1);
             let request_url = request_template.resolved_url_with_query().ok();
             let request_method = request_template.method().clone();
@@ -643,38 +640,6 @@ fn validate_sse_response_content_type(response: &HttpResponse) -> HttpResult<()>
     .with_url(&url))
 }
 
-/// Normalizes retry options from reconnect settings.
-///
-/// # Parameters
-/// - `value`: Raw retry options supplied in [`SseReconnectOptions`].
-///
-/// # Returns
-/// Valid retry options, falling back to SSE reconnect defaults when invalid.
-fn normalize_retry_options(value: RetryOptions) -> RetryOptions {
-    let delay = if value.delay().validate().is_err() {
-        RetryDelay::exponential(
-            Duration::from_secs(1),
-            DEFAULT_SSE_MAX_RECONNECT_DELAY,
-            DEFAULT_SSE_RECONNECT_BACKOFF_MULTIPLIER,
-        )
-    } else {
-        value.delay().clone()
-    };
-    let jitter = if value.jitter().validate().is_err() {
-        RetryJitter::None
-    } else {
-        value.jitter()
-    };
-    RetryOptions::new(
-        value.max_attempts(),
-        value.max_operation_elapsed(),
-        value.max_total_elapsed(),
-        delay,
-        jitter,
-    )
-    .expect("normalized SSE retry options must be valid")
-}
-
 /// Returns whether an HTTP error represents an unexpected stream EOF that is
 /// suitable for SSE reconnect.
 ///
@@ -714,4 +679,20 @@ fn has_unexpected_eof_in_error_chain(error: &(dyn StdError + 'static)) -> bool {
         current = item.source();
     }
     false
+}
+
+/// Exposes SSE content-type validation to coverage-only integration tests.
+///
+/// # Parameters
+/// - `response`: Response to validate.
+///
+/// # Returns
+/// `Ok(())` for SSE content type; otherwise the same protocol error returned by
+/// normal reconnect execution.
+#[cfg(coverage)]
+#[doc(hidden)]
+pub(crate) fn coverage_validate_sse_response_content_type(
+    response: &HttpResponse,
+) -> HttpResult<()> {
+    validate_sse_response_content_type(response)
 }

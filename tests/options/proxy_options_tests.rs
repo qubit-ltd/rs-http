@@ -85,6 +85,28 @@ fn test_proxy_options_unknown_type_returns_error() {
 }
 
 #[test]
+fn test_proxy_options_invalid_enabled_type_is_prefixed() {
+    let mut config = Config::new();
+    config.set("p.enabled", "not-bool").unwrap();
+
+    let err = ProxyOptions::from_config(&config.prefix_view("p")).unwrap_err();
+
+    assert_eq!(err.kind, HttpConfigErrorKind::TypeError);
+    assert_eq!(err.path, "p.enabled");
+}
+
+#[test]
+fn test_proxy_options_invalid_port_type_is_prefixed() {
+    let mut config = Config::new();
+    config.set("p.port", "not-port").unwrap();
+
+    let err = ProxyOptions::from_config(&config.prefix_view("p")).unwrap_err();
+
+    assert_eq!(err.kind, HttpConfigErrorKind::TypeError);
+    assert_eq!(err.path, "p.port");
+}
+
+#[test]
 fn test_proxy_options_with_auth() {
     let mut config = Config::new();
     config.set("p.enabled", true).unwrap();

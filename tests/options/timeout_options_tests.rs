@@ -77,6 +77,28 @@ fn test_timeout_options_invalid_type_is_prefixed() {
 }
 
 #[test]
+fn test_timeout_options_invalid_read_timeout_type_is_prefixed() {
+    let mut config = Config::new();
+    config.set("t.read_timeout", "invalid").unwrap();
+
+    let err = HttpTimeoutOptions::from_config(&config.prefix_view("t")).unwrap_err();
+
+    assert_eq!(err.kind, HttpConfigErrorKind::TypeError);
+    assert_eq!(err.path, "t.read_timeout");
+}
+
+#[test]
+fn test_timeout_options_invalid_write_timeout_type_is_prefixed() {
+    let mut config = Config::new();
+    config.set("t.write_timeout", "invalid").unwrap();
+
+    let err = HttpTimeoutOptions::from_config(&config.prefix_view("t")).unwrap_err();
+
+    assert_eq!(err.kind, HttpConfigErrorKind::TypeError);
+    assert_eq!(err.path, "t.write_timeout");
+}
+
+#[test]
 fn test_timeout_options_validate_rejects_zero_values() {
     let mut opts = HttpTimeoutOptions::default();
     opts.connect_timeout = Duration::ZERO;

@@ -263,3 +263,25 @@ fn test_http_retry_options_rejects_status_code_below_100() {
     assert_eq!(error.kind, HttpConfigErrorKind::InvalidValue);
     assert!(error.path.contains("status_codes"));
 }
+
+#[test]
+fn test_http_retry_options_invalid_enabled_type_is_prefixed() {
+    let mut config = Config::new();
+    config.set("retry.enabled", "not-bool").unwrap();
+
+    let error = HttpRetryOptions::from_config(&config.prefix_view("retry")).unwrap_err();
+
+    assert_eq!(error.kind, HttpConfigErrorKind::TypeError);
+    assert_eq!(error.path, "retry.enabled");
+}
+
+#[test]
+fn test_http_retry_options_invalid_max_duration_type_is_prefixed() {
+    let mut config = Config::new();
+    config.set("retry.max_duration", "not-duration").unwrap();
+
+    let error = HttpRetryOptions::from_config(&config.prefix_view("retry")).unwrap_err();
+
+    assert_eq!(error.kind, HttpConfigErrorKind::TypeError);
+    assert_eq!(error.path, "retry.max_duration");
+}

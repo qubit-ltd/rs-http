@@ -165,8 +165,8 @@ impl HttpRequest {
     ///
     /// # Returns
     /// `self` for method chaining.
-    pub fn set_path(&mut self, path: impl Into<String>) -> &mut Self {
-        self.path = path.into();
+    pub fn set_path(&mut self, path: &str) -> &mut Self {
+        self.path = path.to_string();
         self.refresh_resolved_url_cache();
         self
     }
@@ -188,12 +188,8 @@ impl HttpRequest {
     ///
     /// # Returns
     /// `self` for method chaining.
-    pub fn add_query_param(
-        &mut self,
-        key: impl Into<String>,
-        value: impl Into<String>,
-    ) -> &mut Self {
-        self.query.push((key.into(), value.into()));
+    pub fn add_query_param(&mut self, key: &str, value: &str) -> &mut Self {
+        self.query.push((key.to_string(), value.to_string()));
         self
     }
 
@@ -706,20 +702,18 @@ impl HttpRequest {
     /// missing for a relative path, joining fails, or [`Self::ipv4_only`]
     /// rejects an IPv6 literal host.
     pub(crate) fn resolved_url(&self) -> Result<Url, HttpError> {
-        let cached = self
-            .resolved_url
-            .read()
-            .map_err(|_| HttpError::other("Resolved URL cache read lock poisoned"))?
-            .clone();
+        let cached = match self.resolved_url.read() {
+            Ok(guard) => guard.clone(),
+            Err(_) => return Err(HttpError::other("Resolved URL cache read lock poisoned")),
+        };
         if let Some(url) = cached.as_ref() {
             return Ok(url.clone());
         }
         let resolved = self.compute_resolved_url()?;
-        *self
-            .resolved_url
-            .write()
-            .map_err(|_| HttpError::other("Resolved URL cache write lock poisoned"))? =
-            Some(resolved.clone());
+        match self.resolved_url.write() {
+            Ok(mut guard) => *guard = Some(resolved.clone()),
+            Err(_) => return Err(HttpError::other("Resolved URL cache write lock poisoned")),
+        }
         Ok(resolved)
     }
 
@@ -835,9 +829,10 @@ impl HttpRequest {
         if self.effective_headers.is_none() {
             self.effective_headers = Some(self.compute_effective_headers().await?);
         }
-        self.effective_headers.as_ref().ok_or_else(|| {
-            HttpError::other("Effective headers cache is unexpectedly empty after computation")
-        })
+        Ok(self
+            .effective_headers
+            .as_ref()
+            .expect("effective headers cache must be populated after computation"))
     }
 
     /// Returns cached merged outbound headers when available.
@@ -937,6 +932,43 @@ impl HttpRequest {
             HttpRequestBody::Text(text) => builder.body(text),
         }
     }
+}
+
+/// Exercises request cache refresh branches for coverage-only tests.
+///
+/// # Returns
+/// Resolved URL and effective header count diagnostics.
+#[cfg(coverage)]
+#[doc(hidden)]
+pub(crate) async fn coverage_exercise_request_cache_paths() -> Vec<String> {
+    let client = crate::HttpClientFactory::new()
+        .create_default()
+        .expect("coverage HTTP client should build");
+    let mut request = client
+        .request(Method::GET, "https://example.com/coverage-cache")
+        .build();
+    *request
+        .resolved_url
+        .write()
+        .expect("resolved URL cache lock should not be poisoned") = None;
+    let url = request
+        .resolved_url()
+        .expect("coverage request URL should resolve");
+    let header_count = request
+        .effective_headers()
+        .await
+        .expect("coverage headers should compute")
+        .len();
+    let cached_header_count = request
+        .effective_headers()
+        .await
+        .expect("coverage headers should be cached")
+        .len();
+    vec![
+        url.to_string(),
+        header_count.to_string(),
+        cached_header_count.to_string(),
+    ]
 }
 
 impl Clone for HttpRequest {

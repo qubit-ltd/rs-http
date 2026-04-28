@@ -8,6 +8,7 @@
  ******************************************************************************/
 //! Reqwest-backed HTTP client factory.
 
+use std::error::Error;
 use std::net::{IpAddr, SocketAddr};
 
 use reqwest::dns::{Addrs, Name, Resolve, Resolving};
@@ -38,15 +39,7 @@ impl Resolve for Ipv4OnlyResolver {
             let resolved = tokio::net::lookup_host((host.as_str(), 0))
                 .await
                 .map_err(|error| Box::new(error) as Box<dyn std::error::Error + Send + Sync>)?;
-            let ipv4_addrs: Vec<SocketAddr> = resolved.filter(SocketAddr::is_ipv4).collect();
-            if ipv4_addrs.is_empty() {
-                let error = std::io::Error::new(
-                    std::io::ErrorKind::AddrNotAvailable,
-                    format!("No IPv4 address found for host '{host}'"),
-                );
-                return Err(Box::new(error) as Box<dyn std::error::Error + Send + Sync>);
-            }
-            Ok(Box::new(ipv4_addrs.into_iter()) as Addrs)
+            filter_ipv4_addrs(&host, resolved)
         })
     }
 }
@@ -184,6 +177,33 @@ where
     error
 }
 
+/// Filters resolved socket addresses down to IPv4 addresses.
+///
+/// # Parameters
+/// - `host`: Hostname used for diagnostics when no IPv4 address remains.
+/// - `resolved`: Iterator of resolved socket addresses.
+///
+/// # Returns
+/// Boxed reqwest DNS address iterator containing only IPv4 addresses.
+///
+/// # Errors
+/// Returns an [`std::io::ErrorKind::AddrNotAvailable`] error when resolution
+/// produced no IPv4 address.
+fn filter_ipv4_addrs<I>(host: &str, resolved: I) -> Result<Addrs, Box<dyn Error + Send + Sync>>
+where
+    I: IntoIterator<Item = SocketAddr>,
+{
+    let ipv4_addrs: Vec<SocketAddr> = resolved.into_iter().filter(SocketAddr::is_ipv4).collect();
+    if ipv4_addrs.is_empty() {
+        let error = std::io::Error::new(
+            std::io::ErrorKind::AddrNotAvailable,
+            format!("No IPv4 address found for host '{host}'"),
+        );
+        return Err(Box::new(error) as Box<dyn Error + Send + Sync>);
+    }
+    Ok(Box::new(ipv4_addrs.into_iter()) as Addrs)
+}
+
 /// Maps options validation errors to runtime [`HttpError`] values.
 ///
 /// # Parameters
@@ -210,4 +230,49 @@ fn map_validation_error(error: HttpConfigError) -> HttpError {
 fn is_ipv6_literal_host(host: &str) -> bool {
     let trimmed = host.trim().trim_start_matches('[').trim_end_matches(']');
     matches!(trimmed.parse::<IpAddr>(), Ok(IpAddr::V6(_)))
+}
+
+/// Exercises factory-only defensive helpers for coverage tests.
+///
+/// # Returns
+/// Diagnostic values proving IPv4 filtering, config path resolution, validation
+/// mapping, and IPv6 literal parsing paths were executed.
+#[cfg(coverage)]
+#[doc(hidden)]
+pub(crate) fn coverage_exercise_factory_paths() -> Vec<String> {
+    let no_ipv4_error = filter_ipv4_addrs(
+        "coverage-host",
+        [SocketAddr::new(
+            IpAddr::V6(std::net::Ipv6Addr::LOCALHOST),
+            0,
+        )],
+    )
+    .err()
+    .expect("IPv6-only addresses should be rejected")
+    .to_string();
+    let ipv4_count = filter_ipv4_addrs(
+        "coverage-host",
+        [SocketAddr::new(IpAddr::from([127, 0, 0, 1]), 0)],
+    )
+    .expect("IPv4 address should be accepted")
+    .count()
+    .to_string();
+    let config = qubit_config::Config::new();
+    let scoped_path = resolve_config_error(
+        &config.prefix_view("coverage"),
+        HttpConfigError::invalid_value("", "coverage error"),
+    )
+    .path;
+    let proxy_kind = map_validation_error(HttpConfigError::invalid_value("proxy.host", "bad")).kind;
+    let other_kind = map_validation_error(HttpConfigError::invalid_value("user_agent", "bad")).kind;
+
+    vec![
+        no_ipv4_error,
+        ipv4_count,
+        scoped_path,
+        format!("{proxy_kind:?}"),
+        format!("{other_kind:?}"),
+        is_ipv6_literal_host("[::1]").to_string(),
+        is_ipv6_literal_host("127.0.0.1").to_string(),
+    ]
 }

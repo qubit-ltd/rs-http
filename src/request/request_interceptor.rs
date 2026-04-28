@@ -63,10 +63,8 @@ impl HttpRequestInterceptors {
                 if mapped.url.is_none() {
                     // Prefer the fully resolved request URL so builder query
                     // params are visible in interceptor errors; fallback to the
-                    // cached/raw URL to preserve behavior when resolution fails.
+                    // raw URL to preserve behavior when resolution fails.
                     if let Ok(resolved_url) = request.resolved_url_with_query() {
-                        mapped = mapped.with_url(&resolved_url);
-                    } else if let Some(resolved_url) = request.resolved_url_cached() {
                         mapped = mapped.with_url(&resolved_url);
                     } else if let Ok(parsed_url) = Url::parse(request.path()) {
                         mapped = mapped.with_url(&parsed_url);

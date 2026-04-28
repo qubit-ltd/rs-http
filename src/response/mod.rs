@@ -18,3 +18,7 @@ pub use http_response::HttpResponse;
 pub(crate) use http_response::HttpResponseOptions;
 pub use http_response_meta::HttpResponseMeta;
 pub use response_interceptor::{HttpResponseInterceptor, HttpResponseInterceptors};
+
+#[cfg(coverage)]
+#[doc(hidden)]
+pub(crate) use http_response::coverage_exercise_response_preview_paths;

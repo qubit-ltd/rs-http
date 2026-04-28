@@ -95,3 +95,13 @@ async fn test_decode_frames_emits_last_event_without_trailing_blank_line() {
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].data, "final");
 }
+
+#[tokio::test]
+async fn test_decode_frames_accepts_field_value_without_space_after_colon() {
+    let response = stream_response_from_chunks(vec!["event:update\n", "data:value\n", "\n"]);
+    let events = collect_results(response.sse_events()).await;
+
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].event.as_deref(), Some("update"));
+    assert_eq!(events[0].data, "value");
+}

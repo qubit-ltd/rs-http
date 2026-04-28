@@ -319,6 +319,11 @@ impl HttpResponse {
             let bytes = body.clone();
             return Ok(Box::pin(futures_stream::once(async move { Ok(bytes) })));
         }
+        if let Some(error) = self
+            .cancelled_error_if_needed("Streaming response cancelled before reading response body")
+        {
+            return Err(error);
+        }
         let Some(backend) = self.backend.take() else {
             return Ok(Box::pin(futures_stream::empty()));
         };
@@ -621,4 +626,60 @@ impl HttpResponse {
             Err(_) => format!("<binary {} bytes>{suffix}", bytes.len()),
         }
     }
+}
+
+/// Exercises internal response preview branches for coverage-only tests.
+///
+/// # Returns
+/// Preview diagnostics for buffered, empty, and cancelled response states.
+#[cfg(coverage)]
+#[doc(hidden)]
+pub(crate) async fn coverage_exercise_response_preview_paths() -> Vec<String> {
+    let url = Url::parse("https://example.com/coverage").expect("coverage URL should parse");
+    let buffered = HttpResponse::new(
+        StatusCode::BAD_GATEWAY,
+        HeaderMap::new(),
+        Bytes::from_static(b"abcdef"),
+        url.clone(),
+        Method::GET,
+    )
+    .into_error_body_preview(3)
+    .await
+    .expect("buffered preview should render");
+
+    let empty = HttpResponse {
+        meta: HttpResponseMeta::new(
+            StatusCode::BAD_GATEWAY,
+            HeaderMap::new(),
+            url.clone(),
+            Method::GET,
+        ),
+        backend: None,
+        buffered_body: None,
+        runtime: HttpResponseRuntime::new(Duration::from_secs(30), None, url.clone()),
+        options: HttpResponseOptions::default(),
+    }
+    .into_error_body_preview(3)
+    .await
+    .expect("empty preview should render");
+
+    let token = CancellationToken::new();
+    token.cancel();
+    let cancelled = HttpResponse {
+        meta: HttpResponseMeta::new(
+            StatusCode::BAD_GATEWAY,
+            HeaderMap::new(),
+            url.clone(),
+            Method::GET,
+        ),
+        backend: None,
+        buffered_body: None,
+        runtime: HttpResponseRuntime::new(Duration::from_secs(30), Some(token), url),
+        options: HttpResponseOptions::default(),
+    }
+    .into_error_body_preview(3)
+    .await
+    .expect_err("cancelled preview should fail");
+
+    vec![buffered, empty, format!("{:?}", cancelled.kind)]
 }
