@@ -371,7 +371,7 @@ impl HttpRequest {
         self.context.base_url.as_ref()
     }
 
-    /// Sets the base URL used by [`Self::resolved_url`] when `path` is not
+    /// Sets the base URL used for internal URL resolution when `path` is not
     /// absolute.
     ///
     /// # Parameters
@@ -523,7 +523,10 @@ impl HttpRequest {
             &method,
             request_url_context.as_ref(),
             "Request cancelled while preparing request",
-            format!("Write timeout after {:?} while preparing request", write_timeout),
+            format!(
+                "Write timeout after {:?} while preparing request",
+                write_timeout
+            ),
         )
         .await?
         .clone();

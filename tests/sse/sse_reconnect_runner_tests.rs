@@ -40,7 +40,7 @@ fn build_retry_options(
     delay: RetryDelay,
     jitter: RetryJitter,
 ) -> RetryOptions {
-    RetryOptions::new(max_reconnects + 1, None, delay, jitter)
+    RetryOptions::new(max_reconnects + 1, None, None, delay, jitter)
         .expect("SSE reconnect test retry options should be valid")
 }
 
@@ -60,7 +60,7 @@ fn build_retry_options_with_max_elapsed(
     delay: RetryDelay,
     jitter: RetryJitter,
 ) -> RetryOptions {
-    RetryOptions::new(max_reconnects + 1, Some(max_elapsed), delay, jitter)
+    RetryOptions::new(max_reconnects + 1, None, Some(max_elapsed), delay, jitter)
         .expect("SSE reconnect test retry options should be valid")
 }
 

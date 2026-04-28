@@ -515,7 +515,7 @@ let request = client
 
 `honor_retry_after(true)` is request-level. For retryable 429 or 5xx responses, if `Retry-After` is present, the retry executor waits at least that duration before the next attempt; if the executor's planned backoff is already longer, no extra delay is added.
 
-When retry is enabled, `execute` runs attempts through `qubit-retry`'s `RetryExecutor`. Retryable failures that exhaust `max_attempts` or `max_duration` return the last HTTP error with exhaustion context appended to `message`. If the current error does not match the active allowlist or retry policy, the executor returns `RetryAborted` and keeps the aborted original `HttpError` as `source`.
+When retry is enabled, `execute` runs attempts through `qubit-retry`'s `Retry`. HTTP `max_duration` maps to `qubit-retry`'s `max_total_elapsed`, so it is measured with monotonic time and includes attempt execution, retry backoff sleeps, `Retry-After` sleeps, and retry control-path listener time. Retryable failures that exhaust `max_attempts` or `max_duration` return the last HTTP error with exhaustion context appended to `message`. If the current error does not match the active allowlist or retry policy, the executor returns `RetryAborted` and keeps the aborted original `HttpError` as `source`.
 
 | Scenario | Returned error | Notes |
 | --- | --- | --- |
@@ -706,6 +706,7 @@ let mut events = client.execute_sse_with_reconnect(
     SseReconnectOptions {
         retry: RetryOptions::new(
             6, // max_attempts = initial connect + 5 reconnects
+            None,
             None,
             RetryDelay::exponential(
                 std::time::Duration::from_secs(1),

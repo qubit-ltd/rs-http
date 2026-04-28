@@ -1105,7 +1105,6 @@ dependencies = [
  "qubit-common",
  "qubit-config",
  "qubit-function",
- "qubit-lock",
  "qubit-retry",
  "reqwest",
  "serde",
@@ -1120,20 +1119,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "qubit-lock"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d22fe24041377f0f55084cba90ed3ce359ef718213bae39c97d99b6e678ad02"
-dependencies = [
- "parking_lot",
- "tokio",
-]
-
-[[package]]
 name = "qubit-retry"
-version = "0.8.1"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c1c8f12c345767774e1e967fc3b130ba8f84abab87f0a9f1a745707bbdd9cfed"
+checksum = "ec8eefacbd15a679058b53347434d6c6b1dcb7250b879c27b894c95782e5d0f6"
 dependencies = [
  "parse-display 0.10.0",
  "qubit-common",

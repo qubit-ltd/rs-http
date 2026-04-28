@@ -38,7 +38,7 @@ enum ReconnectDecision {
     MaxReconnectsReached,
     /// Reconnect is blocked because elapsed-time budget is exhausted.
     MaxElapsedExceeded {
-        /// Elapsed wall-clock time since runner start.
+        /// Monotonic elapsed time since runner start.
         elapsed: Duration,
         /// Configured maximum elapsed time.
         max_elapsed: Duration,
@@ -373,7 +373,7 @@ fn reconnect_decision(
     if count >= max_reconnects {
         return ReconnectDecision::MaxReconnectsReached;
     }
-    if let Some(max_elapsed) = retry_options.max_elapsed() {
+    if let Some(max_elapsed) = retry_options.max_total_elapsed() {
         let elapsed = started_at.elapsed();
         if (elapsed >= max_elapsed) || will_exceed_elapsed(elapsed, sleep_delay, max_elapsed) {
             return ReconnectDecision::MaxElapsedExceeded {
@@ -399,7 +399,7 @@ fn reconnect_decision(
 fn will_exceed_elapsed(elapsed: Duration, sleep_delay: Duration, max_elapsed: Duration) -> bool {
     elapsed
         .checked_add(sleep_delay)
-        .map_or(true, |next_elapsed| next_elapsed >= max_elapsed)
+        .is_none_or(|next_elapsed| next_elapsed >= max_elapsed)
 }
 
 /// Returns the initial reconnect delay from retry options.
@@ -665,8 +665,14 @@ fn normalize_retry_options(value: RetryOptions) -> RetryOptions {
     } else {
         value.jitter()
     };
-    RetryOptions::new(value.max_attempts(), value.max_elapsed(), delay, jitter)
-        .expect("normalized SSE retry options must be valid")
+    RetryOptions::new(
+        value.max_attempts(),
+        value.max_operation_elapsed(),
+        value.max_total_elapsed(),
+        delay,
+        jitter,
+    )
+    .expect("normalized SSE retry options must be valid")
 }
 
 /// Returns whether an HTTP error represents an unexpected stream EOF that is

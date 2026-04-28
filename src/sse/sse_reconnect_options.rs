@@ -33,6 +33,7 @@ fn default_sse_retry_options() -> RetryOptions {
     RetryOptions::new(
         DEFAULT_SSE_MAX_RECONNECTS + 1,
         None,
+        None,
         RetryDelay::exponential(
             Duration::from_secs(1),
             DEFAULT_SSE_MAX_RECONNECT_DELAY,

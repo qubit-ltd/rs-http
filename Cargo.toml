@@ -45,9 +45,8 @@ futures-util = "0.3"
 
 qubit-common = "0.6"
 qubit-config = "0.9"
-qubit-lock = "0.3"
 qubit-function = "0.10"
-qubit-retry = { version = "0.8", features = ["tokio"] }
+qubit-retry = { version = "0.9", features = ["tokio"] }
 
 [dev-dependencies]
 tokio = { version = "1.52", features = ["full", "test-util"] }
