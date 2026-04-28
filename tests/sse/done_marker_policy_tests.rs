@@ -22,7 +22,10 @@ fn test_done_marker_policy_basic_behavior() {
 
 #[test]
 fn test_done_marker_policy_from_str_parses_aliases_and_custom() {
-    assert_eq!(DoneMarkerPolicy::from_str("disable").expect("disable"), DoneMarkerPolicy::Disabled);
+    assert_eq!(
+        DoneMarkerPolicy::from_str("disable").expect("disable"),
+        DoneMarkerPolicy::Disabled
+    );
     assert_eq!(
         DoneMarkerPolicy::from_str("  disabled ").expect("disabled"),
         DoneMarkerPolicy::Disabled

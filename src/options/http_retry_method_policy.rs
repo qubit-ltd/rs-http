@@ -10,23 +10,13 @@
 use std::str::FromStr;
 
 use http::Method;
-use serde::{Deserialize, Serialize};
 use parse_display::FromStr as DeriveFromStr;
+use serde::{Deserialize, Serialize};
 
 use super::HttpConfigError;
 
 /// HTTP method policy used to decide whether a request can be retried.
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Default,
-    Serialize,
-    Deserialize,
-    DeriveFromStr,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, DeriveFromStr)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum HttpRetryMethodPolicy {
     /// Retry only HTTP methods that are safe to replay by default.

@@ -8,8 +8,8 @@
  ******************************************************************************/
 //! Reqwest/HTTP error mapping helpers used by `HttpClient` internals.
 
-use serde::{Deserialize, Serialize};
 use parse_display::{Display, FromStr as DeriveFromStr};
+use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::{HttpError, HttpErrorKind};

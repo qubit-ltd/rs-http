@@ -17,10 +17,12 @@
 //!
 //! Haixing Hu
 
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
-use qubit_concurrent::Lock;
-use qubit_retry::{RetryAttemptFailure, RetryError, RetryResult};
+use qubit_retry::{
+    AttemptFailure, AttemptFailureDecision, Retry, RetryContext, RetryError, RetryErrorReason,
+};
 
 use crate::sse::SseReconnectRunner;
 use crate::{
@@ -29,7 +31,7 @@ use crate::{
     AsyncHttpHeaderInjector, HttpClientOptions, HttpError, HttpHeaderInjector, HttpLogger,
     HttpRequest, HttpRequestBuilder, HttpRequestInterceptor, HttpRequestInterceptors, HttpResponse,
     HttpResponseInterceptor, HttpResponseInterceptors, HttpResponseMeta, HttpResult,
-    HttpRetryOptions, PendingHttpRetryAfterDelay,
+    HttpRetryOptions,
 };
 
 /// High-level HTTP client: default headers, injectors, interceptors, logging,
@@ -53,6 +55,13 @@ pub struct HttpClient {
     request_interceptors: HttpRequestInterceptors,
     /// Response interceptors applied on successful responses before return.
     response_interceptors: HttpResponseInterceptors,
+}
+
+/// Internal reason recorded when an HTTP-specific guard stops retry execution.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HttpRetryStopReason {
+    /// HTTP wall-clock max duration would be exceeded before the next attempt.
+    MaxDurationExceeded,
 }
 
 impl HttpClient {
@@ -253,10 +262,11 @@ impl HttpClient {
         }
     }
 
-    /// Performs one non-retrying execution: request interceptors, resolve URL,
-    /// merge headers, log the request, send with configured timeouts, map
-    /// non-success status to an error, then response interceptors and response
-    /// logging. The returned body is read lazily according to [`HttpResponse`].
+    /// Performs one non-retrying execution: pre-send cancellation check,
+    /// request interceptors, resolve URL, merge headers, log the request, send
+    /// with configured timeouts, map non-success status to an error, then
+    /// response interceptors and response logging. The returned body is read
+    /// lazily according to [`HttpResponse`].
     ///
     /// # Parameters
     /// - `request`: Built request to send (same fields as for
@@ -271,8 +281,11 @@ impl HttpClient {
     ///
     /// # Side effects
     /// Network I/O, optional logging, and user-provided interceptor callbacks.
-    pub(super) async fn execute_once(&self, request: HttpRequest) -> HttpResult<HttpResponse> {
+    pub(crate) async fn execute_once(&self, request: HttpRequest) -> HttpResult<HttpResponse> {
         let mut request = request;
+        if let Some(error) = request.cancelled_error_if_needed("Request cancelled before sending") {
+            return Err(error);
+        }
         self.request_interceptors.apply(&mut request)?;
         let response = self
             .prepare_and_send_once(request, "Request cancelled before sending")
@@ -333,16 +346,16 @@ impl HttpClient {
             backend_response,
             request.read_timeout(),
             request.cancellation_token().cloned(),
-            request.resolved_url()?,
+            request.resolved_url_with_query()?,
             response_options,
         ))
     }
 
     /// Runs [`HttpClient::execute_once`] under the given retry policy.
     ///
-    /// Between attempts may await an initial delay taken from
-    /// [`PendingHttpRetryAfterDelay`] (e.g. `Retry-After`) via
-    /// [`tokio::time::sleep`]. Each attempt clones the client and request.
+    /// Between attempts waits according to the resolved retry delay, optionally
+    /// honoring `Retry-After` by extending the next sleep. Each attempt clones
+    /// the request so request bodies can be rebuilt when supported.
     ///
     /// # Parameters
     /// - `request`: Built request passed to each [`HttpClient::execute_once`]
@@ -352,177 +365,312 @@ impl HttpClient {
     ///
     /// # Returns
     /// - `Ok(HttpResponse)` when an attempt completes with success status.
-    /// - `Err(HttpError)` from [`HttpRetryOptions::build_executor`], from any
-    ///   [`HttpClient::execute_once`] failure that exhausts policy, or from
-    ///   mapped [`RetryError`] (aborted, attempts exceeded, max elapsed exceeded);
-    ///   see [`HttpClient::map_retry_result`].
+    /// - `Err(HttpError)` from retry option validation, from any
+    ///   [`HttpClient::execute_once`] failure that is non-retryable, or from
+    ///   retry exhaustion/max-duration enforcement.
     ///
     /// # Side effects
-    /// Multiple async HTTP attempts, optional sleeps, and retry callback scheduling.
+    /// Multiple async HTTP attempts and optional sleeps.
     async fn execute_with_retry(
         &self,
         request: HttpRequest,
         options: HttpRetryOptions,
     ) -> HttpResult<HttpResponse> {
         let honor_retry_after = request.retry_override().should_honor_retry_after();
-        let (retry_executor, pending_after_delay) = options.build_executor(honor_retry_after)?;
-        let client = self.clone();
-        let result = retry_executor
-            .run_async(move || {
-                let client = client.clone();
-                let request = request.clone();
-                let pending_after_delay = pending_after_delay.clone();
-                async move {
-                    if let Some(delay) = pending_after_delay
-                        .as_ref()
-                        .and_then(Self::take_pending_after_delay)
-                    {
-                        tokio::time::sleep(delay).await;
-                    }
-                    client.execute_once(request).await
-                }
+        let retry_options = options.to_executor_options()?;
+        let started_at = Instant::now();
+        if Self::retry_max_duration_exceeded(started_at, options.max_duration) {
+            return Err(Self::map_retry_max_duration_exceeded(
+                started_at,
+                options.max_duration,
+                None,
+            ));
+        }
+
+        let stop_reason = Arc::new(Mutex::new(None));
+        let stop_reason_for_policy = Arc::clone(&stop_reason);
+        let retry_policy_options = options.clone();
+        let retry_delay_options = retry_options.clone();
+        let retry_policy = Retry::<HttpError>::builder()
+            .options(retry_options)
+            .retry_after_from_error(move |error| {
+                honor_retry_after.then_some(error.retry_after).flatten()
             })
-            .await;
-        Self::map_retry_result(result)
-    }
+            .on_failure(move |failure: &AttemptFailure<HttpError>, context: &RetryContext| {
+                let Some(error) = failure.as_error() else {
+                    return AttemptFailureDecision::UseDefault;
+                };
+                if !Self::is_retryable_error(error, &retry_policy_options) {
+                    return AttemptFailureDecision::Abort;
+                }
 
-    /// Atomically takes a pending post-429 (or similar) delay, if any was set.
-    ///
-    /// Uses a short critical section on the shared mutex so at most one
-    /// consumer removes the stored [`Duration`].
-    ///
-    /// # Parameters
-    /// - `pending`: Shared cell optionally holding a delay to apply before the
-    ///   next attempt.
-    ///
-    /// # Returns
-    /// - `Some(duration)` if a delay was present and was taken.
-    /// - `None` if no delay was set or it was already consumed.
-    fn take_pending_after_delay(pending: &PendingHttpRetryAfterDelay) -> Option<Duration> {
-        pending.write(Option::take)
-    }
+                let base_delay = retry_delay_options.delay_for_attempt(context.attempt());
+                let sleep_delay =
+                    Self::retry_sleep_delay(base_delay, context.retry_after_hint());
+                if Self::retry_sleep_exceeds_max_duration(
+                    started_at,
+                    sleep_delay,
+                    retry_policy_options.max_duration,
+                ) {
+                    if let Ok(mut reason) = stop_reason_for_policy.lock() {
+                        *reason = Some(HttpRetryStopReason::MaxDurationExceeded);
+                    }
+                    return AttemptFailureDecision::Abort;
+                }
+                AttemptFailureDecision::RetryAfter(sleep_delay)
+            })
+            .build()
+            .map_err(|error| HttpError::other(format!("Invalid HTTP retry executor: {error}")))?;
 
-    /// Maps a finished retry run into a plain HTTP result.
-    ///
-    /// # Parameters
-    /// - `result`: Outcome from the generic retry executor (`T` is normally
-    ///   [`HttpResponse`] here).
-    ///
-    /// # Returns
-    /// - `Ok(value)` on successful completion of the retried operation.
-    /// - `Err(HttpError)` with messages/source wired from [`RetryError`] variants.
-    fn map_retry_result<T>(result: RetryResult<T, HttpError>) -> HttpResult<T> {
-        match result {
-            Ok(value) => Ok(value),
-            Err(RetryError::Aborted {
-                attempts,
-                elapsed,
-                failure,
-            }) => Err(Self::map_retry_aborted(attempts, elapsed, failure)),
-            Err(RetryError::AttemptsExceeded {
-                attempts,
-                max_attempts,
-                last_failure,
-                ..
-            }) => {
-                let mut error = Self::map_retry_attempt_failure(last_failure);
-                error.message = format!(
-                    "{} (retry attempts exhausted: {attempts}/{max_attempts})",
-                    error.message
-                );
-                Err(error)
+        let cancellation_token = request.cancellation_token().cloned();
+        let request_method = request.method().clone();
+        let request_url = request.resolved_url_with_query().ok();
+        let retry_request = request.clone();
+        let retry_future = retry_policy.run_async(|| {
+            let attempt_request = retry_request.clone();
+            async move { self.execute_once(attempt_request).await }
+        });
+
+        let retry_result = if let Some(token) = cancellation_token.as_ref() {
+            tokio::select! {
+                _ = token.cancelled() => {
+                    return Err(Self::retry_cancelled_error(
+                        "HTTP retry cancelled while waiting before next attempt",
+                        &request_method,
+                        request_url.as_ref(),
+                    ));
+                }
+                result = retry_future => result,
             }
-            Err(RetryError::MaxElapsedExceeded {
-                elapsed,
-                max_elapsed,
-                last_failure,
-                ..
-            }) => Err(Self::map_retry_max_elapsed_exceeded(
-                elapsed,
-                max_elapsed,
-                last_failure,
-            )),
+        } else {
+            retry_future.await
+        };
+
+        retry_result.map_err(|error| {
+            Self::map_retry_error(
+                error,
+                started_at,
+                options.max_duration,
+                options.max_attempts,
+                stop_reason,
+            )
+        })
+    }
+
+    /// Returns whether `error` is retryable under `options`.
+    ///
+    /// # Parameters
+    /// - `error`: Error produced by a single HTTP attempt.
+    /// - `options`: Effective retry options for the request.
+    ///
+    /// # Returns
+    /// `true` if another attempt may be scheduled.
+    fn is_retryable_error(error: &HttpError, options: &HttpRetryOptions) -> bool {
+        if error.kind == crate::HttpErrorKind::Status {
+            error
+                .status
+                .is_some_and(|status| options.is_retryable_status(status))
+        } else {
+            options.is_retryable_error_kind(error.kind)
         }
     }
 
-    /// Converts a single-attempt retry failure into [`HttpError`].
+    /// Computes the sleep before the next retry attempt.
     ///
     /// # Parameters
-    /// - `failure`: Either a wrapped [`HttpError`] or an attempt-timeout marker.
+    /// - `base_delay`: Delay selected from retry policy and jitter.
+    /// - `retry_after_hint`: Retry-After delay extracted by the retry policy.
     ///
     /// # Returns
-    /// The same error for `Error`, or a retry-attempt-timeout error for
-    /// [`RetryAttemptFailure::AttemptTimeout`].
-    fn map_retry_attempt_failure(failure: RetryAttemptFailure<HttpError>) -> HttpError {
-        match failure {
-            RetryAttemptFailure::Error(error) => error,
-            RetryAttemptFailure::AttemptTimeout { elapsed, timeout } => {
-                HttpError::retry_attempt_timeout(format!(
-                    "HTTP retry attempt timeout after {elapsed:?} (timeout: {timeout:?})"
-                ))
-            }
-        }
+    /// `base_delay`, or the larger `Retry-After` value when present.
+    fn retry_sleep_delay(base_delay: Duration, retry_after_hint: Option<Duration>) -> Duration {
+        retry_after_hint
+            .map(|retry_after| retry_after.max(base_delay))
+            .unwrap_or(base_delay)
     }
 
-    /// Builds the error returned when retry stops early (aborted).
+    /// Returns whether the retry max-duration budget is already exhausted.
     ///
     /// # Parameters
-    /// - `attempts`: Number of attempts before abort.
-    /// - `elapsed`: Total elapsed retry time.
-    /// - `failure`: Last attempt failure or timeout.
+    /// - `started_at`: Start instant of the retry flow.
+    /// - `max_duration`: Optional total retry duration budget.
     ///
     /// # Returns
-    /// [`HttpError::retry_aborted`] with optional chained source for HTTP
-    /// failures, or attempt-timeout variant when the failure was a timeout.
-    fn map_retry_aborted(
+    /// `true` when the elapsed wall-clock duration has reached the budget.
+    fn retry_max_duration_exceeded(started_at: Instant, max_duration: Option<Duration>) -> bool {
+        max_duration.is_some_and(|max_duration| started_at.elapsed() >= max_duration)
+    }
+
+    /// Returns whether sleeping would exhaust the retry max-duration budget.
+    ///
+    /// # Parameters
+    /// - `started_at`: Start instant of the retry flow.
+    /// - `sleep_delay`: Delay selected before the next attempt.
+    /// - `max_duration`: Optional total retry duration budget.
+    ///
+    /// # Returns
+    /// `true` when `elapsed + sleep_delay` reaches the configured budget, or
+    /// when the addition overflows.
+    fn retry_sleep_exceeds_max_duration(
+        started_at: Instant,
+        sleep_delay: Duration,
+        max_duration: Option<Duration>,
+    ) -> bool {
+        max_duration.is_some_and(|max_duration| {
+            started_at
+                .elapsed()
+                .checked_add(sleep_delay)
+                .is_none_or(|elapsed| elapsed >= max_duration)
+        })
+    }
+
+    /// Adds retry-attempt exhaustion context to the last attempt error.
+    ///
+    /// # Parameters
+    /// - `error`: Last retryable attempt error.
+    /// - `attempts`: Number of attempts already made.
+    /// - `max_attempts`: Configured maximum attempts.
+    ///
+    /// # Returns
+    /// The same error with retry exhaustion details appended to its message.
+    fn map_retry_attempts_exhausted(
+        mut error: HttpError,
         attempts: u32,
-        elapsed: Duration,
-        failure: RetryAttemptFailure<HttpError>,
+        max_attempts: u32,
     ) -> HttpError {
-        match failure {
-            RetryAttemptFailure::Error(error) => {
-                let summary = error.message.clone();
-                HttpError::retry_aborted(format!(
-                    "HTTP retry aborted after {attempts} attempt(s) in {elapsed:?}: {summary}"
-                ))
-                .with_source(error)
-            }
-            RetryAttemptFailure::AttemptTimeout { elapsed, timeout } => {
-                HttpError::retry_attempt_timeout(format!(
-                    "HTTP retry attempt timeout after {elapsed:?} (timeout: {timeout:?})"
-                ))
-            }
-        }
+        error.message = format!(
+            "{} (retry attempts exhausted: {attempts}/{max_attempts})",
+            error.message
+        );
+        error
     }
 
-    /// Builds the error when total retry duration exceeds the configured cap.
+    /// Builds the error returned when retry policy stops early.
     ///
     /// # Parameters
-    /// - `elapsed`: Time spent in the retry loop.
-    /// - `max_elapsed`: Configured maximum wall time for retries.
-    /// - `last_failure`: Last captured attempt failure, if any.
+    /// - `error`: Attempt error that the retry policy chose not to retry.
+    /// - `attempts`: Number of attempts already made.
+    /// - `started_at`: Start instant of the retry flow.
     ///
     /// # Returns
-    /// Augments the last failure message when present, otherwise a dedicated
-    /// max-elapsed error with no underlying attempt error.
-    fn map_retry_max_elapsed_exceeded(
-        elapsed: Duration,
-        max_elapsed: Duration,
-        last_failure: Option<RetryAttemptFailure<HttpError>>,
+    /// [`HttpError::retry_aborted`] with the original [`HttpError`] chained as
+    /// source for callers that need the underlying status or transport error.
+    fn map_retry_aborted(error: HttpError, attempts: u32, started_at: Instant) -> HttpError {
+        let elapsed = started_at.elapsed();
+        let summary = error.message.clone();
+        HttpError::retry_aborted(format!(
+            "HTTP retry aborted after {attempts} attempt(s) in {elapsed:?}: {summary}"
+        ))
+        .with_source(error)
+    }
+
+    /// Builds the error when retry max-duration is exhausted.
+    ///
+    /// # Parameters
+    /// - `started_at`: Start instant of the retry flow.
+    /// - `max_duration`: Configured max-duration budget.
+    /// - `last_error`: Last captured retryable attempt error, if any.
+    ///
+    /// # Returns
+    /// Augments the last failure when present, otherwise a dedicated
+    /// max-duration error with no underlying attempt error.
+    fn map_retry_max_duration_exceeded(
+        started_at: Instant,
+        max_duration: Option<Duration>,
+        last_error: Option<HttpError>,
     ) -> HttpError {
-        match last_failure {
-            Some(last_failure) => {
-                let mut error = Self::map_retry_attempt_failure(last_failure);
+        let elapsed = started_at.elapsed();
+        let max_duration_text = max_duration
+            .map(|duration| format!("{duration:?}"))
+            .unwrap_or_else(|| "unbounded".to_string());
+        match last_error {
+            Some(mut error) => {
                 error.message = format!(
-                    "{} (retry max duration exceeded: {elapsed:?}/{max_elapsed:?})",
+                    "{} (retry max duration exceeded: {elapsed:?}/{max_duration_text})",
                     error.message
                 );
                 error
             }
             None => HttpError::retry_max_elapsed_exceeded(format!(
-                "HTTP retry max duration exceeded before a retryable error was captured: {elapsed:?}/{max_elapsed:?}"
+                "HTTP retry max duration exceeded before a retryable error was captured: {elapsed:?}/{max_duration_text}"
             )),
         }
+    }
+
+    /// Maps a [`qubit_retry::RetryError`] into this crate's HTTP error model.
+    ///
+    /// # Parameters
+    /// - `error`: Terminal retry error from `qubit-retry`.
+    /// - `started_at`: Wall-clock start of the HTTP retry flow.
+    /// - `max_duration`: Optional HTTP wall-clock retry budget.
+    /// - `max_attempts`: Configured maximum HTTP attempts.
+    /// - `stop_reason`: HTTP-specific stop reason recorded by retry listeners.
+    ///
+    /// # Returns
+    /// A rich [`HttpError`] preserving the last attempt error when available.
+    fn map_retry_error(
+        error: RetryError<HttpError>,
+        started_at: Instant,
+        max_duration: Option<Duration>,
+        max_attempts: u32,
+        stop_reason: Arc<Mutex<Option<HttpRetryStopReason>>>,
+    ) -> HttpError {
+        let attempts = error.attempts();
+        let reason = error.reason();
+        let http_stop_reason = stop_reason.lock().ok().and_then(|guard| *guard);
+        let (_, last_failure, _) = error.into_parts();
+        let last_error = last_failure.and_then(AttemptFailure::into_error);
+
+        if http_stop_reason == Some(HttpRetryStopReason::MaxDurationExceeded) {
+            return Self::map_retry_max_duration_exceeded(started_at, max_duration, last_error);
+        }
+
+        match reason {
+            RetryErrorReason::AttemptsExceeded => last_error
+                .map(|error| Self::map_retry_attempts_exhausted(error, attempts, max_attempts))
+                .unwrap_or_else(|| {
+                    HttpError::retry_aborted(format!(
+                        "HTTP retry attempts exhausted without a captured HTTP error: {attempts}/{max_attempts}"
+                    ))
+                }),
+            RetryErrorReason::MaxElapsedExceeded => {
+                Self::map_retry_max_duration_exceeded(started_at, max_duration, last_error)
+            }
+            RetryErrorReason::Aborted => match last_error {
+                Some(error) if error.kind == crate::HttpErrorKind::Cancelled => error,
+                Some(error) => Self::map_retry_aborted(error, attempts, started_at),
+                None => HttpError::retry_aborted(format!(
+                    "HTTP retry aborted after {attempts} attempt(s) without a captured HTTP error"
+                )),
+            },
+            RetryErrorReason::UnsupportedOperation | RetryErrorReason::WorkerStillRunning => {
+                HttpError::other(format!(
+                    "HTTP retry executor failed after {attempts} attempt(s): {reason:?}"
+                ))
+            }
+        }
+    }
+
+    /// Builds a cancellation error for retry wait cancellation.
+    ///
+    /// # Parameters
+    /// - `message`: Human-readable cancellation reason.
+    /// - `method`: Request method to attach.
+    /// - `url`: Optional resolved request URL to attach.
+    ///
+    /// # Returns
+    /// [`HttpErrorKind::Cancelled`](crate::HttpErrorKind::Cancelled) with request
+    /// context.
+    fn retry_cancelled_error(
+        message: &str,
+        method: &http::Method,
+        url: Option<&url::Url>,
+    ) -> HttpError {
+        let mut error = HttpError::cancelled(message).with_method(method);
+        if let Some(url) = url {
+            error = error.with_url(url);
+        }
+        error
     }
 
     /// Opens an SSE stream and reconnects automatically on retryable stream

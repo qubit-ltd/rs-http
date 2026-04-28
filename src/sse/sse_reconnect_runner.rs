@@ -89,7 +89,7 @@ impl SseReconnectRunner {
         let output = stream! {
             let retry_options = normalize_retry_options(options.retry.clone());
             let max_reconnects = retry_options.max_attempts().saturating_sub(1);
-            let request_url = request_template.resolved_url_cached();
+            let request_url = request_template.resolved_url_with_query().ok();
             let request_method = request_template.method().clone();
             let cancellation_token = request_template.cancellation_token().cloned();
             let started_at = Instant::now();
@@ -110,7 +110,7 @@ impl SseReconnectRunner {
                     }
                 }
 
-                let response = match client.execute(request).await {
+                let response = match client.execute_once(request).await {
                     Ok(response) => response,
                     Err(error) => {
                         if should_reconnect_sse_error(&error) {
@@ -614,10 +614,12 @@ fn validate_sse_response_content_type(response: &HttpResponse) -> HttpResult<()>
     let method = response.meta.method.clone();
     let url = response.request_url().clone();
     let Some(value) = response.headers().get(CONTENT_TYPE) else {
-        return Err(HttpError::sse_protocol("Missing Content-Type header for SSE response")
-            .with_status(response.status())
-            .with_method(&method)
-            .with_url(&url));
+        return Err(
+            HttpError::sse_protocol("Missing Content-Type header for SSE response")
+                .with_status(response.status())
+                .with_method(&method)
+                .with_url(&url),
+        );
     };
     let content_type = value.to_str().map_err(|_| {
         HttpError::sse_protocol("Invalid non-UTF8 Content-Type header for SSE response")

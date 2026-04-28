@@ -11,12 +11,9 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use http::StatusCode;
-use qubit_concurrent::{ArcMutex, Lock};
 use qubit_config::{ConfigReader, ConfigResult};
-use qubit_retry::{
-    RetryAttemptContext, RetryAttemptFailure, RetryDecision, RetryDelay, RetryExecutor,
-    RetryJitter, RetryOptions,
-};
+use qubit_lock::{ArcMutex, Lock};
+use qubit_retry::{AttemptFailure, Retry, RetryContext, RetryDelay, RetryJitter, RetryOptions};
 
 use super::http_retry_method_policy::HttpRetryMethodPolicy;
 use super::HttpConfigError;
@@ -253,7 +250,7 @@ impl HttpRetryOptions {
     ///
     /// # Errors
     /// Returns [`HttpError`] when executor limits or delay/jitter settings are invalid.
-    fn to_executor_options(&self) -> HttpResult<RetryOptions> {
+    pub(crate) fn to_executor_options(&self) -> HttpResult<RetryOptions> {
         RetryOptions::new(
             self.max_attempts,
             self.max_duration,
@@ -263,33 +260,27 @@ impl HttpRetryOptions {
         .map_err(|error| HttpError::other(format!("Invalid HTTP retry options: {error}")))
     }
 
-    /// Returns a [`qubit_retry::RetryDecider`] closure for [`qubit_retry::RetryExecutor::builder`] /
-    /// [`qubit_retry::RetryExecutorBuilder::retry_decide`].
+    /// Returns a predicate used by [`qubit_retry::RetryBuilder::retry_if_error`].
     ///
     /// The closure captures clones of the status and error-kind allowlists only
     /// and delegates to [`is_retryable_status`] and [`is_retryable_error_kind`].
-    fn to_retry_decider(
+    fn to_retry_predicate(
         &self,
-    ) -> impl Fn(&HttpError, &RetryAttemptContext) -> RetryDecision + Send + Sync + 'static {
+    ) -> impl Fn(&HttpError, &RetryContext) -> bool + Send + Sync + 'static {
         let retry_status_codes = self.retry_status_codes.clone();
         let retry_error_kinds = self.retry_error_kinds.clone();
-        move |error: &HttpError, _context: &RetryAttemptContext| {
-            let retryable = if error.kind == HttpErrorKind::Status {
+        move |error: &HttpError, _context: &RetryContext| {
+            if error.kind == HttpErrorKind::Status {
                 error.status.is_some_and(|status| {
                     is_retryable_status(status, retry_status_codes.as_deref())
                 })
             } else {
                 is_retryable_error_kind(error.kind, retry_error_kinds.as_deref())
-            };
-            if retryable {
-                RetryDecision::Retry
-            } else {
-                RetryDecision::Abort
             }
         }
     }
 
-    /// Builds a [`RetryExecutor`] for [`HttpError`] from these options.
+    /// Builds a [`Retry`] policy for [`HttpError`] from these options.
     ///
     /// # Parameters
     /// - `honor_retry_after`: When `true`, installs an `on_retry` listener on the executor
@@ -302,27 +293,32 @@ impl HttpRetryOptions {
     pub fn build_executor(
         &self,
         honor_retry_after: bool,
-    ) -> HttpResult<(RetryExecutor<HttpError>, Option<PendingHttpRetryAfterDelay>)> {
-        let mut builder = RetryExecutor::<HttpError>::builder()
+    ) -> HttpResult<(Retry<HttpError>, Option<PendingHttpRetryAfterDelay>)> {
+        let mut builder = Retry::<HttpError>::builder()
             .options(self.to_executor_options()?)
-            .retry_decide(self.to_retry_decider());
+            .retry_if_error(self.to_retry_predicate());
 
         if honor_retry_after {
             let pending_after_delay: PendingHttpRetryAfterDelay = ArcMutex::new(None);
             let pending_for_listener = pending_after_delay.clone();
-            builder = builder.on_retry(move |context, failure| {
-                let RetryAttemptFailure::Error(error) = failure else {
-                    return;
-                };
-                let Some(retry_after) = error.retry_after else {
-                    return;
-                };
-                if retry_after > context.next_delay {
-                    pending_for_listener.write(|slot| {
-                        *slot = Some(retry_after - context.next_delay);
-                    });
-                }
-            });
+            builder = builder.on_retry(
+                move |failure: &AttemptFailure<HttpError>, context: &RetryContext| {
+                    let AttemptFailure::Error(error) = failure else {
+                        return;
+                    };
+                    let Some(retry_after) = error.retry_after else {
+                        return;
+                    };
+                    let Some(next_delay) = context.next_delay() else {
+                        return;
+                    };
+                    if retry_after > next_delay {
+                        pending_for_listener.write(|slot| {
+                            *slot = Some(retry_after - next_delay);
+                        });
+                    }
+                },
+            );
             return builder
                 .build()
                 .map(|executor| (executor, Some(pending_after_delay)))

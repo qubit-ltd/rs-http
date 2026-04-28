@@ -7,6 +7,10 @@
  *
  ******************************************************************************/
 
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
 use std::time::Duration;
 
 use futures_util::StreamExt;
@@ -48,6 +52,51 @@ async fn test_execute_request_with_pre_cancelled_token_returns_cancelled_error()
         .expect_err("request should be cancelled");
     assert_eq!(error.kind, HttpErrorKind::Cancelled);
     assert!(error.message.contains("cancelled"));
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert!(captured.is_empty());
+}
+
+#[tokio::test]
+async fn test_execute_request_with_pre_cancelled_token_skips_request_interceptors() {
+    let server = spawn_multi_shot_server(vec![]).await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    let mut client = HttpClientFactory::new()
+        .create(options)
+        .expect("client should be created");
+    let interceptor_calls = Arc::new(AtomicUsize::new(0));
+    let interceptor_calls_clone = Arc::clone(&interceptor_calls);
+    client.add_request_interceptor(qubit_http::HttpRequestInterceptor::new(move |_request| {
+        interceptor_calls_clone.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+    }));
+
+    let token = CancellationToken::new();
+    token.cancel();
+    let request = client
+        .request(Method::GET, "/pre-cancelled-interceptor")
+        .query_param("trace", "yes")
+        .cancellation_token(token)
+        .build();
+    let error = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .expect_err("request should be cancelled");
+
+    assert_eq!(error.kind, HttpErrorKind::Cancelled);
+    assert_eq!(interceptor_calls.load(Ordering::Relaxed), 0);
+    assert_eq!(
+        error
+            .url
+            .as_ref()
+            .expect("cancelled error should include request URL")
+            .query(),
+        Some("trace=yes")
+    );
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
@@ -99,6 +148,66 @@ async fn test_execute_request_can_be_cancelled_while_reading_response_body() {
         .await
         .expect("server finish timed out");
     assert_eq!(captured.target, "/cancel-reading");
+}
+
+#[tokio::test]
+async fn test_execute_request_can_be_cancelled_while_reading_status_error_preview() {
+    let server = spawn_one_shot_server(ResponsePlan::Chunked {
+        status: 503,
+        headers: vec![],
+        chunks: vec![
+            ResponseChunk {
+                delay: Duration::ZERO,
+                bytes: b"partial".to_vec(),
+            },
+            ResponseChunk {
+                delay: Duration::from_secs(1),
+                bytes: b"later".to_vec(),
+            },
+        ],
+        finish: true,
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.read_timeout = Duration::from_secs(5);
+    let client = HttpClientFactory::new()
+        .create(options)
+        .expect("client should be created");
+
+    let token = CancellationToken::new();
+    let token_for_task = token.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        token_for_task.cancel();
+    });
+
+    let request = client
+        .request(Method::GET, "/cancel-status-preview")
+        .query_param("phase", "preview")
+        .cancellation_token(token)
+        .build();
+    let error = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .expect_err("status error preview should be cancelled");
+
+    assert_eq!(error.kind, HttpErrorKind::Cancelled);
+    assert!(error.message.contains("status error response body preview"));
+    assert_eq!(
+        error
+            .url
+            .as_ref()
+            .expect("cancelled error should include request URL")
+            .query(),
+        Some("phase=preview")
+    );
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.target, "/cancel-status-preview?phase=preview");
 }
 
 #[tokio::test]

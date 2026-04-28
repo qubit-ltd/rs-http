@@ -399,6 +399,79 @@ async fn test_request_url_can_differ_from_response_meta_url() {
 }
 
 #[tokio::test]
+async fn test_request_url_includes_builder_query_params() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 200,
+        headers: vec![],
+        body: b"ok".to_vec(),
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    let client = HttpClientFactory::new()
+        .create(options)
+        .expect("valid options should create client");
+
+    let request = client
+        .request(Method::GET, "/request-url-query?existing=1")
+        .query_param("added", "two words")
+        .build();
+    let response = client
+        .execute(request)
+        .await
+        .expect("request should succeed");
+    let mut expected_request_url = server
+        .base_url()
+        .join("request-url-query?existing=1")
+        .expect("request URL should join");
+    expected_request_url
+        .query_pairs_mut()
+        .append_pair("added", "two words");
+
+    assert_eq!(response.request_url(), &expected_request_url);
+
+    let captured = server.finish().await;
+    assert_eq!(
+        captured.target,
+        "/request-url-query?existing=1&added=two+words"
+    );
+}
+
+#[tokio::test]
+async fn test_status_error_url_includes_builder_query_params() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: StatusCode::SERVICE_UNAVAILABLE.as_u16(),
+        headers: vec![],
+        body: b"retry later".to_vec(),
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    let client = HttpClientFactory::new()
+        .create(options)
+        .expect("valid options should create client");
+
+    let request = client
+        .request(Method::GET, "/status-query")
+        .query_param("attempt", "1")
+        .build();
+    let error = client
+        .execute(request)
+        .await
+        .expect_err("status should be returned as error");
+    let expected_url = server
+        .base_url()
+        .join("status-query?attempt=1")
+        .expect("request URL should join");
+
+    assert_eq!(error.kind, HttpErrorKind::Status);
+    assert_eq!(error.url, Some(expected_url));
+
+    let captured = server.finish().await;
+    assert_eq!(captured.target, "/status-query?attempt=1");
+}
+
+#[tokio::test]
 async fn test_request_url_is_used_in_buffered_read_error() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,

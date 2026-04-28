@@ -20,7 +20,10 @@ fn test_proxy_type_scheme() {
 
 #[test]
 fn test_proxy_type_from_str_is_case_insensitive() {
-    assert_eq!(ProxyType::from_str("HTTP").expect("parse http"), ProxyType::Http);
+    assert_eq!(
+        ProxyType::from_str("HTTP").expect("parse http"),
+        ProxyType::Http
+    );
     assert_eq!(
         ProxyType::from_str("socks5h").expect("parse socks5h"),
         ProxyType::Socks5

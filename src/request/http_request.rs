@@ -8,6 +8,7 @@
  ******************************************************************************/
 //! Immutable HTTP request object.
 
+use std::future::Future;
 use std::sync::RwLock;
 use std::time::Duration;
 
@@ -511,12 +512,26 @@ impl HttpRequest {
         // invalidate and recompute them so injector output and request mutations
         // are refreshed instead of reusing stale headers from prior attempts.
         self.invalidate_effective_headers_cache();
-        let headers = self.effective_headers().await?.clone();
-        // Log the request after computing effective headers so TRACE logs
-        logger.log_request(self);
-
         let method = self.method().clone();
+        let request_url_context = self.resolved_url_with_query().ok();
+        let write_timeout = self.execution_options.write_timeout;
+        let cancellation_token = self.execution_options.cancellation_token.clone();
+        let headers = Self::await_pre_send_future(
+            self.effective_headers(),
+            write_timeout,
+            cancellation_token,
+            &method,
+            request_url_context.as_ref(),
+            "Request cancelled while preparing request",
+            format!("Write timeout after {:?} while preparing request", write_timeout),
+        )
+        .await?
+        .clone();
         let url = self.resolved_url()?;
+        let request_url = self.resolved_url_with_query()?;
+        // Log the request after computing effective headers so TRACE logs
+        // include the same query string used by the actual send path.
+        logger.log_request(self);
         let mut builder = backend.request(method.clone(), url.clone());
         builder = builder.headers(headers);
         if !self.query.is_empty() {
@@ -526,7 +541,20 @@ impl HttpRequest {
             builder = builder.timeout(timeout);
         }
         if let Some(streaming_body) = self.streaming_body.as_ref() {
-            builder = builder.body(streaming_body.to_reqwest_body().await);
+            let body = Self::await_pre_send_future(
+                async { Ok(streaming_body.to_reqwest_body().await) },
+                self.execution_options.write_timeout,
+                self.execution_options.cancellation_token.clone(),
+                &method,
+                Some(&request_url),
+                "Request cancelled while preparing streaming request body",
+                format!(
+                    "Write timeout after {:?} while preparing streaming request body",
+                    self.execution_options.write_timeout
+                ),
+            )
+            .await?;
+            builder = builder.body(body);
         } else {
             builder = Self::apply_request_body(builder, self.take_body());
         }
@@ -538,7 +566,7 @@ impl HttpRequest {
                 _ = token.cancelled() => {
                     return Err(HttpError::cancelled("Request cancelled while sending")
                         .with_method(&method)
-                        .with_url(&url));
+                        .with_url(&request_url));
                 }
                 send_result = send_future => send_result,
             }
@@ -553,15 +581,115 @@ impl HttpRequest {
                 HttpErrorKind::Transport,
                 Some(ReqwestErrorPhase::Send),
                 Some(method.clone()),
-                Some(url.clone()),
+                Some(request_url.clone()),
             )),
             Err(_) => Err(HttpError::write_timeout(format!(
                 "Write timeout after {:?} while sending request",
                 self.execution_options.write_timeout
             ))
             .with_method(&method)
-            .with_url(&url)),
+            .with_url(&request_url)),
         }
+    }
+
+    /// Waits for one asynchronous pre-send preparation step with cancellation and
+    /// write-timeout handling.
+    ///
+    /// # Parameters
+    /// - `future`: Preparation future, such as async header injection or streaming
+    ///   body factory execution.
+    /// - `write_timeout`: Timeout budget reused for send preparation.
+    /// - `cancellation_token`: Optional request cancellation token.
+    /// - `method`: Request method for error context.
+    /// - `request_url`: Optional resolved request URL for error context.
+    /// - `cancellation_message`: Message used when cancellation wins.
+    /// - `timeout_message`: Message used when timeout wins.
+    ///
+    /// # Returns
+    /// The future output when it completes before cancellation or timeout.
+    ///
+    /// # Errors
+    /// Returns [`HttpErrorKind::Cancelled`] on cancellation,
+    /// [`HttpErrorKind::WriteTimeout`] on timeout, or propagates the future's own
+    /// error.
+    async fn await_pre_send_future<T, F>(
+        future: F,
+        write_timeout: Duration,
+        cancellation_token: Option<CancellationToken>,
+        method: &Method,
+        request_url: Option<&Url>,
+        cancellation_message: &str,
+        timeout_message: String,
+    ) -> HttpResult<T>
+    where
+        F: Future<Output = HttpResult<T>>,
+    {
+        let timed = tokio::time::timeout(write_timeout, future);
+        let next = if let Some(token) = cancellation_token.as_ref() {
+            tokio::select! {
+                _ = token.cancelled() => {
+                    return Err(Self::pre_send_cancelled_error(
+                        cancellation_message,
+                        method,
+                        request_url,
+                    ));
+                }
+                result = timed => result,
+            }
+        } else {
+            timed.await
+        };
+
+        match next {
+            Ok(result) => result,
+            Err(_) => Err(Self::pre_send_write_timeout_error(
+                timeout_message,
+                method,
+                request_url,
+            )),
+        }
+    }
+
+    /// Builds a cancellation error for pre-send preparation.
+    ///
+    /// # Parameters
+    /// - `message`: Cancellation message.
+    /// - `method`: Request method for context.
+    /// - `request_url`: Optional request URL for context.
+    ///
+    /// # Returns
+    /// Cancellation [`HttpError`] with request context attached.
+    fn pre_send_cancelled_error(
+        message: &str,
+        method: &Method,
+        request_url: Option<&Url>,
+    ) -> HttpError {
+        let mut error = HttpError::cancelled(message).with_method(method);
+        if let Some(request_url) = request_url {
+            error = error.with_url(request_url);
+        }
+        error
+    }
+
+    /// Builds a write-timeout error for pre-send preparation.
+    ///
+    /// # Parameters
+    /// - `message`: Timeout message.
+    /// - `method`: Request method for context.
+    /// - `request_url`: Optional request URL for context.
+    ///
+    /// # Returns
+    /// Write-timeout [`HttpError`] with request context attached.
+    fn pre_send_write_timeout_error(
+        message: String,
+        method: &Method,
+        request_url: Option<&Url>,
+    ) -> HttpError {
+        let mut error = HttpError::write_timeout(message).with_method(method);
+        if let Some(request_url) = request_url {
+            error = error.with_url(request_url);
+        }
+        error
     }
 
     /// Returns the resolved URL for current request fields, computing and
@@ -590,6 +718,30 @@ impl HttpRequest {
             .map_err(|_| HttpError::other("Resolved URL cache write lock poisoned"))? =
             Some(resolved.clone());
         Ok(resolved)
+    }
+
+    /// Returns the resolved URL plus request-builder query parameters.
+    ///
+    /// This mirrors the URL sent by [`Self::send_impl`]: query pairs already
+    /// present in [`Self::path`] are preserved, and pairs from
+    /// [`Self::query`] are appended in insertion order.
+    ///
+    /// # Returns
+    /// Resolved [`Url`] including query parameters from this request snapshot.
+    ///
+    /// # Errors
+    /// Propagates [`Self::resolved_url`] errors for invalid or unresolved URLs.
+    pub(crate) fn resolved_url_with_query(&self) -> Result<Url, HttpError> {
+        let mut url = self.resolved_url()?;
+        if !self.query.is_empty() {
+            {
+                let mut pairs = url.query_pairs_mut();
+                for (key, value) in &self.query {
+                    pairs.append_pair(key, value);
+                }
+            }
+        }
+        Ok(url)
     }
 
     /// Returns cached resolved URL when available.
@@ -742,7 +894,7 @@ impl HttpRequest {
             .is_some_and(CancellationToken::is_cancelled)
         {
             let mut error = HttpError::cancelled(message.to_string()).with_method(&self.method);
-            if let Ok(url) = self.resolved_url() {
+            if let Ok(url) = self.resolved_url_with_query() {
                 error = error.with_url(&url);
             }
             Some(error)

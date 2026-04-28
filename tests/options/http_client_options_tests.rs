@@ -265,6 +265,7 @@ fn test_http_client_options_invalid_header_name() {
 
     let err = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap_err();
     assert_eq!(err.kind, HttpConfigErrorKind::InvalidHeader);
+    assert_eq!(err.path, "http.default_headers.invalid header");
 }
 
 #[test]
@@ -277,6 +278,7 @@ fn test_http_client_options_invalid_header_value_from_config() {
     let err = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap_err();
 
     assert_eq!(err.kind, HttpConfigErrorKind::InvalidHeader);
+    assert_eq!(err.path, "http.default_headers.x-bad");
 }
 
 #[test]
