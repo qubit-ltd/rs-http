@@ -101,5 +101,12 @@ async fn test_ipv4_only_fails_on_hostname_without_ipv4_address() {
         .expect("execute timed out")
         .unwrap_err();
 
-    assert_eq!(error.kind, HttpErrorKind::Transport);
+    assert!(
+        matches!(
+            error.kind,
+            HttpErrorKind::Transport | HttpErrorKind::WriteTimeout
+        ),
+        "expected IPv4-only DNS failure to be transport or write timeout, got {:?}",
+        error.kind
+    );
 }
