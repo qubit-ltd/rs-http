@@ -14,3 +14,10 @@ pub mod http_logger;
 
 pub use http_client::HttpClient;
 pub use http_client_factory::HttpClientFactory;
+
+#[cfg(coverage)]
+#[doc(hidden)]
+pub(crate) use http_client_factory::coverage_exercise_factory_paths;
+#[cfg(coverage)]
+#[doc(hidden)]
+pub(crate) use http_logger::coverage_exercise_request_log_url_fallback;

@@ -278,11 +278,11 @@ async fn test_buffered_bytes_read_timeout_is_applied_per_chunk_wait() {
         headers: vec![("Content-Type".to_string(), "text/plain".to_string())],
         chunks: vec![
             ResponseChunk {
-                delay: Duration::from_millis(20),
+                delay: Duration::from_millis(180),
                 bytes: b"first".to_vec(),
             },
             ResponseChunk {
-                delay: Duration::from_millis(80),
+                delay: Duration::from_millis(180),
                 bytes: b"second".to_vec(),
             },
         ],
@@ -292,7 +292,7 @@ async fn test_buffered_bytes_read_timeout_is_applied_per_chunk_wait() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    options.timeouts.read_timeout = Duration::from_millis(120);
+    options.timeouts.read_timeout = Duration::from_millis(300);
     let client = HttpClientFactory::new().create(options).unwrap();
 
     let request = client

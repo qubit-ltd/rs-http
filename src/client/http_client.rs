@@ -157,10 +157,7 @@ impl HttpClient {
     /// # Errors
     /// Returns [`HttpError`] when any name/value pair is invalid (nothing from
     /// this call is applied).
-    pub fn add_headers<'a, I>(&mut self, headers: I) -> HttpResult<&mut Self>
-    where
-        I: IntoIterator<Item = (&'a str, &'a str)>,
-    {
+    pub fn add_headers(&mut self, headers: &[(&str, &str)]) -> HttpResult<&mut Self> {
         self.options.add_headers(headers)?;
         Ok(self)
     }
@@ -374,28 +371,30 @@ impl HttpClient {
 
         let retry_policy_options = options.clone();
         let retry_delay_options = retry_options.clone();
-        let retry_policy = Retry::<HttpError>::builder()
+        let retry_policy = match Retry::<HttpError>::builder()
             .options(retry_options)
             .retry_after_from_error(move |error| {
                 honor_retry_after.then_some(error.retry_after).flatten()
             })
             .on_failure(
                 move |failure: &AttemptFailure<HttpError>, context: &RetryContext| {
-                    let Some(error) = failure.as_error() else {
-                        return AttemptFailureDecision::UseDefault;
-                    };
-                    if !Self::is_retryable_error(error, &retry_policy_options) {
-                        return AttemptFailureDecision::Abort;
-                    }
-
-                    let base_delay = retry_delay_options.delay_for_attempt(context.attempt());
-                    let sleep_delay =
-                        Self::retry_sleep_delay(base_delay, context.retry_after_hint());
-                    AttemptFailureDecision::RetryAfter(sleep_delay)
+                    Self::retry_failure_decision(
+                        failure,
+                        context,
+                        &retry_policy_options,
+                        &retry_delay_options,
+                    )
                 },
             )
             .build()
-            .map_err(|error| HttpError::other(format!("Invalid HTTP retry executor: {error}")))?;
+        {
+            Ok(retry_policy) => retry_policy,
+            Err(error) => {
+                return Err(HttpError::other(format!(
+                    "Invalid HTTP retry executor: {error}"
+                )))
+            }
+        };
 
         let cancellation_token = request.cancellation_token().cloned();
         let request_method = request.method().clone();
@@ -421,14 +420,15 @@ impl HttpClient {
             retry_future.await
         };
 
-        retry_result.map_err(|error| {
-            Self::map_retry_error(
+        match retry_result {
+            Ok(response) => Ok(response),
+            Err(error) => Err(Self::map_retry_error(
                 error,
                 started_at,
                 options.max_duration,
                 options.max_attempts,
-            )
-        })
+            )),
+        }
     }
 
     /// Returns whether `error` is retryable under `options`.
@@ -461,6 +461,57 @@ impl HttpClient {
         retry_after_hint
             .map(|retry_after| retry_after.max(base_delay))
             .unwrap_or(base_delay)
+    }
+
+    /// Decides how HTTP retry should handle one failed attempt.
+    ///
+    /// # Parameters
+    /// - `failure`: Failed attempt reported by `qubit-retry`.
+    /// - `context`: Retry context for the failed attempt.
+    /// - `policy_options`: HTTP retry allowlists and method policy.
+    /// - `delay_options`: Retry executor options used to calculate base delay.
+    ///
+    /// # Returns
+    /// Decision for `qubit-retry`: abort non-retryable HTTP errors, otherwise
+    /// retry after the larger base delay / Retry-After hint. Non-HTTP runtime
+    /// failures fall back to the retry executor default.
+    fn retry_failure_decision(
+        failure: &AttemptFailure<HttpError>,
+        context: &RetryContext,
+        policy_options: &HttpRetryOptions,
+        delay_options: &qubit_retry::RetryOptions,
+    ) -> AttemptFailureDecision {
+        let Some(error) = failure.as_error() else {
+            return AttemptFailureDecision::UseDefault;
+        };
+        if !Self::is_retryable_error(error, policy_options) {
+            return AttemptFailureDecision::Abort;
+        }
+
+        let base_delay = delay_options.delay_for_attempt(context.attempt());
+        let sleep_delay = Self::retry_sleep_delay(base_delay, context.retry_after_hint());
+        AttemptFailureDecision::RetryAfter(sleep_delay)
+    }
+
+    /// Exposes retry failure decisions to coverage-only integration tests.
+    ///
+    /// # Parameters
+    /// - `failure`: Failed attempt to inspect.
+    /// - `context`: Retry context for the failed attempt.
+    /// - `policy_options`: HTTP retry policy options.
+    /// - `delay_options`: Retry executor options.
+    ///
+    /// # Returns
+    /// The retry decision selected by [`Self::retry_failure_decision`].
+    #[cfg(coverage)]
+    #[doc(hidden)]
+    pub(crate) fn coverage_retry_failure_decision(
+        failure: &AttemptFailure<HttpError>,
+        context: &RetryContext,
+        policy_options: &HttpRetryOptions,
+        delay_options: &qubit_retry::RetryOptions,
+    ) -> AttemptFailureDecision {
+        Self::retry_failure_decision(failure, context, policy_options, delay_options)
     }
 
     /// Adds retry-attempt exhaustion context to the last attempt error.
@@ -582,6 +633,54 @@ impl HttpClient {
                 ))
             }
         }
+    }
+
+    /// Exposes retry error mapping to coverage-only integration tests.
+    ///
+    /// # Parameters
+    /// - `error`: Synthetic terminal retry error.
+    /// - `started_at`: Monotonic retry-flow start instant.
+    /// - `max_duration`: Optional HTTP max-duration budget.
+    /// - `max_attempts`: Configured maximum attempts.
+    ///
+    /// # Returns
+    /// HTTP error mapped by [`Self::map_retry_error`].
+    #[cfg(coverage)]
+    #[doc(hidden)]
+    pub(crate) fn coverage_map_retry_error(
+        error: RetryError<HttpError>,
+        started_at: Instant,
+        max_duration: Option<Duration>,
+        max_attempts: u32,
+    ) -> HttpError {
+        Self::map_retry_error(error, started_at, max_duration, max_attempts)
+    }
+
+    /// Exercises the low-level pre-send cancellation check for coverage tests.
+    ///
+    /// # Returns
+    /// Error kind returned before any network I/O starts.
+    #[cfg(coverage)]
+    #[doc(hidden)]
+    pub(crate) async fn coverage_prepare_cancelled_error() -> crate::HttpErrorKind {
+        let client = crate::HttpClientFactory::new()
+            .create_default()
+            .expect("coverage HTTP client should build");
+        let token = tokio_util::sync::CancellationToken::new();
+        token.cancel();
+        let mut request = client
+            .request(
+                http::Method::GET,
+                "https://example.com/cancelled-before-send",
+            )
+            .build();
+        request.set_cancellation_token(token);
+
+        client
+            .prepare_and_send_once(request, "coverage request cancelled before send")
+            .await
+            .expect_err("pre-cancelled request should fail before send")
+            .kind
     }
 
     /// Builds a cancellation error for retry wait cancellation.

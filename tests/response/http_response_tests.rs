@@ -8,7 +8,8 @@
  ******************************************************************************/
 
 use bytes::Bytes;
-use http::{HeaderMap, Method, StatusCode};
+use http::header::RETRY_AFTER;
+use http::{HeaderMap, HeaderValue, Method, StatusCode};
 use qubit_http::{HttpErrorKind, HttpResponse};
 use url::Url;
 
@@ -83,6 +84,32 @@ fn test_http_response_meta_accessor_returns_shared_metadata() {
     assert_eq!(meta.status, StatusCode::ACCEPTED);
     assert_eq!(meta.url, Url::parse("https://example.com/jobs/1").unwrap());
     assert_eq!(meta.method, Method::POST);
+}
+
+#[test]
+fn test_http_response_retry_after_hint_handles_applicable_status_and_past_date() {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        RETRY_AFTER,
+        HeaderValue::from_static("Wed, 21 Oct 2015 07:28:00 GMT"),
+    );
+    let response = HttpResponse::new(
+        StatusCode::SERVICE_UNAVAILABLE,
+        headers.clone(),
+        Bytes::new(),
+        Url::parse("https://example.com/retry-after").unwrap(),
+        Method::GET,
+    );
+    assert_eq!(response.retry_after_hint(), Some(std::time::Duration::ZERO));
+
+    let success = HttpResponse::new(
+        StatusCode::OK,
+        headers,
+        Bytes::new(),
+        Url::parse("https://example.com/no-retry-after").unwrap(),
+        Method::GET,
+    );
+    assert_eq!(success.retry_after_hint(), None);
 }
 
 #[tokio::test]

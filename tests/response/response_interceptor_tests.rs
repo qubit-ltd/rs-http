@@ -11,7 +11,9 @@ use std::sync::{Arc, Mutex};
 
 use http::{HeaderMap, HeaderValue, Method, StatusCode};
 use qubit_function::MutatingFunction;
-use qubit_http::{HttpError, HttpErrorKind, HttpResponseInterceptor, HttpResponseMeta};
+use qubit_http::{
+    HttpError, HttpErrorKind, HttpResponseInterceptor, HttpResponseInterceptors, HttpResponseMeta,
+};
 use url::Url;
 
 #[test]
@@ -75,6 +77,61 @@ fn test_response_interceptor_apply_propagates_error() {
         .expect_err("response interceptor should propagate callback errors");
     assert_eq!(error.kind, HttpErrorKind::Other);
     assert!(error.message.contains("response interceptor failure"));
+}
+
+#[test]
+fn test_response_interceptors_apply_enriches_error_context() {
+    let mut interceptors = HttpResponseInterceptors::new();
+    interceptors.push(HttpResponseInterceptor::new(|_meta| {
+        Err(HttpError::other("response interceptor list failure"))
+    }));
+    let mut meta = HttpResponseMeta::new(
+        StatusCode::ACCEPTED,
+        HeaderMap::new(),
+        Url::parse("https://example.test/list").expect("valid test URL"),
+        Method::POST,
+    );
+
+    let error = interceptors
+        .apply(&mut meta)
+        .expect_err("interceptor list should propagate callback errors");
+
+    assert_eq!(error.kind, HttpErrorKind::Other);
+    assert_eq!(error.status, Some(StatusCode::ACCEPTED));
+    assert_eq!(error.method, Some(Method::POST));
+    assert_eq!(
+        error.url,
+        Some(Url::parse("https://example.test/list").unwrap())
+    );
+}
+
+#[test]
+fn test_response_interceptors_apply_preserves_existing_error_context() {
+    let existing_url = Url::parse("https://example.test/existing").expect("valid test URL");
+    let mut interceptors = HttpResponseInterceptors::new();
+    interceptors.push(HttpResponseInterceptor::new({
+        let existing_url = existing_url.clone();
+        move |_meta| {
+            Err(HttpError::other("response interceptor list failure")
+                .with_status(StatusCode::BAD_GATEWAY)
+                .with_method(&Method::PATCH)
+                .with_url(&existing_url))
+        }
+    }));
+    let mut meta = HttpResponseMeta::new(
+        StatusCode::ACCEPTED,
+        HeaderMap::new(),
+        Url::parse("https://example.test/list").expect("valid test URL"),
+        Method::POST,
+    );
+
+    let error = interceptors
+        .apply(&mut meta)
+        .expect_err("interceptor list should propagate callback errors");
+
+    assert_eq!(error.status, Some(StatusCode::BAD_GATEWAY));
+    assert_eq!(error.method, Some(Method::PATCH));
+    assert_eq!(error.url, Some(existing_url));
 }
 
 #[test]

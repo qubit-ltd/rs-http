@@ -403,3 +403,91 @@ async fn test_execute_stream_body_can_be_cancelled_after_first_chunk() {
         .expect("server finish timed out");
     assert_eq!(captured.target, "/cancel-stream");
 }
+
+#[tokio::test]
+async fn test_sse_events_reports_pre_cancelled_stream_before_reading_body() {
+    let server = spawn_one_shot_server(ResponsePlan::Chunked {
+        status: 200,
+        headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+        chunks: vec![],
+        finish: false,
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.read_timeout = Duration::from_secs(5);
+    let client = HttpClientFactory::new()
+        .create(options)
+        .expect("client should be created");
+
+    let token = CancellationToken::new();
+    let request = client
+        .request(Method::GET, "/cancel-sse-events-before-read")
+        .cancellation_token(token.clone())
+        .build();
+    let response = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .expect("request should start");
+    token.cancel();
+
+    let mut events = response.sse_events();
+    let error = events
+        .next()
+        .await
+        .expect("pre-cancelled SSE event stream should yield one error")
+        .expect_err("SSE event stream should fail before reading body");
+
+    assert_eq!(error.kind, HttpErrorKind::Cancelled);
+    assert!(error.message.contains("before reading response body"));
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.target, "/cancel-sse-events-before-read");
+}
+
+#[tokio::test]
+async fn test_sse_chunks_reports_pre_cancelled_stream_before_reading_body() {
+    let server = spawn_one_shot_server(ResponsePlan::Chunked {
+        status: 200,
+        headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+        chunks: vec![],
+        finish: false,
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.read_timeout = Duration::from_secs(5);
+    let client = HttpClientFactory::new()
+        .create(options)
+        .expect("client should be created");
+
+    let token = CancellationToken::new();
+    let request = client
+        .request(Method::GET, "/cancel-sse-chunks-before-read")
+        .cancellation_token(token.clone())
+        .build();
+    let response = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .expect("request should start");
+    token.cancel();
+
+    let mut chunks = response.sse_chunks::<serde_json::Value>();
+    let error = chunks
+        .next()
+        .await
+        .expect("pre-cancelled SSE chunk stream should yield one error")
+        .expect_err("SSE chunk stream should fail before reading body");
+
+    assert_eq!(error.kind, HttpErrorKind::Cancelled);
+    assert!(error.message.contains("before reading response body"));
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.target, "/cancel-sse-chunks-before-read");
+}

@@ -118,3 +118,25 @@ fn test_logging_options_invalid_body_size_type_is_prefixed() {
     assert_eq!(err.kind, HttpConfigErrorKind::TypeError);
     assert_eq!(err.path, "l.body_size_limit");
 }
+
+#[test]
+fn test_logging_options_invalid_enabled_type_is_prefixed() {
+    let mut config = Config::new();
+    config.set("l.enabled", "not-bool").unwrap();
+
+    let err = HttpLoggingOptions::from_config(&config.prefix_view("l")).unwrap_err();
+
+    assert_eq!(err.kind, HttpConfigErrorKind::TypeError);
+    assert_eq!(err.path, "l.enabled");
+}
+
+#[test]
+fn test_logging_options_invalid_request_header_type_is_prefixed() {
+    let mut config = Config::new();
+    config.set("l.log_request_header", "not-bool").unwrap();
+
+    let err = HttpLoggingOptions::from_config(&config.prefix_view("l")).unwrap_err();
+
+    assert_eq!(err.kind, HttpConfigErrorKind::TypeError);
+    assert_eq!(err.path, "l.log_request_header");
+}

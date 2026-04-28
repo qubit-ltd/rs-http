@@ -644,7 +644,7 @@ async fn test_add_headers_is_atomic_and_request_header_still_overrides() {
     options.base_url = Some(server.base_url());
     let mut client = HttpClientFactory::new().create(options).unwrap();
     client
-        .add_headers([
+        .add_headers(&[
             ("x-batch-a", "value-a"),
             ("x-order", "client"),
             ("x-batch-b", "value-b"),
@@ -685,7 +685,7 @@ async fn test_add_headers_invalid_batch_does_not_partially_apply() {
     let mut client = HttpClientFactory::new().create(options).unwrap();
 
     let error = client
-        .add_headers([("x-valid", "kept-out"), ("bad header", "boom")])
+        .add_headers(&[("x-valid", "kept-out"), ("bad header", "boom")])
         .unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::Other);
     assert!(error.message.contains("Invalid header name"));

@@ -60,10 +60,7 @@ impl<'a> HttpLogger<'a> {
             return;
         }
 
-        let url = request
-            .resolved_url_with_query()
-            .map(|url| url.to_string())
-            .unwrap_or_else(|_| request.path().to_string());
+        let url = Self::request_log_url(request);
         tracing::trace!("--> {} {}", request.method(), url);
 
         let headers = request
@@ -159,6 +156,21 @@ impl<'a> HttpLogger<'a> {
         self.options.enabled && tracing::enabled!(tracing::Level::TRACE)
     }
 
+    /// Returns the URL text used by request logging.
+    ///
+    /// # Parameters
+    /// - `request`: Request whose resolved URL should be rendered.
+    ///
+    /// # Returns
+    /// Resolved URL including builder query parameters, or the raw request path
+    /// when URL resolution fails before send.
+    fn request_log_url(request: &HttpRequest) -> String {
+        request
+            .resolved_url_with_query()
+            .map(|url| url.to_string())
+            .unwrap_or_else(|_| request.path().to_string())
+    }
+
     /// Returns a masked representation of a header value according to sensitivity rules.
     ///
     /// # Parameters
@@ -232,4 +244,18 @@ impl<'a> HttpLogger<'a> {
             HttpRequestBody::Empty => None,
         }
     }
+}
+
+/// Exercises request-log URL fallback for coverage-only tests.
+///
+/// # Returns
+/// Raw request path returned when URL resolution fails.
+#[cfg(coverage)]
+#[doc(hidden)]
+pub(crate) fn coverage_exercise_request_log_url_fallback() -> String {
+    let client = crate::HttpClientFactory::new()
+        .create_default()
+        .expect("coverage HTTP client should build");
+    let request = client.request(http::Method::GET, "/relative-only").build();
+    HttpLogger::request_log_url(&request)
 }

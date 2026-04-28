@@ -46,3 +46,7 @@ pub use http_request_builder::HttpRequestBuilder;
 pub use http_request_retry_override::HttpRequestRetryOverride;
 pub use http_request_streaming_body::HttpRequestStreamingBody;
 pub use request_interceptor::{HttpRequestInterceptor, HttpRequestInterceptors};
+
+#[cfg(coverage)]
+#[doc(hidden)]
+pub(crate) use http_request::coverage_exercise_request_cache_paths;

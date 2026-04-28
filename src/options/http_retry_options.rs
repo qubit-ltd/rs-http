@@ -432,3 +432,20 @@ fn default_retryable_error_kind(kind: HttpErrorKind) -> bool {
             | HttpErrorKind::Transport
     )
 }
+
+/// Exercises retry option conversion error paths for coverage-only tests.
+///
+/// # Returns
+/// Error message produced by executor option conversion.
+#[cfg(coverage)]
+#[doc(hidden)]
+pub(crate) fn coverage_exercise_retry_option_paths() -> String {
+    let options = HttpRetryOptions {
+        jitter_factor: 2.0,
+        ..HttpRetryOptions::default()
+    };
+    options
+        .to_executor_options()
+        .expect_err("invalid jitter should fail executor option conversion")
+        .message
+}

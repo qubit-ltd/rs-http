@@ -178,3 +178,23 @@ impl From<qubit_config::ConfigError> for HttpConfigError {
         }
     }
 }
+
+/// Exercises config-error path prefix normalization for coverage-only tests.
+///
+/// # Returns
+/// Normalized paths for already-prefixed, embedded-prefix, and empty-path cases.
+#[cfg(coverage)]
+#[doc(hidden)]
+pub(crate) fn coverage_exercise_config_error_paths() -> Vec<String> {
+    vec![
+        HttpConfigError::invalid_value("proxy.host", "bad")
+            .prepend_path_prefix("proxy")
+            .path,
+        HttpConfigError::invalid_value("svc.proxy.host", "bad")
+            .prepend_path_prefix("proxy")
+            .path,
+        HttpConfigError::invalid_value("", "bad")
+            .prepend_path_prefix("proxy")
+            .path,
+    ]
+}

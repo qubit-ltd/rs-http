@@ -10,6 +10,7 @@
 //!
 //! Covers [`HttpClient::execute_sse_with_reconnect`](qubit_http::HttpClient::execute_sse_with_reconnect).
 
+use std::io::Error as IoError;
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc, Mutex,
@@ -745,6 +746,52 @@ async fn test_execute_sse_with_reconnect_fails_fast_on_non_sse_content_type() {
 }
 
 #[tokio::test]
+async fn test_execute_sse_with_reconnect_fails_fast_on_missing_content_type() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 200,
+        headers: vec![],
+        body: b"data: ignored\n\n".to_vec(),
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.read_timeout = Duration::from_secs(2);
+    options.timeouts.write_timeout = Duration::from_secs(2);
+    let client = HttpClientFactory::new().create(options).unwrap();
+
+    let request = client
+        .request(Method::GET, "/sse-missing-content-type")
+        .build();
+    let mut events = client.execute_sse_with_reconnect(
+        request,
+        SseReconnectOptions {
+            retry: build_retry_options(
+                3,
+                RetryDelay::fixed(Duration::from_millis(1)),
+                RetryJitter::None,
+            ),
+            reconnect_on_eof: true,
+            honor_server_retry: true,
+            ..SseReconnectOptions::default()
+        },
+    );
+
+    let error = events
+        .next()
+        .await
+        .expect("missing content type should emit an error item")
+        .expect_err("missing content type should fail fast");
+    assert_eq!(error.kind, HttpErrorKind::SseProtocol);
+    assert!(error.message.contains("Missing Content-Type"));
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.target, "/sse-missing-content-type");
+}
+
+#[tokio::test]
 async fn test_execute_sse_with_reconnect_rejects_content_type_prefix_collision() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
@@ -1010,6 +1057,103 @@ async fn test_execute_sse_with_reconnect_retries_on_unexpected_eof_message() {
         .await
         .expect("server finish timed out");
     assert_eq!(captured.target, "/sse-unexpected-eof");
+}
+
+#[tokio::test]
+async fn test_execute_sse_with_reconnect_retries_on_unexpected_eof_source_message() {
+    let server = spawn_one_shot_server(ResponsePlan::Chunked {
+        status: 200,
+        headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+        chunks: vec![ResponseChunk {
+            delay: Duration::from_millis(0),
+            bytes: b"data: recovered-from-source\n\n".to_vec(),
+        }],
+        finish: true,
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.read_timeout = Duration::from_secs(2);
+    options.timeouts.write_timeout = Duration::from_secs(2);
+    let mut client = HttpClientFactory::new().create(options).unwrap();
+
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let attempts_for_interceptor = Arc::clone(&attempts);
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request| {
+        let current = attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
+        if current == 0 {
+            Err(HttpError::other("local SSE source failure")
+                .with_source(IoError::other("unexpected eof from wrapped source")))
+        } else {
+            Ok(())
+        }
+    }));
+
+    let request = client
+        .request(Method::GET, "/sse-unexpected-eof-source")
+        .build();
+    let mut events = client.execute_sse_with_reconnect(
+        request,
+        SseReconnectOptions {
+            retry: build_retry_options(
+                1,
+                RetryDelay::fixed(Duration::from_millis(1)),
+                RetryJitter::None,
+            ),
+            reconnect_on_eof: false,
+            honor_server_retry: false,
+            ..SseReconnectOptions::default()
+        },
+    );
+
+    let first = events.next().await.unwrap().unwrap();
+    assert_eq!(first.data, "recovered-from-source");
+    assert!(events.next().await.is_none());
+    assert_eq!(attempts.load(Ordering::Relaxed), 2);
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.target, "/sse-unexpected-eof-source");
+}
+
+#[tokio::test]
+async fn test_execute_sse_with_reconnect_does_not_retry_non_eof_source_error() {
+    let mut options = HttpClientOptions::default();
+    options
+        .set_base_url("http://127.0.0.1:18080")
+        .expect("base URL should parse");
+    options.timeouts.read_timeout = Duration::from_secs(1);
+    options.timeouts.write_timeout = Duration::from_secs(1);
+    let mut client = HttpClientFactory::new().create(options).unwrap();
+
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let attempts_for_interceptor = Arc::clone(&attempts);
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request| {
+        attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
+        Err(HttpError::other("local SSE non-EOF failure")
+            .with_source(IoError::other("ordinary source error")))
+    }));
+
+    let request = client.request(Method::GET, "/sse-non-eof-source").build();
+    let mut events = client.execute_sse_with_reconnect(
+        request,
+        SseReconnectOptions {
+            retry: build_retry_options(
+                3,
+                RetryDelay::fixed(Duration::from_millis(1)),
+                RetryJitter::None,
+            ),
+            reconnect_on_eof: true,
+            honor_server_retry: true,
+            ..SseReconnectOptions::default()
+        },
+    );
+
+    let error = events.next().await.unwrap().unwrap_err();
+    assert_eq!(error.kind, HttpErrorKind::Other);
+    assert_eq!(attempts.load(Ordering::Relaxed), 1);
 }
 
 #[tokio::test]
