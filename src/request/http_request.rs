@@ -21,7 +21,7 @@ use tokio_util::sync::CancellationToken;
 use url::Host;
 use url::Url;
 
-use crate::error::backend_error_mapper::{map_reqwest_error, ReqwestErrorPhase};
+use crate::error::{backend_error_mapper::map_reqwest_error, ReqwestErrorPhase};
 use crate::{
     AsyncHttpHeaderInjector, HttpError, HttpErrorKind, HttpHeaderInjector, HttpLogger,
     HttpRequestStreamingBody, HttpResult,

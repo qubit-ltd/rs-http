@@ -45,7 +45,7 @@ pub mod coverage_support {
     use qubit_retry::{AttemptFailure, RetryContext, RetryError, RetryErrorReason};
     use url::Url;
 
-    use crate::error::backend_error_mapper::{self, ReqwestErrorPhase};
+    use crate::error::{backend_error_mapper, ReqwestErrorPhase};
     use crate::{HttpError, HttpErrorKind, HttpResponse};
 
     /// Maps a reqwest error through the internal backend mapper.
