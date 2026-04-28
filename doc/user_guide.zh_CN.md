@@ -1,6 +1,6 @@
 # qubit-http 用户指南
 
-本文档基于当前源码和测试整理，适用于 crate `qubit-http` 0.3.x，Rust 代码中通过库名 `qubit_http` 使用。
+本文档基于当前源码和测试整理，适用于 crate `qubit-http` 0.4.x，Rust 代码中通过库名 `qubit_http` 使用。
 
 `qubit-http` 是一个异步 HTTP 客户端基础设施库。它封装 `reqwest`，提供统一的客户端配置、请求构建、响应读取、错误分类、TRACE 日志脱敏、自动重试、代理、IPv4-only 解析、请求/响应拦截器，以及 Server-Sent Events（SSE）解码和重连能力。
 
@@ -17,10 +17,12 @@
 
 ```toml
 [dependencies]
-qubit-http = "0.3"
+qubit-http = "0.4"
 http = "1.4"
+qubit-config = "0.9"
 serde = { version = "1", features = ["derive"] }
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
 futures-util = "0.3"
 ```
 
@@ -43,7 +45,7 @@ struct User {
 }
 
 #[tokio::main]
-async fn main() -> qubit_http::HttpResult<()> {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut options = HttpClientOptions::new();
     options.set_base_url("https://api.example.com")?;
     options.add_header("x-app", "demo")?;
@@ -80,7 +82,7 @@ let client = qubit_http::HttpClientFactory::new().create_default()?;
 | 读超时 | 120 秒 |
 | 写超时 | 120 秒 |
 | 整体请求超时 | 无 |
-| 代理 | 禁用，并调用 `reqwest` 的 `no_proxy()`，不会继承环境代理 |
+| 代理 | 显式代理禁用，且 `use_env_proxy = false`，因此调用 `reqwest` 的 `no_proxy()`，不会继承环境代理 |
 | 日志 | 开启，但只有 tracing TRACE 级别启用时才输出 |
 | 日志体预览 | 16 KiB |
 | 非成功响应体预览 | 16 KiB |
@@ -90,6 +92,7 @@ let client = qubit_http::HttpClientFactory::new().create_default()?;
 | 敏感头 | 内置一组常见认证/密钥类头名 |
 | IPv4-only | 关闭 |
 | SSE JSON 模式 | `Lenient` |
+| SSE 完成标记策略 | `DefaultDone`，即识别 `[DONE]` |
 | SSE 单行上限 | 64 KiB |
 | SSE 单帧上限 | 1 MiB |
 
@@ -117,7 +120,7 @@ options.retry.method_policy = HttpRetryMethodPolicy::IdempotentOnly;
 let client = HttpClientFactory::new().create(options)?;
 ```
 
-`create` 会先执行校验。常见校验包括：超时必须大于 0；启用代理时必须有非空 host 和非 0 port；只有设置 username 时才能设置 password；日志记录请求体或响应体时 `body_size_limit` 必须大于 0；`user_agent` 不能为空并且必须是合法 header value；SSE 行/帧上限必须大于 0。
+`create` 会先执行校验。常见校验包括：超时必须大于 0；启用代理时必须有非空 host 和非 0 port；只有设置 username 时才能设置 password；日志记录请求体或响应体时 `body_size_limit` 必须大于 0；`retry.max_attempts` 必须大于 0；`retry.jitter_factor` 必须在 `0.0..=1.0`；`error_response_preview_limit` 必须大于 0；`user_agent` 不能为空并且必须是合法 header value；SSE 行/帧上限必须大于 0。
 
 ### 从 qubit-config 读取
 
@@ -146,9 +149,10 @@ let client = HttpClientFactory::new()
 | `base_url` | 相对请求路径的基础 URL |
 | `timeouts.connect_timeout` | 连接超时 |
 | `timeouts.read_timeout` | 读取响应体或流时的单次等待超时 |
-| `timeouts.write_timeout` | 发送请求的写阶段超时 |
+| `timeouts.write_timeout` | 发送前准备和发送阶段超时 |
 | `timeouts.request_timeout` | 整体请求超时，可选 |
 | `proxy.enabled` | 是否启用代理 |
+| `use_env_proxy` | 显式代理禁用时，是否继承环境变量代理 |
 | `logging.enabled` | 是否允许 TRACE HTTP 日志 |
 | `retry.enabled` | 是否启用内置重试 |
 | `retry.max_attempts` | 最大尝试次数，含第一次请求 |
@@ -157,20 +161,20 @@ let client = HttpClientFactory::new()
 | `retry.status_codes` | 重试状态码白名单；未配置时默认重试 429 和 5xx |
 | `retry.error_kinds` | 非状态错误类型白名单；未配置时默认重试超时和 transport |
 | `sse.json_mode` | `LENIENT` 或 `STRICT` |
-| `sse.done_marker` | `DISABLED`、`DEFAULT`（或 `DEFAULT_DONE`）映射到 `DoneMarkerPolicy`；其它非空字符串视为自定义完成标记（`Custom`），与 trim 后的 `data:` 文本比较 |
+| `sse.done_marker` | `DISABLED`（或 `DISABLE`）禁用完成标记；`DEFAULT` 使用 `[DONE]`；其它非空字符串视为自定义完成标记（`Custom`），与 trim 后的 `data:` 文本比较 |
 | `sse.max_line_bytes` | SSE 单行字节上限 |
 | `sse.max_frame_bytes` | SSE 单帧字节上限 |
 
 完整配置键见文末「配置参考」。
 
-`default_headers` 支持两种形式。优先使用子键形式：
+`default_headers` 支持两种形式，但不能同时使用。子键形式如下：
 
 ```rust
 config.set("http.default_headers.authorization", "Bearer token".to_string())?;
 config.set("http.default_headers.x-request-id", "abc-123".to_string())?;
 ```
 
-如果没有任何 `default_headers.*` 子键，也可以在 `default_headers` 写 JSON map 字符串：
+也可以在 `default_headers` 写 JSON map 字符串；若同时配置 JSON map 和 `default_headers.*` 子键，解析会失败：
 
 ```rust
 config.set(
@@ -199,7 +203,8 @@ let request = client
 | 方法 | 行为 |
 | --- | --- |
 | `bytes_body` | 原始字节体，不自动设置 `Content-Type` |
-| `stream_body` | 按顺序发送字节块，走 reqwest streaming body |
+| `stream_body` | 把已在内存中的有序字节块作为 reqwest streaming body 发送 |
+| `streaming_body` | 设置异步工厂，每次发送尝试生成新的字节流；适合真正流式上传，也让重试可以重建上传流 |
 | `text_body` | 文本体；缺少 `Content-Type` 时设置 `text/plain; charset=utf-8` |
 | `json_body` | 序列化 JSON；缺少 `Content-Type` 时设置 `application/json` |
 | `form_body` | `application/x-www-form-urlencoded` |
@@ -211,7 +216,7 @@ let request = client
 | 方法 | 用途 |
 | --- | --- |
 | `request_timeout` | 覆盖整体请求超时（reqwest 单次请求的 deadline） |
-| `write_timeout` | 覆盖发送阶段超时 |
+| `write_timeout` | 覆盖发送前准备和发送阶段超时 |
 | `read_timeout` | 覆盖响应体读取/流读取超时 |
 | `base_url` / `clear_base_url` | 覆盖或清除本次请求 base URL |
 | `ipv4_only` | 覆盖本次请求的 IPv4-only URL 校验 |
@@ -389,7 +394,7 @@ async fn read_whole_body_examples(
 }
 ```
 
-**流式字节（`stream`）**：在未对同一响应调用过 `bytes` / `text` / `json` 的前提下，通过返回的流按块读取；`?` 在拿到流时展开（例如后端已断开时可能失败）。
+**流式字节（`stream`）**：在未对同一响应调用过 `bytes` / `text` / `json` 的前提下，通过返回的流按块读取；`?` 在拿到流时展开，例如请求上的取消 token 已在开始读取 body 前触发时会在这里返回错误。
 
 ```rust
 use futures_util::StreamExt;
@@ -500,7 +505,7 @@ async fn read_sse_examples(client: &qubit_http::HttpClient) -> qubit_http::HttpR
 
 可以用 `retry.status_codes` 和 `retry.error_kinds` 配置白名单。白名单一旦设置，就只重试列出的状态码或错误类型。
 
-`retry.error_kinds` 可使用所有 `HttpErrorKind` 名称的配置形式，包括 `RETRY_ATTEMPT_TIMEOUT`、`RETRY_MAX_ELAPSED_EXCEEDED`、`RETRY_ABORTED`；配置值大小写不敏感，连字符会按下划线处理。
+`retry.error_kinds` 可使用所有 `HttpErrorKind` 名称的配置形式，包括 `retry_attempt_timeout`、`retry_max_elapsed_exceeded`、`retry_aborted`。配置值会 trim，`read-timeout` 一类连字符形式会归一化为 `read_timeout`；请使用小写 snake_case 或等价的连字符形式。
 
 对单个请求可以覆盖：
 
@@ -543,15 +548,15 @@ HTTP 日志使用 `tracing::trace!`。必须同时满足：
 1. `options.logging.enabled = true`。
 2. 当前 tracing subscriber 开启 TRACE 级别。
 
-可分别控制请求头、请求体、响应头、响应体。body 只记录前 `logging.body_size_limit` 字节，超出部分显示截断提示；二进制体显示为 `<binary N bytes>`。
+可分别控制请求头、请求体、响应头、响应体。body 只记录前 `logging.body_size_limit` 字节，超出部分显示截断提示；二进制体显示为 `<binary N bytes>`。请求体日志只预览已缓冲的 body 变体（`bytes_body`、`text_body`、`json_body`、`form_body`、`multipart_body`、`ndjson_body`）；`stream_body` 和 `streaming_body` 会记录为 `<empty>`，因为 logger 不会消费上传流。
 
 敏感 header 会脱敏。默认内置常见认证、token、cookie、secret、password 类 header 名。短值整体显示为 `****`；长值保留前后各 2 个字符，中间替换为 `****`。配置 `sensitive_headers` 会用自定义集合替换默认集合；代码里也可以通过 `SensitiveHttpHeaders` 自行维护集合。
 
-注意：如果 TRACE 日志开启且 `log_response_body = true`，`execute` 会读取并缓存完整响应体后再返回响应，因此这类响应不再保持未消费的后端流。
+注意：如果 TRACE 日志开启且 `log_response_body = true`，响应体日志只会在 body 已缓存，或响应不是 SSE 且存在 `Content-Length`、并且长度不超过 `logging.body_size_limit` 时读取并缓存完整 body；未知长度、超过限制或 SSE 响应会记录为跳过，不会为了日志消费后端流。
 
 ## 代理与 IPv4-only
 
-代理默认禁用；禁用时客户端调用 `no_proxy()`，不会使用环境变量代理。启用代理必须设置 host 和 port。
+代理默认禁用；同时 `use_env_proxy` 默认也是 `false`，因此客户端调用 `no_proxy()`，不会使用环境变量代理。若需要在未配置显式代理时继承 `HTTP_PROXY` / `HTTPS_PROXY` 等环境变量，可设置 `options.use_env_proxy = true` 或配置 `use_env_proxy = true`。启用显式代理时必须设置 host 和 port。
 
 ```rust
 use qubit_http::{ProxyType, HttpClientOptions};
@@ -585,6 +590,7 @@ SSE 事件解码从 `HttpResponse` 开始：
 
 ```rust
 use futures_util::StreamExt;
+use http::Method;
 
 let response = client
     .execute(client.request(Method::GET, "/stream").build())
@@ -643,7 +649,7 @@ while let Some(item) = events.next().await {
 
 以下代码片段假设已经构建好 `request`，并且 `MyChunk` 和 `handle` 已在调用方定义。
 
-`sse_chunks` 无参数：完成标记策略默认为 `DoneMarkerPolicy::DefaultDone`（即 `DoneMarkerPolicy` 的 `Default` 实现），并可通过 `HttpClientOptions::sse_done_marker_policy` 或响应上的 `sse_done_marker_policy` 覆盖。
+`sse_chunks` 无参数：完成标记策略默认为 `DoneMarkerPolicy::DefaultDone`（即 `DoneMarkerPolicy` 的 `Default` 实现，识别 trim 后等于 `[DONE]` 的 `data:`），并可通过 `HttpClientOptions::sse_done_marker_policy` 或响应上的 `sse_done_marker_policy` 覆盖。
 
 ```rust
 use futures_util::StreamExt;
@@ -697,6 +703,7 @@ while let Some(item) = chunks.next().await {
 
 ```rust
 use futures_util::StreamExt;
+use http::Method;
 use qubit_http::sse::SseReconnectOptions;
 use qubit_http::{RetryDelay, RetryJitter, RetryOptions};
 
@@ -717,6 +724,8 @@ let mut events = client.execute_sse_with_reconnect(
         ).expect("valid SSE retry options"),
         reconnect_on_eof: true,
         honor_server_retry: true,
+        server_retry_max_delay: None,
+        apply_jitter_to_server_retry: true,
     },
 );
 
@@ -726,7 +735,7 @@ while let Some(item) = events.next().await {
 }
 ```
 
-默认重连配置为 `retry.max_attempts = 4`（即最多重连 3 次），延迟策略为 `RetryDelay::Exponential { initial=1s, max=30s, multiplier=2.0 }`，jitter 为 `RetryJitter::None`，并在 EOF 后重连、尊重服务端 `retry:`。重连时会复用原始请求；如果之前收到过 SSE `id:`，下一次请求会带上 `Last-Event-ID` header。取消错误不会触发重连；SSE 协议错误默认也不会重连；超时、transport、429/5xx 等 retryable 错误，以及包含 unexpected EOF 语义的错误可触发重连。
+默认重连配置为 `retry.max_attempts = 4`（即最多重连 3 次），延迟策略为 `RetryDelay::Exponential { initial=1s, max=30s, multiplier=2.0 }`，jitter 为 `RetryJitter::None`，并在 EOF 后重连、尊重服务端 `retry:`。服务端 `retry:` 会被限制到 `server_retry_max_delay`；若该字段为 `None`，则从重试延迟策略的最大值推导，无法推导时使用 30 秒。`apply_jitter_to_server_retry` 默认开启，但默认重连 jitter 是 `RetryJitter::None`，因此除非调用方提供带 jitter 的 `RetryOptions`，服务端给出的延迟不会被扰动。重连时会复用原始请求，并禁用内层 HTTP 自动重试，避免 HTTP 重试和 SSE 重连相乘；如果之前收到过 SSE `id:`，下一次请求会带上 `Last-Event-ID` header。`execute_sse_with_reconnect` 会要求响应 `Content-Type` 为 `text/event-stream`。取消错误不会触发重连；SSE 协议错误默认也不会重连；超时、transport、429/5xx 等 retryable 错误，以及包含 unexpected EOF 语义的错误可触发重连。
 
 ## 配置参考
 
@@ -741,10 +750,13 @@ while let Some(item) = events.next().await {
 | `max_redirects` | 最大重定向次数 |
 | `pool_idle_timeout` | 连接池空闲超时 |
 | `pool_max_idle_per_host` | 每个 host 最大空闲连接数 |
+| `use_env_proxy` | 显式代理禁用时是否继承环境代理；默认 `false` |
 | `sensitive_headers` | 覆盖默认敏感头集合的字符串列表 |
+| `default_headers` | 默认请求 header 的 JSON map 字符串；不能与 `default_headers.<name>` 同时使用 |
+| `default_headers.<name>` | 一个默认请求 header 子键；不能与 `default_headers` JSON map 同时使用 |
 | `timeouts.connect_timeout` | 连接超时 |
 | `timeouts.read_timeout` | 读取响应体或流时的单次等待超时 |
-| `timeouts.write_timeout` | 发送请求的写阶段超时 |
+| `timeouts.write_timeout` | 发送前准备和发送阶段超时 |
 | `timeouts.request_timeout` | 整体请求超时，可选 |
 | `proxy.enabled` | 是否启用代理 |
 | `proxy.proxy_type` | `http`、`https`、`socks5` 或 `socks5h` |
@@ -773,7 +785,7 @@ while let Some(item) = events.next().await {
 | `retry.status_codes` | 重试状态码白名单；未配置时默认重试 429 和 5xx |
 | `retry.error_kinds` | 非状态错误类型白名单；未配置时默认重试超时和 transport |
 | `sse.json_mode` | `LENIENT` 或 `STRICT` |
-| `sse.done_marker` | `DISABLED`、`DEFAULT`（或 `DEFAULT_DONE`）映射到 `DoneMarkerPolicy`；其它非空字符串视为自定义完成标记（`Custom`），与 trim 后的 `data:` 文本比较 |
+| `sse.done_marker` | `DISABLED`（或 `DISABLE`）禁用完成标记；`DEFAULT` 使用 `[DONE]`；其它非空字符串视为自定义完成标记（`Custom`），与 trim 后的 `data:` 文本比较 |
 | `sse.max_line_bytes` | SSE 单行字节上限 |
 | `sse.max_frame_bytes` | SSE 单帧字节上限 |
 
@@ -781,6 +793,6 @@ while let Some(item) = events.next().await {
 
 - 对只读或幂等接口开启全局重试；对 POST/PATCH 只有在业务允许重放时才使用 `AllMethods` 或请求级强制重试。
 - 对长连接/SSE 设置合理的 `read_timeout`；过短会把正常的慢流误判为 `ReadTimeout`。
-- 开启 TRACE 响应体日志会预读完整 body；需要真正流式消费时，建议关闭 `logging.log_response_body`。
-- 需要完全禁用代理时保持默认 `proxy.enabled = false`，库不会继承环境代理。
+- TRACE 响应体日志只会预读并缓存已知长度且不超过日志限制的非 SSE body；真正的未知长度流式响应和 SSE 不会为了日志被消费。
+- 需要完全禁用代理时保持默认 `proxy.enabled = false` 且 `use_env_proxy = false`；需要继承环境代理时显式打开 `use_env_proxy`。
 - 如果使用 `from_config`，优先传入 `prefix_view("http")` 一类的作用域视图，这样错误路径会保留完整上下文。
