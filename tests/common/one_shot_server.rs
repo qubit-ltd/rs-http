@@ -171,12 +171,7 @@ pub async fn spawn_one_shot_server(plan: ResponsePlan) -> OneShotServer {
 
         if let Err(error) = write_response(&mut stream, plan).await {
             // Timeout tests intentionally allow client-side early disconnects.
-            if !matches!(
-                error.kind(),
-                std::io::ErrorKind::BrokenPipe
-                    | std::io::ErrorKind::ConnectionReset
-                    | std::io::ErrorKind::NotConnected
-            ) {
+            if !is_expected_client_disconnect(&error) {
                 panic!("failed to write response in one-shot test server: {error}");
             }
         }
@@ -215,12 +210,7 @@ pub async fn spawn_multi_shot_server(plans: Vec<ResponsePlan>) -> MultiShotServe
                     .expect("failed to read request in multi-shot test server");
 
                 if let Err(error) = write_response(&mut stream, plan).await {
-                    if !matches!(
-                        error.kind(),
-                        std::io::ErrorKind::BrokenPipe
-                            | std::io::ErrorKind::ConnectionReset
-                            | std::io::ErrorKind::NotConnected
-                    ) {
+                    if !is_expected_client_disconnect(&error) {
                         panic!("failed to write response in multi-shot test server: {error}");
                     }
                 }
@@ -399,6 +389,17 @@ fn contains_header(headers: &[(String, String)], name: &str) -> bool {
     headers
         .iter()
         .any(|(header_name, _)| header_name.eq_ignore_ascii_case(name))
+}
+
+/// Returns whether a write failure means the client closed the connection first.
+fn is_expected_client_disconnect(error: &std::io::Error) -> bool {
+    matches!(
+        error.kind(),
+        std::io::ErrorKind::BrokenPipe
+            | std::io::ErrorKind::ConnectionAborted
+            | std::io::ErrorKind::ConnectionReset
+            | std::io::ErrorKind::NotConnected
+    )
 }
 
 fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
