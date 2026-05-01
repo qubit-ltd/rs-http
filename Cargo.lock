@@ -1063,9 +1063,9 @@ dependencies = [
 
 [[package]]
 name = "qubit-config"
-version = "0.9.3"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11d2bb6206d794e41645f818d02ac0e90153c6cb39b4e31180f075cb45ae50fd"
+checksum = "d6db0e8f19f6825bba589e4b953949e2feff457fe7856c20a34d067849f25386"
 dependencies = [
  "bigdecimal",
  "chrono",
@@ -1094,7 +1094,7 @@ dependencies = [
 
 [[package]]
 name = "qubit-http"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "async-stream",
  "bytes",
@@ -1120,9 +1120,9 @@ dependencies = [
 
 [[package]]
 name = "qubit-retry"
-version = "0.9.3"
+version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "59c4ecfcd621cf9fd4423d1f89f5a19dfdd9b17572eba82f9566afbadc94039d"
+checksum = "f330d5ee4bd2df51adc08d8a01aae5cad1449cea19d89bf038d4c3880344f840"
 dependencies = [
  "parse-display 0.10.0",
  "qubit-common",
@@ -1134,9 +1134,9 @@ dependencies = [
 
 [[package]]
 name = "qubit-value"
-version = "0.4.5"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c1b094b58a17f99c260c3960b426d6c2f674e008d13f6ef731f5370dfc30a770"
+checksum = "503ca223c80d29bc392f8e57203e9afc442d9a5fac073a52f8affd525804c727"
 dependencies = [
  "bigdecimal",
  "chrono",
@@ -1391,9 +1391,9 @@ dependencies = [
 
 [[package]]
 name = "rustls"
-version = "0.23.39"
+version = "0.23.40"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c2c118cb077cca2822033836dfb1b975355dfb784b5e8da48f7b6c5db74e60e"
+checksum = "ef86cd5876211988985292b91c96a8f2d298df24e75989a43a3c73f2d4d8168b"
 dependencies = [
  "aws-lc-rs",
  "once_cell",
