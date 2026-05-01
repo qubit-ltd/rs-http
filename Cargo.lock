@@ -1062,6 +1062,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "qubit-common"
+version = "0.7.0"
+dependencies = [
+ "bigdecimal",
+ "chrono",
+ "num-bigint",
+ "num-traits",
+ "regex",
+ "serde",
+ "serde_json",
+ "url",
+]
+
+[[package]]
 name = "qubit-config"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1071,7 +1085,7 @@ dependencies = [
  "chrono",
  "dotenvy",
  "num-bigint",
- "qubit-common",
+ "qubit-common 0.6.3",
  "qubit-value",
  "regex",
  "serde",
@@ -1102,7 +1116,7 @@ dependencies = [
  "http",
  "httpdate",
  "parse-display 0.10.0",
- "qubit-common",
+ "qubit-common 0.7.0",
  "qubit-config",
  "qubit-function",
  "qubit-retry",
@@ -1125,7 +1139,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f330d5ee4bd2df51adc08d8a01aae5cad1449cea19d89bf038d4c3880344f840"
 dependencies = [
  "parse-display 0.10.0",
- "qubit-common",
+ "qubit-common 0.6.3",
  "qubit-function",
  "rand 0.10.1",
  "serde",
@@ -1142,7 +1156,7 @@ dependencies = [
  "chrono",
  "num-bigint",
  "num-traits",
- "qubit-common",
+ "qubit-common 0.6.3",
  "serde",
  "serde_json",
  "thiserror",

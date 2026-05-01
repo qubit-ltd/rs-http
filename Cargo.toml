@@ -43,7 +43,7 @@ tokio-util = { version = "0.7", features = ["rt"] }
 async-stream = "0.3"
 futures-util = "0.3"
 
-qubit-common = "0.6"
+qubit-common = { version = "0.7", path = "../rs-common" }
 qubit-config = "0.10.0"
 qubit-function = "0.11"
 qubit-retry = { version = "0.9.4", features = ["tokio"] }
