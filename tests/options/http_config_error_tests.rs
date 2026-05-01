@@ -49,8 +49,8 @@ fn test_http_config_error_from_config_error() {
         .set("x", 42i32)
         .expect("test config should accept integer value");
     let ce = config
-        .get::<bool>("x")
-        .expect_err("reading integer as bool should fail");
+        .get_strict::<bool>("x")
+        .expect_err("strictly reading integer as bool should fail");
     let he = HttpConfigError::from(ce);
     assert_eq!(he.kind, HttpConfigErrorKind::TypeError);
     assert_eq!(he.path, "x");
