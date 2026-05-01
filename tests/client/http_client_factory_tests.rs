@@ -193,15 +193,15 @@ fn test_factory_create_from_config_proxy_validation_error() {
 fn test_factory_create_from_config_root_reader_is_unchanged_when_type_error() {
     let mut config = Config::new();
     config
-        .set("base_url", true)
-        .expect("test config should set invalid value for base_url");
+        .set("timeouts.connect_timeout", true)
+        .expect("test config should set invalid value for connect_timeout");
 
     let factory = HttpClientFactory::new();
     let err = factory
         .create_from_config(&config)
-        .expect_err("invalid base_url type should fail");
+        .expect_err("invalid connect_timeout type should fail");
     assert_eq!(err.kind, HttpConfigErrorKind::TypeError);
-    assert_eq!(err.path, "base_url");
+    assert_eq!(err.path, "timeouts.connect_timeout");
 }
 
 #[test]
