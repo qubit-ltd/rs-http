@@ -9,6 +9,7 @@
 
 use std::time::Duration;
 
+use qubit_common::DataType;
 use qubit_config::Config;
 use qubit_http::{
     constants::{
@@ -175,6 +176,17 @@ fn test_http_client_options_ipv4_only() {
 }
 
 #[test]
+fn test_http_client_options_invalid_ipv4_only_type_is_prefixed() {
+    let mut config = Config::new();
+    config.set("http.ipv4_only", "maybe".to_string()).unwrap();
+
+    let err = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap_err();
+
+    assert_eq!(err.kind, HttpConfigErrorKind::TypeError);
+    assert_eq!(err.path, "http.ipv4_only");
+}
+
+#[test]
 fn test_http_client_options_reqwest_extra_fields_from_config() {
     let mut config = Config::new();
     config
@@ -282,14 +294,26 @@ fn test_http_client_options_invalid_header_value_from_config() {
 }
 
 #[test]
-fn test_http_client_options_non_string_header_value_from_config() {
+fn test_http_client_options_numeric_header_value_from_config_is_converted() {
     let mut config = Config::new();
     config.set("http.default_headers.x-number", 42_i32).unwrap();
+
+    let opts = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap();
+
+    assert_eq!(opts.default_headers.get("x-number").unwrap(), "42");
+}
+
+#[test]
+fn test_http_client_options_empty_header_value_from_config_is_prefixed() {
+    let mut config = Config::new();
+    config
+        .set_null("http.default_headers.x-empty", DataType::String)
+        .unwrap();
 
     let err = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap_err();
 
     assert_eq!(err.kind, HttpConfigErrorKind::ConfigError);
-    assert!(err.path.contains("default_headers.x-number"));
+    assert_eq!(err.path, "http.default_headers.x-empty");
 }
 
 #[test]
@@ -656,6 +680,22 @@ fn test_http_client_options_default_headers_map_invalid_type_is_prefixed() {
 }
 
 #[test]
+fn test_http_client_options_default_headers_map_substitution_error_is_prefixed() {
+    let mut config = Config::new();
+    config
+        .set(
+            "http.default_headers",
+            "${QUBIT_HTTP_UNSET_DEFAULT_HEADERS_JSON}".to_string(),
+        )
+        .unwrap();
+
+    let err = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap_err();
+
+    assert_eq!(err.kind, HttpConfigErrorKind::ConfigError);
+    assert_eq!(err.path, "http");
+}
+
+#[test]
 fn test_http_retry_options_validate_rejects_invalid_values() {
     let mut options = HttpRetryOptions::default();
     options.max_attempts = 0;
@@ -780,6 +820,16 @@ fn test_http_client_options_validate_rejects_zero_sse_frame_limit() {
     let err = opts.validate().unwrap_err();
     assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
     assert_eq!(err.path, "sse.max_frame_bytes");
+}
+
+#[test]
+fn test_http_client_options_validate_rejects_zero_sse_line_limit() {
+    let mut opts = HttpClientOptions::default();
+    opts.sse_max_line_bytes = 0;
+
+    let err = opts.validate().unwrap_err();
+    assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
+    assert_eq!(err.path, "sse.max_line_bytes");
 }
 
 #[test]
@@ -920,14 +970,13 @@ fn test_http_client_options_from_root_config_all_sections() {
 }
 
 #[test]
-fn test_http_client_options_sensitive_headers_invalid_type_is_prefixed() {
+fn test_http_client_options_sensitive_headers_number_from_config_is_converted() {
     let mut config = Config::new();
     config.set("http.sensitive_headers", 123_i32).unwrap();
 
-    let err = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap_err();
+    let opts = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap();
 
-    assert_eq!(err.kind, HttpConfigErrorKind::TypeError);
-    assert_eq!(err.path, "http.sensitive_headers");
+    assert!(opts.sensitive_headers.contains("123"));
 }
 
 #[test]

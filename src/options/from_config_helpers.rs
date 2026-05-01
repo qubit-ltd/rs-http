@@ -25,8 +25,8 @@
 //! sse.max_line_bytes         – usize
 //! sse.max_frame_bytes        – usize
 //!
-//! default_headers.*          – String (sub-key form)
-//! sensitive_headers          – Vec<String>
+//! default_headers.*          – String-compatible values (sub-key form)
+//! sensitive_headers          – String-compatible values
 //! ```
 //!
 //! # Author
