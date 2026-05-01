@@ -8,7 +8,6 @@
  ******************************************************************************/
 //! Reqwest-backed HTTP client factory.
 
-use std::error::Error;
 use std::net::{IpAddr, SocketAddr};
 
 use reqwest::dns::{Addrs, Name, Resolve, Resolving};
@@ -16,6 +15,7 @@ use reqwest::redirect::Policy;
 
 use crate::HttpConfigError;
 use crate::{HttpClient, HttpClientOptions, HttpError, HttpResult};
+use qubit_common::{BoxError, IntoBoxError};
 use qubit_config::ConfigReader;
 
 /// DNS resolver that filters out non-IPv4 addresses for `ipv4_only` mode.
@@ -38,7 +38,7 @@ impl Resolve for Ipv4OnlyResolver {
         Box::pin(async move {
             let resolved = tokio::net::lookup_host((host.as_str(), 0))
                 .await
-                .map_err(|error| Box::new(error) as Box<dyn std::error::Error + Send + Sync>)?;
+                .map_err(|error| error.into_box_error())?;
             filter_ipv4_addrs(&host, resolved)
         })
     }
@@ -189,7 +189,7 @@ where
 /// # Errors
 /// Returns an [`std::io::ErrorKind::AddrNotAvailable`] error when resolution
 /// produced no IPv4 address.
-fn filter_ipv4_addrs<I>(host: &str, resolved: I) -> Result<Addrs, Box<dyn Error + Send + Sync>>
+fn filter_ipv4_addrs<I>(host: &str, resolved: I) -> Result<Addrs, BoxError>
 where
     I: IntoIterator<Item = SocketAddr>,
 {
@@ -199,7 +199,7 @@ where
             std::io::ErrorKind::AddrNotAvailable,
             format!("No IPv4 address found for host '{host}'"),
         );
-        return Err(Box::new(error) as Box<dyn Error + Send + Sync>);
+        return Err(error.into_box_error());
     }
     Ok(Box::new(ipv4_addrs.into_iter()) as Addrs)
 }
