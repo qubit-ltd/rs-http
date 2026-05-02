@@ -8,8 +8,8 @@
  *
  ******************************************************************************/
 
-use qubit_common::DataType;
 use qubit_config::Config;
+use qubit_datatype::DataType;
 use qubit_http::{HttpConfigError, HttpConfigErrorKind};
 
 #[test]

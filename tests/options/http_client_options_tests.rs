@@ -10,8 +10,8 @@
 
 use std::time::Duration;
 
-use qubit_common::DataType;
 use qubit_config::Config;
+use qubit_datatype::DataType;
 use qubit_http::{
     constants::{
         DEFAULT_CONNECT_TIMEOUT_SECS, DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES,
