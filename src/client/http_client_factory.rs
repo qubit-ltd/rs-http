@@ -1,9 +1,10 @@
 /*******************************************************************************
  *
- *    Copyright (c) 2025 - 2026.
- *    Haixing Hu, Qubit Co. Ltd.
+ *    Copyright (c) 2025 - 2026 Haixing Hu.
  *
- *    All rights reserved.
+ *    SPDX-License-Identifier: Apache-2.0
+ *
+ *    Licensed under the Apache License, Version 2.0.
  *
  ******************************************************************************/
 //! Reqwest-backed HTTP client factory.
@@ -15,8 +16,8 @@ use reqwest::redirect::Policy;
 
 use crate::HttpConfigError;
 use crate::{HttpClient, HttpClientOptions, HttpError, HttpResult};
-use qubit_common::{BoxError, IntoBoxError};
 use qubit_config::ConfigReader;
+use qubit_error::{BoxError, IntoBoxError};
 
 /// DNS resolver that filters out non-IPv4 addresses for `ipv4_only` mode.
 #[derive(Debug, Clone, Copy, Default)]

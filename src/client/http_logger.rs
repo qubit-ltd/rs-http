@@ -1,18 +1,16 @@
 /*******************************************************************************
  *
- *    Copyright (c) 2025 - 2026.
- *    Haixing Hu, Qubit Co. Ltd.
+ *    Copyright (c) 2025 - 2026 Haixing Hu.
  *
- *    All rights reserved.
+ *    SPDX-License-Identifier: Apache-2.0
+ *
+ *    Licensed under the Apache License, Version 2.0.
  *
  ******************************************************************************/
 //! # HTTP Logger
 //!
 //! Encapsulates request and response logging behavior.
 //!
-//! # Author
-//!
-//! Haixing Hu
 
 use crate::constants::{
     SENSITIVE_HEADER_MASK_EDGE_CHARS, SENSITIVE_HEADER_MASK_PLACEHOLDER,

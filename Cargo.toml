@@ -1,6 +1,6 @@
 [package]
 name = "qubit-http"
-version = "0.4.2"
+version = "0.4.3"
 edition = "2021"
 rust-version = "1.94"
 authors = ["Haixing Hu <starfish.hu@gmail.com>"]
@@ -43,12 +43,14 @@ tokio-util = { version = "0.7", features = ["rt"] }
 async-stream = "0.3"
 futures-util = "0.3"
 
-qubit-common = { version = "0.7", path = "../rs-common" }
 qubit-config = "0.10.0"
+qubit-datatype = { version = "0.2", path = "../rs-datatype" }
+qubit-error = { version = "0.2", path = "../rs-error" }
 qubit-function = "0.11"
 qubit-retry = { version = "0.9.4", features = ["tokio"] }
 
 [dev-dependencies]
+qubit-common = "0.6"
 tokio = { version = "1.52", features = ["full", "test-util"] }
 tracing-subscriber = { version = "0.3", features = ["fmt"] }
 

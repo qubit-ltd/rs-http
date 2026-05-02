@@ -1,18 +1,16 @@
 /*******************************************************************************
  *
- *    Copyright (c) 2025 - 2026.
- *    Haixing Hu, Qubit Co. Ltd.
+ *    Copyright (c) 2025 - 2026 Haixing Hu.
  *
- *    All rights reserved.
+ *    SPDX-License-Identifier: Apache-2.0
+ *
+ *    Licensed under the Apache License, Version 2.0.
  *
  ******************************************************************************/
 //! # Retry Hint
 //!
 //! Provides lightweight retryability classification for HTTP errors.
 //!
-//! # Author
-//!
-//! Haixing Hu
 
 use parse_display::{Display, FromStr as DeriveFromStr};
 use serde::{Deserialize, Serialize};
