@@ -1,9 +1,10 @@
 /*******************************************************************************
  *
- *    Copyright (c) 2025 - 2026.
- *    Haixing Hu, Qubit Co. Ltd.
+ *    Copyright (c) 2025 - 2026 Haixing Hu.
  *
- *    All rights reserved.
+ *    SPDX-License-Identifier: Apache-2.0
+ *
+ *    Licensed under the Apache License, Version 2.0.
  *
  ******************************************************************************/
 //! HTTP client: builds requests, applies defaults and interceptors, executes
@@ -13,9 +14,6 @@
 //! retry policy comes from [`crate::HttpClientOptions::retry`] unless overridden
 //! per request.
 //!
-//! # Author
-//!
-//! Haixing Hu
 
 use std::time::{Duration, Instant};
 

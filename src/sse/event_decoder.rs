@@ -1,16 +1,14 @@
 /*******************************************************************************
  *
- *    Copyright (c) 2025 - 2026.
- *    Haixing Hu, Qubit Co. Ltd.
+ *    Copyright (c) 2025 - 2026 Haixing Hu.
  *
- *    All rights reserved.
+ *    SPDX-License-Identifier: Apache-2.0
+ *
+ *    Licensed under the Apache License, Version 2.0.
  *
  ******************************************************************************/
 //! Decode SSE events from an HTTP body byte stream with size limits.
 //!
-//! # Author
-//!
-//! Haixing Hu
 
 use crate::HttpByteStream;
 

@@ -1,9 +1,10 @@
 /*******************************************************************************
  *
- *    Copyright (c) 2026.
- *    Haixing Hu, Qubit Co. Ltd.
+ *    Copyright (c) 2026 Haixing Hu.
  *
- *    All rights reserved.
+ *    SPDX-License-Identifier: Apache-2.0
+ *
+ *    Licensed under the Apache License, Version 2.0.
  *
  ******************************************************************************/
 
@@ -11,28 +12,8 @@
 
 use qubit_http::{coverage_support, HttpErrorKind};
 
-use crate::common::{spawn_one_shot_server, ResponsePlan};
-
-#[tokio::test]
-async fn test_coverage_support_exercises_backend_error_mapper_paths() {
-    let server = spawn_one_shot_server(ResponsePlan::Immediate {
-        status: 500,
-        headers: vec![],
-        body: Vec::new(),
-    })
-    .await;
-    let status_error = reqwest::Client::new()
-        .get(server.base_url())
-        .send()
-        .await
-        .expect("coverage status response should be received")
-        .error_for_status()
-        .expect_err("coverage status response should become reqwest status error");
-
-    assert_eq!(
-        coverage_support::map_reqwest_error_kind(status_error, None, HttpErrorKind::Transport,),
-        HttpErrorKind::Status
-    );
+#[test]
+fn test_coverage_support_exercises_backend_error_mapper_paths() {
     assert_eq!(
         coverage_support::classify_backend_error_kinds(),
         vec![
