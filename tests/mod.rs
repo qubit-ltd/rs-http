@@ -1,9 +1,10 @@
 /*******************************************************************************
  *
- *    Copyright (c) 2025 - 2026.
- *    Haixing Hu, Qubit Co. Ltd.
+ *    Copyright (c) 2025 - 2026 Haixing Hu.
  *
- *    All rights reserved.
+ *    SPDX-License-Identifier: Apache-2.0
+ *
+ *    Licensed under the Apache License, Version 2.0.
  *
  ******************************************************************************/
 #![allow(clippy::field_reassign_with_default)]
@@ -103,10 +104,6 @@ mod socks5_proxy_tests;
 
 #[path = "retry_hint/retry_hint_tests.rs"]
 mod retry_hint_tests;
-
-#[cfg(coverage)]
-#[path = "coverage_support/coverage_support_tests.rs"]
-mod coverage_support_tests;
 
 #[path = "sse/frame_decoder_tests.rs"]
 mod frame_decoder_tests;

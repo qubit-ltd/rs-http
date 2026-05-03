@@ -1,9 +1,10 @@
 /*******************************************************************************
  *
- *    Copyright (c) 2025 - 2026.
- *    Haixing Hu, Qubit Co. Ltd.
+ *    Copyright (c) 2025 - 2026 Haixing Hu.
  *
- *    All rights reserved.
+ *    SPDX-License-Identifier: Apache-2.0
+ *
+ *    Licensed under the Apache License, Version 2.0.
  *
  ******************************************************************************/
 //! [`SseReconnectRunner`] implementation used by [`HttpClient`](crate::HttpClient).
@@ -679,20 +680,4 @@ fn has_unexpected_eof_in_error_chain(error: &(dyn StdError + 'static)) -> bool {
         current = item.source();
     }
     false
-}
-
-/// Exposes SSE content-type validation to coverage-only integration tests.
-///
-/// # Parameters
-/// - `response`: Response to validate.
-///
-/// # Returns
-/// `Ok(())` for SSE content type; otherwise the same protocol error returned by
-/// normal reconnect execution.
-#[cfg(coverage)]
-#[doc(hidden)]
-pub(crate) fn coverage_validate_sse_response_content_type(
-    response: &HttpResponse,
-) -> HttpResult<()> {
-    validate_sse_response_content_type(response)
 }
