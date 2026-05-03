@@ -252,6 +252,71 @@ fn test_log_request_stream_body_logged_as_empty() {
 }
 
 #[test]
+fn test_log_request_uses_raw_path_when_url_resolution_fails() {
+    let client_options = HttpClientOptions::default();
+    let logger = HttpLogger::new(&client_options);
+    let request = logging_request(
+        Method::GET,
+        "/relative-only",
+        HeaderMap::new(),
+        HttpRequestBody::Empty,
+    );
+
+    let logs = capture_trace_logs(|| {
+        logger.log_request(&request);
+    });
+
+    assert!(logs.contains("--> GET /relative-only"));
+}
+
+#[test]
+fn test_execute_returns_body_read_error_from_response_logging() {
+    let logs = capture_trace_logs(|| {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("failed to build tokio runtime");
+        runtime.block_on(async {
+            let server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
+                status: 200,
+                headers: vec![],
+                total_length: 64,
+                prefix: b"partial-body".to_vec(),
+                delay: std::time::Duration::from_millis(5),
+            })
+            .await;
+
+            let mut options = HttpClientOptions::default();
+            options.base_url = Some(server.base_url());
+            options.timeouts.read_timeout = std::time::Duration::from_secs(1);
+            let client = HttpClientFactory::new()
+                .create(options)
+                .expect("client should be created");
+
+            let request = client
+                .request(Method::GET, "/trace-body-read-error")
+                .build();
+            let error = timeout(std::time::Duration::from_secs(3), client.execute(request))
+                .await
+                .expect("execute timed out")
+                .expect_err("response logging should surface body read failure");
+            assert_eq!(error.kind, HttpErrorKind::Decode);
+            assert_eq!(error.method, Some(Method::GET));
+            assert!(error
+                .url
+                .as_ref()
+                .is_some_and(|url| url.path() == "/trace-body-read-error"));
+
+            let captured = timeout(std::time::Duration::from_secs(3), server.finish())
+                .await
+                .expect("server finish timed out");
+            assert_eq!(captured.target, "/trace-body-read-error");
+        });
+    });
+    assert!(logs.contains("<-- 200"));
+}
+
+#[test]
 fn test_execute_skips_trace_response_body_for_streaming_or_unknown_size_body() {
     let logs = capture_trace_logs(|| {
         let runtime = tokio::runtime::Builder::new_current_thread()

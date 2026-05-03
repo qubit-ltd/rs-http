@@ -243,17 +243,3 @@ impl<'a> HttpLogger<'a> {
         }
     }
 }
-
-/// Exercises request-log URL fallback for coverage-only tests.
-///
-/// # Returns
-/// Raw request path returned when URL resolution fails.
-#[cfg(coverage)]
-#[doc(hidden)]
-pub(crate) fn coverage_exercise_request_log_url_fallback() -> String {
-    let client = crate::HttpClientFactory::new()
-        .create_default()
-        .expect("coverage HTTP client should build");
-    let request = client.request(http::Method::GET, "/relative-only").build();
-    HttpLogger::request_log_url(&request)
-}

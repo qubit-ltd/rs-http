@@ -37,13 +37,3 @@ pub use http_timeout_options::HttpTimeoutOptions;
 pub use proxy_options::ProxyOptions;
 pub use proxy_type::ProxyType;
 pub use sensitive_http_headers::SensitiveHttpHeaders;
-
-#[cfg(coverage)]
-#[doc(hidden)]
-pub(crate) use http_client_options::coverage_exercise_http_client_option_paths;
-#[cfg(coverage)]
-#[doc(hidden)]
-pub(crate) use http_config_error::coverage_exercise_config_error_paths;
-#[cfg(coverage)]
-#[doc(hidden)]
-pub(crate) use http_retry_options::coverage_exercise_retry_option_paths;

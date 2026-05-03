@@ -105,10 +105,6 @@ mod socks5_proxy_tests;
 #[path = "retry_hint/retry_hint_tests.rs"]
 mod retry_hint_tests;
 
-#[cfg(coverage)]
-#[path = "coverage_support/coverage_support_tests.rs"]
-mod coverage_support_tests;
-
 #[path = "sse/frame_decoder_tests.rs"]
 mod frame_decoder_tests;
 #[path = "sse/line_decoder_tests.rs"]

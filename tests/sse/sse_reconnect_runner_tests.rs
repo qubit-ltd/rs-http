@@ -371,6 +371,91 @@ async fn test_execute_sse_with_reconnect_caps_server_retry_delay() {
 }
 
 #[tokio::test]
+async fn test_execute_sse_with_reconnect_derives_server_retry_cap_from_delay_strategy() {
+    let server = spawn_multi_shot_server(vec![
+        ResponsePlan::Chunked {
+            status: 200,
+            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+            chunks: vec![ResponseChunk {
+                delay: Duration::ZERO,
+                bytes: b"retry: 800\ndata: first\n\n".to_vec(),
+            }],
+            finish: true,
+        },
+        ResponsePlan::Chunked {
+            status: 200,
+            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+            chunks: vec![ResponseChunk {
+                delay: Duration::ZERO,
+                bytes: b"data: second\n\n".to_vec(),
+            }],
+            finish: true,
+        },
+    ])
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.read_timeout = Duration::from_secs(2);
+    options.timeouts.write_timeout = Duration::from_secs(2);
+    let mut client = HttpClientFactory::new().create(options).unwrap();
+
+    let request_starts = Arc::new(Mutex::new(Vec::new()));
+    let request_starts_for_interceptor = Arc::clone(&request_starts);
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request| {
+        request_starts_for_interceptor
+            .lock()
+            .expect("request_starts mutex should not be poisoned")
+            .push(Instant::now());
+        Ok(())
+    }));
+
+    let request = client
+        .request(Method::GET, "/sse-server-retry-derived-cap")
+        .build();
+    let mut events = client.execute_sse_with_reconnect(
+        request,
+        SseReconnectOptions {
+            retry: build_retry_options(
+                1,
+                RetryDelay::Random {
+                    min: Duration::from_millis(20),
+                    max: Duration::from_millis(80),
+                },
+                RetryJitter::None,
+            ),
+            reconnect_on_eof: true,
+            honor_server_retry: true,
+            apply_jitter_to_server_retry: false,
+            ..SseReconnectOptions::default()
+        },
+    );
+
+    assert_eq!(events.next().await.unwrap().unwrap().data, "first");
+    assert_eq!(events.next().await.unwrap().unwrap().data, "second");
+    let _ = events.next().await;
+
+    let requests = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(requests.len(), 2);
+
+    let starts = request_starts
+        .lock()
+        .expect("request_starts mutex should not be poisoned");
+    assert_eq!(starts.len(), 2);
+    let reconnect_delay = starts[1].saturating_duration_since(starts[0]);
+    assert!(
+        reconnect_delay >= Duration::from_millis(65),
+        "server retry delay should be capped by random max: {reconnect_delay:?}"
+    );
+    assert!(
+        reconnect_delay < Duration::from_millis(220),
+        "derived cap should avoid waiting near 800ms: {reconnect_delay:?}"
+    );
+}
+
+#[tokio::test]
 async fn test_execute_sse_with_reconnect_can_disable_server_retry_jitter() {
     let reconnect_count: usize = 8;
     let mut plans = Vec::with_capacity(reconnect_count + 1);
@@ -790,6 +875,57 @@ async fn test_execute_sse_with_reconnect_fails_fast_on_missing_content_type() {
         .await
         .expect("server finish timed out");
     assert_eq!(captured.target, "/sse-missing-content-type");
+}
+
+#[tokio::test]
+async fn test_execute_sse_with_reconnect_fails_fast_on_non_utf8_content_type() {
+    let server = spawn_one_shot_server(ResponsePlan::ImmediateRawHeaders {
+        status: 200,
+        headers: vec![("Content-Type".to_string(), vec![0xFF, 0xFE])],
+        body: b"data: ignored\n\n".to_vec(),
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.read_timeout = Duration::from_secs(2);
+    options.timeouts.write_timeout = Duration::from_secs(2);
+    let client = HttpClientFactory::new().create(options).unwrap();
+
+    let request = client
+        .request(Method::GET, "/sse-non-utf8-content-type")
+        .build();
+    let mut events = client.execute_sse_with_reconnect(
+        request,
+        SseReconnectOptions {
+            retry: build_retry_options(
+                3,
+                RetryDelay::fixed(Duration::from_millis(1)),
+                RetryJitter::None,
+            ),
+            reconnect_on_eof: true,
+            honor_server_retry: true,
+            ..SseReconnectOptions::default()
+        },
+    );
+
+    let error = events
+        .next()
+        .await
+        .expect("non-UTF8 content type should emit an error item")
+        .expect_err("non-UTF8 content type should fail fast");
+    assert_eq!(error.kind, HttpErrorKind::SseProtocol);
+    assert!(error.message.contains("non-UTF8 Content-Type"));
+    assert_eq!(error.method, Some(Method::GET));
+    assert!(error
+        .url
+        .as_ref()
+        .is_some_and(|url| url.path() == "/sse-non-utf8-content-type"));
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.target, "/sse-non-utf8-content-type");
 }
 
 #[tokio::test]

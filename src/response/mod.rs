@@ -20,7 +20,3 @@ pub use http_response::HttpResponse;
 pub use http_response_interceptors::{HttpResponseInterceptor, HttpResponseInterceptors};
 pub use http_response_meta::HttpResponseMeta;
 pub(crate) use http_response_options::HttpResponseOptions;
-
-#[cfg(coverage)]
-#[doc(hidden)]
-pub(crate) use http_response::coverage_exercise_response_preview_paths;

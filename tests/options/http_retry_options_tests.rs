@@ -286,3 +286,55 @@ fn test_http_retry_options_invalid_max_duration_type_is_prefixed() {
     assert_eq!(error.kind, HttpConfigErrorKind::TypeError);
     assert_eq!(error.path, "retry.max_duration");
 }
+
+#[test]
+fn test_http_retry_options_from_config_reads_all_optional_fields() {
+    let mut config = Config::new();
+    config.set("retry.enabled", true).unwrap();
+    config.set("retry.max_attempts", 5_u32).unwrap();
+    config
+        .set("retry.max_duration", Duration::from_secs(12))
+        .unwrap();
+    config
+        .set("retry.delay_strategy", "exponential_backoff")
+        .unwrap();
+    config
+        .set("retry.backoff_initial_delay", Duration::from_millis(25))
+        .unwrap();
+    config
+        .set("retry.backoff_max_delay", Duration::from_millis(250))
+        .unwrap();
+    config.set("retry.backoff_multiplier", 1.5_f64).unwrap();
+    config.set("retry.jitter_factor", 0.2_f64).unwrap();
+    config.set("retry.method_policy", "all").unwrap();
+    config
+        .set("retry.status_codes", vec!["429".to_string()])
+        .unwrap();
+    config
+        .set("retry.error_kinds", vec!["transport".to_string()])
+        .unwrap();
+
+    let options = HttpRetryOptions::from_config(&config.prefix_view("retry")).unwrap();
+
+    assert!(options.enabled);
+    assert_eq!(options.max_attempts, 5);
+    assert_eq!(options.max_duration, Some(Duration::from_secs(12)));
+    assert_eq!(options.jitter_factor, 0.2);
+    assert_eq!(options.method_policy, HttpRetryMethodPolicy::AllMethods);
+    assert_eq!(
+        options.retry_status_codes,
+        Some(vec![StatusCode::TOO_MANY_REQUESTS])
+    );
+    assert_eq!(
+        options.retry_error_kinds,
+        Some(vec![HttpErrorKind::Transport])
+    );
+    assert_eq!(
+        options.delay_strategy,
+        qubit_retry::RetryDelay::Exponential {
+            initial: Duration::from_millis(25),
+            max: Duration::from_millis(250),
+            multiplier: 1.5,
+        }
+    );
+}
