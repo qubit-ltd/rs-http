@@ -17,7 +17,7 @@ use qubit_retry::{RetryDelay, RetryJitter, RetryOptions};
 
 use super::http_retry_method_policy::HttpRetryMethodPolicy;
 use super::HttpConfigError;
-use crate::{HttpError, HttpErrorKind, HttpRequest, HttpResult};
+use crate::{HttpErrorKind, HttpRequest};
 
 const DEFAULT_RETRY_MAX_ATTEMPTS: u32 = 3;
 const DEFAULT_RETRY_INITIAL_DELAY: Duration = Duration::from_millis(200);
@@ -248,9 +248,10 @@ impl HttpRetryOptions {
     /// attempt time, retry sleeps, `Retry-After` sleeps, and retry control-path
     /// listener time measured with monotonic time.
     ///
-    /// # Errors
-    /// Returns [`HttpError`] when executor limits or delay/jitter settings are invalid.
-    pub(crate) fn to_executor_options(&self) -> HttpResult<RetryOptions> {
+    /// # Panics
+    /// Panics only if options that already passed [`Self::validate`] cannot be
+    /// represented by `qubit-retry`.
+    pub(crate) fn to_executor_options(&self) -> RetryOptions {
         RetryOptions::new(
             self.max_attempts,
             None,
@@ -258,7 +259,7 @@ impl HttpRetryOptions {
             self.delay_strategy.clone(),
             RetryJitter::factor(self.jitter_factor),
         )
-        .map_err(|error| HttpError::other(format!("Invalid HTTP retry options: {error}")))
+        .expect("validated HTTP retry options should convert to retry executor options")
     }
 }
 
@@ -432,21 +433,4 @@ fn default_retryable_error_kind(kind: HttpErrorKind) -> bool {
             | HttpErrorKind::RequestTimeout
             | HttpErrorKind::Transport
     )
-}
-
-/// Exercises retry option conversion error paths for coverage-only tests.
-///
-/// # Returns
-/// Error message produced by executor option conversion.
-#[cfg(coverage)]
-#[doc(hidden)]
-pub(crate) fn coverage_exercise_retry_option_paths() -> String {
-    let options = HttpRetryOptions {
-        jitter_factor: 2.0,
-        ..HttpRetryOptions::default()
-    };
-    options
-        .to_executor_options()
-        .expect_err("invalid jitter should fail executor option conversion")
-        .message
 }

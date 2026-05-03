@@ -38,7 +38,3 @@ pub use sse_reconnect_options::SseReconnectOptions;
 
 pub(crate) use json_decoder::decode_json_chunks_from_stream_with_limits;
 pub(crate) use sse_reconnect_options::DEFAULT_SSE_MAX_RECONNECT_DELAY;
-
-#[cfg(coverage)]
-#[doc(hidden)]
-pub(crate) use sse_reconnect_runner::coverage_validate_sse_response_content_type;

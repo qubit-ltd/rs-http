@@ -579,7 +579,7 @@ impl HttpRequest {
             Ok(Err(error)) => Err(map_reqwest_error(
                 error,
                 HttpErrorKind::Transport,
-                Some(ReqwestErrorPhase::Send),
+                ReqwestErrorPhase::Send,
                 Some(method.clone()),
                 Some(request_url.clone()),
             )),
@@ -933,43 +933,6 @@ impl HttpRequest {
             HttpRequestBody::Text(text) => builder.body(text),
         }
     }
-}
-
-/// Exercises request cache refresh branches for coverage-only tests.
-///
-/// # Returns
-/// Resolved URL and effective header count diagnostics.
-#[cfg(coverage)]
-#[doc(hidden)]
-pub(crate) async fn coverage_exercise_request_cache_paths() -> Vec<String> {
-    let client = crate::HttpClientFactory::new()
-        .create_default()
-        .expect("coverage HTTP client should build");
-    let mut request = client
-        .request(Method::GET, "https://example.com/coverage-cache")
-        .build();
-    *request
-        .resolved_url
-        .write()
-        .expect("resolved URL cache lock should not be poisoned") = None;
-    let url = request
-        .resolved_url()
-        .expect("coverage request URL should resolve");
-    let header_count = request
-        .effective_headers()
-        .await
-        .expect("coverage headers should compute")
-        .len();
-    let cached_header_count = request
-        .effective_headers()
-        .await
-        .expect("coverage headers should be cached")
-        .len();
-    vec![
-        url.to_string(),
-        header_count.to_string(),
-        cached_header_count.to_string(),
-    ]
 }
 
 impl Clone for HttpRequest {

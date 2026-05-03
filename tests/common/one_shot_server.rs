@@ -54,6 +54,16 @@ pub enum ResponsePlan {
         body: Vec<u8>,
     },
 
+    /// Send a normal fixed-length response with raw header values immediately.
+    ImmediateRawHeaders {
+        /// HTTP status code.
+        status: u16,
+        /// Extra headers as raw bytes.
+        headers: Vec<(String, Vec<u8>)>,
+        /// Response body.
+        body: Vec<u8>,
+    },
+
     /// Delay before sending status line and headers.
     DelayedStart {
         /// Delay duration.
@@ -297,6 +307,23 @@ async fn write_response(stream: &mut TcpStream, plan: ResponsePlan) -> std::io::
             headers,
             body,
         } => write_fixed_response(stream, status, headers, body).await?,
+        ResponsePlan::ImmediateRawHeaders {
+            status,
+            mut headers,
+            body,
+        } => {
+            if !contains_raw_header(&headers, "Content-Length") {
+                headers.push((
+                    "Content-Length".to_string(),
+                    body.len().to_string().into_bytes(),
+                ));
+            }
+            write_status_and_raw_headers(stream, status, &headers).await?;
+            if !body.is_empty() {
+                stream.write_all(&body).await?;
+            }
+            stream.flush().await?;
+        }
         ResponsePlan::DelayedStart {
             delay,
             status,
@@ -390,6 +417,29 @@ fn contains_header(headers: &[(String, String)], name: &str) -> bool {
     headers
         .iter()
         .any(|(header_name, _)| header_name.eq_ignore_ascii_case(name))
+}
+
+fn contains_raw_header(headers: &[(String, Vec<u8>)], name: &str) -> bool {
+    headers
+        .iter()
+        .any(|(header_name, _)| header_name.eq_ignore_ascii_case(name))
+}
+
+async fn write_status_and_raw_headers(
+    stream: &mut TcpStream,
+    status: u16,
+    headers: &[(String, Vec<u8>)],
+) -> std::io::Result<()> {
+    let status_line = format!("HTTP/1.1 {} {}\r\n", status, reason_phrase(status));
+    stream.write_all(status_line.as_bytes()).await?;
+    for (name, value) in headers {
+        stream.write_all(name.as_bytes()).await?;
+        stream.write_all(b": ").await?;
+        stream.write_all(value).await?;
+        stream.write_all(b"\r\n").await?;
+    }
+    stream.write_all(b"\r\n").await?;
+    Ok(())
 }
 
 /// Returns whether a write failure means the client closed the connection first.
