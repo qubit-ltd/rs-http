@@ -10,11 +10,16 @@
 
 use std::time::Duration;
 
-use qubit_config::{ConfigReader, ConfigResult};
+use qubit_config::{
+    ConfigReader,
+    ConfigResult,
+};
 
 use super::HttpConfigError;
 use crate::constants::{
-    DEFAULT_CONNECT_TIMEOUT_SECS, DEFAULT_READ_TIMEOUT_SECS, DEFAULT_WRITE_TIMEOUT_SECS,
+    DEFAULT_CONNECT_TIMEOUT_SECS,
+    DEFAULT_READ_TIMEOUT_SECS,
+    DEFAULT_WRITE_TIMEOUT_SECS,
 };
 
 /// Connect, read, write, and optional whole-request timeouts for HTTP I/O.

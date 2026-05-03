@@ -9,7 +9,10 @@
  ******************************************************************************/
 
 use std::sync::{
-    atomic::{AtomicUsize, Ordering},
+    atomic::{
+        AtomicUsize,
+        Ordering,
+    },
     Arc,
 };
 use std::time::Duration;
@@ -18,12 +21,19 @@ use bytes::Bytes;
 use futures_util::stream;
 use http::Method;
 use qubit_http::{
-    HttpClientFactory, HttpClientOptions, HttpRequestBodyByteStream, HttpRetryMethodPolicy,
+    HttpClientFactory,
+    HttpClientOptions,
+    HttpRequestBodyByteStream,
+    HttpRetryMethodPolicy,
     RetryDelay,
 };
 use tokio::time::timeout;
 
-use crate::common::{spawn_multi_shot_server, spawn_one_shot_server, ResponsePlan};
+use crate::common::{
+    spawn_multi_shot_server,
+    spawn_one_shot_server,
+    ResponsePlan,
+};
 
 #[tokio::test]
 async fn test_execute_with_form_body_and_query_headers_timeout() {

@@ -10,12 +10,22 @@
 
 use std::time::Duration;
 
-use http::{Method, StatusCode};
+use http::{
+    Method,
+    StatusCode,
+};
 use httpdate::fmt_http_date;
-use qubit_http::{HttpClientFactory, HttpClientOptions, HttpErrorKind};
+use qubit_http::{
+    HttpClientFactory,
+    HttpClientOptions,
+    HttpErrorKind,
+};
 use tokio::time::timeout;
 
-use crate::common::{spawn_one_shot_server, ResponsePlan};
+use crate::common::{
+    spawn_one_shot_server,
+    ResponsePlan,
+};
 
 #[tokio::test]
 async fn test_execute_maps_retry_after_to_retryable_http_error() {

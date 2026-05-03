@@ -8,7 +8,10 @@
  *
  ******************************************************************************/
 
-use qubit_config::{ConfigReader, ConfigResult};
+use qubit_config::{
+    ConfigReader,
+    ConfigResult,
+};
 
 use super::HttpConfigError;
 use crate::constants::DEFAULT_LOG_BODY_SIZE_LIMIT_BYTES;

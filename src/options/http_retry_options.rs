@@ -12,12 +12,22 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use http::StatusCode;
-use qubit_config::{ConfigReader, ConfigResult};
-use qubit_retry::{RetryDelay, RetryJitter, RetryOptions};
+use qubit_config::{
+    ConfigReader,
+    ConfigResult,
+};
+use qubit_retry::{
+    RetryDelay,
+    RetryJitter,
+    RetryOptions,
+};
 
 use super::http_retry_method_policy::HttpRetryMethodPolicy;
 use super::HttpConfigError;
-use crate::{HttpErrorKind, HttpRequest};
+use crate::{
+    HttpErrorKind,
+    HttpRequest,
+};
 
 const DEFAULT_RETRY_MAX_ATTEMPTS: u32 = 3;
 const DEFAULT_RETRY_INITIAL_DELAY: Duration = Duration::from_millis(200);

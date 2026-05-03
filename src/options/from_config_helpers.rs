@@ -33,7 +33,11 @@
 
 use std::collections::HashMap;
 
-use http::{HeaderMap, HeaderName, HeaderValue};
+use http::{
+    HeaderMap,
+    HeaderName,
+    HeaderValue,
+};
 
 use super::HttpConfigError;
 

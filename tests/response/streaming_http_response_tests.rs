@@ -10,11 +10,22 @@
 
 use bytes::Bytes;
 use futures_util::StreamExt;
-use http::{HeaderMap, Method, StatusCode};
-use qubit_http::{HttpClientFactory, HttpClientOptions, HttpResponse};
+use http::{
+    HeaderMap,
+    Method,
+    StatusCode,
+};
+use qubit_http::{
+    HttpClientFactory,
+    HttpClientOptions,
+    HttpResponse,
+};
 use url::Url;
 
-use crate::common::{spawn_one_shot_server, ResponsePlan};
+use crate::common::{
+    spawn_one_shot_server,
+    ResponsePlan,
+};
 
 #[test]
 fn test_http_stream_response_is_success_and_new() {

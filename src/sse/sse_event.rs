@@ -15,7 +15,10 @@
 use serde::de::DeserializeOwned;
 
 use super::SseJsonMode;
-use crate::{HttpError, HttpResult};
+use crate::{
+    HttpError,
+    HttpResult,
+};
 
 /// One Server-Sent Events dispatch after frame reassembly (`data:` lines joined with `\n`).
 #[derive(Debug, Clone, PartialEq, Eq)]

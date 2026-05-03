@@ -12,7 +12,11 @@ use std::time::Duration;
 
 use qubit_config::Config;
 use qubit_http::{
-    HttpClientFactory, HttpClientOptions, HttpConfigErrorKind, HttpErrorKind, ProxyType,
+    HttpClientFactory,
+    HttpClientOptions,
+    HttpConfigErrorKind,
+    HttpErrorKind,
+    ProxyType,
 };
 
 #[test]

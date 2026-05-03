@@ -12,20 +12,41 @@
 //! Covers request execution, stream execution, and timeout/error behavior.
 
 use std::error::Error as StdError;
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    Arc,
+    Mutex,
+};
 use std::time::Duration;
 
 use bytes::Bytes;
 use futures_util::StreamExt;
-use http::header::{HeaderName, AUTHORIZATION, CONTENT_TYPE};
-use http::{HeaderValue, Method, StatusCode};
+use http::header::{
+    HeaderName,
+    AUTHORIZATION,
+    CONTENT_TYPE,
+};
+use http::{
+    HeaderValue,
+    Method,
+    StatusCode,
+};
 use qubit_http::{
-    HttpClientFactory, HttpClientOptions, HttpError, HttpErrorKind, HttpHeaderInjector,
-    HttpRetryMethodPolicy, RetryDelay,
+    HttpClientFactory,
+    HttpClientOptions,
+    HttpError,
+    HttpErrorKind,
+    HttpHeaderInjector,
+    HttpRetryMethodPolicy,
+    RetryDelay,
 };
 use tokio::time::timeout;
 
-use crate::common::{spawn_multi_shot_server, spawn_one_shot_server, ResponseChunk, ResponsePlan};
+use crate::common::{
+    spawn_multi_shot_server,
+    spawn_one_shot_server,
+    ResponseChunk,
+    ResponsePlan,
+};
 
 fn retry_abort_inner_http(error: &HttpError) -> &HttpError {
     let boxed = error

@@ -36,20 +36,46 @@ pub use client::http_logger::HttpLogger;
 pub use client::HttpClient;
 pub use client::HttpClientFactory;
 pub use constants::DEFAULT_SENSITIVE_HEADER_NAMES;
-pub use error::{HttpError, HttpErrorKind, HttpResult, RetryHint};
+pub use error::{
+    HttpError,
+    HttpErrorKind,
+    HttpResult,
+    RetryHint,
+};
 pub use options::{
-    HttpClientOptions, HttpConfigError, HttpConfigErrorKind, HttpLoggingOptions,
-    HttpRetryMethodPolicy, HttpRetryOptions, HttpTimeoutOptions, ProxyOptions, ProxyType,
+    HttpClientOptions,
+    HttpConfigError,
+    HttpConfigErrorKind,
+    HttpLoggingOptions,
+    HttpRetryMethodPolicy,
+    HttpRetryOptions,
+    HttpTimeoutOptions,
+    ProxyOptions,
+    ProxyType,
     SensitiveHttpHeaders,
 };
-pub use qubit_retry::{RetryDelay, RetryJitter, RetryOptions};
+pub use qubit_retry::{
+    RetryDelay,
+    RetryJitter,
+    RetryOptions,
+};
 pub use request::{
-    AsyncHttpHeaderInjector, HttpHeaderInjector, HttpRequest, HttpRequestBody,
-    HttpRequestBodyByteStream, HttpRequestBuilder, HttpRequestInterceptor, HttpRequestInterceptors,
-    HttpRequestRetryOverride, HttpRequestStreamingBody,
+    AsyncHttpHeaderInjector,
+    HttpHeaderInjector,
+    HttpRequest,
+    HttpRequestBody,
+    HttpRequestBodyByteStream,
+    HttpRequestBuilder,
+    HttpRequestInterceptor,
+    HttpRequestInterceptors,
+    HttpRequestRetryOverride,
+    HttpRequestStreamingBody,
 };
 pub use response::{
-    HttpByteStream, HttpResponse, HttpResponseInterceptor, HttpResponseInterceptors,
+    HttpByteStream,
+    HttpResponse,
+    HttpResponseInterceptor,
+    HttpResponseInterceptors,
     HttpResponseMeta,
 };
 pub use tokio_util::sync::CancellationToken;

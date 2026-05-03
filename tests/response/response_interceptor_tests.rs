@@ -8,12 +8,24 @@
  *
  ******************************************************************************/
 
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    Arc,
+    Mutex,
+};
 
-use http::{HeaderMap, HeaderValue, Method, StatusCode};
+use http::{
+    HeaderMap,
+    HeaderValue,
+    Method,
+    StatusCode,
+};
 use qubit_function::MutatingFunction;
 use qubit_http::{
-    HttpError, HttpErrorKind, HttpResponseInterceptor, HttpResponseInterceptors, HttpResponseMeta,
+    HttpError,
+    HttpErrorKind,
+    HttpResponseInterceptor,
+    HttpResponseInterceptors,
+    HttpResponseMeta,
 };
 use url::Url;
 

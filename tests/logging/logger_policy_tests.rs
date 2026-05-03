@@ -10,16 +10,38 @@
 
 use bytes::Bytes;
 use futures_util::StreamExt;
-use http::header::{AUTHORIZATION, CONTENT_TYPE, SET_COOKIE};
-use http::{HeaderMap, HeaderValue, Method, StatusCode};
+use http::header::{
+    AUTHORIZATION,
+    CONTENT_TYPE,
+    SET_COOKIE,
+};
+use http::{
+    HeaderMap,
+    HeaderValue,
+    Method,
+    StatusCode,
+};
 use qubit_http::{
-    HttpClientFactory, HttpClientOptions, HttpErrorKind, HttpLogger, HttpLoggingOptions,
-    HttpRequest, HttpRequestBody, HttpResponse, HttpResponseMeta, SensitiveHttpHeaders,
+    HttpClientFactory,
+    HttpClientOptions,
+    HttpErrorKind,
+    HttpLogger,
+    HttpLoggingOptions,
+    HttpRequest,
+    HttpRequestBody,
+    HttpResponse,
+    HttpResponseMeta,
+    SensitiveHttpHeaders,
 };
 use tokio::time::timeout;
 use url::Url;
 
-use crate::common::{capture_trace_logs, spawn_one_shot_server, ResponseChunk, ResponsePlan};
+use crate::common::{
+    capture_trace_logs,
+    spawn_one_shot_server,
+    ResponseChunk,
+    ResponsePlan,
+};
 
 fn logging_request(
     method: Method,

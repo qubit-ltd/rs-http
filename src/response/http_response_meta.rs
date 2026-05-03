@@ -9,10 +9,17 @@
  ******************************************************************************/
 //! Shared HTTP response metadata (status, headers, URL, request method).
 
-use std::time::{Duration, SystemTime};
+use std::time::{
+    Duration,
+    SystemTime,
+};
 
 use http::header::RETRY_AFTER;
-use http::{HeaderMap, Method, StatusCode};
+use http::{
+    HeaderMap,
+    Method,
+    StatusCode,
+};
 use httpdate::parse_http_date;
 use url::Url;
 

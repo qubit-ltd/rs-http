@@ -10,7 +10,11 @@
 
 use http::Method;
 use qubit_http::{
-    HttpClientFactory, HttpError, HttpErrorKind, HttpRequestInterceptor, HttpRequestInterceptors,
+    HttpClientFactory,
+    HttpError,
+    HttpErrorKind,
+    HttpRequestInterceptor,
+    HttpRequestInterceptors,
 };
 use url::Url;
 

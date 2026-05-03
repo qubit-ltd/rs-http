@@ -12,7 +12,11 @@
 
 use std::time::Duration;
 
-use crate::{RetryDelay, RetryJitter, RetryOptions};
+use crate::{
+    RetryDelay,
+    RetryJitter,
+    RetryOptions,
+};
 
 /// Default upper bound for SSE reconnect delay backoff.
 pub(crate) const DEFAULT_SSE_MAX_RECONNECT_DELAY: Duration = Duration::from_secs(30);

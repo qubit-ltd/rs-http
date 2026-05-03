@@ -9,7 +9,10 @@
  ******************************************************************************/
 //! Request interceptor abstraction for outgoing HTTP requests.
 
-use qubit_function::{ArcMutatingFunction, MutatingFunction};
+use qubit_function::{
+    ArcMutatingFunction,
+    MutatingFunction,
+};
 use url::Url;
 
 use super::http_request::HttpRequest;

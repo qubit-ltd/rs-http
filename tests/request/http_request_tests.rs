@@ -12,10 +12,20 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use futures_util::stream;
-use http::{HeaderName, HeaderValue, Method};
+use http::{
+    HeaderName,
+    HeaderValue,
+    Method,
+};
 use qubit_http::{
-    CancellationToken, HttpClientFactory, HttpClientOptions, HttpErrorKind, HttpRequestBody,
-    HttpRequestBodyByteStream, HttpRequestRetryOverride, HttpRequestStreamingBody,
+    CancellationToken,
+    HttpClientFactory,
+    HttpClientOptions,
+    HttpErrorKind,
+    HttpRequestBody,
+    HttpRequestBodyByteStream,
+    HttpRequestRetryOverride,
+    HttpRequestStreamingBody,
     HttpRetryMethodPolicy,
 };
 use url::Url;

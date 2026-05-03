@@ -13,7 +13,10 @@ use std::time::Duration;
 
 use http::HeaderMap;
 use http::HeaderValue;
-use qubit_config::{ConfigReader, ConfigResult};
+use qubit_config::{
+    ConfigReader,
+    ConfigResult,
+};
 use std::str::FromStr;
 use url::Url;
 
@@ -26,11 +29,15 @@ use super::sensitive_http_headers::SensitiveHttpHeaders;
 use super::HttpConfigError;
 use crate::{
     constants::{
-        DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES, DEFAULT_SSE_MAX_FRAME_BYTES,
+        DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES,
+        DEFAULT_SSE_MAX_FRAME_BYTES,
         DEFAULT_SSE_MAX_LINE_BYTES,
     },
     request::parse_header,
-    sse::{DoneMarkerPolicy, SseJsonMode},
+    sse::{
+        DoneMarkerPolicy,
+        SseJsonMode,
+    },
     HttpResult,
 };
 

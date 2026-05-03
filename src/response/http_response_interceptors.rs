@@ -9,7 +9,10 @@
  ******************************************************************************/
 //! Response interceptor abstraction for successful HTTP responses.
 
-use qubit_function::{ArcMutatingFunction, MutatingFunction};
+use qubit_function::{
+    ArcMutatingFunction,
+    MutatingFunction,
+};
 
 use super::HttpResponseMeta;
 use crate::HttpResult;

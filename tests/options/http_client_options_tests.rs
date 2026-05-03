@@ -14,13 +14,25 @@ use qubit_config::Config;
 use qubit_datatype::DataType;
 use qubit_http::{
     constants::{
-        DEFAULT_CONNECT_TIMEOUT_SECS, DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES,
-        DEFAULT_LOG_BODY_SIZE_LIMIT_BYTES, DEFAULT_READ_TIMEOUT_SECS, DEFAULT_SSE_MAX_FRAME_BYTES,
-        DEFAULT_SSE_MAX_LINE_BYTES, DEFAULT_WRITE_TIMEOUT_SECS,
+        DEFAULT_CONNECT_TIMEOUT_SECS,
+        DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES,
+        DEFAULT_LOG_BODY_SIZE_LIMIT_BYTES,
+        DEFAULT_READ_TIMEOUT_SECS,
+        DEFAULT_SSE_MAX_FRAME_BYTES,
+        DEFAULT_SSE_MAX_LINE_BYTES,
+        DEFAULT_WRITE_TIMEOUT_SECS,
     },
-    sse::{DoneMarkerPolicy, SseJsonMode},
-    HttpClientOptions, HttpConfigErrorKind, HttpErrorKind, HttpRetryMethodPolicy, HttpRetryOptions,
-    ProxyType, RetryDelay,
+    sse::{
+        DoneMarkerPolicy,
+        SseJsonMode,
+    },
+    HttpClientOptions,
+    HttpConfigErrorKind,
+    HttpErrorKind,
+    HttpRetryMethodPolicy,
+    HttpRetryOptions,
+    ProxyType,
+    RetryDelay,
 };
 
 #[test]

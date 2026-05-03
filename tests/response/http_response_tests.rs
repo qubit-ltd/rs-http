@@ -10,8 +10,16 @@
 
 use bytes::Bytes;
 use http::header::RETRY_AFTER;
-use http::{HeaderMap, HeaderValue, Method, StatusCode};
-use qubit_http::{HttpErrorKind, HttpResponse};
+use http::{
+    HeaderMap,
+    HeaderValue,
+    Method,
+    StatusCode,
+};
+use qubit_http::{
+    HttpErrorKind,
+    HttpResponse,
+};
 use url::Url;
 
 #[tokio::test]
