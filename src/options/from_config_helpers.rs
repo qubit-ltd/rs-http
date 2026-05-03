@@ -1,9 +1,10 @@
 /*******************************************************************************
  *
- *    Copyright (c) 2025 - 2026.
- *    Haixing Hu, Qubit Co. Ltd.
+ *    Copyright (c) 2025 - 2026 Haixing Hu.
  *
- *    All rights reserved.
+ *    SPDX-License-Identifier: Apache-2.0
+ *
+ *    Licensed under the Apache License, Version 2.0.
  *
  ******************************************************************************/
 //! Shared helpers for reading [`qubit_config::ConfigReader`] keys into option structs.
@@ -29,9 +30,6 @@
 //! sensitive_headers          – String-compatible values
 //! ```
 //!
-//! # Author
-//!
-//! Haixing Hu
 
 use std::collections::HashMap;
 

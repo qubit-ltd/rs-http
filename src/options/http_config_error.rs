@@ -1,18 +1,16 @@
 /*******************************************************************************
  *
- *    Copyright (c) 2025 - 2026.
- *    Haixing Hu, Qubit Co. Ltd.
+ *    Copyright (c) 2025 - 2026 Haixing Hu.
  *
- *    All rights reserved.
+ *    SPDX-License-Identifier: Apache-2.0
+ *
+ *    Licensed under the Apache License, Version 2.0.
  *
  ******************************************************************************/
 //! # HTTP configuration error
 //!
 //! Error type for configuration-to-options conversion failures.
 //!
-//! # Author
-//!
-//! Haixing Hu
 
 use std::fmt;
 
@@ -114,29 +112,15 @@ impl HttpConfigError {
         Self::new(HttpConfigErrorKind::ConfigError, path, message)
     }
 
-    /// Prepends `prefix` to [`Self::path`] (for composing subsection parsers under a logical key).
+    /// Prepends `prefix` to a concrete nested validation path.
     ///
     /// # Parameters
-    /// - `prefix`: Segment such as `timeouts` or `proxy`; empty leaves `self` unchanged.
+    /// - `prefix`: Segment such as `timeouts` or `retry`.
     ///
     /// # Returns
-    /// Updated error with `path` = `prefix` or `{prefix}.{path}`.
+    /// Updated error with `path` = `{prefix}.{path}`.
     pub(crate) fn prepend_path_prefix(mut self, prefix: &str) -> Self {
-        let prefix_with_dot = format!("{prefix}.");
-        let already_prefixed = self.path == prefix || self.path.starts_with(&prefix_with_dot);
-        if !already_prefixed {
-            self.path = self
-                .path
-                .find(&prefix_with_dot)
-                .map(|index| self.path[index..].to_string())
-                .unwrap_or_else(|| {
-                    [prefix, self.path.as_str()]
-                        .into_iter()
-                        .filter(|part| !part.is_empty())
-                        .collect::<Vec<_>>()
-                        .join(".")
-                });
-        }
+        self.path = format!("{prefix}.{}", self.path);
         self
     }
 }
@@ -177,24 +161,4 @@ impl From<qubit_config::ConfigError> for HttpConfigError {
             other => HttpConfigError::config_error("", other.to_string()),
         }
     }
-}
-
-/// Exercises config-error path prefix normalization for coverage-only tests.
-///
-/// # Returns
-/// Normalized paths for already-prefixed, embedded-prefix, and empty-path cases.
-#[cfg(coverage)]
-#[doc(hidden)]
-pub(crate) fn coverage_exercise_config_error_paths() -> Vec<String> {
-    vec![
-        HttpConfigError::invalid_value("proxy.host", "bad")
-            .prepend_path_prefix("proxy")
-            .path,
-        HttpConfigError::invalid_value("svc.proxy.host", "bad")
-            .prepend_path_prefix("proxy")
-            .path,
-        HttpConfigError::invalid_value("", "bad")
-            .prepend_path_prefix("proxy")
-            .path,
-    ]
 }

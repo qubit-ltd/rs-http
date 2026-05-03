@@ -1,9 +1,10 @@
 /*******************************************************************************
  *
- *    Copyright (c) 2025 - 2026.
- *    Haixing Hu, Qubit Co. Ltd.
+ *    Copyright (c) 2025 - 2026 Haixing Hu.
  *
- *    All rights reserved.
+ *    SPDX-License-Identifier: Apache-2.0
+ *
+ *    Licensed under the Apache License, Version 2.0.
  *
  ******************************************************************************/
 
@@ -187,6 +188,49 @@ async fn test_request_timeout_during_body_read_is_classified_as_read_timeout() {
 
     assert_eq!(error.kind, HttpErrorKind::Decode);
     assert_eq!(error.retry_hint(), RetryHint::NonRetryable);
+}
+
+#[tokio::test]
+async fn test_reqwest_timeout_during_body_chunk_is_classified_as_read_timeout() {
+    let server = spawn_one_shot_server(ResponsePlan::Chunked {
+        status: 200,
+        headers: vec![("Content-Type".to_string(), "text/plain".to_string())],
+        chunks: vec![
+            ResponseChunk {
+                delay: Duration::ZERO,
+                bytes: b"first".to_vec(),
+            },
+            ResponseChunk {
+                delay: Duration::from_millis(250),
+                bytes: b"second".to_vec(),
+            },
+        ],
+        finish: true,
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.write_timeout = Duration::from_secs(2);
+    options.timeouts.read_timeout = Duration::from_secs(2);
+    options.timeouts.request_timeout = Some(Duration::from_millis(80));
+
+    let client = HttpClientFactory::new().create(options).unwrap();
+    let request = client
+        .request(Method::GET, "/request-timeout-body-chunk")
+        .build();
+    let mut response = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .unwrap();
+    let error = response.bytes().await.unwrap_err();
+
+    assert_eq!(error.kind, HttpErrorKind::ReadTimeout);
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.target, "/request-timeout-body-chunk");
 }
 
 #[tokio::test]

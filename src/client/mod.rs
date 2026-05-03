@@ -1,9 +1,10 @@
 /*******************************************************************************
  *
- *    Copyright (c) 2025 - 2026.
- *    Haixing Hu, Qubit Co. Ltd.
+ *    Copyright (c) 2025 - 2026 Haixing Hu.
  *
- *    All rights reserved.
+ *    SPDX-License-Identifier: Apache-2.0
+ *
+ *    Licensed under the Apache License, Version 2.0.
  *
  ******************************************************************************/
 //! HTTP client module root.
@@ -14,10 +15,3 @@ pub mod http_logger;
 
 pub use http_client::HttpClient;
 pub use http_client_factory::HttpClientFactory;
-
-#[cfg(coverage)]
-#[doc(hidden)]
-pub(crate) use http_client_factory::coverage_exercise_factory_paths;
-#[cfg(coverage)]
-#[doc(hidden)]
-pub(crate) use http_logger::coverage_exercise_request_log_url_fallback;
