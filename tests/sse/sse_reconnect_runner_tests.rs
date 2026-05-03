@@ -13,20 +13,40 @@
 
 use std::io::Error as IoError;
 use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc, Mutex,
+    atomic::{
+        AtomicUsize,
+        Ordering,
+    },
+    Arc,
+    Mutex,
 };
-use std::time::{Duration, Instant};
+use std::time::{
+    Duration,
+    Instant,
+};
 
 use futures_util::StreamExt;
 use http::Method;
 use qubit_http::{
-    sse::SseReconnectOptions, CancellationToken, HttpClientFactory, HttpClientOptions, HttpError,
-    HttpErrorKind, HttpRequestInterceptor, RetryDelay, RetryJitter, RetryOptions,
+    sse::SseReconnectOptions,
+    CancellationToken,
+    HttpClientFactory,
+    HttpClientOptions,
+    HttpError,
+    HttpErrorKind,
+    HttpRequestInterceptor,
+    RetryDelay,
+    RetryJitter,
+    RetryOptions,
 };
 use tokio::time::timeout;
 
-use crate::common::{spawn_multi_shot_server, spawn_one_shot_server, ResponseChunk, ResponsePlan};
+use crate::common::{
+    spawn_multi_shot_server,
+    spawn_one_shot_server,
+    ResponseChunk,
+    ResponsePlan,
+};
 
 /// Builds retry options for SSE reconnect tests.
 ///

@@ -10,19 +10,32 @@
 //! Builder for [`super::http_request::HttpRequest`].
 
 use std::time::Duration;
-use std::{future::Future, pin::Pin};
+use std::{
+    future::Future,
+    pin::Pin,
+};
 
 use bytes::Bytes;
 use http::header::CONTENT_TYPE;
-use http::{HeaderMap, HeaderValue, Method};
+use http::{
+    HeaderMap,
+    HeaderValue,
+    Method,
+};
 use serde::Serialize;
 use tokio_util::sync::CancellationToken;
 use url::form_urlencoded;
 use url::Url;
 
 use crate::{
-    AsyncHttpHeaderInjector, HttpClient, HttpError, HttpHeaderInjector, HttpRequestBodyByteStream,
-    HttpRequestStreamingBody, HttpResult, HttpRetryMethodPolicy,
+    AsyncHttpHeaderInjector,
+    HttpClient,
+    HttpError,
+    HttpHeaderInjector,
+    HttpRequestBodyByteStream,
+    HttpRequestStreamingBody,
+    HttpResult,
+    HttpRetryMethodPolicy,
 };
 
 use super::http_request::HttpRequest;

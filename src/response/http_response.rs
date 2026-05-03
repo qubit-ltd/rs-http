@@ -13,18 +13,44 @@ use std::time::Duration;
 
 use async_stream::stream;
 use bytes::Bytes;
-use futures_util::{stream as futures_stream, StreamExt};
-use http::header::{CONTENT_LENGTH, CONTENT_TYPE};
-use http::{HeaderMap, Method, StatusCode};
+use futures_util::{
+    stream as futures_stream,
+    StreamExt,
+};
+use http::header::{
+    CONTENT_LENGTH,
+    CONTENT_TYPE,
+};
+use http::{
+    HeaderMap,
+    Method,
+    StatusCode,
+};
 use serde::de::DeserializeOwned;
 use tokio_util::sync::CancellationToken;
 use url::Url;
 
-use crate::error::{backend_error_mapper::map_reqwest_error, ReqwestErrorPhase};
-use crate::sse::{DoneMarkerPolicy, SseChunkStream, SseEventStream, SseJsonMode};
-use crate::{HttpByteStream, HttpError, HttpErrorKind, HttpResult};
+use crate::error::{
+    backend_error_mapper::map_reqwest_error,
+    ReqwestErrorPhase,
+};
+use crate::sse::{
+    DoneMarkerPolicy,
+    SseChunkStream,
+    SseEventStream,
+    SseJsonMode,
+};
+use crate::{
+    HttpByteStream,
+    HttpError,
+    HttpErrorKind,
+    HttpResult,
+};
 
-use super::{HttpResponseMeta, HttpResponseOptions};
+use super::{
+    HttpResponseMeta,
+    HttpResponseOptions,
+};
 
 /// Runtime state bound to one response instance.
 #[derive(Debug, Clone)]

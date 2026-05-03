@@ -13,12 +13,18 @@
 //!
 
 use crate::constants::{
-    SENSITIVE_HEADER_MASK_EDGE_CHARS, SENSITIVE_HEADER_MASK_PLACEHOLDER,
+    SENSITIVE_HEADER_MASK_EDGE_CHARS,
+    SENSITIVE_HEADER_MASK_PLACEHOLDER,
     SENSITIVE_HEADER_MASK_SHORT_LEN,
 };
 use crate::{
-    HttpClientOptions, HttpLoggingOptions, HttpRequest, HttpRequestBody, HttpResponse,
-    HttpResponseMeta, SensitiveHttpHeaders,
+    HttpClientOptions,
+    HttpLoggingOptions,
+    HttpRequest,
+    HttpRequestBody,
+    HttpResponse,
+    HttpResponseMeta,
+    SensitiveHttpHeaders,
 };
 use bytes::Bytes;
 

@@ -8,7 +8,10 @@
  *
  ******************************************************************************/
 
-use qubit_http::{HttpRequestRetryOverride, HttpRetryMethodPolicy};
+use qubit_http::{
+    HttpRequestRetryOverride,
+    HttpRetryMethodPolicy,
+};
 
 #[test]
 fn test_request_retry_override_default_follows_client_policy() {

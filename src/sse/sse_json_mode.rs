@@ -11,7 +11,10 @@
 //!
 
 use parse_display::FromStr as DeriveFromStr;
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize,
+    Serialize,
+};
 
 /// How to handle JSON parse failures on SSE `data:` lines.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, DeriveFromStr)]

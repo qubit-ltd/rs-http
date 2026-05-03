@@ -15,19 +15,41 @@
 //! per request.
 //!
 
-use std::time::{Duration, Instant};
+use std::time::{
+    Duration,
+    Instant,
+};
 
 use qubit_retry::{
-    AttemptFailure, AttemptFailureDecision, Retry, RetryContext, RetryError, RetryErrorReason,
+    AttemptFailure,
+    AttemptFailureDecision,
+    Retry,
+    RetryContext,
+    RetryError,
+    RetryErrorReason,
 };
 
 use crate::sse::SseReconnectRunner;
 use crate::{
     response::HttpResponseOptions,
-    sse::{SseEventStream, SseReconnectOptions},
-    AsyncHttpHeaderInjector, HttpClientOptions, HttpError, HttpHeaderInjector, HttpLogger,
-    HttpRequest, HttpRequestBuilder, HttpRequestInterceptor, HttpRequestInterceptors, HttpResponse,
-    HttpResponseInterceptor, HttpResponseInterceptors, HttpResponseMeta, HttpResult,
+    sse::{
+        SseEventStream,
+        SseReconnectOptions,
+    },
+    AsyncHttpHeaderInjector,
+    HttpClientOptions,
+    HttpError,
+    HttpHeaderInjector,
+    HttpLogger,
+    HttpRequest,
+    HttpRequestBuilder,
+    HttpRequestInterceptor,
+    HttpRequestInterceptors,
+    HttpResponse,
+    HttpResponseInterceptor,
+    HttpResponseInterceptors,
+    HttpResponseMeta,
+    HttpResult,
     HttpRetryOptions,
 };
 

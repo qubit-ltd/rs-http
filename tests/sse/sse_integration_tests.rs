@@ -12,14 +12,28 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use futures_util::StreamExt;
-use http::{HeaderMap, Method, StatusCode};
+use http::{
+    HeaderMap,
+    Method,
+    StatusCode,
+};
 use qubit_http::{
-    sse::{SseChunk, SseJsonMode},
-    HttpClientFactory, HttpClientOptions, HttpErrorKind, HttpResponse,
+    sse::{
+        SseChunk,
+        SseJsonMode,
+    },
+    HttpClientFactory,
+    HttpClientOptions,
+    HttpErrorKind,
+    HttpResponse,
 };
 use tokio::time::timeout;
 
-use crate::common::{spawn_one_shot_server, ResponseChunk, ResponsePlan};
+use crate::common::{
+    spawn_one_shot_server,
+    ResponseChunk,
+    ResponsePlan,
+};
 
 #[derive(Debug, serde::Deserialize, PartialEq, Eq)]
 struct TestChunk {

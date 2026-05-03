@@ -10,10 +10,14 @@
 //! Decode and error-preview options bound to one response instance.
 
 use crate::constants::{
-    DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES, DEFAULT_SSE_MAX_FRAME_BYTES,
+    DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES,
+    DEFAULT_SSE_MAX_FRAME_BYTES,
     DEFAULT_SSE_MAX_LINE_BYTES,
 };
-use crate::sse::{DoneMarkerPolicy, SseJsonMode};
+use crate::sse::{
+    DoneMarkerPolicy,
+    SseJsonMode,
+};
 
 /// Decode/error-preview options bound to one response instance.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -10,19 +10,37 @@
 
 use std::error::Error as StdError;
 use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc, Mutex,
+    atomic::{
+        AtomicUsize,
+        Ordering,
+    },
+    Arc,
+    Mutex,
 };
 use std::time::Duration;
 
-use http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode};
+use http::{
+    HeaderMap,
+    HeaderName,
+    HeaderValue,
+    Method,
+    StatusCode,
+};
 use qubit_http::{
-    HttpClientFactory, HttpClientOptions, HttpError, HttpErrorKind, HttpHeaderInjector,
-    HttpRequestInterceptor, HttpResponseInterceptor,
+    HttpClientFactory,
+    HttpClientOptions,
+    HttpError,
+    HttpErrorKind,
+    HttpHeaderInjector,
+    HttpRequestInterceptor,
+    HttpResponseInterceptor,
 };
 use tokio::time::timeout;
 
-use crate::common::{spawn_one_shot_server, ResponsePlan};
+use crate::common::{
+    spawn_one_shot_server,
+    ResponsePlan,
+};
 
 fn retry_abort_inner_http(error: &HttpError) -> &HttpError {
     let boxed = error

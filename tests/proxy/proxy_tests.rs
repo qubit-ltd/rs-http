@@ -11,11 +11,19 @@
 use std::time::Duration;
 
 use http::Method;
-use qubit_http::{HttpClientFactory, HttpClientOptions, HttpErrorKind, ProxyType};
+use qubit_http::{
+    HttpClientFactory,
+    HttpClientOptions,
+    HttpErrorKind,
+    ProxyType,
+};
 use tokio::time::timeout;
 
 use crate::common::{
-    spawn_one_shot_server, spawn_simple_proxy_server, ProxyBehavior, ResponsePlan,
+    spawn_one_shot_server,
+    spawn_simple_proxy_server,
+    ProxyBehavior,
+    ResponsePlan,
 };
 
 #[tokio::test]

@@ -14,8 +14,17 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use futures_util::StreamExt as _;
-use http::{HeaderMap, Method};
-use qubit_http::{sse::SseReconnectOptions, HttpResponse, HttpResult, RetryDelay, RetryJitter};
+use http::{
+    HeaderMap,
+    Method,
+};
+use qubit_http::{
+    sse::SseReconnectOptions,
+    HttpResponse,
+    HttpResult,
+    RetryDelay,
+    RetryJitter,
+};
 
 async fn collect_results<T>(stream: impl futures_util::Stream<Item = HttpResult<T>>) -> Vec<T> {
     stream

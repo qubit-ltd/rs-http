@@ -15,17 +15,30 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use futures_util::stream as futures_stream;
-use http::{HeaderMap, HeaderName, HeaderValue, Method};
+use http::{
+    HeaderMap,
+    HeaderName,
+    HeaderValue,
+    Method,
+};
 use qubit_function::MutatingFunction;
 use reqwest::Response;
 use tokio_util::sync::CancellationToken;
 use url::Host;
 use url::Url;
 
-use crate::error::{backend_error_mapper::map_reqwest_error, ReqwestErrorPhase};
+use crate::error::{
+    backend_error_mapper::map_reqwest_error,
+    ReqwestErrorPhase,
+};
 use crate::{
-    AsyncHttpHeaderInjector, HttpError, HttpErrorKind, HttpHeaderInjector, HttpLogger,
-    HttpRequestStreamingBody, HttpResult,
+    AsyncHttpHeaderInjector,
+    HttpError,
+    HttpErrorKind,
+    HttpHeaderInjector,
+    HttpLogger,
+    HttpRequestStreamingBody,
+    HttpResult,
 };
 
 use super::http_request_body::HttpRequestBody;

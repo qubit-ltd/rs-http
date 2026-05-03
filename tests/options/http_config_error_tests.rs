@@ -10,7 +10,10 @@
 
 use qubit_config::Config;
 use qubit_datatype::DataType;
-use qubit_http::{HttpConfigError, HttpConfigErrorKind};
+use qubit_http::{
+    HttpConfigError,
+    HttpConfigErrorKind,
+};
 
 #[test]
 fn test_http_config_error_display() {

@@ -10,8 +10,14 @@
 
 use bytes::Bytes;
 use futures_util::StreamExt;
-use http::{HeaderMap, Method};
-use qubit_http::{HttpResponse, HttpResult};
+use http::{
+    HeaderMap,
+    Method,
+};
+use qubit_http::{
+    HttpResponse,
+    HttpResult,
+};
 
 async fn collect_results<T>(stream: impl futures_util::Stream<Item = HttpResult<T>>) -> Vec<T> {
     stream

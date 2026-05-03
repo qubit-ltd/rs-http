@@ -16,13 +16,28 @@ use std::time::Instant;
 
 use async_stream::stream;
 use futures_util::StreamExt;
-use http::header::{HeaderName, HeaderValue, CONTENT_TYPE};
+use http::header::{
+    HeaderName,
+    HeaderValue,
+    CONTENT_TYPE,
+};
 use tokio_util::sync::CancellationToken;
 
-use super::{SseEventStream, SseReconnectOptions, DEFAULT_SSE_MAX_RECONNECT_DELAY};
+use super::{
+    SseEventStream,
+    SseReconnectOptions,
+    DEFAULT_SSE_MAX_RECONNECT_DELAY,
+};
 use crate::{
-    HttpClient, HttpError, HttpErrorKind, HttpRequest, HttpResponse, HttpResult, RetryDelay,
-    RetryHint, RetryOptions,
+    HttpClient,
+    HttpError,
+    HttpErrorKind,
+    HttpRequest,
+    HttpResponse,
+    HttpResult,
+    RetryDelay,
+    RetryHint,
+    RetryOptions,
 };
 
 /// Header name used for SSE resume token propagation.

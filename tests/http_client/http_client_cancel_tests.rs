@@ -9,20 +9,37 @@
  ******************************************************************************/
 
 use std::sync::{
-    atomic::{AtomicUsize, Ordering},
+    atomic::{
+        AtomicUsize,
+        Ordering,
+    },
     Arc,
 };
-use std::time::{Duration, Instant};
+use std::time::{
+    Duration,
+    Instant,
+};
 
 use futures_util::StreamExt;
 use http::Method;
 use qubit_http::{
-    AsyncHttpHeaderInjector, CancellationToken, HttpClientFactory, HttpClientOptions, HttpError,
-    HttpErrorKind, RetryDelay, RetryHint,
+    AsyncHttpHeaderInjector,
+    CancellationToken,
+    HttpClientFactory,
+    HttpClientOptions,
+    HttpError,
+    HttpErrorKind,
+    RetryDelay,
+    RetryHint,
 };
 use tokio::time::timeout;
 
-use crate::common::{spawn_multi_shot_server, spawn_one_shot_server, ResponseChunk, ResponsePlan};
+use crate::common::{
+    spawn_multi_shot_server,
+    spawn_one_shot_server,
+    ResponseChunk,
+    ResponsePlan,
+};
 
 #[test]
 fn test_cancelled_error_semantics() {

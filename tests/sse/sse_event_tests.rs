@@ -9,7 +9,10 @@
  ******************************************************************************/
 //! Tests for `src/sse/sse_event.rs`.
 
-use qubit_http::sse::{SseEvent, SseJsonMode};
+use qubit_http::sse::{
+    SseEvent,
+    SseJsonMode,
+};
 use qubit_http::HttpErrorKind;
 
 #[derive(Debug, serde::Deserialize, PartialEq, Eq)]

@@ -12,7 +12,10 @@ use std::str::FromStr;
 
 use http::Method;
 use parse_display::FromStr as DeriveFromStr;
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize,
+    Serialize,
+};
 
 use super::HttpConfigError;
 

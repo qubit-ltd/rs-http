@@ -16,7 +16,10 @@ use async_stream::stream;
 use futures_util::StreamExt;
 
 use super::line_decoder::SseLineStream;
-use super::{SseEvent, SseEventStream};
+use super::{
+    SseEvent,
+    SseEventStream,
+};
 
 /// Groups newline-delimited SSE fields into [`SseEvent`] records (blank line flushes a frame).
 ///

@@ -12,7 +12,10 @@
 use std::error::Error;
 use std::time::Duration;
 
-use http::{Method, StatusCode};
+use http::{
+    Method,
+    StatusCode,
+};
 use thiserror::Error;
 use url::Url;
 

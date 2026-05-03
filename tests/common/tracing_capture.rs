@@ -9,7 +9,10 @@
  ******************************************************************************/
 
 use std::io;
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    Arc,
+    Mutex,
+};
 
 use tracing_subscriber::fmt::MakeWriter;
 

@@ -16,9 +16,16 @@ use std::pin::Pin;
 
 use async_stream::stream;
 use bytes::BytesMut;
-use futures_util::{Stream, StreamExt};
+use futures_util::{
+    Stream,
+    StreamExt,
+};
 
-use crate::{HttpByteStream, HttpError, HttpResult};
+use crate::{
+    HttpByteStream,
+    HttpError,
+    HttpResult,
+};
 
 /// Pin-boxed stream of newline-delimited text lines or errors.
 pub type SseLineStream = Pin<Box<dyn Stream<Item = HttpResult<String>> + Send>>;

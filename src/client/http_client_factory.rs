@@ -9,15 +9,31 @@
  ******************************************************************************/
 //! Reqwest-backed HTTP client factory.
 
-use std::net::{IpAddr, SocketAddr};
+use std::net::{
+    IpAddr,
+    SocketAddr,
+};
 
-use reqwest::dns::{Addrs, Name, Resolve, Resolving};
+use reqwest::dns::{
+    Addrs,
+    Name,
+    Resolve,
+    Resolving,
+};
 use reqwest::redirect::Policy;
 
 use crate::HttpConfigError;
-use crate::{HttpClient, HttpClientOptions, HttpError, HttpResult};
+use crate::{
+    HttpClient,
+    HttpClientOptions,
+    HttpError,
+    HttpResult,
+};
 use qubit_config::ConfigReader;
-use qubit_error::{BoxError, IntoBoxError};
+use qubit_error::{
+    BoxError,
+    IntoBoxError,
+};
 
 /// DNS resolver that filters out non-IPv4 addresses for `ipv4_only` mode.
 #[derive(Debug, Clone, Copy, Default)]

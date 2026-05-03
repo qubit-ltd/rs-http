@@ -8,18 +8,37 @@
  *
  ******************************************************************************/
 
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{
+    AtomicBool,
+    AtomicUsize,
+    Ordering,
+};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::{
+    Duration,
+    Instant,
+};
 
 use futures_util::StreamExt;
-use http::{Method, StatusCode};
+use http::{
+    Method,
+    StatusCode,
+};
 use qubit_http::{
-    HttpClientFactory, HttpClientOptions, HttpErrorKind, HttpRetryMethodPolicy, RetryDelay,
+    HttpClientFactory,
+    HttpClientOptions,
+    HttpErrorKind,
+    HttpRetryMethodPolicy,
+    RetryDelay,
 };
 use tokio::time::timeout;
 
-use crate::common::{spawn_multi_shot_server, spawn_one_shot_server, ResponseChunk, ResponsePlan};
+use crate::common::{
+    spawn_multi_shot_server,
+    spawn_one_shot_server,
+    ResponseChunk,
+    ResponsePlan,
+};
 
 #[tokio::test]
 async fn test_request_retry_override_force_enable_and_all_methods_for_post() {

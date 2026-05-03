@@ -12,12 +12,23 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use http::header::CONTENT_TYPE;
-use http::{HeaderMap, HeaderValue, Method};
+use http::{
+    HeaderMap,
+    HeaderValue,
+    Method,
+};
 use qubit_http::{
-    CancellationToken, HttpClientFactory, HttpClientOptions, HttpErrorKind, HttpRequestBody,
+    CancellationToken,
+    HttpClientFactory,
+    HttpClientOptions,
+    HttpErrorKind,
+    HttpRequestBody,
     HttpRetryMethodPolicy,
 };
-use serde::ser::{Error as _, Serializer};
+use serde::ser::{
+    Error as _,
+    Serializer,
+};
 
 struct FailingSerialize;
 

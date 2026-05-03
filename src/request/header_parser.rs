@@ -9,9 +9,15 @@
  ******************************************************************************/
 //! Header parsing helpers for request configuration paths.
 
-use http::{HeaderName, HeaderValue};
+use http::{
+    HeaderName,
+    HeaderValue,
+};
 
-use crate::{HttpError, HttpResult};
+use crate::{
+    HttpError,
+    HttpResult,
+};
 
 /// Parses a header name and value pair into typed HTTP header components.
 ///

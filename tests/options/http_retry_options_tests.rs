@@ -12,7 +12,12 @@ use std::time::Duration;
 
 use http::StatusCode;
 use qubit_config::Config;
-use qubit_http::{HttpConfigErrorKind, HttpErrorKind, HttpRetryMethodPolicy, HttpRetryOptions};
+use qubit_http::{
+    HttpConfigErrorKind,
+    HttpErrorKind,
+    HttpRetryMethodPolicy,
+    HttpRetryOptions,
+};
 
 #[test]
 fn test_http_retry_options_alias_exponential_dash_normalizes_to_exponential_backoff() {

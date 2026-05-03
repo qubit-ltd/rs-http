@@ -10,7 +10,10 @@
 //! Integration tests for `src/error/retry_hint.rs`.
 
 use http::StatusCode;
-use qubit_http::{HttpError, RetryHint};
+use qubit_http::{
+    HttpError,
+    RetryHint,
+};
 
 use std::str::FromStr;
 

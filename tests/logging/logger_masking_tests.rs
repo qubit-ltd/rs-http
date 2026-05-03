@@ -8,10 +8,22 @@
  *
  ******************************************************************************/
 
-use http::header::{HeaderName, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
-use http::{HeaderMap, Method};
+use http::header::{
+    HeaderName,
+    HeaderValue,
+    AUTHORIZATION,
+    CONTENT_TYPE,
+};
+use http::{
+    HeaderMap,
+    Method,
+};
 use qubit_http::{
-    HttpClientFactory, HttpClientOptions, HttpLogger, HttpLoggingOptions, SensitiveHttpHeaders,
+    HttpClientFactory,
+    HttpClientOptions,
+    HttpLogger,
+    HttpLoggingOptions,
+    SensitiveHttpHeaders,
 };
 
 use crate::common::capture_trace_logs;

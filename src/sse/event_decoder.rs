@@ -12,7 +12,11 @@
 
 use crate::HttpByteStream;
 
-use super::{frame_decoder, line_decoder, SseEventStream};
+use super::{
+    frame_decoder,
+    line_decoder,
+    SseEventStream,
+};
 
 /// Parses SSE frames from a body byte stream with explicit line/frame size limits.
 ///

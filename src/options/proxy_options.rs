@@ -8,7 +8,10 @@
  *
  ******************************************************************************/
 
-use qubit_config::{ConfigReader, ConfigResult};
+use qubit_config::{
+    ConfigReader,
+    ConfigResult,
+};
 
 use super::HttpConfigError;
 

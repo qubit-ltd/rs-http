@@ -8,17 +8,31 @@
  *
  ******************************************************************************/
 
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    Arc,
+    Mutex,
+};
 use std::time::Duration;
 
 use http::header::HeaderName;
-use http::{HeaderValue, Method, StatusCode};
+use http::{
+    HeaderValue,
+    Method,
+    StatusCode,
+};
 use qubit_http::{
-    AsyncHttpHeaderInjector, HttpClientFactory, HttpClientOptions, HttpHeaderInjector,
+    AsyncHttpHeaderInjector,
+    HttpClientFactory,
+    HttpClientOptions,
+    HttpHeaderInjector,
 };
 use tokio::time::timeout;
 
-use crate::common::{spawn_multi_shot_server, spawn_one_shot_server, ResponsePlan};
+use crate::common::{
+    spawn_multi_shot_server,
+    spawn_one_shot_server,
+    ResponsePlan,
+};
 
 #[tokio::test]
 async fn test_async_header_injector_runs_after_sync_injector_with_stable_order() {

@@ -9,7 +9,11 @@
  ******************************************************************************/
 
 use http::StatusCode;
-use qubit_http::{HttpError, HttpErrorKind, RetryHint};
+use qubit_http::{
+    HttpError,
+    HttpErrorKind,
+    RetryHint,
+};
 
 #[test]
 fn test_http_error_builder_methods() {
