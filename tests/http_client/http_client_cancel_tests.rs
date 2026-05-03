@@ -1,9 +1,10 @@
 /*******************************************************************************
  *
- *    Copyright (c) 2025 - 2026.
- *    Haixing Hu, Qubit Co. Ltd.
+ *    Copyright (c) 2025 - 2026 Haixing Hu.
  *
- *    All rights reserved.
+ *    SPDX-License-Identifier: Apache-2.0
+ *
+ *    Licensed under the Apache License, Version 2.0.
  *
  ******************************************************************************/
 
@@ -97,6 +98,49 @@ async fn test_execute_request_with_pre_cancelled_token_skips_request_interceptor
             .expect("cancelled error should include request URL")
             .query(),
         Some("trace=yes")
+    );
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert!(captured.is_empty());
+}
+
+#[tokio::test]
+async fn test_execute_request_cancelled_by_interceptor_stops_before_send() {
+    let server = spawn_multi_shot_server(vec![]).await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    let mut client = HttpClientFactory::new()
+        .create(options)
+        .expect("client should be created");
+
+    let token = CancellationToken::new();
+    let interceptor_token = token.clone();
+    client.add_request_interceptor(qubit_http::HttpRequestInterceptor::new(move |_request| {
+        interceptor_token.cancel();
+        Ok(())
+    }));
+
+    let request = client
+        .request(Method::GET, "/cancelled-by-interceptor")
+        .cancellation_token(token)
+        .build();
+    let error = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .expect_err("interceptor cancellation should stop before send");
+
+    assert_eq!(error.kind, HttpErrorKind::Cancelled);
+    assert!(error.message.contains("before sending"));
+    assert_eq!(
+        error
+            .url
+            .as_ref()
+            .expect("cancelled error should include request URL")
+            .path(),
+        "/cancelled-by-interceptor"
     );
 
     let captured = timeout(Duration::from_secs(3), server.finish())

@@ -1,9 +1,10 @@
 /*******************************************************************************
  *
- *    Copyright (c) 2025 - 2026.
- *    Haixing Hu, Qubit Co. Ltd.
+ *    Copyright (c) 2025 - 2026 Haixing Hu.
  *
- *    All rights reserved.
+ *    SPDX-License-Identifier: Apache-2.0
+ *
+ *    Licensed under the Apache License, Version 2.0.
  *
  ******************************************************************************/
 //! # HTTP Client Options
@@ -13,9 +14,6 @@
 //! The configuration key layout for `from_config` is documented in the
 //! `from_config_helpers` module (see `from_config_helpers.rs`).
 //!
-//! # Author
-//!
-//! Haixing Hu
 
 mod from_config_helpers;
 mod http_client_options;
@@ -39,13 +37,3 @@ pub use http_timeout_options::HttpTimeoutOptions;
 pub use proxy_options::ProxyOptions;
 pub use proxy_type::ProxyType;
 pub use sensitive_http_headers::SensitiveHttpHeaders;
-
-#[cfg(coverage)]
-#[doc(hidden)]
-pub(crate) use http_client_options::coverage_exercise_http_client_option_paths;
-#[cfg(coverage)]
-#[doc(hidden)]
-pub(crate) use http_config_error::coverage_exercise_config_error_paths;
-#[cfg(coverage)]
-#[doc(hidden)]
-pub(crate) use http_retry_options::coverage_exercise_retry_option_paths;
