@@ -1,9 +1,10 @@
 /*******************************************************************************
  *
- *    Copyright (c) 2025 - 2026.
- *    Haixing Hu, Qubit Co. Ltd.
+ *    Copyright (c) 2025 - 2026 Haixing Hu.
  *
- *    All rights reserved.
+ *    SPDX-License-Identifier: Apache-2.0
+ *
+ *    Licensed under the Apache License, Version 2.0.
  *
  ******************************************************************************/
 //! HTTP client: builds requests, applies defaults and interceptors, executes
@@ -13,9 +14,6 @@
 //! retry policy comes from [`crate::HttpClientOptions::retry`] unless overridden
 //! per request.
 //!
-//! # Author
-//!
-//! Haixing Hu
 
 use std::time::{Duration, Instant};
 
@@ -301,8 +299,8 @@ impl HttpClient {
     ///
     /// # Returns
     /// - `Ok(HttpResponse)` with lazy body and metadata.
-    /// - `Err(HttpError)` if cancelled before send, send fails, or
-    ///   [`HttpRequest::resolved_url`] fails when building the wrapper.
+    /// - `Err(HttpError)` if cancelled before send, URL resolution fails, or
+    ///   send fails.
     ///
     /// # Side effects
     /// Async network I/O and request logging via [`HttpLogger`].
@@ -316,6 +314,7 @@ impl HttpClient {
             return Err(error);
         }
         let logger = HttpLogger::new(&self.options);
+        let request_url = request.resolved_url_with_query()?;
         let backend_response = request.send_impl(&self.backend, &logger).await?;
         let meta = HttpResponseMeta::new(
             backend_response.status(),
@@ -335,7 +334,7 @@ impl HttpClient {
             backend_response,
             request.read_timeout(),
             request.cancellation_token().cloned(),
-            request.resolved_url_with_query()?,
+            request_url,
             response_options,
         ))
     }
@@ -354,9 +353,8 @@ impl HttpClient {
     ///
     /// # Returns
     /// - `Ok(HttpResponse)` when an attempt completes with success status.
-    /// - `Err(HttpError)` from retry option validation, from any
-    ///   [`HttpClient::execute_once`] failure that is non-retryable, or from
-    ///   retry exhaustion/max-duration enforcement.
+    /// - `Err(HttpError)` from any [`HttpClient::execute_once`] failure that is
+    ///   non-retryable, or from retry exhaustion/max-duration enforcement.
     ///
     /// # Side effects
     /// Multiple async HTTP attempts and optional sleeps.
@@ -366,12 +364,12 @@ impl HttpClient {
         options: HttpRetryOptions,
     ) -> HttpResult<HttpResponse> {
         let honor_retry_after = request.retry_override().should_honor_retry_after();
-        let retry_options = options.to_executor_options()?;
+        let retry_options = options.to_executor_options();
         let started_at = Instant::now();
 
         let retry_policy_options = options.clone();
         let retry_delay_options = retry_options.clone();
-        let retry_policy = match Retry::<HttpError>::builder()
+        let retry_policy = Retry::<HttpError>::builder()
             .options(retry_options)
             .retry_after_from_error(move |error| {
                 honor_retry_after.then_some(error.retry_after).flatten()
@@ -387,14 +385,7 @@ impl HttpClient {
                 },
             )
             .build()
-        {
-            Ok(retry_policy) => retry_policy,
-            Err(error) => {
-                return Err(HttpError::other(format!(
-                    "Invalid HTTP retry executor: {error}"
-                )))
-            }
-        };
+            .expect("validated HTTP retry options should build retry policy");
 
         let cancellation_token = request.cancellation_token().cloned();
         let request_method = request.method().clone();
@@ -481,9 +472,9 @@ impl HttpClient {
         policy_options: &HttpRetryOptions,
         delay_options: &qubit_retry::RetryOptions,
     ) -> AttemptFailureDecision {
-        let Some(error) = failure.as_error() else {
-            return AttemptFailureDecision::UseDefault;
-        };
+        let error = failure
+            .as_error()
+            .expect("HTTP retry attempts do not configure non-HTTP attempt failures");
         if !Self::is_retryable_error(error, policy_options) {
             return AttemptFailureDecision::Abort;
         }
@@ -491,27 +482,6 @@ impl HttpClient {
         let base_delay = delay_options.delay_for_attempt(context.attempt());
         let sleep_delay = Self::retry_sleep_delay(base_delay, context.retry_after_hint());
         AttemptFailureDecision::RetryAfter(sleep_delay)
-    }
-
-    /// Exposes retry failure decisions to coverage-only integration tests.
-    ///
-    /// # Parameters
-    /// - `failure`: Failed attempt to inspect.
-    /// - `context`: Retry context for the failed attempt.
-    /// - `policy_options`: HTTP retry policy options.
-    /// - `delay_options`: Retry executor options.
-    ///
-    /// # Returns
-    /// The retry decision selected by [`Self::retry_failure_decision`].
-    #[cfg(coverage)]
-    #[doc(hidden)]
-    pub(crate) fn coverage_retry_failure_decision(
-        failure: &AttemptFailure<HttpError>,
-        context: &RetryContext,
-        policy_options: &HttpRetryOptions,
-        delay_options: &qubit_retry::RetryOptions,
-    ) -> AttemptFailureDecision {
-        Self::retry_failure_decision(failure, context, policy_options, delay_options)
     }
 
     /// Adds retry-attempt exhaustion context to the last attempt error.
@@ -566,13 +536,11 @@ impl HttpClient {
     /// max-duration error with no underlying attempt error.
     fn map_retry_max_duration_exceeded(
         started_at: Instant,
-        max_duration: Option<Duration>,
+        max_duration: Duration,
         last_error: Option<HttpError>,
     ) -> HttpError {
         let elapsed = started_at.elapsed();
-        let max_duration_text = max_duration
-            .map(|duration| format!("{duration:?}"))
-            .unwrap_or_else(|| "unbounded".to_string());
+        let max_duration_text = format!("{max_duration:?}");
         match last_error {
             Some(mut error) => {
                 error.message = format!(
@@ -609,78 +577,31 @@ impl HttpClient {
         let last_error = last_failure.and_then(AttemptFailure::into_error);
 
         match reason {
-            RetryErrorReason::AttemptsExceeded => last_error
-                .map(|error| Self::map_retry_attempts_exhausted(error, attempts, max_attempts))
-                .unwrap_or_else(|| {
-                    HttpError::retry_aborted(format!(
-                        "HTTP retry attempts exhausted without a captured HTTP error: {attempts}/{max_attempts}"
-                    ))
-                }),
+            RetryErrorReason::AttemptsExceeded => {
+                let error =
+                    last_error.expect("HTTP retry attempts exceeded should preserve last error");
+                Self::map_retry_attempts_exhausted(error, attempts, max_attempts)
+            }
             RetryErrorReason::MaxOperationElapsedExceeded
             | RetryErrorReason::MaxTotalElapsedExceeded => {
+                let max_duration =
+                    max_duration.expect("HTTP retry elapsed limit requires max_duration");
                 Self::map_retry_max_duration_exceeded(started_at, max_duration, last_error)
             }
-            RetryErrorReason::Aborted => match last_error {
-                Some(error) if error.kind == crate::HttpErrorKind::Cancelled => error,
-                Some(error) => Self::map_retry_aborted(error, attempts, started_at),
-                None => HttpError::retry_aborted(format!(
-                    "HTTP retry aborted after {attempts} attempt(s) without a captured HTTP error"
-                )),
-            },
+            RetryErrorReason::Aborted => {
+                let error = last_error.expect("HTTP retry abort should preserve last error");
+                if error.kind == crate::HttpErrorKind::Cancelled {
+                    error
+                } else {
+                    Self::map_retry_aborted(error, attempts, started_at)
+                }
+            }
             RetryErrorReason::UnsupportedOperation | RetryErrorReason::WorkerStillRunning => {
                 HttpError::other(format!(
                     "HTTP retry executor failed after {attempts} attempt(s): {reason:?}"
                 ))
             }
         }
-    }
-
-    /// Exposes retry error mapping to coverage-only integration tests.
-    ///
-    /// # Parameters
-    /// - `error`: Synthetic terminal retry error.
-    /// - `started_at`: Monotonic retry-flow start instant.
-    /// - `max_duration`: Optional HTTP max-duration budget.
-    /// - `max_attempts`: Configured maximum attempts.
-    ///
-    /// # Returns
-    /// HTTP error mapped by [`Self::map_retry_error`].
-    #[cfg(coverage)]
-    #[doc(hidden)]
-    pub(crate) fn coverage_map_retry_error(
-        error: RetryError<HttpError>,
-        started_at: Instant,
-        max_duration: Option<Duration>,
-        max_attempts: u32,
-    ) -> HttpError {
-        Self::map_retry_error(error, started_at, max_duration, max_attempts)
-    }
-
-    /// Exercises the low-level pre-send cancellation check for coverage tests.
-    ///
-    /// # Returns
-    /// Error kind returned before any network I/O starts.
-    #[cfg(coverage)]
-    #[doc(hidden)]
-    pub(crate) async fn coverage_prepare_cancelled_error() -> crate::HttpErrorKind {
-        let client = crate::HttpClientFactory::new()
-            .create_default()
-            .expect("coverage HTTP client should build");
-        let token = tokio_util::sync::CancellationToken::new();
-        token.cancel();
-        let mut request = client
-            .request(
-                http::Method::GET,
-                "https://example.com/cancelled-before-send",
-            )
-            .build();
-        request.set_cancellation_token(token);
-
-        client
-            .prepare_and_send_once(request, "coverage request cancelled before send")
-            .await
-            .expect_err("pre-cancelled request should fail before send")
-            .kind
     }
 
     /// Builds a cancellation error for retry wait cancellation.

@@ -1,16 +1,14 @@
 /*******************************************************************************
  *
- *    Copyright (c) 2025 - 2026.
- *    Haixing Hu, Qubit Co. Ltd.
+ *    Copyright (c) 2025 - 2026 Haixing Hu.
  *
- *    All rights reserved.
+ *    SPDX-License-Identifier: Apache-2.0
+ *
+ *    Licensed under the Apache License, Version 2.0.
  *
  ******************************************************************************/
 //! Decoded JSON chunk or explicit SSE stream end marker.
 //!
-//! # Author
-//!
-//! Haixing Hu
 
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};

@@ -1,9 +1,10 @@
 /*******************************************************************************
  *
- *    Copyright (c) 2025 - 2026.
- *    Haixing Hu, Qubit Co. Ltd.
+ *    Copyright (c) 2025 - 2026 Haixing Hu.
  *
- *    All rights reserved.
+ *    SPDX-License-Identifier: Apache-2.0
+ *
+ *    Licensed under the Apache License, Version 2.0.
  *
  ******************************************************************************/
 
@@ -485,45 +486,4 @@ impl HttpClientOptions {
         Self::validate_positive_limit("sse.max_frame_bytes", self.sse_max_frame_bytes)?;
         Ok(())
     }
-}
-
-/// Exercises internal option parser branches for coverage-only tests.
-///
-/// # Returns
-/// Diagnostic strings proving private config helpers and validation closures ran.
-#[cfg(coverage)]
-#[doc(hidden)]
-pub(crate) fn coverage_exercise_http_client_option_paths() -> Vec<String> {
-    let config = qubit_config::Config::new();
-    let scoped_error = HttpClientOptions::resolve_config_error(
-        &config.prefix_view("coverage"),
-        HttpConfigError::invalid_value("", "coverage error"),
-    );
-    let root = HttpClientOptions::read_config(&config.prefix_view("coverage"))
-        .expect("empty root config should read");
-    let sse = HttpClientOptions::read_sse_config(&config.prefix_view("coverage.sse"))
-        .expect("empty SSE config should read");
-    let custom_marker = HttpClientOptions::parse_sse_done_marker_policy("coverage-done")
-        .expect("custom done marker should parse");
-    let mut options = HttpClientOptions {
-        user_agent: Some("bad\nagent".to_string()),
-        ..HttpClientOptions::default()
-    };
-    let invalid_user_agent = options
-        .validate()
-        .expect_err("invalid user agent should fail")
-        .message;
-    options.user_agent = Some("coverage-agent".to_string());
-    options
-        .add_headers(&[("x-coverage-a", "a"), ("x-coverage-b", "b")])
-        .expect("coverage headers should parse");
-
-    vec![
-        scoped_error.path,
-        root.base_url.is_none().to_string(),
-        sse.json_mode.is_none().to_string(),
-        format!("{custom_marker}"),
-        invalid_user_agent,
-        options.default_headers.len().to_string(),
-    ]
 }

@@ -1,16 +1,17 @@
 /*******************************************************************************
  *
- *    Copyright (c) 2025 - 2026.
- *    Haixing Hu, Qubit Co. Ltd.
+ *    Copyright (c) 2025 - 2026 Haixing Hu.
  *
- *    All rights reserved.
+ *    SPDX-License-Identifier: Apache-2.0
+ *
+ *    Licensed under the Apache License, Version 2.0.
  *
  ******************************************************************************/
 
 use std::time::Duration;
 
-use qubit_common::DataType;
 use qubit_config::Config;
+use qubit_datatype::DataType;
 use qubit_http::{
     constants::{
         DEFAULT_CONNECT_TIMEOUT_SECS, DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES,

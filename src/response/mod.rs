@@ -1,9 +1,10 @@
 /*******************************************************************************
  *
- *    Copyright (c) 2025 - 2026.
- *    Haixing Hu, Qubit Co. Ltd.
+ *    Copyright (c) 2025 - 2026 Haixing Hu.
  *
- *    All rights reserved.
+ *    SPDX-License-Identifier: Apache-2.0
+ *
+ *    Licensed under the Apache License, Version 2.0.
  *
  ******************************************************************************/
 //! HTTP response types, streaming body aliases, and response interceptors.
@@ -19,7 +20,3 @@ pub use http_response::HttpResponse;
 pub use http_response_interceptors::{HttpResponseInterceptor, HttpResponseInterceptors};
 pub use http_response_meta::HttpResponseMeta;
 pub(crate) use http_response_options::HttpResponseOptions;
-
-#[cfg(coverage)]
-#[doc(hidden)]
-pub(crate) use http_response::coverage_exercise_response_preview_paths;
