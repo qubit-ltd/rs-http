@@ -14,140 +14,19 @@
 
 //! # qubit-http integration tests
 //!
-//! Submodules mirror `src/` layout; paths are explicit so nested files are not
-//! registered as separate integration test crates (same pattern as `qubit-config`).
+//! Submodules mirror `src/` layout and are declared through ordinary module
+//! files under each test directory.
 
-#[path = "common/mod.rs"]
+mod client;
 mod common;
-
-#[path = "options/from_config_helpers_tests.rs"]
-mod from_config_helpers_tests;
-#[path = "options/http_client_options_tests.rs"]
-mod http_client_options_tests;
-#[path = "options/http_config_error_kind_tests.rs"]
-mod http_config_error_kind_tests;
-#[path = "options/http_config_error_tests.rs"]
-mod http_config_error_tests;
-#[path = "options/http_logging_options_tests.rs"]
-mod http_logging_options_tests;
-#[path = "options/http_retry_method_policy_tests.rs"]
-mod http_retry_method_policy_tests;
-#[path = "options/http_retry_options_tests.rs"]
-mod http_retry_options_tests;
-#[path = "options/http_timeout_options_tests.rs"]
-mod http_timeout_options_tests;
-#[path = "options/logging_options_tests.rs"]
-mod logging_options_tests;
-#[path = "options/proxy_options_tests.rs"]
-mod proxy_options_tests;
-#[path = "options/proxy_type_tests.rs"]
-mod proxy_type_tests;
-#[path = "options/sensitive_headers_tests.rs"]
-mod sensitive_headers_tests;
-#[path = "options/sensitive_http_headers_tests.rs"]
-mod sensitive_http_headers_tests;
-#[path = "options/timeout_options_tests.rs"]
-mod timeout_options_tests;
-
-#[path = "factory/ipv4_only_tests.rs"]
-mod ipv4_only_tests;
-
-#[path = "error/backend_error_mapper_tests.rs"]
-mod backend_error_mapper_tests;
-#[path = "error/http_error_kind_tests.rs"]
-mod http_error_kind_tests;
-#[path = "error/http_error_tests.rs"]
-mod http_error_tests;
-#[path = "error/reqwest_error_phase_tests.rs"]
-mod reqwest_error_phase_tests;
-
-#[path = "logging/logger_masking_tests.rs"]
-mod logger_masking_tests;
-#[path = "logging/logger_policy_tests.rs"]
-mod logger_policy_tests;
-
-#[path = "request/async_header_injector_tests.rs"]
-mod async_header_injector_tests;
-#[path = "request/async_http_header_injector_tests.rs"]
-mod async_http_header_injector_tests;
-#[path = "request/header_parser_tests.rs"]
-mod header_parser_tests;
-#[path = "request/http_request_body_tests.rs"]
-mod http_request_body_tests;
-#[path = "request/http_request_builder_tests.rs"]
-mod http_request_builder_tests;
-#[path = "request/http_request_interceptors_tests.rs"]
-mod http_request_interceptors_tests;
-#[path = "request/http_request_retry_override_tests.rs"]
-mod http_request_retry_override_tests;
-#[path = "request/http_request_streaming_body_tests.rs"]
-mod http_request_streaming_body_tests;
-#[path = "request/http_request_tests.rs"]
-mod http_request_tests;
-#[path = "response/http_response_interceptors_tests.rs"]
-mod http_response_interceptors_tests;
-#[path = "response/http_response_meta_tests.rs"]
-mod http_response_meta_tests;
-#[path = "response/http_response_options_tests.rs"]
-mod http_response_options_tests;
-#[path = "request/request_interceptor_tests.rs"]
-mod request_interceptor_tests;
-#[path = "response/response_interceptor_tests.rs"]
-mod response_interceptor_tests;
-
-#[path = "sse/done_marker_policy_tests.rs"]
-mod done_marker_policy_tests;
-#[path = "sse/event_decoder_tests.rs"]
-mod event_decoder_tests;
-#[path = "sse/json_decoder_tests.rs"]
-mod json_decoder_tests;
-#[path = "sse/sse_chunk_tests.rs"]
-mod sse_chunk_tests;
-#[path = "sse/sse_event_tests.rs"]
-mod sse_event_tests;
-#[path = "sse/sse_json_mode_tests.rs"]
-mod sse_json_mode_tests;
-#[path = "sse/mod_tests.rs"]
-mod sse_mod_tests;
-
-#[path = "http_client/http_client_async_injector_tests.rs"]
-mod http_client_async_injector_tests;
-#[path = "http_client/http_client_behavior_tests.rs"]
-mod http_client_behavior_tests;
-#[path = "http_client/http_client_cancel_tests.rs"]
-mod http_client_cancel_tests;
-#[path = "http_client/http_client_error_paths_tests.rs"]
-mod http_client_error_paths_tests;
-#[path = "client/http_client_factory_tests.rs"]
-mod http_client_factory_tests;
-#[path = "http_client/http_client_request_body_tests.rs"]
-mod http_client_request_body_tests;
-#[path = "http_client/http_client_retry_override_tests.rs"]
-mod http_client_retry_override_tests;
-#[path = "client/http_client_tests.rs"]
-mod http_client_tests;
-#[path = "http_client/http_client_timeout_tests.rs"]
-mod http_client_timeout_tests;
-#[path = "response/http_response_tests.rs"]
-mod http_response_tests;
-#[path = "sse/sse_reconnect_options_tests.rs"]
-mod sse_reconnect_options_tests;
-#[path = "sse/sse_reconnect_runner_tests.rs"]
-mod sse_reconnect_runner_tests;
-#[path = "response/streaming_http_response_tests.rs"]
-mod streaming_http_response_tests;
-
-#[path = "proxy/proxy_tests.rs"]
-mod proxy_tests;
-#[path = "proxy/socks5_proxy_tests.rs"]
-mod socks5_proxy_tests;
-
-#[path = "retry_hint/retry_hint_tests.rs"]
-mod retry_hint_tests;
-
-#[path = "sse/frame_decoder_tests.rs"]
-mod frame_decoder_tests;
-#[path = "sse/line_decoder_tests.rs"]
-mod line_decoder_tests;
-#[path = "sse/sse_integration_tests.rs"]
-mod sse_integration_tests;
+mod constants_tests;
+mod error;
+mod factory;
+mod http_client;
+mod logging;
+mod options;
+mod proxy;
+mod request;
+mod response;
+mod retry_hint;
+mod sse;
