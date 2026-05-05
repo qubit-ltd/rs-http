@@ -1,0 +1,43 @@
+/*******************************************************************************
+ *
+ *    Copyright (c) 2025 - 2026 Haixing Hu.
+ *
+ *    SPDX-License-Identifier: Apache-2.0
+ *
+ *    Licensed under the Apache License, Version 2.0.
+ *
+ ******************************************************************************/
+
+use http::Method;
+use qubit_http::{
+    HttpClientFactory,
+    HttpClientOptions,
+    HttpLogger,
+    HttpLoggingOptions,
+};
+
+use crate::common::capture_trace_logs;
+
+#[test]
+fn test_http_logger_logs_request_body_preview_with_truncation() {
+    let mut options = HttpClientOptions::default();
+    options.logging = HttpLoggingOptions {
+        log_request_header: false,
+        log_request_body: true,
+        body_size_limit: 4,
+        ..HttpLoggingOptions::default()
+    };
+    let logger = HttpLogger::new(&options);
+    let client = HttpClientFactory::new()
+        .create_default()
+        .expect("default client should be created");
+    let request = client
+        .request(Method::POST, "https://example.com/upload")
+        .text_body("abcdef")
+        .build();
+
+    let logs = capture_trace_logs(|| logger.log_request(&request));
+
+    assert!(logs.contains("--> POST https://example.com/upload"));
+    assert!(logs.contains("Request body: abcd...<truncated 2 bytes>"));
+}
