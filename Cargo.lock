@@ -1062,9 +1062,9 @@ checksum = "6f8f052350ff3e4adffde1814a929c8403af2307552d2b4d0253f47818d26c09"
 
 [[package]]
 name = "qubit-function"
-version = "0.11.2"
+version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cdac38d5ed76324aaf340709253af4aa596bc01014d169c2b5e7e736c6504362"
+checksum = "da19a04aa84248448c3bfd7a5791d5e62adbf0c25fa93c91b0f3b72a051e61a4"
 dependencies = [
  "parking_lot",
  "pastey",
@@ -1072,7 +1072,7 @@ dependencies = [
 
 [[package]]
 name = "qubit-http"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "async-stream",
  "bytes",
@@ -1099,7 +1099,7 @@ dependencies = [
 
 [[package]]
 name = "qubit-retry"
-version = "0.10.3"
+version = "0.10.5"
 dependencies = [
  "parse-display",
  "qubit-datatype",
