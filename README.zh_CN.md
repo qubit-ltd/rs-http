@@ -1,7 +1,7 @@
 # Qubit HTTP（`rs-http`）
 
 [![Rust CI](https://github.com/qubit-ltd/rs-http/actions/workflows/ci.yml/badge.svg)](https://github.com/qubit-ltd/rs-http/actions/workflows/ci.yml)
-[![Coverage Status](https://coveralls.io/repos/github/qubit-ltd/rs-http/badge.svg?branch=main)](https://coveralls.io/github/qubit-ltd/rs-http?branch=main)
+[![Coverage](https://img.shields.io/endpoint?url=https://qubit-ltd.github.io/rs-http/coverage-badge.json)](https://qubit-ltd.github.io/rs-http/coverage/)
 [![Crates.io](https://img.shields.io/crates/v/qubit-http.svg?color=blue)](https://crates.io/crates/qubit-http)
 [![Docs.rs](https://docs.rs/qubit-http/badge.svg)](https://docs.rs/qubit-http)
 [![Rust](https://img.shields.io/badge/rust-1.94+-blue.svg?logo=rust)](https://www.rust-lang.org)
@@ -30,7 +30,7 @@
 
 ```toml
 [dependencies]
-qubit-http = "0.5"
+qubit-http = "0.7.0"
 http = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
