@@ -18,10 +18,14 @@
 提交 pull request 前，请尽量在本地运行相关检查：
 
 ```bash
-cargo fmt
+./style-check.sh
 cargo clippy --all-targets --all-features
 cargo test
 ```
+
+需要格式化代码时，使用 `./align-ci.sh` 后再重新运行检查。不要把裸
+`cargo fmt` 作为本项目的标准格式化命令；CI 的格式化规则通过
+`align-ci.sh` 使用项目 rustfmt 配置。
 
 如果某个检查无法在你的环境中运行，请在 pull request 中说明。
 
@@ -80,6 +84,8 @@ cargo test
 
 - 测试放在 `tests/` 目录。
 - 测试文件使用 `_tests.rs` 后缀。
+- 不要再从 `tests/mod.rs` 声明顶层 `tests/*.rs` 集成测试 target；Cargo
+  已经会把它作为独立 target 执行。
 - 测试函数使用 `test_{method_or_behavior}_{scenario}` 命名模式。
 - 覆盖正常路径、错误路径、边界条件和回归场景。
 - 优先使用精确断言，不要只验证“失败了”。

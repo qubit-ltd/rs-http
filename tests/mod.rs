@@ -19,7 +19,6 @@
 
 mod client;
 mod common;
-mod constants_tests;
 mod error;
 mod factory;
 mod http_client;

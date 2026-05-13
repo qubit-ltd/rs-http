@@ -169,7 +169,7 @@ async fn test_timeout_classification_is_retryable_in_deterministic_path() {
 }
 
 #[tokio::test]
-async fn test_request_timeout_during_body_read_is_classified_as_read_timeout() {
+async fn test_truncated_body_with_request_timeout_context_is_transport_error() {
     let server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
         status: 200,
         headers: vec![],
@@ -195,8 +195,8 @@ async fn test_request_timeout_during_body_read_is_classified_as_read_timeout() {
         .unwrap();
     let error = response.bytes().await.unwrap_err();
 
-    assert_eq!(error.kind, HttpErrorKind::Decode);
-    assert_eq!(error.retry_hint(), RetryHint::NonRetryable);
+    assert_eq!(error.kind, HttpErrorKind::Transport);
+    assert_eq!(error.retry_hint(), RetryHint::Retryable);
 }
 
 #[tokio::test]
