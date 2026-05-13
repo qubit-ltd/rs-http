@@ -38,7 +38,7 @@ fn test_http_stream_response_is_success_and_new() {
     );
 
     assert!(response.is_success());
-    let debug = format!("{:?}", &response);
+    let debug = format!("{:?}", response);
     assert!(debug.contains("HttpResponse"));
     assert!(debug.contains("status"));
     assert!(debug.contains("headers"));
