@@ -8,6 +8,8 @@
  *
  ******************************************************************************/
 
+use std::time::Duration;
+
 use bytes::Bytes;
 use futures_util::StreamExt;
 use http::{
@@ -18,8 +20,10 @@ use http::{
 use qubit_http::{
     HttpClientFactory,
     HttpClientOptions,
+    HttpErrorKind,
     HttpResponse,
 };
+use tokio::time::timeout;
 use url::Url;
 
 use crate::common::{
@@ -116,4 +120,102 @@ async fn test_http_stream_response_backend_taken_then_stream_and_bytes_are_empty
 
     let captured = server.finish().await;
     assert_eq!(captured.target, "/stream-take-backend");
+}
+
+#[tokio::test]
+async fn test_http_response_bytes_remembers_read_failure() {
+    let server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
+        status: 200,
+        headers: vec![],
+        total_length: 8,
+        prefix: b"abc".to_vec(),
+        delay: Duration::from_millis(0),
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.logging.log_response_body = false;
+    let client = HttpClientFactory::new()
+        .create(options)
+        .expect("client should be created");
+
+    let request = client.request(Method::GET, "/bytes-read-failure").build();
+    let mut response = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .expect("request should start");
+    let first_error = response
+        .bytes()
+        .await
+        .expect_err("truncated body should fail first read");
+    assert_eq!(first_error.kind, HttpErrorKind::Transport);
+
+    let second_error = response
+        .bytes()
+        .await
+        .expect_err("second read should preserve the prior body read failure");
+    assert_eq!(second_error.kind, HttpErrorKind::Transport);
+    assert!(second_error
+        .message
+        .contains("previous response body read failed"));
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.target, "/bytes-read-failure");
+}
+
+#[tokio::test]
+async fn test_http_response_stream_remembers_read_failure() {
+    let server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
+        status: 200,
+        headers: vec![],
+        total_length: 8,
+        prefix: b"abc".to_vec(),
+        delay: Duration::from_millis(0),
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.logging.log_response_body = false;
+    let client = HttpClientFactory::new()
+        .create(options)
+        .expect("client should be created");
+
+    let request = client.request(Method::GET, "/stream-read-failure").build();
+    let mut response = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .expect("request should start");
+    let mut stream = response.stream().expect("stream body should be available");
+
+    let first = stream
+        .next()
+        .await
+        .expect("first stream item should exist")
+        .expect("first stream item should be bytes");
+    assert_eq!(first, Bytes::from_static(b"abc"));
+    let stream_error = stream
+        .next()
+        .await
+        .expect("second stream item should contain read error")
+        .expect_err("truncated stream should fail");
+    assert_eq!(stream_error.kind, HttpErrorKind::Transport);
+    drop(stream);
+
+    let second_error = response
+        .bytes()
+        .await
+        .expect_err("bytes after stream failure should preserve the read failure");
+    assert_eq!(second_error.kind, HttpErrorKind::Transport);
+    assert!(second_error
+        .message
+        .contains("previous response body read failed"));
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.target, "/stream-read-failure");
 }
