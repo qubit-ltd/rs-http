@@ -322,7 +322,7 @@ fn test_execute_returns_body_read_error_from_response_logging() {
                 .await
                 .expect("execute timed out")
                 .expect_err("response logging should surface body read failure");
-            assert_eq!(error.kind, HttpErrorKind::Decode);
+            assert_eq!(error.kind, HttpErrorKind::Transport);
             assert_eq!(error.method, Some(Method::GET));
             assert!(error
                 .url

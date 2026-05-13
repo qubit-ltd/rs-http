@@ -18,10 +18,14 @@ It complements `rustfmt`, `clippy`, and the existing codebase conventions.
 Before opening a pull request, run the relevant checks locally:
 
 ```bash
-cargo fmt
+./style-check.sh
 cargo clippy --all-targets --all-features
 cargo test
 ```
+
+Use `./align-ci.sh` to format code before rerunning the checks. Do not use a
+bare `cargo fmt` as the canonical formatter command for this project; the CI
+formatting rules use the project rustfmt configuration through `align-ci.sh`.
 
 If a check cannot be run in your environment, mention that in the pull request.
 
@@ -82,6 +86,8 @@ The project uses English Rust documentation comments.
 
 - Put tests under `tests/`.
 - Name test files with a `_tests.rs` suffix.
+- Do not declare a top-level `tests/*.rs` integration test target again from
+  `tests/mod.rs`; Cargo already runs it as a separate target.
 - Name tests with the `test_{method_or_behavior}_{scenario}` pattern.
 - Cover normal paths, error paths, boundary conditions, and regressions.
 - Prefer precise assertions over broad “it failed” checks.

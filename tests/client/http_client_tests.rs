@@ -797,7 +797,7 @@ async fn test_execute_non_success_error_body_preview_timeout_placeholder() {
 }
 
 #[tokio::test]
-async fn test_execute_maps_truncated_response_body_to_decode_error() {
+async fn test_execute_maps_truncated_response_body_to_transport_error() {
     let server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
         status: 200,
         headers: vec![],
@@ -817,7 +817,7 @@ async fn test_execute_maps_truncated_response_body_to_decode_error() {
         .unwrap();
     let error = response.bytes().await.unwrap_err();
 
-    assert_eq!(error.kind, HttpErrorKind::Decode);
+    assert_eq!(error.kind, HttpErrorKind::Transport);
     assert_eq!(error.method, Some(Method::GET));
     assert!(error
         .url
@@ -829,6 +829,53 @@ async fn test_execute_maps_truncated_response_body_to_decode_error() {
         .await
         .expect("server finish timed out");
     assert_eq!(captured.target, "/truncated-body");
+}
+
+#[tokio::test]
+async fn test_execute_maps_truncated_response_stream_to_transport_error() {
+    let server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
+        status: 200,
+        headers: vec![],
+        total_length: 8,
+        prefix: b"abc".to_vec(),
+        delay: Duration::from_millis(0),
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    let client = HttpClientFactory::new().create(options).unwrap();
+    let request = client.request(Method::GET, "/truncated-stream").build();
+    let mut response = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .unwrap();
+    let mut stream = response.stream().expect("stream body should be available");
+
+    let first = stream
+        .next()
+        .await
+        .expect("first stream item should exist")
+        .expect("first stream item should be bytes");
+    assert_eq!(first, b"abc".as_slice());
+    let error = stream
+        .next()
+        .await
+        .expect("second stream item should contain read error")
+        .unwrap_err();
+
+    assert_eq!(error.kind, HttpErrorKind::Transport);
+    assert_eq!(error.method, Some(Method::GET));
+    assert!(error
+        .url
+        .unwrap()
+        .as_str()
+        .starts_with(&server.base_url().to_string()));
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.target, "/truncated-stream");
 }
 
 #[tokio::test]

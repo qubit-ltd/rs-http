@@ -52,6 +52,23 @@ use super::{
     HttpResponseOptions,
 };
 
+fn map_response_read_error(error: reqwest::Error, method: Method, url: Url) -> HttpError {
+    if error.is_timeout() {
+        return map_reqwest_error(
+            error,
+            HttpErrorKind::Transport,
+            ReqwestErrorPhase::Read,
+            Some(method),
+            Some(url),
+        );
+    }
+
+    HttpError::transport(format!("HTTP transport error: {}", error))
+        .with_method(&method)
+        .with_url(&url)
+        .with_source(error)
+}
+
 /// Runtime state bound to one response instance.
 #[derive(Debug, Clone)]
 struct HttpResponseRuntime {
@@ -271,13 +288,7 @@ impl HttpResponse {
                     return Ok(body);
                 }
                 Ok(Err(error)) => {
-                    return Err(map_reqwest_error(
-                        error,
-                        HttpErrorKind::Decode,
-                        ReqwestErrorPhase::Read,
-                        Some(method),
-                        Some(url),
-                    ));
+                    return Err(map_response_read_error(error, method, url));
                 }
                 Err(_) => {
                     return Err(HttpError::read_timeout(format!(
@@ -329,13 +340,7 @@ impl HttpResponse {
                 match next {
                     Ok(Some(Ok(bytes))) => yield Ok(bytes),
                     Ok(Some(Err(error))) => {
-                        let mapped = map_reqwest_error(
-                            error,
-                            HttpErrorKind::Transport,
-                            ReqwestErrorPhase::Read,
-                            Some(method.clone()),
-                            Some(url.clone()),
-                        );
+                        let mapped = map_response_read_error(error, method.clone(), url.clone());
                         yield Err(mapped);
                         break;
                     }
