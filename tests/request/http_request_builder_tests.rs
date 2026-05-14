@@ -523,7 +523,7 @@ fn test_request_builder_multipart_body_rejects_empty_boundary() {
         .expect_err("empty boundary should fail");
 
     assert_eq!(error.kind, HttpErrorKind::Other);
-    assert!(error.message.contains("boundary"));
+    assert!(error.message.contains("Invalid multipart boundary"));
 }
 
 #[test]
@@ -533,7 +533,27 @@ fn test_request_builder_multipart_body_rejects_invalid_boundary_header_value() {
         .expect_err("boundary with control chars should fail");
 
     assert_eq!(error.kind, HttpErrorKind::Other);
-    assert!(error.message.contains("Invalid multipart Content-Type"));
+    assert!(error.message.contains("Invalid multipart boundary"));
+}
+
+#[test]
+fn test_request_builder_multipart_body_rejects_boundary_with_separator() {
+    let error = new_builder(Method::POST, "/v1/multipart")
+        .multipart_body(Bytes::from_static(b"payload"), "bad;boundary")
+        .expect_err("boundary with content-type separator should fail");
+
+    assert_eq!(error.kind, HttpErrorKind::Other);
+    assert!(error.message.contains("Invalid multipart boundary"));
+}
+
+#[test]
+fn test_request_builder_multipart_body_rejects_boundary_with_space() {
+    let error = new_builder(Method::POST, "/v1/multipart")
+        .multipart_body(Bytes::from_static(b"payload"), "bad boundary")
+        .expect_err("boundary with whitespace should fail");
+
+    assert_eq!(error.kind, HttpErrorKind::Other);
+    assert!(error.message.contains("Invalid multipart boundary"));
 }
 
 #[test]

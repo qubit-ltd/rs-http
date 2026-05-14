@@ -27,6 +27,7 @@ use tokio_util::sync::CancellationToken;
 use url::form_urlencoded;
 use url::Url;
 
+use crate::content_type;
 use crate::{
     AsyncHttpHeaderInjector,
     HttpClient,
@@ -293,26 +294,23 @@ impl HttpRequestBuilder {
     ///
     /// # Parameters
     /// - `body`: Multipart payload bytes.
-    /// - `boundary`: Multipart boundary used in payload framing.
+    /// - `boundary`: Token-safe multipart boundary used in payload framing.
     ///
     /// # Returns
     /// `Ok(self)` for chaining.
     ///
     /// # Errors
-    /// Returns [`HttpError`] when `boundary` is empty or content-type cannot be built.
+    /// Returns [`HttpError`] when `boundary` is not a 1 to 70 character
+    /// ASCII token-safe multipart boundary.
     pub fn multipart_body(mut self, body: impl Into<Bytes>, boundary: &str) -> HttpResult<Self> {
-        if boundary.trim().is_empty() {
+        if !content_type::is_valid_multipart_boundary(boundary) {
             return Err(HttpError::other(
-                "Multipart boundary cannot be empty for multipart_body",
+                "Invalid multipart boundary for multipart_body: expected 1 to 70 token-safe ASCII characters",
             ));
         }
         if !self.headers.contains_key(CONTENT_TYPE) {
             let value = HeaderValue::from_str(&format!("multipart/form-data; boundary={boundary}"))
-                .map_err(|error| {
-                    HttpError::other(format!(
-                        "Invalid multipart Content-Type header value: {error}"
-                    ))
-                })?;
+                .expect("validated multipart boundary should build a valid Content-Type");
             self.headers.insert(CONTENT_TYPE, value);
         }
         self.body = HttpRequestBody::Multipart(body.into());
