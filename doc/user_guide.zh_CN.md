@@ -1,6 +1,6 @@
 # qubit-http 用户指南
 
-本文档基于当前源码和测试整理，适用于 crate `qubit-http` 0.4.x，Rust 代码中通过库名 `qubit_http` 使用。
+本文档基于当前源码和测试整理，适用于 crate `qubit-http` 0.7，Rust 代码中通过库名 `qubit_http` 使用。
 
 `qubit-http` 是一个异步 HTTP 客户端基础设施库。它封装 `reqwest`，提供统一的客户端配置、请求构建、响应读取、错误分类、TRACE 日志脱敏、自动重试、代理、IPv4-only 解析、请求/响应拦截器，以及 Server-Sent Events（SSE）解码和重连能力。
 
@@ -17,7 +17,7 @@
 
 ```toml
 [dependencies]
-qubit-http = "0.4"
+qubit-http = "0.7"
 http = "1.4"
 qubit-config = "0.9"
 serde = { version = "1", features = ["derive"] }
@@ -89,7 +89,7 @@ let client = qubit_http::HttpClientFactory::new().create_default()?;
 | 自动重试 | 禁用 |
 | 重试最大尝试次数 | 3，含第一次请求 |
 | 重试方法策略 | 只允许幂等方法 |
-| 敏感头 | 内置一组常见认证/密钥类头名 |
+| 日志脱敏 | 内置一组常见认证/密钥类 header、query 参数和 body 字段名 |
 | IPv4-only | 关闭 |
 | SSE JSON 模式 | `Lenient` |
 | SSE 完成标记策略 | `DefaultDone`，即识别 `[DONE]` |
@@ -154,6 +154,9 @@ let client = HttpClientFactory::new()
 | `proxy.enabled` | 是否启用代理 |
 | `use_env_proxy` | 显式代理禁用时，是否继承环境变量代理 |
 | `logging.enabled` | 是否允许 TRACE HTTP 日志 |
+| `log_sanitize.sensitive_headers` | 日志脱敏使用的敏感 header 名称集合 |
+| `log_sanitize.sensitive_query_params` | 日志脱敏使用的敏感 query 参数名称集合 |
+| `log_sanitize.sensitive_body_fields` | 日志脱敏使用的敏感 JSON/form body 字段名称集合 |
 | `retry.enabled` | 是否启用内置重试 |
 | `retry.max_attempts` | 最大尝试次数，含第一次请求 |
 | `retry.delay_strategy` | `NONE`、`FIXED`、`RANDOM`、`EXPONENTIAL_BACKOFF` 或 `EXPONENTIAL` |
@@ -550,7 +553,7 @@ HTTP 日志使用 `tracing::trace!`。必须同时满足：
 
 可分别控制请求头、请求体、响应头、响应体。body 只记录前 `logging.body_size_limit` 字节，超出部分显示截断提示；二进制体显示为 `<binary N bytes>`。请求体日志只预览已缓冲的 body 变体（`bytes_body`、`text_body`、`json_body`、`form_body`、`multipart_body`、`ndjson_body`）；`stream_body` 和 `streaming_body` 会记录为 `<empty>`，因为 logger 不会消费上传流。
 
-日志统一经过 `LogSanitizer` 和 `LogSanitizePolicy` 脱敏。敏感 header 会被掩码；URL query 参数以及 JSON/form body 字段如果命中策略中的敏感名称，会被替换为 `****`。默认策略内置常见认证、token、cookie、secret、password 类名称。短 header 值整体显示为 `****`；长 header 值保留前后各 2 个字符，中间替换为 `****`。配置 `sensitive_headers` 会覆盖默认敏感 header 集合；代码里也可以直接调整 `options.log_sanitize_policy`。
+日志统一经过 `LogSanitizer` 和 `LogSanitizePolicy` 脱敏。敏感 header 会被掩码；URL query 参数以及 JSON/form body 字段如果命中策略中的敏感名称，会被替换为 `****`。默认策略内置常见认证、token、cookie、secret、password 类名称。短 header 值整体显示为 `****`；长 header 值保留前后各 2 个字符，中间替换为 `****`。`log_sanitize.*` 下的配置项会替换对应的默认敏感名称集合；代码里也可以直接调整 `options.log_sanitize_policy`。
 
 示例：
 
@@ -791,7 +794,9 @@ while let Some(item) = events.next().await {
 | `pool_idle_timeout` | 连接池空闲超时 |
 | `pool_max_idle_per_host` | 每个 host 最大空闲连接数 |
 | `use_env_proxy` | 显式代理禁用时是否继承环境代理；默认 `false` |
-| `sensitive_headers` | 覆盖默认敏感头集合的字符串列表 |
+| `log_sanitize.sensitive_headers` | 覆盖默认敏感 header 集合的字符串列表 |
+| `log_sanitize.sensitive_query_params` | 覆盖默认敏感 query 参数集合的字符串列表 |
+| `log_sanitize.sensitive_body_fields` | 覆盖默认敏感 body 字段集合的字符串列表 |
 | `default_headers` | 默认请求 header 的 JSON map 字符串；不能与 `default_headers.<name>` 同时使用 |
 | `default_headers.<name>` | 一个默认请求 header 子键；不能与 `default_headers` JSON map 同时使用 |
 | `timeouts.connect_timeout` | 连接超时 |

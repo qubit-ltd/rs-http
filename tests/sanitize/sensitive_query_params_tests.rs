@@ -25,10 +25,15 @@ fn test_sensitive_query_params_extend_clear_and_ignore_blank() {
     let mut params = SensitiveQueryParams::new();
 
     params.extend(["password", " ", "Token"]);
+    assert_eq!(params.len(), 2);
+    assert!(!params.is_empty());
+    assert_eq!(params.iter().collect::<Vec<_>>(), vec!["password", "token"]);
     assert!(params.contains("PASSWORD"));
     assert!(params.contains("token"));
 
     params.clear();
+    assert_eq!(params.len(), 0);
+    assert!(params.is_empty());
     assert!(!params.contains("password"));
     assert!(!params.contains(""));
 }

@@ -471,13 +471,18 @@ fn test_log_request_logs_json_form_multipart_ndjson_and_empty_bodies() {
 
     let multipart_request = client
         .request(Method::POST, "https://example.com/multipart-body")
-        .multipart_body(Bytes::from_static(b"--b\r\n\r\nx\r\n--b--"), "b")
+        .multipart_body(
+            Bytes::from_static(b"--b\r\n\r\nraw-multipart-value\r\n--b--"),
+            "b",
+        )
         .expect("multipart body should be accepted")
         .build();
     let multipart_logs = capture_trace_logs(|| {
         logger.log_request(&multipart_request);
     });
-    assert!(multipart_logs.contains("Request body: --b"));
+    assert!(multipart_logs.contains("Request body:"));
+    assert!(!multipart_logs.contains("--b"));
+    assert!(!multipart_logs.contains("raw-multipart-value"));
 
     let ndjson_request = client
         .request(Method::POST, "https://example.com/ndjson-body")

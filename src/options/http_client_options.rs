@@ -35,7 +35,9 @@ use crate::{
     request::parse_header,
     sanitize::{
         LogSanitizePolicy,
+        SensitiveBodyFields,
         SensitiveHttpHeaders,
+        SensitiveQueryParams,
     },
     sse::{
         DoneMarkerPolicy,
@@ -127,7 +129,6 @@ struct HttpClientRootConfigInput {
     pool_idle_timeout: Option<Duration>,
     pool_max_idle_per_host: Option<usize>,
     use_env_proxy: Option<bool>,
-    sensitive_headers: Option<Vec<String>>,
 }
 
 /// SSE scalar keys read from `sse.*`.
@@ -136,6 +137,13 @@ struct HttpClientSseConfigInput {
     done_marker: Option<String>,
     max_line_bytes: Option<usize>,
     max_frame_bytes: Option<usize>,
+}
+
+/// Log sanitization keys read from `log_sanitize.*`.
+struct HttpClientLogSanitizeConfigInput {
+    sensitive_headers: Option<Vec<String>>,
+    sensitive_query_params: Option<Vec<String>>,
+    sensitive_body_fields: Option<Vec<String>>,
 }
 
 impl HttpClientOptions {
@@ -164,7 +172,6 @@ impl HttpClientOptions {
             pool_idle_timeout: config.get_optional("pool_idle_timeout")?,
             pool_max_idle_per_host: config.get_optional("pool_max_idle_per_host")?,
             use_env_proxy: config.get_optional("use_env_proxy")?,
-            sensitive_headers: config.get_optional_string_list("sensitive_headers")?,
         })
     }
 
@@ -177,6 +184,17 @@ impl HttpClientOptions {
             done_marker: config.get_optional_string("done_marker")?,
             max_line_bytes: config.get_optional("max_line_bytes")?,
             max_frame_bytes: config.get_optional("max_frame_bytes")?,
+        })
+    }
+
+    fn read_log_sanitize_config<R>(config: &R) -> ConfigResult<HttpClientLogSanitizeConfigInput>
+    where
+        R: ConfigReader + ?Sized,
+    {
+        Ok(HttpClientLogSanitizeConfigInput {
+            sensitive_headers: config.get_optional_string_list("sensitive_headers")?,
+            sensitive_query_params: config.get_optional_string_list("sensitive_query_params")?,
+            sensitive_body_fields: config.get_optional_string_list("sensitive_body_fields")?,
         })
     }
 
@@ -401,6 +419,34 @@ impl HttpClientOptions {
             }
         }
 
+        if config.contains_prefix("log_sanitize") {
+            let log_sanitize_config = config.prefix_view("log_sanitize");
+            let log_sanitize = match Self::read_log_sanitize_config(&log_sanitize_config) {
+                Ok(log_sanitize) => log_sanitize,
+                Err(error) => {
+                    return Err(Self::resolve_config_error(
+                        &log_sanitize_config,
+                        HttpConfigError::from(error),
+                    ))
+                }
+            };
+            if let Some(names) = log_sanitize.sensitive_headers {
+                let mut sensitive_headers = SensitiveHttpHeaders::new();
+                sensitive_headers.extend(names);
+                opts.log_sanitize_policy.sensitive_headers = sensitive_headers;
+            }
+            if let Some(names) = log_sanitize.sensitive_query_params {
+                let mut sensitive_query_params = SensitiveQueryParams::new();
+                sensitive_query_params.extend(names);
+                opts.log_sanitize_policy.sensitive_query_params = sensitive_query_params;
+            }
+            if let Some(names) = log_sanitize.sensitive_body_fields {
+                let mut sensitive_body_fields = SensitiveBodyFields::new();
+                sensitive_body_fields.extend(names);
+                opts.log_sanitize_policy.sensitive_body_fields = sensitive_body_fields;
+            }
+        }
+
         // default_headers – sub-key form: default_headers.<name> = <value>
         let headers_prefix = "default_headers";
         let full_headers_prefix = "default_headers.";
@@ -449,12 +495,6 @@ impl HttpClientOptions {
         if !header_map.is_empty() {
             opts.default_headers =
                 hashmap_to_headermap(&config.resolve_key(headers_prefix), header_map)?;
-        }
-
-        if let Some(names) = root.sensitive_headers {
-            let mut sh = SensitiveHttpHeaders::new();
-            sh.extend(names);
-            opts.log_sanitize_policy.sensitive_headers = sh;
         }
 
         Ok(opts)

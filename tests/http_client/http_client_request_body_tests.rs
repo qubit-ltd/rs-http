@@ -207,7 +207,7 @@ async fn test_execute_with_stream_body_uses_chunked_transfer_encoding() {
         .await
         .expect("execute timed out")
         .expect("stream body request should succeed");
-    assert_eq!(response.meta.status.as_u16(), 200);
+    assert_eq!(response.status().as_u16(), 200);
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await

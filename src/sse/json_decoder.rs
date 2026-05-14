@@ -16,10 +16,7 @@ use async_stream::stream;
 use futures_util::StreamExt;
 use serde::de::DeserializeOwned;
 
-use crate::{
-    HttpByteStream,
-    HttpError,
-};
+use crate::HttpByteStream;
 
 use super::{
     decode_messages_from_stream_with_limits,
@@ -76,21 +73,11 @@ where
                 return;
             }
 
-            match serde_json::from_str::<T>(payload) {
-                Ok(data) => yield Ok(SseChunk::Data(data)),
+            match message.decode_json_with_mode::<T>(mode) {
+                Ok(Some(data)) => yield Ok(SseChunk::Data(data)),
+                Ok(None) => continue,
                 Err(error) => {
-                    if mode == SseJsonMode::Lenient {
-                        tracing::debug!(
-                            "Skipping malformed JSON SSE chunk in lenient mode: {}",
-                            error
-                        );
-                        continue;
-                    }
-
-                    yield Err(HttpError::sse_decode(format!(
-                        "Failed to decode SSE JSON chunk: {}",
-                        error
-                    )));
+                    yield Err(error);
                     return;
                 }
             }

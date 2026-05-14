@@ -68,6 +68,30 @@ impl SensitiveQueryParams {
     pub fn clear(&mut self) {
         self.names.clear();
     }
+
+    /// Returns the number of stored query parameter names.
+    ///
+    /// # Returns
+    /// Stored query parameter count.
+    pub fn len(&self) -> usize {
+        self.names.len()
+    }
+
+    /// Returns whether no query parameter names are stored.
+    ///
+    /// # Returns
+    /// `true` when empty.
+    pub fn is_empty(&self) -> bool {
+        self.names.is_empty()
+    }
+
+    /// Iterates normalized query parameter names.
+    ///
+    /// # Returns
+    /// Iterator over lowercase query parameter names.
+    pub fn iter(&self) -> impl Iterator<Item = &str> {
+        self.names.iter().map(String::as_str)
+    }
 }
 
 impl Default for SensitiveQueryParams {

@@ -35,6 +35,7 @@ use qubit_http::{
     HttpError,
     HttpErrorKind,
     HttpRequestInterceptor,
+    HttpResponseInterceptor,
     RetryDelay,
     RetryJitter,
     RetryOptions,
@@ -1348,4 +1349,66 @@ async fn test_execute_sse_with_reconnect_does_not_retry_cancelled_error() {
     let error = events.next().await.unwrap().unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::Cancelled);
     assert_eq!(attempts.load(Ordering::Relaxed), 1);
+}
+
+#[tokio::test]
+async fn test_execute_sse_with_reconnect_reports_cancelled_stream_before_reading_body() {
+    let server = spawn_one_shot_server(ResponsePlan::Chunked {
+        status: 200,
+        headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+        chunks: vec![ResponseChunk {
+            delay: Duration::from_millis(0),
+            bytes: b"data: should-not-be-read\n\n".to_vec(),
+        }],
+        finish: true,
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.read_timeout = Duration::from_secs(1);
+    options.timeouts.write_timeout = Duration::from_secs(1);
+    let mut client = HttpClientFactory::new().create(options).unwrap();
+
+    let token = CancellationToken::new();
+    let token_for_interceptor = token.clone();
+    client.add_response_interceptor(HttpResponseInterceptor::new(move |_meta| {
+        token_for_interceptor.cancel();
+        Ok(())
+    }));
+
+    let request = client
+        .request(Method::GET, "/sse-cancel-before-body")
+        .cancellation_token(token)
+        .build();
+    let mut events = client.execute_sse_with_reconnect(
+        request,
+        SseReconnectOptions {
+            retry: build_retry_options(
+                3,
+                RetryDelay::fixed(Duration::from_millis(1)),
+                RetryJitter::None,
+            ),
+            reconnect_on_eof: true,
+            honor_server_retry: true,
+            ..SseReconnectOptions::default()
+        },
+    );
+
+    let error = events
+        .next()
+        .await
+        .expect("cancelled SSE stream should emit one item")
+        .expect_err("cancelled SSE stream should fail");
+    assert_eq!(error.kind, HttpErrorKind::Cancelled);
+    assert!(
+        error.message.contains("cancelled"),
+        "error should explain cancellation: {error:?}"
+    );
+    assert!(events.next().await.is_none());
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.target, "/sse-cancel-before-body");
 }

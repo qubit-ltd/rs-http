@@ -30,7 +30,20 @@ use crate::{
 /// Pin-boxed stream of newline-delimited text lines or errors.
 pub type SseLineStream = Pin<Box<dyn Stream<Item = HttpResult<String>> + Send>>;
 
-/// Buffers chunks from `stream`, splits on `\n`, strips `\r`, validates UTF-8 per line.
+/// Decodes and clears the currently buffered line bytes.
+///
+/// # Parameters
+/// - `buffer`: Current line bytes without the line terminator.
+///
+/// # Returns
+/// UTF-8 line text.
+fn take_buffered_line(buffer: &mut BytesMut) -> HttpResult<String> {
+    String::from_utf8(buffer.split_to(buffer.len()).to_vec()).map_err(|error| {
+        HttpError::sse_protocol(format!("Failed to decode SSE line as UTF-8: {}", error))
+    })
+}
+
+/// Buffers chunks from `stream`, splits on LF, CR, or CRLF, and validates UTF-8 per line.
 ///
 /// # Parameters
 /// - `stream`: Raw byte stream from [`crate::HttpResponse::stream`].
@@ -42,42 +55,47 @@ pub fn decode_lines(mut stream: HttpByteStream, max_line_bytes: usize) -> SseLin
     let output = stream! {
         let max_line_bytes = max_line_bytes.max(1);
         let mut buffer = BytesMut::new();
+        let mut pending_cr = false;
 
         while let Some(item) = stream.next().await {
             match item {
                 Ok(chunk) => {
-                    buffer.extend_from_slice(&chunk);
-                    while let Some(index) = buffer.iter().position(|&byte| byte == b'\n') {
-                        if index > max_line_bytes {
-                            yield Err(HttpError::sse_protocol(format!(
-                                "SSE line exceeds max_line_bytes ({max_line_bytes})"
-                            )));
-                            return;
-                        }
-                        let mut line = buffer.split_to(index + 1).to_vec();
-                        if line.last() == Some(&b'\n') {
-                            line.pop();
-                        }
-                        if line.last() == Some(&b'\r') {
-                            line.pop();
-                        }
-
-                        match String::from_utf8(line) {
-                            Ok(text) => yield Ok(text),
-                            Err(error) => {
-                                yield Err(HttpError::sse_protocol(format!(
-                                    "Failed to decode SSE line as UTF-8: {}",
-                                    error
-                                )));
-                                return;
+                    for &byte in chunk.iter() {
+                        match byte {
+                            b'\r' => {
+                                match take_buffered_line(&mut buffer) {
+                                    Ok(text) => yield Ok(text),
+                                    Err(error) => {
+                                        yield Err(error);
+                                        return;
+                                    }
+                                }
+                                pending_cr = true;
+                            }
+                            b'\n' => {
+                                if pending_cr {
+                                    pending_cr = false;
+                                    continue;
+                                }
+                                match take_buffered_line(&mut buffer) {
+                                    Ok(text) => yield Ok(text),
+                                    Err(error) => {
+                                        yield Err(error);
+                                        return;
+                                    }
+                                }
+                            }
+                            byte => {
+                                pending_cr = false;
+                                buffer.extend_from_slice(&[byte]);
+                                if buffer.len() > max_line_bytes {
+                                    yield Err(HttpError::sse_protocol(format!(
+                                        "SSE line exceeds max_line_bytes ({max_line_bytes})"
+                                    )));
+                                    return;
+                                }
                             }
                         }
-                    }
-                    if buffer.len() > max_line_bytes {
-                        yield Err(HttpError::sse_protocol(format!(
-                            "SSE line exceeds max_line_bytes ({max_line_bytes})"
-                        )));
-                        return;
                     }
                 }
                 Err(error) => {
@@ -88,14 +106,9 @@ pub fn decode_lines(mut stream: HttpByteStream, max_line_bytes: usize) -> SseLin
         }
 
         if !buffer.is_empty() {
-            match String::from_utf8(buffer.to_vec()) {
+            match take_buffered_line(&mut buffer) {
                 Ok(text) => yield Ok(text),
-                Err(error) => {
-                    yield Err(HttpError::sse_protocol(format!(
-                        "Failed to decode trailing SSE line as UTF-8: {}",
-                        error
-                    )));
-                }
+                Err(error) => yield Err(error),
             }
         }
     };

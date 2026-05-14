@@ -132,6 +132,10 @@ impl LogSanitizer {
         if self.is_form_preview(preview) {
             return format!("{}{}", self.sanitize_form(bytes), suffix);
         }
+        if self.is_multipart_preview(preview) {
+            // TODO: Parse multipart bodies and redact field-level values with a boundary-aware parser.
+            return format!("<redacted: multipart body>{suffix}");
+        }
         match std::str::from_utf8(bytes) {
             Ok(text) => format!("{text}{suffix}"),
             Err(_) => format!("<binary {} bytes>{suffix}", preview.source_len()),
@@ -174,6 +178,17 @@ impl LogSanitizer {
     /// `true` when the content type declares a URL-encoded form.
     fn is_form_preview(&self, preview: &BodyPreview<'_>) -> bool {
         preview.content_type.is_some_and(is_form_content_type)
+    }
+
+    /// Returns whether `preview` should be treated as multipart form data.
+    ///
+    /// # Parameters
+    /// - `preview`: Preview metadata.
+    ///
+    /// # Returns
+    /// `true` when the content type declares multipart form data.
+    fn is_multipart_preview(&self, preview: &BodyPreview<'_>) -> bool {
+        preview.content_type.is_some_and(is_multipart_content_type)
     }
 
     /// Redacts sensitive JSON object keys.
@@ -336,6 +351,22 @@ fn is_form_content_type(content_type: &str) -> bool {
         .map(str::trim)
         .unwrap_or_default()
         .eq_ignore_ascii_case("application/x-www-form-urlencoded")
+}
+
+/// Returns whether a content type declares multipart form data.
+///
+/// # Parameters
+/// - `content_type`: Header value.
+///
+/// # Returns
+/// `true` for `multipart/form-data`.
+fn is_multipart_content_type(content_type: &str) -> bool {
+    content_type
+        .split(';')
+        .next()
+        .map(str::trim)
+        .unwrap_or_default()
+        .eq_ignore_ascii_case("multipart/form-data")
 }
 
 /// Trims ASCII whitespace from both ends of `bytes`.

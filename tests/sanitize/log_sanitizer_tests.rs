@@ -37,6 +37,28 @@ fn test_log_sanitizer_sanitize_url_masks_sensitive_query_params() {
 }
 
 #[test]
+fn test_log_sanitizer_policy_returns_underlying_policy() {
+    let sanitizer = LogSanitizer::default();
+
+    assert!(sanitizer
+        .policy()
+        .sensitive_headers
+        .contains("authorization"));
+}
+
+#[test]
+fn test_log_sanitizer_sanitize_url_masks_password() {
+    let sanitizer = LogSanitizer::default();
+    let url = Url::parse("https://alice:secret-password@example.com/search?q=rust")
+        .expect("test URL should parse");
+
+    let sanitized = sanitizer.sanitize_url(&url);
+
+    assert_eq!(sanitized, "https://alice:****@example.com/search?q=rust");
+    assert!(!sanitized.contains("secret-password"));
+}
+
+#[test]
 fn test_log_sanitizer_sanitize_header_masks_configured_header_names() {
     let sanitizer = LogSanitizer::default();
 
@@ -89,10 +111,26 @@ fn test_log_sanitizer_sanitize_body_preview_does_not_leak_truncated_json() {
 }
 
 #[test]
+fn test_log_sanitizer_sanitize_body_preview_redacts_json_arrays() {
+    let sanitizer = LogSanitizer::default();
+    let body = Bytes::from_static(br#"[{"token":"abc"},{"nested":{"password":"secret"}}]"#);
+    let preview = BodyPreview::new(&body, body.len(), BodyLogContext::Request)
+        .with_content_type("application/json");
+
+    let sanitized = sanitizer.sanitize_body_preview(&preview);
+
+    assert_eq!(
+        sanitized,
+        r#"[{"token":"****"},{"nested":{"password":"****"}}]"#
+    );
+}
+
+#[test]
 fn test_log_sanitizer_sanitize_body_preview_redacts_ndjson_fields() {
     let sanitizer = LogSanitizer::default();
     let body = Bytes::from_static(
         br#"{"token":"abc","id":1}
+
 {"id":2}"#,
     );
     let preview = BodyPreview::new(&body, body.len(), BodyLogContext::Request)
@@ -100,7 +138,35 @@ fn test_log_sanitizer_sanitize_body_preview_redacts_ndjson_fields() {
 
     let sanitized = sanitizer.sanitize_body_preview(&preview);
 
-    assert_eq!(sanitized, "{\"id\":1,\"token\":\"****\"}\n{\"id\":2}");
+    assert_eq!(sanitized, "{\"id\":1,\"token\":\"****\"}\n\n{\"id\":2}");
+}
+
+#[test]
+fn test_log_sanitizer_sanitize_body_preview_does_not_leak_truncated_ndjson() {
+    let sanitizer = LogSanitizer::default();
+    let body = Bytes::from_static(br#"{"token":"abc","id":1}"#);
+    let preview = BodyPreview::new(&body, 10, BodyLogContext::Request)
+        .with_content_type("application/x-ndjson");
+
+    let sanitized = sanitizer.sanitize_body_preview(&preview);
+
+    assert!(sanitized.starts_with("<redacted: invalid or truncated NDJSON>"));
+    assert!(!sanitized.contains("abc"));
+}
+
+#[test]
+fn test_log_sanitizer_sanitize_body_preview_does_not_leak_multipart() {
+    let sanitizer = LogSanitizer::default();
+    let body = Bytes::from_static(
+        b"--boundary\r\nContent-Disposition: form-data; name=\"password\"\r\n\r\nsecret\r\n--boundary--",
+    );
+    let preview = BodyPreview::new(&body, body.len(), BodyLogContext::Request)
+        .with_content_type("multipart/form-data; boundary=boundary");
+
+    let sanitized = sanitizer.sanitize_body_preview(&preview);
+
+    assert!(!sanitized.contains("secret"));
+    assert!(!sanitized.contains("boundary"));
 }
 
 #[test]

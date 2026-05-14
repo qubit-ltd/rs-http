@@ -629,7 +629,7 @@ fn max_elapsed_exceeded_error_with_last_error(
 /// Returns [`HttpErrorKind::SseProtocol`] when `Content-Type` is missing,
 /// non-UTF8, or not SSE media type.
 fn validate_sse_response_content_type(response: &HttpResponse) -> HttpResult<()> {
-    let method = response.meta.method.clone();
+    let method = response.meta().method.clone();
     let url = response.request_url().clone();
     let Some(value) = response.headers().get(CONTENT_TYPE) else {
         return Err(

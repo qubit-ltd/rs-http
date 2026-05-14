@@ -361,12 +361,24 @@ fn test_http_client_options_add_header_invalid_value_does_not_apply() {
 }
 
 #[test]
-fn test_http_client_options_sensitive_headers() {
+fn test_http_client_options_log_sanitize_section() {
     let mut config = Config::new();
     config
         .set(
-            "http.sensitive_headers",
+            "http.log_sanitize.sensitive_headers",
             vec!["X-Custom-Secret".to_string(), "X-Api-Token".to_string()],
+        )
+        .unwrap();
+    config
+        .set(
+            "http.log_sanitize.sensitive_query_params",
+            vec!["session_token".to_string()],
+        )
+        .unwrap();
+    config
+        .set(
+            "http.log_sanitize.sensitive_body_fields",
+            vec!["customer_secret".to_string()],
         )
         .unwrap();
 
@@ -379,6 +391,32 @@ fn test_http_client_options_sensitive_headers() {
         .log_sanitize_policy
         .sensitive_headers
         .contains("x-api-token"));
+    assert!(opts
+        .log_sanitize_policy
+        .sensitive_query_params
+        .contains("session_token"));
+    assert!(opts
+        .log_sanitize_policy
+        .sensitive_body_fields
+        .contains("customer_secret"));
+}
+
+#[test]
+fn test_http_client_options_root_sensitive_headers_is_not_supported() {
+    let mut config = Config::new();
+    config
+        .set(
+            "http.sensitive_headers",
+            vec!["X-Legacy-Secret".to_string()],
+        )
+        .unwrap();
+
+    let opts = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap();
+
+    assert!(!opts
+        .log_sanitize_policy
+        .sensitive_headers
+        .contains("x-legacy-secret"));
 }
 
 #[test]
@@ -902,7 +940,22 @@ fn test_http_client_options_from_root_config_all_sections() {
         .set("default_headers.x-root", "root-value".to_string())
         .unwrap();
     config
-        .set("sensitive_headers", vec!["X-Root-Secret".to_string()])
+        .set(
+            "log_sanitize.sensitive_headers",
+            vec!["X-Root-Secret".to_string()],
+        )
+        .unwrap();
+    config
+        .set(
+            "log_sanitize.sensitive_query_params",
+            vec!["root_token".to_string()],
+        )
+        .unwrap();
+    config
+        .set(
+            "log_sanitize.sensitive_body_fields",
+            vec!["root_password".to_string()],
+        )
         .unwrap();
     config
         .set("timeouts.connect_timeout", Duration::from_secs(3))
@@ -970,6 +1023,14 @@ fn test_http_client_options_from_root_config_all_sections() {
         .log_sanitize_policy
         .sensitive_headers
         .contains("x-root-secret"));
+    assert!(opts
+        .log_sanitize_policy
+        .sensitive_query_params
+        .contains("root_token"));
+    assert!(opts
+        .log_sanitize_policy
+        .sensitive_body_fields
+        .contains("root_password"));
     assert_eq!(opts.timeouts.connect_timeout, Duration::from_secs(3));
     assert_eq!(opts.timeouts.request_timeout, Some(Duration::from_secs(6)));
     assert!(opts.proxy.enabled);
@@ -995,9 +1056,11 @@ fn test_http_client_options_from_root_config_all_sections() {
 }
 
 #[test]
-fn test_http_client_options_sensitive_headers_number_from_config_is_converted() {
+fn test_http_client_options_log_sanitize_header_number_from_config_is_converted() {
     let mut config = Config::new();
-    config.set("http.sensitive_headers", 123_i32).unwrap();
+    config
+        .set("http.log_sanitize.sensitive_headers", 123_i32)
+        .unwrap();
 
     let opts = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap();
 

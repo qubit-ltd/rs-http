@@ -68,6 +68,30 @@ impl SensitiveBodyFields {
     pub fn clear(&mut self) {
         self.names.clear();
     }
+
+    /// Returns the number of stored body field names.
+    ///
+    /// # Returns
+    /// Stored body field count.
+    pub fn len(&self) -> usize {
+        self.names.len()
+    }
+
+    /// Returns whether no body field names are stored.
+    ///
+    /// # Returns
+    /// `true` when empty.
+    pub fn is_empty(&self) -> bool {
+        self.names.is_empty()
+    }
+
+    /// Iterates normalized body field names.
+    ///
+    /// # Returns
+    /// Iterator over lowercase body field names.
+    pub fn iter(&self) -> impl Iterator<Item = &str> {
+        self.names.iter().map(String::as_str)
+    }
 }
 
 impl Default for SensitiveBodyFields {

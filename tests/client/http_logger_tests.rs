@@ -8,6 +8,7 @@
  *
  ******************************************************************************/
 
+use bytes::Bytes;
 use http::Method;
 use qubit_http::{
     HttpClientFactory,
@@ -67,4 +68,25 @@ fn test_http_logger_sanitizes_request_url_query_and_json_body() {
     assert!(logs.contains(r#""password":"****""#));
     assert!(!logs.contains("raw-token"));
     assert!(!logs.contains("secret"));
+}
+
+#[test]
+fn test_http_logger_does_not_leak_multipart_body_sensitive_values() {
+    let options = HttpClientOptions::default();
+    let logger = HttpLogger::new(&options);
+    let client = HttpClientFactory::new()
+        .create_default()
+        .expect("default client should be created");
+    let body = Bytes::from_static(
+        b"--boundary\r\nContent-Disposition: form-data; name=\"password\"\r\n\r\nsecret-password\r\n--boundary--",
+    );
+    let request = client
+        .request(Method::POST, "https://example.com/upload")
+        .multipart_body(body, "boundary")
+        .expect("multipart body should be accepted")
+        .build();
+
+    let logs = capture_trace_logs(|| logger.log_request(&request));
+
+    assert!(!logs.contains("secret-password"));
 }

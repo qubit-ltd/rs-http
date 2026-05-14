@@ -593,8 +593,8 @@ impl HttpRequest {
                 error,
                 HttpErrorKind::Transport,
                 ReqwestErrorPhase::Send,
-                Some(method.clone()),
-                Some(request_url.clone()),
+                method.clone(),
+                request_url.clone(),
             )),
             Err(_) => Err(HttpError::write_timeout(format!(
                 "Write timeout after {:?} while sending request",
