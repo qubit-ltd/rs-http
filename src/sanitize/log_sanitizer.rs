@@ -62,7 +62,7 @@ impl LogSanitizer {
         &self.policy
     }
 
-    /// Returns a log-safe URL string with sensitive query parameters masked.
+    /// Returns a log-safe URL string with sensitive URL components masked.
     ///
     /// # Parameters
     /// - `url`: URL to render.
@@ -71,8 +71,14 @@ impl LogSanitizer {
     /// Sanitized URL string.
     pub fn sanitize_url(&self, url: &Url) -> String {
         let mut sanitized = url.clone();
+        if !sanitized.username().is_empty() {
+            let _ = sanitized.set_username(SENSITIVE_HEADER_MASK_PLACEHOLDER);
+        }
         if sanitized.password().is_some() {
             let _ = sanitized.set_password(Some(SENSITIVE_HEADER_MASK_PLACEHOLDER));
+        }
+        if sanitized.fragment().is_some() {
+            sanitized.set_fragment(Some(SENSITIVE_HEADER_MASK_PLACEHOLDER));
         }
         let Some(_) = sanitized.query() else {
             return sanitized.to_string();
@@ -123,6 +129,12 @@ impl LogSanitizer {
             return "<empty>".to_string();
         }
         let suffix = preview.truncation_suffix();
+        if self.is_multipart_preview(preview) {
+            if let Some(text) = self.sanitize_multipart(preview, bytes) {
+                return format!("{text}{suffix}");
+            }
+            return format!("{MULTIPART_BODY_REDACTED}{suffix}");
+        }
         if self.is_ndjson_preview(preview) {
             if let Some(text) = self.sanitize_ndjson(bytes) {
                 return format!("{text}{suffix}");
@@ -137,12 +149,6 @@ impl LogSanitizer {
         }
         if self.is_form_preview(preview) {
             return format!("{}{}", self.sanitize_form(bytes), suffix);
-        }
-        if self.is_multipart_preview(preview) {
-            if let Some(text) = self.sanitize_multipart(preview, bytes) {
-                return format!("{text}{suffix}");
-            }
-            return format!("{MULTIPART_BODY_REDACTED}{suffix}");
         }
         match std::str::from_utf8(bytes) {
             Ok(text) => format!("{text}{suffix}"),

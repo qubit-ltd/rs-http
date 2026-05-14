@@ -54,8 +54,29 @@ fn test_log_sanitizer_sanitize_url_masks_password() {
 
     let sanitized = sanitizer.sanitize_url(&url);
 
-    assert_eq!(sanitized, "https://alice:****@example.com/search?q=rust");
+    assert_eq!(sanitized, "https://****:****@example.com/search?q=rust");
+    assert!(!sanitized.contains("alice"));
     assert!(!sanitized.contains("secret-password"));
+}
+
+#[test]
+fn test_log_sanitizer_sanitize_url_masks_userinfo_and_fragment() {
+    let sanitizer = LogSanitizer::default();
+    let url = Url::parse(
+        "https://api-token:secret-password@example.com/callback?access_token=query-secret#id_token=fragment-secret",
+    )
+    .expect("test URL should parse");
+
+    let sanitized = sanitizer.sanitize_url(&url);
+
+    assert_eq!(
+        sanitized,
+        "https://****:****@example.com/callback?access_token=****#****"
+    );
+    assert!(!sanitized.contains("api-token"));
+    assert!(!sanitized.contains("secret-password"));
+    assert!(!sanitized.contains("query-secret"));
+    assert!(!sanitized.contains("fragment-secret"));
 }
 
 #[test]
@@ -516,6 +537,19 @@ fn test_log_sanitizer_sanitize_body_preview_redacts_multipart_without_boundary()
     assert_eq!(sanitized, "<redacted: multipart body>");
     assert!(!sanitized.contains("secret"));
     assert!(!sanitized.contains("boundary"));
+}
+
+#[test]
+fn test_log_sanitizer_sanitize_body_preview_prefers_multipart_over_json_sniffing() {
+    let sanitizer = LogSanitizer::default();
+    let body = Bytes::from_static(br#"{"password":"secret"}"#);
+    let preview = BodyPreview::new(&body, body.len(), BodyLogContext::Request)
+        .with_content_type("multipart/mixed");
+
+    let sanitized = sanitizer.sanitize_body_preview(&preview);
+
+    assert_eq!(sanitized, "<redacted: multipart body>");
+    assert!(!sanitized.contains("secret"));
 }
 
 #[test]
