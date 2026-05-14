@@ -39,7 +39,7 @@ pub enum HttpRequestBody {
     /// URL-encoded form bytes; builders may set `Content-Type: application/x-www-form-urlencoded`.
     #[strum(disabled)]
     Form(Bytes),
-    /// Multipart body bytes; builders may set `Content-Type: multipart/form-data; boundary=...`.
+    /// Multipart body bytes; builders may set a default `multipart/form-data` Content-Type.
     #[strum(disabled)]
     Multipart(Bytes),
     /// NDJSON bytes (`\n`-delimited JSON objects); builders may set `application/x-ndjson`.

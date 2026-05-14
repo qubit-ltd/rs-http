@@ -156,7 +156,7 @@ Common configuration keys:
 | `logging.enabled` | Allows TRACE HTTP logs |
 | `log_sanitize.sensitive_headers` | Sensitive header name set for log sanitization |
 | `log_sanitize.sensitive_query_params` | Sensitive query-parameter name set for log sanitization |
-| `log_sanitize.sensitive_body_fields` | Sensitive JSON/form body-field name set for log sanitization |
+| `log_sanitize.sensitive_body_fields` | Sensitive JSON/form/multipart body-field name set for log sanitization |
 | `retry.enabled` | Enables built-in retry |
 | `retry.max_attempts` | Max attempts, including the first request |
 | `retry.delay_strategy` | `NONE`, `FIXED`, `RANDOM`, `EXPONENTIAL_BACKOFF`, or `EXPONENTIAL` |
@@ -211,7 +211,7 @@ Request body builders:
 | `text_body` | Text body; sets `text/plain; charset=utf-8` when `Content-Type` is absent |
 | `json_body` | Serializes JSON; sets `application/json` when `Content-Type` is absent |
 | `form_body` | `application/x-www-form-urlencoded` |
-| `multipart_body` | Raw multipart bytes; requires non-empty boundary and sets multipart content type when absent |
+| `multipart_body` | Raw multipart bytes; requires a 1 to 70 character token-safe boundary and sets multipart content type when absent |
 | `ndjson_body` | One JSON record per line; sets `application/x-ndjson` when absent |
 
 Per-request overrides:
@@ -555,7 +555,7 @@ HTTP logs use `tracing::trace!`. Both conditions must be true:
 
 Request headers, request body, response headers, and response body can be toggled separately. Body logs include only the first `logging.body_size_limit` bytes and show a truncation marker for the remainder. Binary bodies are rendered as `<binary N bytes>`. Request-body logging previews buffered body variants (`bytes_body`, `text_body`, `json_body`, `form_body`, `multipart_body`, and `ndjson_body`); `stream_body` and `streaming_body` are logged as `<empty>` because the logger does not consume upload streams.
 
-Logs are sanitized through `LogSanitizer` and `LogSanitizePolicy`. Sensitive headers are masked. Sensitive URL query parameters and JSON/form/multipart body fields are redacted with `****` when their names match the policy. Multipart file parts are rendered as `<redacted: file part>`, and malformed, missing-boundary, or truncated multipart bodies are rendered as `<redacted: multipart body>` so raw upload bytes are not leaked. The default policy covers common auth, token, cookie, secret, and password names. Header values shorter than or equal to 4 characters are rendered as `****`; longer header values keep the first and last 2 characters and replace the middle with `****`. Configuration keys under `log_sanitize.*` replace the corresponding default name set; code can also tune `options.log_sanitize_policy` directly.
+Logs are sanitized through `LogSanitizer` and `LogSanitizePolicy`. Sensitive headers are masked. Sensitive URL query parameters and JSON/form/multipart body fields are redacted with `****` when their names match the policy. Multipart sanitization applies to every `multipart/*` media type. Multipart file parts are rendered as `<redacted: file part>`, and malformed, missing-boundary, or truncated multipart bodies are rendered as `<redacted: multipart body>` so raw upload bytes are not leaked. The default policy covers common auth, token, cookie, secret, and password names. Header values shorter than or equal to 4 characters are rendered as `****`; longer header values keep the first and last 2 characters and replace the middle with `****`. Configuration keys under `log_sanitize.*` replace the corresponding default name set; code can also tune `options.log_sanitize_policy` directly.
 
 Example:
 
