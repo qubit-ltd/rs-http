@@ -45,6 +45,7 @@ use super::http_request_body::HttpRequestBody;
 use super::http_request_builder::HttpRequestBuilder;
 use super::http_request_retry_override::HttpRequestRetryOverride;
 use super::parse_header;
+use super::validate_positive_timeout;
 
 /// Request execution options (timeouts, cancellation, and retry override).
 #[derive(Debug, Clone)]
@@ -334,10 +335,14 @@ impl HttpRequest {
     ///   reqwest.
     ///
     /// # Returns
-    /// `self` for method chaining.
-    pub fn set_request_timeout(&mut self, timeout: Duration) -> &mut Self {
+    /// `Ok(self)` for method chaining.
+    ///
+    /// # Errors
+    /// Returns [`HttpError`] when `timeout` is zero.
+    pub fn set_request_timeout(&mut self, timeout: Duration) -> HttpResult<&mut Self> {
+        validate_positive_timeout("request_timeout", timeout)?;
         self.execution_options.request_timeout = Some(timeout);
-        self
+        Ok(self)
     }
 
     /// Drops the per-request timeout so the client-wide default applies again.
@@ -355,9 +360,13 @@ impl HttpRequest {
     }
 
     /// Sets the write-phase timeout used while sending the request.
-    pub fn set_write_timeout(&mut self, timeout: Duration) -> &mut Self {
+    ///
+    /// # Errors
+    /// Returns [`HttpError`] when `timeout` is zero.
+    pub fn set_write_timeout(&mut self, timeout: Duration) -> HttpResult<&mut Self> {
+        validate_positive_timeout("write_timeout", timeout)?;
         self.execution_options.write_timeout = timeout;
-        self
+        Ok(self)
     }
 
     /// Returns the read-phase timeout used while reading response body bytes.
@@ -366,9 +375,13 @@ impl HttpRequest {
     }
 
     /// Sets the read-phase timeout used while reading response body bytes.
-    pub fn set_read_timeout(&mut self, timeout: Duration) -> &mut Self {
+    ///
+    /// # Errors
+    /// Returns [`HttpError`] when `timeout` is zero.
+    pub fn set_read_timeout(&mut self, timeout: Duration) -> HttpResult<&mut Self> {
+        validate_positive_timeout("read_timeout", timeout)?;
         self.execution_options.read_timeout = timeout;
-        self
+        Ok(self)
     }
 
     /// Returns the optional base URL used to resolve relative [`Self::path`]

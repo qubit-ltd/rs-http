@@ -34,6 +34,7 @@ use serde::de::DeserializeOwned;
 use tokio_util::sync::CancellationToken;
 use url::Url;
 
+use crate::content_type;
 use crate::error::{
     backend_error_mapper::map_reqwest_error,
     ReqwestErrorPhase,
@@ -239,19 +240,19 @@ impl HttpResponse {
     /// Returns response status code.
     #[inline]
     pub fn status(&self) -> StatusCode {
-        self.meta.status
+        self.meta.status()
     }
 
     /// Returns response headers.
     #[inline]
     pub fn headers(&self) -> &HeaderMap {
-        &self.meta.headers
+        self.meta.headers()
     }
 
     /// Returns final response URL.
     #[inline]
     pub fn url(&self) -> &Url {
-        &self.meta.url
+        self.meta.url()
     }
 
     /// Returns request URL used in response read context.
@@ -311,7 +312,7 @@ impl HttpResponse {
             return Ok(self);
         }
         let retry_after = self.retry_after_hint();
-        let method = self.meta.method.clone();
+        let method = self.meta.method().clone();
         let url = self.request_url().clone();
         let error_preview_limit = self.options.error_response_preview_limit;
         let body_preview = self.into_error_body_preview(error_preview_limit).await?;
@@ -340,7 +341,7 @@ impl HttpResponse {
         let Some(backend) = self.backend.take() else {
             return Ok("<empty>".to_string());
         };
-        let content_type = Self::content_type_value(&self.meta.headers);
+        let content_type = Self::content_type_value(self.meta.headers());
         self.read_error_body_preview(backend, limit, content_type)
             .await
     }
@@ -358,9 +359,9 @@ impl HttpResponse {
             return Ok(Bytes::new());
         };
 
-        let method = self.meta.method.clone();
+        let method = self.meta.method().clone();
         let url = self.runtime.request_url.clone();
-        let status = self.meta.status;
+        let status = self.meta.status();
         let read_timeout = self.runtime.read_timeout;
         let cancellation_token = self.runtime.cancellation_token.clone();
         let mut body = bytes::BytesMut::new();
@@ -399,7 +400,7 @@ impl HttpResponse {
                         "Read timeout after {:?} while reading response body",
                         read_timeout
                     ))
-                    .with_method(&self.meta.method)
+                    .with_method(self.meta.method())
                     .with_url(&self.runtime.request_url)
                     .with_status(status);
                     self.remember_body_read_failure(&error);
@@ -427,9 +428,9 @@ impl HttpResponse {
             return Ok(Box::pin(futures_stream::empty()));
         };
 
-        let method = self.meta.method.clone();
+        let method = self.meta.method().clone();
         let url = self.runtime.request_url.clone();
-        let status = self.meta.status;
+        let status = self.meta.status();
         let read_timeout = self.runtime.read_timeout;
         let cancellation_token = self.runtime.cancellation_token.clone();
         let body_read_failure = self.runtime.body_read_failure.clone();
@@ -487,8 +488,8 @@ impl HttpResponse {
                 "Failed to decode response body as UTF-8: {}",
                 error
             ))
-            .with_status(self.meta.status)
-            .with_url(&self.meta.url)
+            .with_status(self.meta.status())
+            .with_url(self.meta.url())
         })
     }
 
@@ -500,8 +501,8 @@ impl HttpResponse {
         let body = self.bytes().await?;
         serde_json::from_slice(&body).map_err(|error| {
             HttpError::decode(format!("Failed to decode response JSON: {}", error))
-                .with_status(self.meta.status)
-                .with_url(&self.meta.url)
+                .with_status(self.meta.status())
+                .with_url(self.meta.url())
         })
     }
 
@@ -637,8 +638,9 @@ impl HttpResponse {
         let limit = max_bytes.max(1);
         let read_timeout = self.runtime.read_timeout;
         let cancellation_token = self.runtime.cancellation_token.clone();
-        let method = self.meta.method.clone();
+        let method = self.meta.method().clone();
         let url = self.runtime.request_url.clone();
+        let status = self.meta.status();
         let mut preview = Vec::new();
         let mut truncated = false;
 
@@ -650,7 +652,8 @@ impl HttpResponse {
                             "Request cancelled while reading status error response body preview",
                         )
                         .with_method(&method)
-                        .with_url(&url));
+                        .with_url(&url)
+                        .with_status(status));
                     }
                     item = tokio::time::timeout(read_timeout, response.chunk()) => item,
                 }
@@ -712,7 +715,7 @@ impl HttpResponse {
         {
             Some(
                 HttpError::cancelled(message.to_string())
-                    .with_method(&self.meta.method)
+                    .with_method(self.meta.method())
                     .with_url(&self.runtime.request_url),
             )
         } else {
@@ -723,7 +726,7 @@ impl HttpResponse {
     /// Returns `Content-Length` parsed from response headers when present and valid.
     fn content_length_hint(&self) -> Option<u64> {
         self.meta
-            .headers
+            .headers()
             .get(CONTENT_LENGTH)
             .and_then(|value| value.to_str().ok())
             .and_then(|value| value.parse::<u64>().ok())
@@ -732,14 +735,10 @@ impl HttpResponse {
     /// Returns whether response content-type is SSE (`text/event-stream`).
     fn is_sse_response(&self) -> bool {
         self.meta
-            .headers
+            .headers()
             .get(CONTENT_TYPE)
             .and_then(|value| value.to_str().ok())
-            .is_some_and(|content_type| {
-                content_type
-                    .to_ascii_lowercase()
-                    .starts_with("text/event-stream")
-            })
+            .is_some_and(content_type::is_sse)
     }
 
     fn render_error_body_preview(

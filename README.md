@@ -111,6 +111,7 @@ let client = HttpClientFactory::new().create(options)?;
 | `HttpClient` | Executes requests and applies headers, injectors, interceptors, retry, logging, and SSE reconnect helpers. |
 | `HttpRequestBuilder` | Builds method, path, query, headers, body, and request-level overrides. |
 | `HttpResponse` | Exposes response metadata and lazy readers for bytes, text, JSON, streams, and SSE. |
+| `HttpResponseInterceptorContext` | Lets response interceptors inspect status/method and mutate headers/final URL without breaking success-status invariants. |
 
 ## Project Scope
 

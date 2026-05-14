@@ -23,8 +23,10 @@ use url::Url;
 #[test]
 fn test_http_response_interceptors_clear_removes_registered_callbacks() {
     let mut interceptors = HttpResponseInterceptors::new();
-    interceptors.push(HttpResponseInterceptor::new(|meta| {
-        meta.status = StatusCode::CREATED;
+    interceptors.push(HttpResponseInterceptor::new(|context| {
+        context
+            .headers_mut()
+            .insert("x-interceptor", http::HeaderValue::from_static("called"));
         Ok(())
     }));
     interceptors.clear();
@@ -39,5 +41,6 @@ fn test_http_response_interceptors_clear_removes_registered_callbacks() {
         .apply(&mut meta)
         .expect("cleared interceptors should be no-op");
 
-    assert_eq!(meta.status, StatusCode::OK);
+    assert_eq!(meta.status(), StatusCode::OK);
+    assert!(!meta.headers().contains_key("x-interceptor"));
 }

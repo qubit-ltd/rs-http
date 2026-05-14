@@ -196,8 +196,8 @@ let request = client
     .query_params([("source", "mobile"), ("debug", "false")])
     .header("x-request-id", "req-001")?
     .json_body(&serde_json::json!({"name": "created"}))?
-    .request_timeout(Duration::from_secs(10))
-    .read_timeout(Duration::from_secs(30))
+    .request_timeout(Duration::from_secs(10))?
+    .read_timeout(Duration::from_secs(30))?
     .build();
 ```
 
@@ -228,6 +228,8 @@ let request = client
 | `disable_retry` | 本次请求禁用重试 |
 | `retry_method_policy` | 覆盖本次请求的可重试 HTTP 方法策略 |
 | `honor_retry_after` | 本次请求在 429/5xx 且可重试时尊重 `Retry-After` |
+
+请求级 timeout 覆盖会拒绝零时长，并返回 `HttpError`。
 
 ## Header、注入器和拦截器
 
@@ -325,7 +327,7 @@ client.add_async_header_injector(AsyncHttpHeaderInjector::new(move |headers| {
 }));
 ```
 
-请求拦截器在每次尝试发送前执行，可以修改 `HttpRequest`，返回错误会短路本次执行。响应拦截器只在成功状态响应上执行，可以检查或修改 `HttpResponseMeta`，返回错误会让 `execute` 失败。
+请求拦截器在每次尝试发送前执行，可以修改 `HttpRequest`，返回错误会短路本次执行。响应拦截器只在成功状态响应上执行，接收 `HttpResponseInterceptorContext`：status 和请求方法不可变，响应 headers 和最终响应 URL 可以修改。返回错误会让 `execute` 失败。
 
 ```rust
 use http::{HeaderName, HeaderValue};
@@ -340,8 +342,8 @@ client.add_request_interceptor(HttpRequestInterceptor::new(|request| {
     Ok(())
 }));
 
-client.add_response_interceptor(HttpResponseInterceptor::new(|meta| {
-    if !meta.headers.contains_key("x-required") {
+client.add_response_interceptor(HttpResponseInterceptor::new(|context| {
+    if !context.headers().contains_key("x-required") {
         return Err(HttpError::other("missing x-required response header"));
     }
     Ok(())
@@ -460,7 +462,7 @@ async fn read_sse_examples(client: &qubit_http::HttpClient) -> qubit_http::HttpR
 | `bytes()` 后再调用 `stream()`，得到基于缓存的单块流 | 调用 `sse_messages()` 或 `sse_chunks()` 后继续读同一个响应 |
 | 在同一条表达式中链式设置 `sse_*` 选项并消费 SSE | 对同一个 `HttpResponse` 同时设计多条消费路径 |
 
-`retry_after_hint()` 会在响应状态为 429 或 5xx 且存在合法 `Retry-After` header 时返回延迟。它支持 `delta-seconds` 和 HTTP-date 两种格式；HTTP-date 早于当前时间时返回 0 秒。`HttpResponseMeta` 上也有同名方法，响应拦截器可以在只拿到 metadata 时读取这个提示。
+`retry_after_hint()` 会在响应状态为 429 或 5xx 且存在合法 `Retry-After` header 时返回延迟。它支持 `delta-seconds` 和 HTTP-date 两种格式；HTTP-date 早于当前时间时返回 0 秒。`HttpResponseMeta` 和 `HttpResponseInterceptorContext` 上也有同名方法，响应拦截器可以在只拿到 metadata 时读取这个提示。
 
 ## 错误模型
 

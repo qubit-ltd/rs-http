@@ -196,8 +196,8 @@ let request = client
     .query_params([("source", "mobile"), ("debug", "false")])
     .header("x-request-id", "req-001")?
     .json_body(&serde_json::json!({"name": "created"}))?
-    .request_timeout(Duration::from_secs(10))
-    .read_timeout(Duration::from_secs(30))
+    .request_timeout(Duration::from_secs(10))?
+    .read_timeout(Duration::from_secs(30))?
     .build();
 ```
 
@@ -228,6 +228,8 @@ Per-request overrides:
 | `disable_retry` | Disables retry for this request |
 | `retry_method_policy` | Overrides retryable HTTP method policy for this request |
 | `honor_retry_after` | Honors `Retry-After` for retryable 429/5xx responses on this request |
+
+Per-request timeout overrides reject zero durations and return `HttpError`.
 
 ## Headers, Injectors, And Interceptors
 
@@ -325,7 +327,7 @@ client.add_async_header_injector(AsyncHttpHeaderInjector::new(move |headers| {
 }));
 ```
 
-Request interceptors run before each send attempt. They can mutate `HttpRequest`; returning an error short-circuits execution. Response interceptors run only for successful-status responses. They can inspect or mutate `HttpResponseMeta`; returning an error makes `execute` fail.
+Request interceptors run before each send attempt. They can mutate `HttpRequest`; returning an error short-circuits execution. Response interceptors run only for successful-status responses. They receive `HttpResponseInterceptorContext`: status and request method are immutable, while response headers and the final response URL can be mutated. Returning an error makes `execute` fail.
 
 ```rust
 use http::{HeaderName, HeaderValue};
@@ -340,8 +342,8 @@ client.add_request_interceptor(HttpRequestInterceptor::new(|request| {
     Ok(())
 }));
 
-client.add_response_interceptor(HttpResponseInterceptor::new(|meta| {
-    if !meta.headers.contains_key("x-required") {
+client.add_response_interceptor(HttpResponseInterceptor::new(|context| {
+    if !context.headers().contains_key("x-required") {
         return Err(HttpError::other("missing x-required response header"));
     }
     Ok(())
@@ -460,7 +462,7 @@ There is only one consumption path for the underlying `reqwest` body on a given 
 | Call `stream()` after `bytes()` when a one-chunk cached stream is acceptable | Call `sse_messages()` or `sse_chunks()` and then try to read the same response body again |
 | Chain `sse_*` option setters with the SSE consumer on the same expression | Design multiple body-consumption paths for one `HttpResponse` |
 
-`retry_after_hint()` returns a delay when the response status is 429 or 5xx and the response has a valid `Retry-After` header. It supports both `delta-seconds` and HTTP-date formats; HTTP dates in the past resolve to 0 seconds. `HttpResponseMeta` exposes the same method, so response interceptors can read the hint from metadata.
+`retry_after_hint()` returns a delay when the response status is 429 or 5xx and the response has a valid `Retry-After` header. It supports both `delta-seconds` and HTTP-date formats; HTTP dates in the past resolve to 0 seconds. `HttpResponseMeta` and `HttpResponseInterceptorContext` expose the same method, so response interceptors can read the hint from metadata.
 
 ## Error Model
 

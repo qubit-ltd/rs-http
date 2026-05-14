@@ -21,7 +21,10 @@ use std::time::{
 };
 
 use futures_util::StreamExt;
-use http::Method;
+use http::{
+    Method,
+    StatusCode,
+};
 use qubit_http::{
     AsyncHttpHeaderInjector,
     CancellationToken,
@@ -298,6 +301,7 @@ async fn test_execute_request_can_be_cancelled_while_reading_status_error_previe
         .expect_err("status error preview should be cancelled");
 
     assert_eq!(error.kind, HttpErrorKind::Cancelled);
+    assert_eq!(error.status, Some(StatusCode::SERVICE_UNAVAILABLE));
     assert!(error.message.contains("status error response body preview"));
     assert_eq!(
         error

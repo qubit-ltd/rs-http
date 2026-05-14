@@ -42,6 +42,7 @@ use super::http_request::HttpRequest;
 use super::http_request_body::HttpRequestBody;
 use super::http_request_retry_override::HttpRequestRetryOverride;
 use super::parse_header;
+use super::validate_positive_timeout;
 
 /// Builder for [`HttpRequest`](super::http_request::HttpRequest).
 #[derive(Debug, Clone)]
@@ -361,10 +362,14 @@ impl HttpRequestBuilder {
     /// - `timeout`: Maximum time for the whole request (reqwest `timeout`).
     ///
     /// # Returns
-    /// `self` for chaining.
-    pub fn request_timeout(mut self, timeout: Duration) -> Self {
+    /// `Ok(self)` for chaining.
+    ///
+    /// # Errors
+    /// Returns [`HttpError`] when `timeout` is zero.
+    pub fn request_timeout(mut self, timeout: Duration) -> HttpResult<Self> {
+        validate_positive_timeout("request_timeout", timeout)?;
         self.request_timeout = Some(timeout);
-        self
+        Ok(self)
     }
 
     /// Overrides the write-phase timeout for this request only.
@@ -373,10 +378,14 @@ impl HttpRequestBuilder {
     /// - `timeout`: Maximum time allowed for sending the request bytes.
     ///
     /// # Returns
-    /// `self` for chaining.
-    pub fn write_timeout(mut self, timeout: Duration) -> Self {
+    /// `Ok(self)` for chaining.
+    ///
+    /// # Errors
+    /// Returns [`HttpError`] when `timeout` is zero.
+    pub fn write_timeout(mut self, timeout: Duration) -> HttpResult<Self> {
+        validate_positive_timeout("write_timeout", timeout)?;
         self.write_timeout = timeout;
-        self
+        Ok(self)
     }
 
     /// Overrides the read-phase timeout for this request only.
@@ -385,10 +394,14 @@ impl HttpRequestBuilder {
     /// - `timeout`: Maximum time allowed for one read wait on response body.
     ///
     /// # Returns
-    /// `self` for chaining.
-    pub fn read_timeout(mut self, timeout: Duration) -> Self {
+    /// `Ok(self)` for chaining.
+    ///
+    /// # Errors
+    /// Returns [`HttpError`] when `timeout` is zero.
+    pub fn read_timeout(mut self, timeout: Duration) -> HttpResult<Self> {
+        validate_positive_timeout("read_timeout", timeout)?;
         self.read_timeout = timeout;
-        self
+        Ok(self)
     }
 
     /// Overrides the client default base URL for this request.
