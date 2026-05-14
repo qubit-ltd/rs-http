@@ -106,14 +106,19 @@ fn test_http_request_setters_update_headers_timeout_retry_and_cancellation() {
     assert!(request.headers().is_empty());
 
     assert_eq!(request.request_timeout(), None);
-    request.set_request_timeout(Duration::from_secs(5));
+    request
+        .set_request_timeout(Duration::from_secs(5))
+        .expect("positive request timeout should be accepted");
     assert_eq!(request.request_timeout(), Some(Duration::from_secs(5)));
     request.clear_request_timeout();
     assert_eq!(request.request_timeout(), None);
 
     request
         .set_write_timeout(Duration::from_millis(250))
-        .set_read_timeout(Duration::from_millis(750));
+        .expect("positive write timeout should be accepted");
+    request
+        .set_read_timeout(Duration::from_millis(750))
+        .expect("positive read timeout should be accepted");
     assert_eq!(request.write_timeout(), Duration::from_millis(250));
     assert_eq!(request.read_timeout(), Duration::from_millis(750));
 
@@ -129,6 +134,41 @@ fn test_http_request_setters_update_headers_timeout_retry_and_cancellation() {
         .with_honor_retry_after(true);
     request.set_retry_override(retry_override.clone());
     assert_eq!(request.retry_override(), &retry_override);
+}
+
+#[test]
+fn test_http_request_timeout_setters_reject_zero_and_keep_previous_values() {
+    let mut request = new_request(Method::GET, "/v1/resources");
+    request
+        .set_request_timeout(Duration::from_secs(5))
+        .expect("positive request timeout should be accepted");
+    request
+        .set_write_timeout(Duration::from_millis(250))
+        .expect("positive write timeout should be accepted");
+    request
+        .set_read_timeout(Duration::from_millis(750))
+        .expect("positive read timeout should be accepted");
+
+    let request_timeout_error = request
+        .set_request_timeout(Duration::ZERO)
+        .expect_err("zero request timeout should be rejected");
+    assert_eq!(request_timeout_error.kind, HttpErrorKind::Other);
+    assert!(request_timeout_error.message.contains("request_timeout"));
+    assert_eq!(request.request_timeout(), Some(Duration::from_secs(5)));
+
+    let write_timeout_error = request
+        .set_write_timeout(Duration::ZERO)
+        .expect_err("zero write timeout should be rejected");
+    assert_eq!(write_timeout_error.kind, HttpErrorKind::Other);
+    assert!(write_timeout_error.message.contains("write_timeout"));
+    assert_eq!(request.write_timeout(), Duration::from_millis(250));
+
+    let read_timeout_error = request
+        .set_read_timeout(Duration::ZERO)
+        .expect_err("zero read timeout should be rejected");
+    assert_eq!(read_timeout_error.kind, HttpErrorKind::Other);
+    assert!(read_timeout_error.message.contains("read_timeout"));
+    assert_eq!(request.read_timeout(), Duration::from_millis(750));
 }
 
 #[test]

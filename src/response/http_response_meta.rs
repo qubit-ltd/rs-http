@@ -27,13 +27,13 @@ use url::Url;
 #[derive(Debug, Clone)]
 pub struct HttpResponseMeta {
     /// Response status code.
-    pub status: StatusCode,
+    status: StatusCode,
     /// Response headers.
-    pub headers: HeaderMap,
+    headers: HeaderMap,
     /// Final resolved URL.
-    pub url: Url,
+    url: Url,
     /// Originating request method.
-    pub method: Method,
+    method: Method,
 }
 
 impl HttpResponseMeta {
@@ -47,18 +47,92 @@ impl HttpResponseMeta {
         }
     }
 
+    /// Returns response status code.
+    ///
+    /// # Returns
+    /// Immutable response status.
+    #[inline]
+    pub fn status(&self) -> StatusCode {
+        self.status
+    }
+
+    /// Returns response headers.
+    ///
+    /// # Returns
+    /// Immutable response header map.
+    #[inline]
+    pub fn headers(&self) -> &HeaderMap {
+        &self.headers
+    }
+
+    /// Returns final response URL.
+    ///
+    /// # Returns
+    /// Immutable final response URL.
+    #[inline]
+    pub fn url(&self) -> &Url {
+        &self.url
+    }
+
+    /// Returns originating request method.
+    ///
+    /// # Returns
+    /// Immutable request method.
+    #[inline]
+    pub fn method(&self) -> &Method {
+        &self.method
+    }
+
     /// Returns parsed `Retry-After` when this response status should honor it.
     ///
     /// Applicable statuses are `429` and `5xx`, and header value can be
     /// `delta-seconds` or HTTP-date.
     pub fn retry_after_hint(&self) -> Option<Duration> {
-        if !is_retry_after_applicable_status(self.status) {
+        Self::retry_after_hint_from_parts(self.status, &self.headers)
+    }
+
+    /// Returns parsed `Retry-After` for explicit status/header parts.
+    ///
+    /// # Parameters
+    /// - `status`: Response status code to inspect.
+    /// - `headers`: Response headers that may contain `Retry-After`.
+    ///
+    /// # Returns
+    /// `Some(Duration)` when status and header value are applicable; otherwise
+    /// `None`.
+    pub(super) fn retry_after_hint_from_parts(
+        status: StatusCode,
+        headers: &HeaderMap,
+    ) -> Option<Duration> {
+        if !is_retry_after_applicable_status(status) {
             return None;
         }
-        self.headers
+        headers
             .get(RETRY_AFTER)
             .and_then(|value| value.to_str().ok())
             .and_then(parse_retry_after_value)
+    }
+
+    /// Replaces response headers after response interceptors complete.
+    ///
+    /// # Parameters
+    /// - `headers`: New response headers.
+    ///
+    /// # Returns
+    /// Nothing.
+    pub(super) fn set_headers(&mut self, headers: HeaderMap) {
+        self.headers = headers;
+    }
+
+    /// Replaces final response URL after response interceptors complete.
+    ///
+    /// # Parameters
+    /// - `url`: New final response URL.
+    ///
+    /// # Returns
+    /// Nothing.
+    pub(super) fn set_url(&mut self, url: Url) {
+        self.url = url;
     }
 }
 

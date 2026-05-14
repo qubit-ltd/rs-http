@@ -26,6 +26,7 @@
 
 mod client;
 pub mod constants;
+mod content_type;
 mod error;
 mod options;
 mod request;
@@ -75,6 +76,7 @@ pub use response::{
     HttpByteStream,
     HttpResponse,
     HttpResponseInterceptor,
+    HttpResponseInterceptorContext,
     HttpResponseInterceptors,
     HttpResponseMeta,
 };

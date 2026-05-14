@@ -22,6 +22,7 @@ mod http_request_builder;
 mod http_request_interceptors;
 mod http_request_retry_override;
 mod http_request_streaming_body;
+mod timeout_validation;
 
 pub use async_http_header_injector::AsyncHttpHeaderInjector;
 pub use header_injector::HttpHeaderInjector;
@@ -36,3 +37,4 @@ pub use http_request_interceptors::{
 };
 pub use http_request_retry_override::HttpRequestRetryOverride;
 pub use http_request_streaming_body::HttpRequestStreamingBody;
+pub(crate) use timeout_validation::validate_positive_timeout;

@@ -149,12 +149,12 @@ impl<'a> HttpLogger<'a> {
 
         tracing::trace!(
             "<-- {} {} (stream)",
-            response_meta.status.as_u16(),
-            &response_meta.url
+            response_meta.status().as_u16(),
+            response_meta.url()
         );
 
         if self.options.log_response_header {
-            for (name, value) in &response_meta.headers {
+            for (name, value) in response_meta.headers() {
                 let masked = self.sanitizer.sanitize_header_value(name, value);
                 tracing::trace!("{}: {}", name.as_str(), masked);
             }

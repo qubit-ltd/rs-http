@@ -57,6 +57,7 @@ async fn test_execute_with_form_body_and_query_headers_timeout() {
         .expect("header should be valid")
         .form_body([("name", "alice"), ("city", "shanghai")])
         .request_timeout(Duration::from_secs(1))
+        .expect("positive request timeout should be accepted")
         .build();
     timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -102,6 +103,7 @@ async fn test_execute_with_multipart_body_and_query_headers_timeout() {
         .multipart_body(payload.clone(), "abc")
         .expect("multipart body should be built")
         .request_timeout(Duration::from_secs(1))
+        .expect("positive request timeout should be accepted")
         .build();
     timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -157,6 +159,7 @@ async fn test_execute_with_ndjson_body_and_query_headers_timeout() {
         ])
         .expect("ndjson should be encoded")
         .request_timeout(Duration::from_secs(1))
+        .expect("positive request timeout should be accepted")
         .build();
     timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -202,6 +205,7 @@ async fn test_execute_with_stream_body_uses_chunked_transfer_encoding() {
             Bytes::from_static(b"third"),
         ])
         .request_timeout(Duration::from_secs(1))
+        .expect("positive request timeout should be accepted")
         .build();
     let response = timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -239,6 +243,7 @@ async fn test_execute_with_stream_body_uses_chunked_transfer_encoding_without_ea
         .query_param("kind", "stream-body")
         .stream_body([Bytes::from_static(b"a"), Bytes::from_static(b"b")])
         .request_timeout(Duration::from_secs(1))
+        .expect("positive request timeout should be accepted")
         .build();
     let response = timeout(Duration::from_secs(3), client.execute(request))
         .await

@@ -398,6 +398,50 @@ fn test_execute_skips_trace_response_body_for_streaming_or_unknown_size_body() {
 }
 
 #[test]
+fn test_execute_logs_response_body_when_content_type_only_has_sse_prefix() {
+    let logs = capture_trace_logs(|| {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("failed to build tokio runtime");
+        runtime.block_on(async {
+            let server = spawn_one_shot_server(ResponsePlan::Immediate {
+                status: 200,
+                headers: vec![(
+                    "Content-Type".to_string(),
+                    "text/event-streamish".to_string(),
+                )],
+                body: b"not an sse response".to_vec(),
+            })
+            .await;
+
+            let mut options = HttpClientOptions::default();
+            options.base_url = Some(server.base_url());
+            options.logging.body_size_limit = 128;
+            let client = HttpClientFactory::new()
+                .create(options)
+                .expect("client should be created");
+
+            let request = client.request(Method::GET, "/trace-not-sse-prefix").build();
+            let mut response = timeout(std::time::Duration::from_secs(3), client.execute(request))
+                .await
+                .expect("execute timed out")
+                .expect("request should succeed");
+            assert_eq!(
+                response.text().await.expect("body should remain readable"),
+                "not an sse response"
+            );
+
+            let captured = timeout(std::time::Duration::from_secs(3), server.finish())
+                .await
+                .expect("server finish timed out");
+            assert_eq!(captured.target, "/trace-not-sse-prefix");
+        });
+    });
+    assert!(logs.contains("Response body: not an sse response"));
+}
+
+#[test]
 fn test_log_stream_response_headers_disabled_emits_nothing() {
     let mut options = HttpLoggingOptions::default();
     options.enabled = false;

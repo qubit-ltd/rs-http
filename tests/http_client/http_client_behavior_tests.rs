@@ -394,8 +394,8 @@ async fn test_request_url_can_differ_from_response_meta_url() {
     let rewritten_url = url::Url::parse("https://interceptor.example/rewritten")
         .expect("static interceptor URL should parse");
     let rewritten_url_for_interceptor = rewritten_url.clone();
-    client.add_response_interceptor(HttpResponseInterceptor::new(move |meta| {
-        meta.url = rewritten_url_for_interceptor.clone();
+    client.add_response_interceptor(HttpResponseInterceptor::new(move |context| {
+        context.set_url(rewritten_url_for_interceptor.clone());
         Ok(())
     }));
 
@@ -521,8 +521,8 @@ async fn test_request_url_is_used_in_buffered_read_error() {
         .join("context-url-timeout")
         .expect("request URL should join");
     let expected_url_for_interceptor = interceptor_url.clone();
-    client.add_response_interceptor(HttpResponseInterceptor::new(move |meta| {
-        meta.url = expected_url_for_interceptor.clone();
+    client.add_response_interceptor(HttpResponseInterceptor::new(move |context| {
+        context.set_url(expected_url_for_interceptor.clone());
         Ok(())
     }));
 

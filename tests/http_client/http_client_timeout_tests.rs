@@ -73,6 +73,7 @@ async fn test_request_level_timeout_overrides_client_level_timeout() {
     let request = client
         .request(Method::GET, "/request-timeout-override")
         .request_timeout(Duration::from_millis(80))
+        .expect("positive request timeout should be accepted")
         .build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -130,6 +131,7 @@ async fn test_request_level_write_timeout_overrides_client_level_timeout() {
     let request = client
         .request(Method::GET, "/request-write-timeout")
         .write_timeout(Duration::from_millis(80))
+        .expect("positive write timeout should be accepted")
         .build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -263,6 +265,7 @@ async fn test_request_level_read_timeout_overrides_client_level_for_buffered_exe
     let request = client
         .request(Method::GET, "/request-read-timeout-override-buffered")
         .read_timeout(Duration::from_millis(80))
+        .expect("positive read timeout should be accepted")
         .build();
     let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -302,6 +305,7 @@ async fn test_request_level_read_timeout_overrides_client_level_for_stream_body(
     let request = client
         .request(Method::GET, "/request-read-timeout-override-stream")
         .read_timeout(Duration::from_millis(80))
+        .expect("positive read timeout should be accepted")
         .build();
     let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await

@@ -90,9 +90,12 @@ fn test_http_response_meta_accessor_returns_shared_metadata() {
     );
 
     let meta = response.meta();
-    assert_eq!(meta.status, StatusCode::ACCEPTED);
-    assert_eq!(meta.url, Url::parse("https://example.com/jobs/1").unwrap());
-    assert_eq!(meta.method, Method::POST);
+    assert_eq!(meta.status(), StatusCode::ACCEPTED);
+    assert_eq!(
+        meta.url(),
+        &Url::parse("https://example.com/jobs/1").unwrap()
+    );
+    assert_eq!(meta.method(), &Method::POST);
 }
 
 #[test]

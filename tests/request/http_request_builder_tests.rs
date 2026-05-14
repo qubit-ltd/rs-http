@@ -91,9 +91,21 @@ fn test_request_builder_write_timeout_overrides_default_from_options() {
     let request = client
         .request(Method::GET, "/v1/override-write-timeout")
         .write_timeout(Duration::from_millis(88))
+        .expect("positive write timeout should be accepted")
         .build();
 
     assert_eq!(request.write_timeout(), Duration::from_millis(88));
+}
+
+#[test]
+fn test_request_builder_write_timeout_rejects_zero() {
+    let error = new_builder(Method::GET, "/v1/zero-write-timeout")
+        .write_timeout(Duration::ZERO)
+        .expect_err("zero write timeout should be rejected");
+
+    assert_eq!(error.kind, HttpErrorKind::Other);
+    assert!(error.message.contains("write_timeout"));
+    assert!(error.message.contains("greater than zero"));
 }
 
 #[test]
@@ -122,9 +134,21 @@ fn test_request_builder_read_timeout_overrides_default_from_options() {
     let request = client
         .request(Method::GET, "/v1/override-read-timeout")
         .read_timeout(Duration::from_millis(77))
+        .expect("positive read timeout should be accepted")
         .build();
 
     assert_eq!(request.read_timeout(), Duration::from_millis(77));
+}
+
+#[test]
+fn test_request_builder_read_timeout_rejects_zero() {
+    let error = new_builder(Method::GET, "/v1/zero-read-timeout")
+        .read_timeout(Duration::ZERO)
+        .expect_err("zero read timeout should be rejected");
+
+    assert_eq!(error.kind, HttpErrorKind::Other);
+    assert!(error.message.contains("read_timeout"));
+    assert!(error.message.contains("greater than zero"));
 }
 
 #[test]
@@ -262,6 +286,7 @@ fn test_request_builder_bytes_body_and_request_timeout() {
     let request = new_builder(Method::PUT, "/v1/blob")
         .bytes_body(Bytes::from_static(b"abc123"))
         .request_timeout(Duration::from_secs(5))
+        .expect("positive request timeout should be accepted")
         .build();
 
     assert_eq!(request.request_timeout(), Some(Duration::from_secs(5)));
@@ -271,6 +296,17 @@ fn test_request_builder_bytes_body_and_request_timeout() {
         }
         _ => panic!("expected bytes body"),
     }
+}
+
+#[test]
+fn test_request_builder_request_timeout_rejects_zero() {
+    let error = new_builder(Method::GET, "/v1/zero-request-timeout")
+        .request_timeout(Duration::ZERO)
+        .expect_err("zero request timeout should be rejected");
+
+    assert_eq!(error.kind, HttpErrorKind::Other);
+    assert!(error.message.contains("request_timeout"));
+    assert!(error.message.contains("greater than zero"));
 }
 
 #[test]
