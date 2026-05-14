@@ -10,7 +10,7 @@
 | --- | --- |
 | 第一次接入 | 「快速开始」「构建请求」「读取响应」 |
 | 配置客户端 | 「创建客户端」「从 qubit-config 读取」「配置参考」 |
-| 排查失败 | 「错误模型」「自动重试」「日志与敏感头」 |
+| 排查失败 | 「错误模型」「自动重试」「日志脱敏」 |
 | 使用流式响应或 SSE | 「读取响应」「SSE 解码」 |
 
 ## 安装与导入
@@ -541,7 +541,7 @@ if error.kind == qubit_http::HttpErrorKind::RetryAborted {
 }
 ```
 
-## 日志与敏感头
+## 日志脱敏
 
 HTTP 日志使用 `tracing::trace!`。必须同时满足：
 
@@ -551,6 +551,41 @@ HTTP 日志使用 `tracing::trace!`。必须同时满足：
 可分别控制请求头、请求体、响应头、响应体。body 只记录前 `logging.body_size_limit` 字节，超出部分显示截断提示；二进制体显示为 `<binary N bytes>`。请求体日志只预览已缓冲的 body 变体（`bytes_body`、`text_body`、`json_body`、`form_body`、`multipart_body`、`ndjson_body`）；`stream_body` 和 `streaming_body` 会记录为 `<empty>`，因为 logger 不会消费上传流。
 
 日志统一经过 `LogSanitizer` 和 `LogSanitizePolicy` 脱敏。敏感 header 会被掩码；URL query 参数以及 JSON/form body 字段如果命中策略中的敏感名称，会被替换为 `****`。默认策略内置常见认证、token、cookie、secret、password 类名称。短 header 值整体显示为 `****`；长 header 值保留前后各 2 个字符，中间替换为 `****`。配置 `sensitive_headers` 会覆盖默认敏感 header 集合；代码里也可以直接调整 `options.log_sanitize_policy`。
+
+示例：
+
+```rust
+use http::Method;
+use qubit_http::{HttpClientFactory, HttpClientOptions};
+use serde_json::json;
+
+let mut options = HttpClientOptions::new();
+options.logging.enabled = true;
+options.logging.log_request_header = true;
+options.logging.log_request_body = true;
+options.log_sanitize_policy.sensitive_headers.insert("x-api-key");
+options
+    .log_sanitize_policy
+    .sensitive_query_params
+    .insert("access_token");
+options
+    .log_sanitize_policy
+    .sensitive_body_fields
+    .insert("password");
+
+let client = HttpClientFactory::new().create(options)?;
+let request = client
+    .request(Method::POST, "https://api.example.com/login")
+    .query_param("access_token", "secret-token")
+    .header("x-api-key", "secret-key")?
+    .json_body(&json!({
+        "username": "alice",
+        "password": "secret-password",
+    }))?
+    .build();
+
+client.execute(request).await?;
+```
 
 注意：如果 TRACE 日志开启且 `log_response_body = true`，响应体日志只会在 body 已缓存，或响应不是 SSE 且存在 `Content-Length`、并且长度不超过 `logging.body_size_limit` 时读取并缓存完整 body；未知长度、超过限制或 SSE 响应会记录为跳过，不会为了日志消费后端流。
 

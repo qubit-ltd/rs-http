@@ -65,7 +65,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-## 日志与敏感头
+## 日志脱敏
 
 HTTP TRACE 日志在输出前会统一脱敏。默认策略会掩码常见凭证类 header、
 query 参数和 JSON/form body 字段。若某个服务使用自定义敏感名称，可以在
