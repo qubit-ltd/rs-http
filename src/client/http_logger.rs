@@ -12,27 +12,26 @@
 //! Encapsulates request and response logging behavior.
 //!
 
-use crate::constants::{
-    SENSITIVE_HEADER_MASK_EDGE_CHARS,
-    SENSITIVE_HEADER_MASK_PLACEHOLDER,
-    SENSITIVE_HEADER_MASK_SHORT_LEN,
-};
+use http::header::CONTENT_TYPE;
+
 use crate::{
+    BodyLogContext,
+    BodyPreview,
     HttpClientOptions,
     HttpLoggingOptions,
     HttpRequest,
     HttpRequestBody,
     HttpResponse,
     HttpResponseMeta,
-    SensitiveHttpHeaders,
+    LogSanitizer,
 };
 use bytes::Bytes;
 
-/// HTTP logger bound to one pair of logging options and sensitive header policy.
-#[derive(Debug, Clone, Copy)]
+/// HTTP logger bound to one pair of logging options and a sanitizer policy.
+#[derive(Debug, Clone)]
 pub struct HttpLogger<'a> {
     options: &'a HttpLoggingOptions,
-    sensitive_headers: &'a SensitiveHttpHeaders,
+    sanitizer: LogSanitizer,
 }
 
 impl<'a> HttpLogger<'a> {
@@ -47,7 +46,7 @@ impl<'a> HttpLogger<'a> {
     pub fn new(options: &'a HttpClientOptions) -> Self {
         Self {
             options: &options.logging,
-            sensitive_headers: &options.sensitive_headers,
+            sanitizer: LogSanitizer::new(options.log_sanitize_policy.clone()),
         }
     }
 
@@ -64,7 +63,7 @@ impl<'a> HttpLogger<'a> {
             return;
         }
 
-        let url = Self::request_log_url(request);
+        let url = self.request_log_url(request);
         tracing::trace!("--> {} {}", request.method(), url);
 
         let headers = request
@@ -73,15 +72,20 @@ impl<'a> HttpLogger<'a> {
 
         if self.options.log_request_header {
             for (name, value) in headers {
-                let value = value.to_str().unwrap_or("<non-utf8>");
-                let masked = self.mask_header_value(name.as_str(), value);
+                let masked = self.sanitizer.sanitize_header_value(name, value);
                 tracing::trace!("{}: {}", name.as_str(), masked);
             }
         }
 
         if self.options.log_request_body {
             match Self::clone_request_body_for_log(request.body()) {
-                Some(bytes) => tracing::trace!("Request body: {}", self.render_body(&bytes)),
+                Some(bytes) => {
+                    let content_type = Self::content_type(headers);
+                    tracing::trace!(
+                        "Request body: {}",
+                        self.render_body(&bytes, BodyLogContext::Request, content_type)
+                    );
+                }
                 None => tracing::trace!("Request body: <empty>"),
             }
         }
@@ -106,18 +110,24 @@ impl<'a> HttpLogger<'a> {
 
         if self.options.log_response_header {
             for (name, value) in response.headers() {
-                let value = value.to_str().unwrap_or("<non-utf8>");
-                let masked = self.mask_header_value(name.as_str(), value);
+                let masked = self.sanitizer.sanitize_header_value(name, value);
                 tracing::trace!("{}: {}", name.as_str(), masked);
             }
         }
 
         if self.options.log_response_body {
+            let content_type = Self::content_type(response.headers()).map(str::to_string);
             if let Some(body) = response.buffered_body_for_logging() {
-                tracing::trace!("Response body: {}", self.render_body(body));
+                tracing::trace!(
+                    "Response body: {}",
+                    self.render_body(body, BodyLogContext::Response, content_type.as_deref())
+                );
             } else if response.can_buffer_body_for_logging(self.options.body_size_limit) {
                 let body = response.bytes().await?;
-                tracing::trace!("Response body: {}", self.render_body(&body));
+                tracing::trace!(
+                    "Response body: {}",
+                    self.render_body(&body, BodyLogContext::Response, content_type.as_deref())
+                );
             } else {
                 tracing::trace!("Response body: <skipped: streaming or unknown-size body>");
             }
@@ -145,8 +155,7 @@ impl<'a> HttpLogger<'a> {
 
         if self.options.log_response_header {
             for (name, value) in &response_meta.headers {
-                let value = value.to_str().unwrap_or("<non-utf8>");
-                let masked = self.mask_header_value(name.as_str(), value);
+                let masked = self.sanitizer.sanitize_header_value(name, value);
                 tracing::trace!("{}: {}", name.as_str(), masked);
             }
         }
@@ -168,65 +177,35 @@ impl<'a> HttpLogger<'a> {
     /// # Returns
     /// Resolved URL including builder query parameters, or the raw request path
     /// when URL resolution fails before send.
-    fn request_log_url(request: &HttpRequest) -> String {
+    fn request_log_url(&self, request: &HttpRequest) -> String {
         request
             .resolved_url_with_query()
-            .map(|url| url.to_string())
+            .map(|url| self.sanitizer.sanitize_url(&url))
             .unwrap_or_else(|_| request.path().to_string())
-    }
-
-    /// Returns a masked representation of a header value according to sensitivity rules.
-    ///
-    /// # Parameters
-    /// - `name`: Header name.
-    /// - `value`: Raw header value.
-    ///
-    /// # Returns
-    /// A log-safe string when the header is sensitive; otherwise the original value.
-    fn mask_header_value(&self, name: &str, value: &str) -> String {
-        if value.is_empty() {
-            return String::new();
-        }
-        if !self.sensitive_headers.contains(name) {
-            return value.to_string();
-        }
-
-        let chars: Vec<char> = value.chars().collect();
-        if chars.len() <= SENSITIVE_HEADER_MASK_SHORT_LEN {
-            SENSITIVE_HEADER_MASK_PLACEHOLDER.to_string()
-        } else {
-            let edge = SENSITIVE_HEADER_MASK_EDGE_CHARS;
-            let prefix: String = chars[..edge].iter().collect();
-            let suffix: String = chars[chars.len() - edge..].iter().collect();
-            format!("{prefix}{SENSITIVE_HEADER_MASK_PLACEHOLDER}{suffix}")
-        }
     }
 
     /// Formats up to configured `body_size_limit` bytes of `body` for TRACE output.
     ///
     /// # Parameters
     /// - `body`: Raw bytes.
+    /// - `context`: Body logging call site.
+    /// - `content_type`: Optional Content-Type value.
     ///
     /// # Returns
-    /// Human-readable body preview string.
-    fn render_body(&self, body: &Bytes) -> String {
-        if body.is_empty() {
-            return "<empty>".to_string();
-        }
-
-        let max_bytes = self.options.body_size_limit;
-        let limit = body.len().min(max_bytes);
-        let prefix = &body[..limit];
-        let suffix = if body.len() > max_bytes {
-            format!("...<truncated {} bytes>", body.len() - max_bytes)
+    /// Human-readable sanitized body preview string.
+    fn render_body(
+        &self,
+        body: &Bytes,
+        context: BodyLogContext,
+        content_type: Option<&str>,
+    ) -> String {
+        let preview = BodyPreview::new(body, self.options.body_size_limit, context);
+        let preview = if let Some(content_type) = content_type {
+            preview.with_content_type(content_type)
         } else {
-            String::new()
+            preview
         };
-
-        match std::str::from_utf8(prefix) {
-            Ok(text) => format!("{}{}", text, suffix),
-            Err(_) => format!("<binary {} bytes>{}", body.len(), suffix),
-        }
+        self.sanitizer.sanitize_body_preview(&preview)
     }
 
     /// Clones request body content only when body logging is needed.
@@ -247,5 +226,18 @@ impl<'a> HttpLogger<'a> {
             HttpRequestBody::Stream(_) => None,
             HttpRequestBody::Empty => None,
         }
+    }
+
+    /// Extracts a UTF-8 Content-Type header value from a header map.
+    ///
+    /// # Parameters
+    /// - `headers`: Headers to inspect.
+    ///
+    /// # Returns
+    /// `Some` with UTF-8 Content-Type, otherwise `None`.
+    fn content_type(headers: &http::HeaderMap) -> Option<&str> {
+        headers
+            .get(CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
     }
 }

@@ -20,32 +20,31 @@ pub struct SensitiveHttpHeaders {
 }
 
 impl SensitiveHttpHeaders {
-    /// Creates an empty set (no names marked sensitive).
+    /// Creates an empty set without built-in names.
     ///
     /// # Returns
-    /// New [`SensitiveHttpHeaders`] without default names; prefer
-    /// [`SensitiveHttpHeaders::default`] for built-ins.
+    /// Empty [`SensitiveHttpHeaders`].
     pub fn new() -> Self {
         Self {
             headers: BTreeSet::new(),
         }
     }
 
-    /// Returns whether `header_name` is treated as sensitive (compared case-insensitively).
+    /// Returns whether `header_name` is treated as sensitive.
     ///
     /// # Parameters
-    /// - `header_name`: Header name to test (any casing).
+    /// - `header_name`: Header name to test.
     ///
     /// # Returns
-    /// `true` if masked in logging helpers.
+    /// `true` if values for this header should be masked.
     pub fn contains(&self, header_name: &str) -> bool {
         self.headers.contains(&header_name.to_lowercase())
     }
 
-    /// Inserts one header name after trimming and lowercasing; ignores empty strings.
+    /// Inserts one header name after trimming and lowercasing.
     ///
     /// # Parameters
-    /// - `header_name`: Name to mark sensitive.
+    /// - `header_name`: Header name to mark sensitive.
     pub fn insert(&mut self, header_name: &str) {
         let value = header_name.trim().to_lowercase();
         if !value.is_empty() {
@@ -53,10 +52,10 @@ impl SensitiveHttpHeaders {
         }
     }
 
-    /// Inserts each header from the iterator via [`SensitiveHttpHeaders::insert`].
+    /// Inserts each header from `headers`.
     ///
     /// # Parameters
-    /// - `headers`: Iterator of header name-like values.
+    /// - `headers`: Header names to mark sensitive.
     pub fn extend<I, S>(&mut self, headers: I)
     where
         I: IntoIterator<Item = S>,
@@ -67,41 +66,38 @@ impl SensitiveHttpHeaders {
         }
     }
 
-    /// Clears all stored sensitive header names.
+    /// Clears all sensitive header names.
     pub fn clear(&mut self) {
         self.headers.clear();
     }
 
-    /// Returns how many sensitive header names are stored.
+    /// Returns the number of stored header names.
     ///
     /// # Returns
-    /// Count of entries in the internal set.
+    /// Stored header count.
     pub fn len(&self) -> usize {
         self.headers.len()
     }
 
-    /// Returns whether no sensitive names are registered.
+    /// Returns whether no header names are stored.
     ///
     /// # Returns
-    /// `true` if [`SensitiveHttpHeaders::len`] is zero.
+    /// `true` when empty.
     pub fn is_empty(&self) -> bool {
         self.headers.is_empty()
     }
 
-    /// Iterates normalized (lowercase) sensitive header names.
+    /// Iterates normalized header names.
     ///
     /// # Returns
-    /// Iterator over string slices owned by `self`.
+    /// Iterator over lowercase header names.
     pub fn iter(&self) -> impl Iterator<Item = &str> {
         self.headers.iter().map(String::as_str)
     }
 }
 
 impl Default for SensitiveHttpHeaders {
-    /// Starts with [`crate::DEFAULT_SENSITIVE_HEADER_NAMES`] pre-registered.
-    ///
-    /// # Returns
-    /// Non-empty [`SensitiveHttpHeaders`].
+    /// Creates a set containing built-in sensitive header names.
     fn default() -> Self {
         let mut result = SensitiveHttpHeaders::new();
         result.extend(DEFAULT_SENSITIVE_HEADER_NAMES);

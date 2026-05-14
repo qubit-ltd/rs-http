@@ -2,7 +2,7 @@
 
 This guide is based on the current source code and tests. It applies to crate `qubit-http` 0.4.x, imported from Rust code as `qubit_http`.
 
-`qubit-http` is an asynchronous HTTP client infrastructure crate. It wraps `reqwest` and provides unified client options, request building, response reading, error classification, TRACE logging with sensitive-header masking, retries, proxies, IPv4-only resolution, request/response interceptors, and Server-Sent Events (SSE) decoding and reconnection.
+`qubit-http` is an asynchronous HTTP client infrastructure crate. It wraps `reqwest` and provides unified client options, request building, response reading, error classification, TRACE logging with URL/header/body sanitization, retries, proxies, IPv4-only resolution, request/response interceptors, and Server-Sent Events (SSE) decoding and reconnection.
 
 ## How To Read This Guide
 
@@ -357,7 +357,7 @@ Body APIs:
 | `text()` | Full-body UTF-8 decode via `bytes()` |
 | `json<T>()` | Full-body JSON via `bytes()` |
 | `stream()` | Returns `HttpByteStream`; if the body is cached, yields a one-chunk in-memory stream. Otherwise the call does **not** eagerly read the entire body: it hands the backend response to the returned stream, and bytes are read **while that stream is polled** |
-| `sse_events()` | Consumes `self` and decodes the body stream into an SSE event stream using the configured line/frame limits (see “SSE Decoding” below) |
+| `sse_messages()` | Consumes `self` and decodes the body stream into an SSE message stream using the configured line/frame limits (see “SSE Decoding” below) |
 | `sse_chunks::<T>()` | Consumes `self` and decodes SSE JSON `data:` chunks into a `SseChunk<T>` stream (JSON mode, done-marker policy, etc.—see “SSE JSON Chunks” below) |
 
 ### Examples
@@ -414,7 +414,7 @@ async fn read_stream_example(client: &qubit_http::HttpClient) -> qubit_http::Htt
 }
 ```
 
-**SSE (`sse_events` / `sse_chunks`)**: both **consume** `self` (move the response). To tweak line/frame limits, JSON mode, or done-marker policy before decoding, chain the `sse_*` configuration methods with `sse_events()` or `sse_chunks::<T>()` on the same expression (full details under “SSE Decoding” and “SSE JSON Chunks” below).
+**SSE (`sse_messages` / `sse_chunks`)**: both **consume** `self` (move the response). To tweak line/frame limits, JSON mode, or done-marker policy before decoding, chain the `sse_*` configuration methods with `sse_messages()` or `sse_chunks::<T>()` on the same expression (full details under “SSE Decoding” and “SSE JSON Chunks” below).
 
 ```rust
 use futures_util::StreamExt;
@@ -430,7 +430,7 @@ async fn read_sse_examples(client: &qubit_http::HttpClient) -> qubit_http::HttpR
     let mut ev = client
         .execute(client.request(Method::GET, "/events").build())
         .await?;
-    let mut events = ev.sse_events();
+    let mut events = ev.sse_messages();
     while let Some(item) = events.next().await {
         let _event = item?;
     }
@@ -449,12 +449,12 @@ async fn read_sse_examples(client: &qubit_http::HttpClient) -> qubit_http::HttpR
 }
 ```
 
-There is only one consumption path for the underlying `reqwest` body on a given `HttpResponse`. After `bytes`, `text`, or `json`, the full payload is buffered and `stream` becomes a one-chunk stream over that cache. If you call `stream` first while the body is not cached, the backend handle moves into that stream—you must finish reading there; a later `bytes` / `text` / `json` will not re-read from the network (you get an empty body), so do not mix “stream first, then full-body read” on the same response. `sse_events` / `sse_chunks` also use that path (they build on `stream`) and they **move** the `HttpResponse`, so you cannot call other body readers on the same value afterward.
+There is only one consumption path for the underlying `reqwest` body on a given `HttpResponse`. After `bytes`, `text`, or `json`, the full payload is buffered and `stream` becomes a one-chunk stream over that cache. If you call `stream` first while the body is not cached, the backend handle moves into that stream—you must finish reading there; a later `bytes` / `text` / `json` will not re-read from the network (you get an empty body), so do not mix “stream first, then full-body read” on the same response. `sse_messages` / `sse_chunks` also use that path (they build on `stream`) and they **move** the `HttpResponse`, so you cannot call other body readers on the same value afterward.
 
 | Safe | Avoid |
 | --- | --- |
 | Use `bytes()` / `text()` / `json()` to read and reuse the cached full body | Call `stream()` first, then call `bytes()` / `text()` / `json()` on the same response |
-| Call `stream()` after `bytes()` when a one-chunk cached stream is acceptable | Call `sse_events()` or `sse_chunks()` and then try to read the same response body again |
+| Call `stream()` after `bytes()` when a one-chunk cached stream is acceptable | Call `sse_messages()` or `sse_chunks()` and then try to read the same response body again |
 | Chain `sse_*` option setters with the SSE consumer on the same expression | Design multiple body-consumption paths for one `HttpResponse` |
 
 `retry_after_hint()` returns a delay when the response status is 429 or 5xx and the response has a valid `Retry-After` header. It supports both `delta-seconds` and HTTP-date formats; HTTP dates in the past resolve to 0 seconds. `HttpResponseMeta` exposes the same method, so response interceptors can read the hint from metadata.
@@ -550,7 +550,7 @@ HTTP logs use `tracing::trace!`. Both conditions must be true:
 
 Request headers, request body, response headers, and response body can be toggled separately. Body logs include only the first `logging.body_size_limit` bytes and show a truncation marker for the remainder. Binary bodies are rendered as `<binary N bytes>`. Request-body logging previews buffered body variants (`bytes_body`, `text_body`, `json_body`, `form_body`, `multipart_body`, and `ndjson_body`); `stream_body` and `streaming_body` are logged as `<empty>` because the logger does not consume upload streams.
 
-Sensitive headers are masked. The default set includes common auth, token, cookie, secret, and password header names. Short values are rendered as `****`; longer values keep the first and last 2 characters and replace the middle with `****`. Configuring `sensitive_headers` replaces the default set; code can also manage a `SensitiveHttpHeaders` set directly.
+Logs are sanitized through `LogSanitizer` and `LogSanitizePolicy`. Sensitive headers are masked. Sensitive URL query parameters and JSON/form body fields are redacted with `****` when their names match the policy. The default policy covers common auth, token, cookie, secret, and password names. Header values shorter than or equal to 4 characters are rendered as `****`; longer header values keep the first and last 2 characters and replace the middle with `****`. Configuring `sensitive_headers` replaces the default header-name set; code can also tune `options.log_sanitize_policy` directly.
 
 Important: if TRACE logging is active and `log_response_body = true`, response-body logging reads and caches the full body only when it is already buffered, or when the response is not SSE, has `Content-Length`, and the declared length is no greater than `logging.body_size_limit`. Unknown-size, over-limit, and SSE responses are logged as skipped instead of being consumed for logging.
 
@@ -582,11 +582,11 @@ Choose the SSE API by what you need:
 
 | Goal | Use |
 | --- | --- |
-| Read raw SSE events | `response.sse_events()` |
+| Read raw SSE messages | `response.sse_messages()` |
 | Read OpenAI-style JSON chunks or a `[DONE]` marker | `response.sse_chunks::<T>()` |
 | Reconnect automatically after a long-lived stream drops | `client.execute_sse_with_reconnect(...)` |
 
-SSE event decoding starts from `HttpResponse`:
+SSE message decoding starts from `HttpResponse`:
 
 ```rust
 use futures_util::StreamExt;
@@ -596,16 +596,19 @@ let response = client
     .execute(client.request(Method::GET, "/stream").build())
     .await?;
 
-let mut events = response.sse_events();
-while let Some(item) = events.next().await {
-    let event = item?;
-    println!("event={:?} id={:?} data={}", event.event, event.id, event.data);
+let mut messages = response.sse_messages();
+while let Some(item) = messages.next().await {
+    let message = item?;
+    println!(
+        "event={:?} last_event_id={:?} data={}",
+        message.event, message.last_event_id, message.data
+    );
 }
 ```
 
-### Configure `sse_events` options
+### Configure `sse_messages` options
 
-`sse_max_line_bytes` and `sse_max_frame_bytes` each return `HttpResponse` (moving `self` back to the caller), so you can chain them with `sse_events()` **before** consuming the body. `sse_events()` decodes from `stream()` using the limits stored on that `HttpResponse` instance:
+`sse_max_line_bytes` and `sse_max_frame_bytes` each return `HttpResponse` (moving `self` back to the caller), so you can chain them with `sse_messages()` **before** consuming the body. `sse_messages()` decodes from `stream()` using the limits stored on that `HttpResponse` instance:
 
 ```rust
 use futures_util::StreamExt;
@@ -615,35 +618,37 @@ let response = client
     .execute(client.request(Method::GET, "/stream").build())
     .await?;
 
-let mut events = response
+let mut messages = response
     .sse_max_line_bytes(64 * 1024)      // max bytes per SSE line
     .sse_max_frame_bytes(1024 * 1024) // max bytes per SSE frame
-    .sse_events();
-while let Some(item) = events.next().await {
-    let event = item?;
-    println!("event={:?} id={:?} data={}", event.event, event.id, event.data);
+    .sse_messages();
+while let Some(item) = messages.next().await {
+    let message = item?;
+    println!(
+        "event={:?} last_event_id={:?} data={}",
+        message.event, message.last_event_id, message.data
+    );
 }
 ```
 
-`SseEvent` fields:
+`SseMessage` fields:
 
 | Field | Meaning |
 | --- | --- |
 | `event` | Optional `event:` field |
 | `data` | Multiple `data:` lines joined with `\n` |
-| `id` | Optional `id:` field |
-| `retry` | Optional valid `retry:` value in milliseconds |
+| `last_event_id` | Current EventSource last-event-id after applying this frame and prior control-only `id:` frames |
 
 Protocol behavior:
 
 - Splits by `\n` and strips trailing `\r`.
 - Each line must be UTF-8, otherwise `HttpErrorKind::SseProtocol` is returned.
-- A blank line flushes one event.
+- A blank line flushes one message when dispatchable `data:` is present.
 - Comment lines starting with `:` are ignored.
 - Unknown fields are ignored.
-- `retry:` is stored only when it parses as `u64`.
-- If the stream ends with pending fields, the final event is emitted.
-- Default line/frame limits come from `HttpClientOptions`. To override them for one response only, chain `sse_max_line_bytes` / `sse_max_frame_bytes` with `sse_events()` on the same expression, as shown under “Configure `sse_events` options” above.
+- `retry:` and control-only `id:` frames are internal control records; they are not exposed as `SseMessage` values.
+- If the stream ends with pending dispatchable fields, the final message is emitted.
+- Default line/frame limits come from `HttpClientOptions`. To override them for one response only, chain `sse_max_line_bytes` / `sse_max_frame_bytes` with `sse_messages()` on the same expression, as shown under “Configure `sse_messages` options” above.
 
 ### SSE JSON Chunks
 
@@ -735,7 +740,7 @@ while let Some(item) = events.next().await {
 }
 ```
 
-The default reconnect settings are `retry.max_attempts = 4` (that is, at most 3 reconnects), `RetryDelay::Exponential { initial=1s, max=30s, multiplier=2.0 }`, `RetryJitter::None`, reconnect on EOF, and honor server `retry:`. Server `retry:` delays are capped by `server_retry_max_delay`; when it is `None`, the cap is derived from the retry delay strategy's max value, or falls back to 30 seconds when no max is available. `apply_jitter_to_server_retry` is enabled by default, but the default reconnect jitter is `RetryJitter::None`, so server-provided delays are unchanged unless you provide a jittered `RetryOptions`. Reconnects reuse the original request and disable inner HTTP retry, avoiding multiplicative HTTP retry plus SSE reconnect attempts. If a previous SSE event had an `id:`, the next request includes `Last-Event-ID`. `execute_sse_with_reconnect` requires response `Content-Type` to be `text/event-stream`. Cancellation does not reconnect. SSE protocol errors do not reconnect by default. Retryable timeout, transport, 429/5xx, and unexpected-EOF-like errors may reconnect.
+The default reconnect settings are `retry.max_attempts = 4` (that is, at most 3 reconnects), `RetryDelay::Exponential { initial=1s, max=30s, multiplier=2.0 }`, `RetryJitter::None`, reconnect on EOF, and honor server `retry:`. Server `retry:` delays are capped by `server_retry_max_delay`; when it is `None`, the cap is derived from the retry delay strategy's max value, or falls back to 30 seconds when no max is available. `apply_jitter_to_server_retry` is enabled by default, but the default reconnect jitter is `RetryJitter::None`, so server-provided delays are unchanged unless you provide a jittered `RetryOptions`. Reconnects reuse the original request and disable inner HTTP retry, avoiding multiplicative HTTP retry plus SSE reconnect attempts. If a previous SSE message had an `id:`, the next request includes `Last-Event-ID`. `execute_sse_with_reconnect` requires response `Content-Type` to be `text/event-stream`. Cancellation does not reconnect. SSE protocol errors do not reconnect by default. Retryable timeout, transport, 429/5xx, and unexpected-EOF-like errors may reconnect.
 
 ## Configuration Reference
 

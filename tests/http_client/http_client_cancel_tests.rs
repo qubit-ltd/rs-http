@@ -466,7 +466,7 @@ async fn test_execute_stream_body_can_be_cancelled_after_first_chunk() {
 }
 
 #[tokio::test]
-async fn test_sse_events_reports_pre_cancelled_stream_before_reading_body() {
+async fn test_sse_messages_reports_pre_cancelled_stream_before_reading_body() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
         headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
@@ -493,12 +493,12 @@ async fn test_sse_events_reports_pre_cancelled_stream_before_reading_body() {
         .expect("request should start");
     token.cancel();
 
-    let mut events = response.sse_events();
+    let mut events = response.sse_messages();
     let error = events
         .next()
         .await
-        .expect("pre-cancelled SSE event stream should yield one error")
-        .expect_err("SSE event stream should fail before reading body");
+        .expect("pre-cancelled SSE message stream should yield one error")
+        .expect_err("SSE message stream should fail before reading body");
 
     assert_eq!(error.kind, HttpErrorKind::Cancelled);
     assert!(error.message.contains("before reading response body"));

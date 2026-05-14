@@ -660,6 +660,32 @@ async fn test_execute_non_success_error_body_preview_is_truncated_by_limit() {
 }
 
 #[tokio::test]
+async fn test_execute_non_success_error_body_preview_sanitizes_json_fields() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 400,
+        headers: vec![("Content-Type".to_string(), "application/json".to_string())],
+        body: br#"{"user":"alice","password":"secret"}"#.to_vec(),
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+
+    let client = HttpClientFactory::new().create(options).unwrap();
+    let request = client
+        .request(Method::GET, "/status-sensitive-body")
+        .build();
+    let error = client.execute(request).await.unwrap_err();
+
+    assert_eq!(error.kind, HttpErrorKind::Status);
+    assert_eq!(
+        error.response_body_preview.as_deref(),
+        Some(r#"{"password":"****","user":"alice"}"#)
+    );
+    assert!(!error.message.contains("secret"));
+}
+
+#[tokio::test]
 async fn test_execute_non_success_error_body_preview_truncates_when_limit_reached_before_next_chunk(
 ) {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {

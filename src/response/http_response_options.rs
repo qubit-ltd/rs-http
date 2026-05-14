@@ -18,6 +18,7 @@ use crate::sse::{
     DoneMarkerPolicy,
     SseJsonMode,
 };
+use crate::LogSanitizer;
 
 /// Decode/error-preview options bound to one response instance.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,6 +33,8 @@ pub(crate) struct HttpResponseOptions {
     pub sse_max_frame_bytes: usize,
     /// How [`crate::HttpResponse::sse_chunks`] recognizes end-of-stream `data:` markers.
     pub sse_done_marker_policy: DoneMarkerPolicy,
+    /// Sanitizer used for status-error body previews.
+    pub log_sanitizer: LogSanitizer,
 }
 
 impl Default for HttpResponseOptions {
@@ -42,6 +45,7 @@ impl Default for HttpResponseOptions {
             sse_max_line_bytes: DEFAULT_SSE_MAX_LINE_BYTES,
             sse_max_frame_bytes: DEFAULT_SSE_MAX_FRAME_BYTES,
             sse_done_marker_policy: DoneMarkerPolicy::default(),
+            log_sanitizer: LogSanitizer::default(),
         }
     }
 }
@@ -53,6 +57,7 @@ impl HttpResponseOptions {
         sse_max_line_bytes: usize,
         sse_max_frame_bytes: usize,
         sse_done_marker_policy: DoneMarkerPolicy,
+        log_sanitizer: LogSanitizer,
     ) -> Self {
         Self {
             error_response_preview_limit: error_response_preview_limit.max(1),
@@ -60,6 +65,7 @@ impl HttpResponseOptions {
             sse_max_line_bytes: sse_max_line_bytes.max(1),
             sse_max_frame_bytes: sse_max_frame_bytes.max(1),
             sse_done_marker_policy,
+            log_sanitizer,
         }
     }
 }

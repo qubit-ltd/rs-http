@@ -33,7 +33,7 @@ use crate::sse::SseReconnectRunner;
 use crate::{
     response::HttpResponseOptions,
     sse::{
-        SseEventStream,
+        SseMessageStream,
         SseReconnectOptions,
     },
     AsyncHttpHeaderInjector,
@@ -350,6 +350,7 @@ impl HttpClient {
             self.options.sse_max_line_bytes,
             self.options.sse_max_frame_bytes,
             self.options.sse_done_marker_policy.clone(),
+            crate::LogSanitizer::new(self.options.log_sanitize_policy.clone()),
         );
         Ok(HttpResponse::from_backend(
             meta,
@@ -654,7 +655,7 @@ impl HttpClient {
     /// Reconnect behavior:
     /// - retryable transport/read failures trigger reconnects;
     /// - optional reconnect on clean EOF (`reconnect_on_eof`);
-    /// - `Last-Event-ID` is set from the latest parsed SSE `id:` field;
+    /// - `Last-Event-ID` is set from the latest parsed SSE last-event-id state;
     /// - optional use of SSE `retry:` as next reconnect delay.
     ///
     /// # Parameters
@@ -662,7 +663,7 @@ impl HttpClient {
     /// - `options`: Reconnect limits and delay policy.
     ///
     /// # Returns
-    /// SSE event stream yielding events from one or more reconnect sessions.
+    /// SSE message stream yielding messages from one or more reconnect sessions.
     ///
     /// # Errors
     /// Stream items are `Result`; `Err` covers per-item failures such as:
@@ -677,7 +678,7 @@ impl HttpClient {
         &self,
         request: HttpRequest,
         options: SseReconnectOptions,
-    ) -> SseEventStream {
+    ) -> SseMessageStream {
         SseReconnectRunner::new(self.clone(), request, options).run()
     }
 }

@@ -18,6 +18,4 @@ mod http_timeout_options_tests;
 mod logging_options_tests;
 mod proxy_options_tests;
 mod proxy_type_tests;
-mod sensitive_headers_tests;
-mod sensitive_http_headers_tests;
 mod timeout_options_tests;

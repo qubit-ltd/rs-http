@@ -38,7 +38,7 @@ async fn test_decode_events_with_limits_rejects_line_exceeding_max_bytes() {
     let mut events = response
         .sse_max_line_bytes(16)
         .sse_max_frame_bytes(1024)
-        .sse_events();
+        .sse_messages();
 
     let error = events.next().await.unwrap().unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::SseProtocol);
@@ -51,7 +51,7 @@ async fn test_decode_events_with_limits_accepts_line_within_max_bytes() {
     let mut events = response
         .sse_max_line_bytes(64)
         .sse_max_frame_bytes(1024)
-        .sse_events();
+        .sse_messages();
 
     let event = events.next().await.unwrap().unwrap();
     assert_eq!(event.data, "ok");

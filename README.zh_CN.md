@@ -65,6 +65,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+## 日志与敏感头
+
+HTTP TRACE 日志在输出前会统一脱敏。默认策略会掩码常见凭证类 header、
+query 参数和 JSON/form body 字段。若某个服务使用自定义敏感名称，可以在
+客户端配置中扩展脱敏策略：
+
+```rust
+use qubit_http::{HttpClientFactory, HttpClientOptions};
+
+let mut options = HttpClientOptions::new();
+options.logging.enabled = true;
+options.logging.log_request_body = true;
+options.log_sanitize_policy.sensitive_headers.insert("x-api-key");
+options
+    .log_sanitize_policy
+    .sensitive_query_params
+    .insert("access_token");
+options
+    .log_sanitize_policy
+    .sensitive_body_fields
+    .insert("password");
+
+let client = HttpClientFactory::new().create(options)?;
+```
+
 ## 后续阅读
 
 | 任务 | 阅读 |
@@ -74,7 +99,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 | 添加默认请求头、请求头注入器和拦截器 | [用户指南](doc/user_guide.zh_CN.md) |
 | 配置超时、重试、取消和 `Retry-After` 处理 | [用户指南](doc/user_guide.zh_CN.md) |
 | 读取 bytes、text、JSON、流式响应或 SSE 数据块 | [用户指南](doc/user_guide.zh_CN.md) |
-| 配置日志、敏感请求头、代理、重定向和 IPv4-only 模式 | [用户指南](doc/user_guide.zh_CN.md) |
+| 配置日志脱敏、代理、重定向和 IPv4-only 模式 | [用户指南](doc/user_guide.zh_CN.md) |
 | 处理状态码、传输、超时、取消、解码和重试错误 | [用户指南](doc/user_guide.zh_CN.md) |
 
 ## 核心 API 概览

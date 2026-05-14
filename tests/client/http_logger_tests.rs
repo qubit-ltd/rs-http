@@ -41,3 +41,30 @@ fn test_http_logger_logs_request_body_preview_with_truncation() {
     assert!(logs.contains("--> POST https://example.com/upload"));
     assert!(logs.contains("Request body: abcd...<truncated 2 bytes>"));
 }
+
+#[test]
+fn test_http_logger_sanitizes_request_url_query_and_json_body() {
+    let options = HttpClientOptions::default();
+    let logger = HttpLogger::new(&options);
+    let client = HttpClientFactory::new()
+        .create_default()
+        .expect("default client should be created");
+    let request = client
+        .request(
+            Method::POST,
+            "https://example.com/login?access_token=raw-token",
+        )
+        .json_body(&serde_json::json!({
+            "user": "alice",
+            "password": "secret",
+        }))
+        .expect("JSON body should serialize")
+        .build();
+
+    let logs = capture_trace_logs(|| logger.log_request(&request));
+
+    assert!(logs.contains("--> POST https://example.com/login?access_token=****"));
+    assert!(logs.contains(r#""password":"****""#));
+    assert!(!logs.contains("raw-token"));
+    assert!(!logs.contains("secret"));
+}

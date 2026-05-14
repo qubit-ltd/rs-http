@@ -19,7 +19,7 @@
 //! - Unified HTTP client options and factory abstractions
 //! - Loading those options from [`qubit_config::ConfigReader`] (`from_config` / factory `create_from_config`)
 //! - Consistent request/response/stream APIs
-//! - Secure and configurable logging with sensitive header masking
+//! - Secure and configurable logging with URL, header, and body sanitization
 //! - Built-in SSE decoding utilities in [`sse`]
 //! - Unified error model and retry hints
 //!
@@ -30,6 +30,7 @@ mod error;
 mod options;
 mod request;
 mod response;
+mod sanitize;
 pub mod sse;
 
 pub use client::http_logger::HttpLogger;
@@ -52,7 +53,6 @@ pub use options::{
     HttpTimeoutOptions,
     ProxyOptions,
     ProxyType,
-    SensitiveHttpHeaders,
 };
 pub use qubit_retry::{
     RetryDelay,
@@ -77,5 +77,14 @@ pub use response::{
     HttpResponseInterceptor,
     HttpResponseInterceptors,
     HttpResponseMeta,
+};
+pub use sanitize::{
+    BodyLogContext,
+    BodyPreview,
+    LogSanitizePolicy,
+    LogSanitizer,
+    SensitiveBodyFields,
+    SensitiveHttpHeaders,
+    SensitiveQueryParams,
 };
 pub use tokio_util::sync::CancellationToken;

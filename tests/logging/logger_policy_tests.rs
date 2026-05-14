@@ -73,7 +73,7 @@ fn test_log_request_disabled_emits_nothing() {
     let sensitive_headers = SensitiveHttpHeaders::default();
     let mut client_options = HttpClientOptions::default();
     client_options.logging = options;
-    client_options.sensitive_headers = sensitive_headers;
+    client_options.log_sanitize_policy.sensitive_headers = sensitive_headers;
     let logger = HttpLogger::new(&client_options);
 
     let request = logging_request(
@@ -99,7 +99,7 @@ fn test_log_request_toggles_header_and_body() {
     let sensitive_headers = SensitiveHttpHeaders::default();
     let mut client_options = HttpClientOptions::default();
     client_options.logging = options;
-    client_options.sensitive_headers = sensitive_headers;
+    client_options.log_sanitize_policy.sensitive_headers = sensitive_headers;
     let logger = HttpLogger::new(&client_options);
 
     let request = logging_request(
@@ -128,7 +128,7 @@ fn test_log_response_masks_sensitive_headers() {
     let sensitive_headers = SensitiveHttpHeaders::default();
     let mut client_options = HttpClientOptions::default();
     client_options.logging = options;
-    client_options.sensitive_headers = sensitive_headers;
+    client_options.log_sanitize_policy.sensitive_headers = sensitive_headers;
     let logger = HttpLogger::new(&client_options);
 
     let logs = capture_trace_logs(|| {
@@ -161,7 +161,7 @@ fn test_log_response_binary_body_and_truncation() {
     let sensitive_headers = SensitiveHttpHeaders::default();
     let mut client_options = HttpClientOptions::default();
     client_options.logging = options;
-    client_options.sensitive_headers = sensitive_headers;
+    client_options.log_sanitize_policy.sensitive_headers = sensitive_headers;
     let logger = HttpLogger::new(&client_options);
 
     let logs = capture_trace_logs(|| {
@@ -192,7 +192,7 @@ fn test_log_stream_response_headers_respects_toggle() {
     let sensitive_headers = SensitiveHttpHeaders::default();
     let mut client_options = HttpClientOptions::default();
     client_options.logging = options;
-    client_options.sensitive_headers = sensitive_headers;
+    client_options.log_sanitize_policy.sensitive_headers = sensitive_headers;
     let logger = HttpLogger::new(&client_options);
 
     let logs = capture_trace_logs(|| {
@@ -234,7 +234,7 @@ fn test_log_request_text_body() {
     let sensitive_headers = SensitiveHttpHeaders::default();
     let mut client_options = HttpClientOptions::default();
     client_options.logging = options;
-    client_options.sensitive_headers = sensitive_headers;
+    client_options.log_sanitize_policy.sensitive_headers = sensitive_headers;
     let logger = HttpLogger::new(&client_options);
 
     let request = logging_request(
@@ -257,7 +257,7 @@ fn test_log_request_stream_body_logged_as_empty() {
     let sensitive_headers = SensitiveHttpHeaders::default();
     let mut client_options = HttpClientOptions::default();
     client_options.logging = options;
-    client_options.sensitive_headers = sensitive_headers;
+    client_options.log_sanitize_policy.sensitive_headers = sensitive_headers;
     let logger = HttpLogger::new(&client_options);
 
     let request = logging_request(
