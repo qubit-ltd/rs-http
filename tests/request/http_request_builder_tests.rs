@@ -557,7 +557,7 @@ fn test_request_builder_multipart_body_rejects_boundary_with_space() {
 }
 
 #[test]
-fn test_request_builder_multipart_body_preserves_existing_content_type() {
+fn test_request_builder_multipart_body_adds_boundary_to_existing_multipart_content_type() {
     let request = new_builder(Method::POST, "/v1/multipart")
         .header(CONTENT_TYPE.as_str(), "multipart/mixed")
         .expect("custom content-type header should be valid")
@@ -569,9 +569,106 @@ fn test_request_builder_multipart_body_preserves_existing_content_type() {
         request
             .headers()
             .get(CONTENT_TYPE)
-            .expect("existing content-type should be kept"),
-        "multipart/mixed"
+            .expect("multipart content-type should be kept"),
+        "multipart/mixed; boundary=abc"
     );
+}
+
+#[test]
+fn test_request_builder_multipart_body_preserves_matching_existing_boundary() {
+    let request = new_builder(Method::POST, "/v1/multipart")
+        .header(CONTENT_TYPE.as_str(), "multipart/mixed; boundary=abc")
+        .expect("custom content-type header should be valid")
+        .multipart_body(Bytes::from_static(b"payload"), "abc")
+        .expect("multipart body should be built")
+        .build();
+
+    assert_eq!(
+        request
+            .headers()
+            .get(CONTENT_TYPE)
+            .expect("multipart content-type should be kept"),
+        "multipart/mixed; boundary=abc"
+    );
+}
+
+#[test]
+fn test_request_builder_multipart_body_ignores_quoted_boundary_text_in_other_parameters() {
+    let request = new_builder(Method::POST, "/v1/multipart")
+        .header(
+            CONTENT_TYPE.as_str(),
+            "multipart/mixed; title=\"not; boundary=real\"",
+        )
+        .expect("custom content-type header should be valid")
+        .multipart_body(Bytes::from_static(b"payload"), "abc")
+        .expect("missing boundary should be repaired")
+        .build();
+
+    assert_eq!(
+        request
+            .headers()
+            .get(CONTENT_TYPE)
+            .expect("multipart content-type should be kept"),
+        "multipart/mixed; title=\"not; boundary=real\"; boundary=abc"
+    );
+}
+
+#[test]
+fn test_request_builder_multipart_body_rejects_mismatched_existing_boundary() {
+    let error = new_builder(Method::POST, "/v1/multipart")
+        .header(CONTENT_TYPE.as_str(), "multipart/mixed; boundary=other")
+        .expect("custom content-type header should be valid")
+        .multipart_body(Bytes::from_static(b"payload"), "abc")
+        .expect_err("mismatched boundary should fail");
+
+    assert_eq!(error.kind, HttpErrorKind::Other);
+    assert!(error.message.contains("boundary"));
+    assert!(error.message.contains("does not match"));
+}
+
+#[test]
+fn test_request_builder_multipart_body_rejects_malformed_existing_boundary() {
+    let error = new_builder(Method::POST, "/v1/multipart")
+        .header(CONTENT_TYPE.as_str(), "multipart/mixed; boundary=\"abc")
+        .expect("custom content-type header should be valid")
+        .multipart_body(Bytes::from_static(b"payload"), "abc")
+        .expect_err("malformed boundary should fail");
+
+    assert_eq!(error.kind, HttpErrorKind::Other);
+    assert!(error.message.contains("boundary"));
+    assert!(error.message.contains("malformed"));
+}
+
+#[test]
+fn test_request_builder_multipart_body_rejects_existing_non_multipart_content_type() {
+    let error = new_builder(Method::POST, "/v1/multipart")
+        .header(CONTENT_TYPE.as_str(), "application/octet-stream")
+        .expect("custom content-type header should be valid")
+        .multipart_body(Bytes::from_static(b"payload"), "abc")
+        .expect_err("non-multipart content-type should fail");
+
+    assert_eq!(error.kind, HttpErrorKind::Other);
+    assert!(error.message.contains("Content-Type"));
+    assert!(error.message.contains("multipart"));
+}
+
+#[test]
+fn test_request_builder_multipart_body_rejects_non_utf8_existing_content_type() {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        CONTENT_TYPE,
+        HeaderValue::from_bytes(b"multipart/mixed; boundary=\xFF")
+            .expect("non-UTF-8 header value should be accepted as raw header bytes"),
+    );
+
+    let error = new_builder(Method::POST, "/v1/multipart")
+        .headers(headers)
+        .multipart_body(Bytes::from_static(b"payload"), "abc")
+        .expect_err("non-UTF-8 content-type should fail");
+
+    assert_eq!(error.kind, HttpErrorKind::Other);
+    assert!(error.message.contains("Content-Type"));
+    assert!(error.message.contains("valid UTF-8"));
 }
 
 #[test]

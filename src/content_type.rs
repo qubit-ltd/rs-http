@@ -170,6 +170,26 @@ pub(crate) fn parameter(value: &str, parameter_name: &str) -> Option<String> {
     None
 }
 
+/// Returns whether a header value declares a parameter name.
+///
+/// # Parameters
+/// - `value`: Header value containing semicolon-separated parameters.
+/// - `parameter_name`: Parameter name to find.
+///
+/// # Returns
+/// `Some(true)` when a `name=value` segment uses `parameter_name`,
+/// `Some(false)` when no such parameter exists, or `None` when parameter
+/// quoting is malformed.
+pub(crate) fn has_parameter_name(value: &str, parameter_name: &str) -> Option<bool> {
+    Some(
+        header_parameter_segments(value)?
+            .into_iter()
+            .skip(1)
+            .filter_map(|parameter| parameter.split_once('='))
+            .any(|(name, _)| name.trim().eq_ignore_ascii_case(parameter_name)),
+    )
+}
+
 /// Returns whether one byte is allowed in generated multipart boundaries.
 ///
 /// # Parameters

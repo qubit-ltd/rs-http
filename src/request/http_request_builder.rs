@@ -290,7 +290,7 @@ impl HttpRequestBuilder {
         self
     }
 
-    /// Sets multipart body bytes and optional auto content-type by boundary.
+    /// Sets multipart body bytes and ensures Content-Type boundary consistency.
     ///
     /// # Parameters
     /// - `body`: Multipart payload bytes.
@@ -301,14 +301,53 @@ impl HttpRequestBuilder {
     ///
     /// # Errors
     /// Returns [`HttpError`] when `boundary` is not a 1 to 70 character
-    /// ASCII token-safe multipart boundary.
+    /// ASCII token-safe multipart boundary, or when an existing `Content-Type`
+    /// is not UTF-8 multipart content with a valid matching boundary.
     pub fn multipart_body(mut self, body: impl Into<Bytes>, boundary: &str) -> HttpResult<Self> {
         if !content_type::is_valid_multipart_boundary(boundary) {
             return Err(HttpError::other(
                 "Invalid multipart boundary for multipart_body: expected 1 to 70 token-safe ASCII characters",
             ));
         }
-        if !self.headers.contains_key(CONTENT_TYPE) {
+        if let Some(existing) = self.headers.get(CONTENT_TYPE) {
+            let existing = existing.to_str().map_err(|error| {
+                HttpError::other(format!(
+                    "Existing multipart Content-Type must be valid UTF-8: {error}"
+                ))
+            })?;
+            if !content_type::is_multipart(existing) {
+                return Err(HttpError::other(
+                    "Existing Content-Type must be multipart when using multipart_body",
+                ));
+            }
+            let declares_boundary = content_type::has_parameter_name(existing, "boundary")
+                .ok_or_else(|| {
+                    HttpError::other(
+                        "Existing multipart Content-Type boundary is malformed or invalid",
+                    )
+                })?;
+            if let Some(existing_boundary) = content_type::parameter(existing, "boundary") {
+                if !content_type::is_valid_multipart_boundary(&existing_boundary) {
+                    return Err(HttpError::other(
+                        "Existing multipart Content-Type boundary is malformed or invalid",
+                    ));
+                }
+                if existing_boundary != boundary {
+                    return Err(HttpError::other(format!(
+                        "Existing multipart Content-Type boundary '{existing_boundary}' does not match multipart_body boundary '{boundary}'"
+                    )));
+                }
+            } else if declares_boundary {
+                return Err(HttpError::other(
+                    "Existing multipart Content-Type boundary is malformed or invalid",
+                ));
+            } else {
+                let value = existing.trim().trim_end_matches(';').trim_end();
+                let value = HeaderValue::from_str(&format!("{value}; boundary={boundary}"))
+                    .expect("validated multipart boundary should build a valid Content-Type");
+                self.headers.insert(CONTENT_TYPE, value);
+            }
+        } else {
             let value = HeaderValue::from_str(&format!("multipart/form-data; boundary={boundary}"))
                 .expect("validated multipart boundary should build a valid Content-Type");
             self.headers.insert(CONTENT_TYPE, value);
