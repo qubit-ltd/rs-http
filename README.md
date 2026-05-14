@@ -69,7 +69,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 HTTP TRACE logs are sanitized before they are emitted. The default policy masks
 common credential-like headers, query parameters, and JSON/form body fields.
-You can extend the policy when a service uses custom secret names:
+Multipart form fields use the same body-field policy; file parts and malformed
+or truncated multipart bodies are redacted instead of being logged raw. You can
+extend the policy when a service uses custom secret names:
 
 ```rust
 use qubit_http::{HttpClientFactory, HttpClientOptions};

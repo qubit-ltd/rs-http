@@ -555,7 +555,7 @@ HTTP 日志使用 `tracing::trace!`。必须同时满足：
 
 可分别控制请求头、请求体、响应头、响应体。body 只记录前 `logging.body_size_limit` 字节，超出部分显示截断提示；二进制体显示为 `<binary N bytes>`。请求体日志只预览已缓冲的 body 变体（`bytes_body`、`text_body`、`json_body`、`form_body`、`multipart_body`、`ndjson_body`）；`stream_body` 和 `streaming_body` 会记录为 `<empty>`，因为 logger 不会消费上传流。
 
-日志统一经过 `LogSanitizer` 和 `LogSanitizePolicy` 脱敏。敏感 header 会被掩码；URL query 参数以及 JSON/form body 字段如果命中策略中的敏感名称，会被替换为 `****`。默认策略内置常见认证、token、cookie、secret、password 类名称。短 header 值整体显示为 `****`；长 header 值保留前后各 2 个字符，中间替换为 `****`。`log_sanitize.*` 下的配置项会替换对应的默认敏感名称集合；代码里也可以直接调整 `options.log_sanitize_policy`。
+日志统一经过 `LogSanitizer` 和 `LogSanitizePolicy` 脱敏。敏感 header 会被掩码；URL query 参数以及 JSON/form/multipart body 字段如果命中策略中的敏感名称，会被替换为 `****`。multipart 文件 part 会显示为 `<redacted: file part>`；格式异常、缺少 boundary 或已截断的 multipart body 会显示为 `<redacted: multipart body>`，避免原始上传字节泄露到日志。默认策略内置常见认证、token、cookie、secret、password 类名称。短 header 值整体显示为 `****`；长 header 值保留前后各 2 个字符，中间替换为 `****`。`log_sanitize.*` 下的配置项会替换对应的默认敏感名称集合；代码里也可以直接调整 `options.log_sanitize_policy`。
 
 示例：
 
