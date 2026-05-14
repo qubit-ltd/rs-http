@@ -26,11 +26,24 @@ use crate::{
     LogSanitizer,
 };
 
+const UNRESOLVED_REQUEST_URL: &str = "<unresolved request URL>";
+const STREAMING_REQUEST_BODY_SKIPPED: &str = "<skipped: streaming request body>";
+
 /// HTTP logger bound to one pair of logging options and a sanitizer policy.
 #[derive(Debug, Clone)]
 pub struct HttpLogger<'a> {
     options: &'a HttpLoggingOptions,
     sanitizer: LogSanitizer,
+}
+
+/// Request body preview category used by TRACE logging.
+enum RequestBodyLogPreview<'a> {
+    /// Borrowed bytes that can be safely previewed without consuming a stream.
+    Bytes(&'a [u8]),
+    /// No request body is present.
+    Empty,
+    /// Body logging is intentionally skipped.
+    Skipped(&'static str),
 }
 
 impl<'a> HttpLogger<'a> {
@@ -77,15 +90,16 @@ impl<'a> HttpLogger<'a> {
         }
 
         if self.options.log_request_body {
-            match Self::request_body_for_log(request.body()) {
-                Some(bytes) => {
+            match Self::request_body_for_log(request) {
+                RequestBodyLogPreview::Bytes(bytes) => {
                     let content_type = Self::content_type(headers);
                     tracing::trace!(
                         "Request body: {}",
                         self.render_body(bytes, BodyLogContext::Request, content_type)
                     );
                 }
-                None => tracing::trace!("Request body: <empty>"),
+                RequestBodyLogPreview::Empty => tracing::trace!("Request body: <empty>"),
+                RequestBodyLogPreview::Skipped(reason) => tracing::trace!("Request body: {reason}"),
             }
         }
     }
@@ -182,13 +196,13 @@ impl<'a> HttpLogger<'a> {
     /// - `request`: Request whose resolved URL should be rendered.
     ///
     /// # Returns
-    /// Resolved URL including builder query parameters, or the raw request path
+    /// Resolved URL including builder query parameters, or a fixed placeholder
     /// when URL resolution fails before send.
     fn request_log_url(&self, request: &HttpRequest) -> String {
         request
             .resolved_url_with_query()
             .map(|url| self.sanitizer.sanitize_url(&url))
-            .unwrap_or_else(|_| request.path().to_string())
+            .unwrap_or_else(|_| UNRESOLVED_REQUEST_URL.to_string())
     }
 
     /// Formats up to configured `body_size_limit` bytes of `body` for TRACE output.
@@ -215,23 +229,28 @@ impl<'a> HttpLogger<'a> {
         self.sanitizer.sanitize_body_preview(&preview)
     }
 
-    /// Borrows request body content only when body logging is needed.
+    /// Borrows request body content only when body logging is safe.
     ///
     /// # Parameters
-    /// - `body`: Request body variant.
+    /// - `request`: Prepared request snapshot.
     ///
     /// # Returns
-    /// Optional byte payload for logger previewing.
-    fn request_body_for_log(body: &HttpRequestBody) -> Option<&[u8]> {
-        match body {
+    /// Body preview category for logger rendering.
+    fn request_body_for_log(request: &HttpRequest) -> RequestBodyLogPreview<'_> {
+        if request.has_streaming_body() {
+            return RequestBodyLogPreview::Skipped(STREAMING_REQUEST_BODY_SKIPPED);
+        }
+        match request.body() {
             HttpRequestBody::Bytes(bytes)
             | HttpRequestBody::Json(bytes)
             | HttpRequestBody::Form(bytes)
             | HttpRequestBody::Multipart(bytes)
-            | HttpRequestBody::Ndjson(bytes) => Some(bytes.as_ref()),
-            HttpRequestBody::Text(text) => Some(text.as_bytes()),
-            HttpRequestBody::Stream(_) => None,
-            HttpRequestBody::Empty => None,
+            | HttpRequestBody::Ndjson(bytes) => RequestBodyLogPreview::Bytes(bytes.as_ref()),
+            HttpRequestBody::Text(text) => RequestBodyLogPreview::Bytes(text.as_bytes()),
+            HttpRequestBody::Stream(_) => {
+                RequestBodyLogPreview::Skipped(STREAMING_REQUEST_BODY_SKIPPED)
+            }
+            HttpRequestBody::Empty => RequestBodyLogPreview::Empty,
         }
     }
 

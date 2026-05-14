@@ -292,6 +292,15 @@ impl HttpRequest {
         &self.body
     }
 
+    /// Returns whether this request has a deferred streaming upload body.
+    ///
+    /// # Returns
+    /// `true` when the builder or [`Self::set_streaming_body`] installed a
+    /// per-attempt stream factory.
+    pub(crate) fn has_streaming_body(&self) -> bool {
+        self.streaming_body.is_some()
+    }
+
     /// Replaces the entire body payload.
     ///
     /// # Parameters
