@@ -65,7 +65,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-## Logging And Sensitive Headers
+## Logging Sanitization
 
 HTTP TRACE logs are sanitized before they are emitted. The default policy masks
 common credential-like headers, query parameters, and JSON/form body fields.

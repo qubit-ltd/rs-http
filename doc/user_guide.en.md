@@ -10,7 +10,7 @@ This guide is based on the current source code and tests. It applies to crate `q
 | --- | --- |
 | First integration | “Quick Start”, “Building Requests”, “Reading Responses” |
 | Client configuration | “Creating A Client”, “Loading From qubit-config”, “Configuration Reference” |
-| Failure diagnosis | “Error Model”, “Automatic Retry”, “Logging And Sensitive Headers” |
+| Failure diagnosis | “Error Model”, “Automatic Retry”, “Logging Sanitization” |
 | Streaming or SSE | “Reading Responses”, “SSE Decoding” |
 
 ## Installation And Imports
@@ -541,7 +541,7 @@ if error.kind == qubit_http::HttpErrorKind::RetryAborted {
 }
 ```
 
-## Logging And Sensitive Headers
+## Logging Sanitization
 
 HTTP logs use `tracing::trace!`. Both conditions must be true:
 
@@ -551,6 +551,41 @@ HTTP logs use `tracing::trace!`. Both conditions must be true:
 Request headers, request body, response headers, and response body can be toggled separately. Body logs include only the first `logging.body_size_limit` bytes and show a truncation marker for the remainder. Binary bodies are rendered as `<binary N bytes>`. Request-body logging previews buffered body variants (`bytes_body`, `text_body`, `json_body`, `form_body`, `multipart_body`, and `ndjson_body`); `stream_body` and `streaming_body` are logged as `<empty>` because the logger does not consume upload streams.
 
 Logs are sanitized through `LogSanitizer` and `LogSanitizePolicy`. Sensitive headers are masked. Sensitive URL query parameters and JSON/form body fields are redacted with `****` when their names match the policy. The default policy covers common auth, token, cookie, secret, and password names. Header values shorter than or equal to 4 characters are rendered as `****`; longer header values keep the first and last 2 characters and replace the middle with `****`. Configuring `sensitive_headers` replaces the default header-name set; code can also tune `options.log_sanitize_policy` directly.
+
+Example:
+
+```rust
+use http::Method;
+use qubit_http::{HttpClientFactory, HttpClientOptions};
+use serde_json::json;
+
+let mut options = HttpClientOptions::new();
+options.logging.enabled = true;
+options.logging.log_request_header = true;
+options.logging.log_request_body = true;
+options.log_sanitize_policy.sensitive_headers.insert("x-api-key");
+options
+    .log_sanitize_policy
+    .sensitive_query_params
+    .insert("access_token");
+options
+    .log_sanitize_policy
+    .sensitive_body_fields
+    .insert("password");
+
+let client = HttpClientFactory::new().create(options)?;
+let request = client
+    .request(Method::POST, "https://api.example.com/login")
+    .query_param("access_token", "secret-token")
+    .header("x-api-key", "secret-key")?
+    .json_body(&json!({
+        "username": "alice",
+        "password": "secret-password",
+    }))?
+    .build();
+
+client.execute(request).await?;
+```
 
 Important: if TRACE logging is active and `log_response_body = true`, response-body logging reads and caches the full body only when it is already buffered, or when the response is not SSE, has `Content-Length`, and the declared length is no greater than `logging.body_size_limit`. Unknown-size, over-limit, and SSE responses are logged as skipped instead of being consumed for logging.
 
