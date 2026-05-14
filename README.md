@@ -68,10 +68,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## Logging Sanitization
 
 HTTP TRACE logs are sanitized before they are emitted. The default policy masks
-common credential-like headers, query parameters, and JSON/form/multipart body
-fields. Multipart field values use the same body-field policy; file parts and
-malformed, missing-boundary, or truncated multipart bodies are redacted instead
-of being logged raw. You can
+common credential-like headers, URL userinfo, URL fragments, query parameters,
+and JSON/form/multipart body fields. Multipart field values use the same
+body-field policy; file parts and malformed, missing-boundary, or truncated
+multipart bodies are redacted instead of being logged raw. You can
 extend the policy when a service uses custom secret names:
 
 ```rust
