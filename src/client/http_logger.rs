@@ -25,7 +25,6 @@ use crate::{
     HttpResponseMeta,
     LogSanitizer,
 };
-use bytes::Bytes;
 
 /// HTTP logger bound to one pair of logging options and a sanitizer policy.
 #[derive(Debug, Clone)]
@@ -78,12 +77,12 @@ impl<'a> HttpLogger<'a> {
         }
 
         if self.options.log_request_body {
-            match Self::clone_request_body_for_log(request.body()) {
+            match Self::request_body_for_log(request.body()) {
                 Some(bytes) => {
                     let content_type = Self::content_type(headers);
                     tracing::trace!(
                         "Request body: {}",
-                        self.render_body(&bytes, BodyLogContext::Request, content_type)
+                        self.render_body(bytes, BodyLogContext::Request, content_type)
                     );
                 }
                 None => tracing::trace!("Request body: <empty>"),
@@ -120,13 +119,21 @@ impl<'a> HttpLogger<'a> {
             if let Some(body) = response.buffered_body_for_logging() {
                 tracing::trace!(
                     "Response body: {}",
-                    self.render_body(body, BodyLogContext::Response, content_type.as_deref())
+                    self.render_body(
+                        body.as_ref(),
+                        BodyLogContext::Response,
+                        content_type.as_deref()
+                    )
                 );
             } else if response.can_buffer_body_for_logging(self.options.body_size_limit) {
                 let body = response.bytes().await?;
                 tracing::trace!(
                     "Response body: {}",
-                    self.render_body(&body, BodyLogContext::Response, content_type.as_deref())
+                    self.render_body(
+                        body.as_ref(),
+                        BodyLogContext::Response,
+                        content_type.as_deref()
+                    )
                 );
             } else {
                 tracing::trace!("Response body: <skipped: streaming or unknown-size body>");
@@ -195,7 +202,7 @@ impl<'a> HttpLogger<'a> {
     /// Human-readable sanitized body preview string.
     fn render_body(
         &self,
-        body: &Bytes,
+        body: &[u8],
         context: BodyLogContext,
         content_type: Option<&str>,
     ) -> String {
@@ -208,21 +215,21 @@ impl<'a> HttpLogger<'a> {
         self.sanitizer.sanitize_body_preview(&preview)
     }
 
-    /// Clones request body content only when body logging is needed.
+    /// Borrows request body content only when body logging is needed.
     ///
     /// # Parameters
     /// - `body`: Request body variant.
     ///
     /// # Returns
     /// Optional byte payload for logger previewing.
-    fn clone_request_body_for_log(body: &HttpRequestBody) -> Option<Bytes> {
+    fn request_body_for_log(body: &HttpRequestBody) -> Option<&[u8]> {
         match body {
             HttpRequestBody::Bytes(bytes)
             | HttpRequestBody::Json(bytes)
             | HttpRequestBody::Form(bytes)
             | HttpRequestBody::Multipart(bytes)
-            | HttpRequestBody::Ndjson(bytes) => Some(bytes.clone()),
-            HttpRequestBody::Text(text) => Some(Bytes::from(text.clone())),
+            | HttpRequestBody::Ndjson(bytes) => Some(bytes.as_ref()),
+            HttpRequestBody::Text(text) => Some(text.as_bytes()),
             HttpRequestBody::Stream(_) => None,
             HttpRequestBody::Empty => None,
         }
