@@ -82,6 +82,26 @@ async fn test_decode_events_with_limits_rejects_line_exceeding_max_bytes() {
 }
 
 #[tokio::test]
+async fn test_decode_events_rejects_invalid_utf8_line() {
+    let response = HttpResponse::new(
+        StatusCode::OK,
+        HeaderMap::new(),
+        Bytes::from_static(b"data: \xFF\n\n"),
+        url::Url::parse("https://example.com/stream").expect("valid URL"),
+        Method::GET,
+    );
+    let mut events = response
+        .sse_max_line_bytes(64)
+        .sse_max_frame_bytes(1024)
+        .sse_messages();
+
+    let error = events.next().await.unwrap().unwrap_err();
+
+    assert_eq!(error.kind, HttpErrorKind::SseProtocol);
+    assert!(error.message.contains("UTF-8"));
+}
+
+#[tokio::test]
 async fn test_decode_events_with_limits_accepts_line_within_max_bytes() {
     let response = stream_response_from_chunks(vec!["data: ok\n\n".to_string()]);
     let mut events = response
