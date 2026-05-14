@@ -7,7 +7,9 @@
  *    Licensed under the Apache License, Version 2.0.
  *
  ******************************************************************************/
-//! Content-Type parsing helpers shared by response and SSE code.
+//! Content-Type and header-parameter parsing helpers.
+
+const MAX_MULTIPART_BOUNDARY_LEN: usize = 70;
 
 /// Returns the media type portion of a `Content-Type` header value.
 ///
@@ -47,4 +49,214 @@ pub(crate) fn has_media_type(content_type: &str, expected: &str) -> bool {
 /// case and allowing parameters after `;`.
 pub(crate) fn is_sse(content_type: &str) -> bool {
     has_media_type(content_type, "text/event-stream")
+}
+
+/// Returns whether a content type declares JSON.
+///
+/// # Parameters
+/// - `content_type`: Raw Content-Type header value.
+///
+/// # Returns
+/// `true` for `application/json`, subtype aliases ending with `/json`, and
+/// structured syntax suffixes ending with `+json`.
+pub(crate) fn is_json(content_type: &str) -> bool {
+    let media_type = media_type(content_type).to_ascii_lowercase();
+    media_type == "application/json"
+        || media_type.ends_with("+json")
+        || media_type.ends_with("/json")
+}
+
+/// Returns whether a content type declares newline-delimited JSON.
+///
+/// # Parameters
+/// - `content_type`: Raw Content-Type header value.
+///
+/// # Returns
+/// `true` for `application/x-ndjson` and `application/ndjson`.
+pub(crate) fn is_ndjson(content_type: &str) -> bool {
+    let media_type = media_type(content_type);
+    media_type.eq_ignore_ascii_case("application/x-ndjson")
+        || media_type.eq_ignore_ascii_case("application/ndjson")
+}
+
+/// Returns whether a content type declares URL-encoded form data.
+///
+/// # Parameters
+/// - `content_type`: Raw Content-Type header value.
+///
+/// # Returns
+/// `true` for `application/x-www-form-urlencoded`.
+pub(crate) fn is_form_urlencoded(content_type: &str) -> bool {
+    has_media_type(content_type, "application/x-www-form-urlencoded")
+}
+
+/// Returns whether a content type declares multipart content.
+///
+/// # Parameters
+/// - `content_type`: Raw Content-Type header value.
+///
+/// # Returns
+/// `true` for any `multipart/*` media type.
+pub(crate) fn is_multipart(content_type: &str) -> bool {
+    media_type(content_type)
+        .to_ascii_lowercase()
+        .starts_with("multipart/")
+}
+
+/// Returns whether a content type declares textual data.
+///
+/// # Parameters
+/// - `content_type`: Raw Content-Type header value.
+///
+/// # Returns
+/// `true` for `text/*` media types.
+pub(crate) fn is_text(content_type: &str) -> bool {
+    media_type(content_type)
+        .to_ascii_lowercase()
+        .starts_with("text/")
+}
+
+/// Extracts and validates the `boundary` parameter from a multipart content type.
+///
+/// # Parameters
+/// - `content_type`: Raw Content-Type header value.
+///
+/// # Returns
+/// Decoded boundary string when the media type is multipart and the boundary is
+/// syntactically valid; otherwise `None`.
+pub(crate) fn multipart_boundary(content_type: &str) -> Option<String> {
+    if !is_multipart(content_type) {
+        return None;
+    }
+    let boundary = parameter(content_type, "boundary")?;
+    if is_valid_multipart_boundary(&boundary) {
+        Some(boundary)
+    } else {
+        None
+    }
+}
+
+/// Returns whether `boundary` is safe for unquoted multipart Content-Type use.
+///
+/// # Parameters
+/// - `boundary`: Boundary parameter value without surrounding quotes.
+///
+/// # Returns
+/// `true` when the boundary is 1 to 70 ASCII token-safe characters.
+pub(crate) fn is_valid_multipart_boundary(boundary: &str) -> bool {
+    let len = boundary.len();
+    (1..=MAX_MULTIPART_BOUNDARY_LEN).contains(&len)
+        && boundary.bytes().all(is_valid_multipart_boundary_byte)
+}
+
+/// Extracts one semicolon-separated header parameter.
+///
+/// # Parameters
+/// - `value`: Header value containing parameters.
+/// - `parameter_name`: Parameter name to find.
+///
+/// # Returns
+/// Decoded parameter value, or `None` when absent or malformed.
+pub(crate) fn parameter(value: &str, parameter_name: &str) -> Option<String> {
+    for segment in header_parameter_segments(value)?.into_iter().skip(1) {
+        let Some((name, raw_value)) = segment.split_once('=') else {
+            continue;
+        };
+        if !name.trim().eq_ignore_ascii_case(parameter_name) {
+            continue;
+        }
+        return decode_header_parameter(raw_value.trim());
+    }
+    None
+}
+
+/// Returns whether one byte is allowed in generated multipart boundaries.
+///
+/// # Parameters
+/// - `byte`: ASCII byte to validate.
+///
+/// # Returns
+/// `true` for alphanumeric bytes and conservative RFC-compatible punctuation.
+fn is_valid_multipart_boundary_byte(byte: u8) -> bool {
+    matches!(
+        byte,
+        b'0'..=b'9'
+            | b'A'..=b'Z'
+            | b'a'..=b'z'
+            | b'\''
+            | b'('
+            | b')'
+            | b'+'
+            | b'_'
+            | b','
+            | b'-'
+            | b'.'
+            | b'/'
+            | b':'
+            | b'='
+            | b'?'
+    )
+}
+
+/// Splits header parameters without treating quoted semicolons as separators.
+///
+/// # Parameters
+/// - `value`: Header value containing semicolon-separated parameters.
+///
+/// # Returns
+/// Parameter segments, or `None` when quotes are malformed.
+fn header_parameter_segments(value: &str) -> Option<Vec<&str>> {
+    let mut segments = Vec::new();
+    let mut start = 0;
+    let mut in_quote = false;
+    let mut escaped = false;
+    for (index, ch) in value.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if in_quote && ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if ch == '"' {
+            in_quote = !in_quote;
+            continue;
+        }
+        if ch == ';' && !in_quote {
+            segments.push(value[start..index].trim());
+            start = index + ch.len_utf8();
+        }
+    }
+    if in_quote || escaped {
+        return None;
+    }
+    segments.push(value[start..].trim());
+    Some(segments)
+}
+
+/// Decodes a simple HTTP header parameter value.
+///
+/// # Parameters
+/// - `value`: Raw parameter value.
+///
+/// # Returns
+/// Unquoted value, or `None` for malformed quoted strings.
+fn decode_header_parameter(value: &str) -> Option<String> {
+    if !value.starts_with('"') {
+        return Some(value.trim().to_string());
+    }
+    if !value.ends_with('"') || value.len() < 2 {
+        return None;
+    }
+    let mut result = String::new();
+    let mut chars = value[1..value.len() - 1].chars();
+    while let Some(ch) = chars.next() {
+        let value = if ch == '\\' { chars.next()? } else { ch };
+        if value == '\r' || value == '\n' {
+            return None;
+        }
+        result.push(value);
+    }
+    Some(result)
 }
