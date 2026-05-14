@@ -23,6 +23,7 @@ use crate::constants::{
     SENSITIVE_HEADER_MASK_PLACEHOLDER,
     SENSITIVE_HEADER_MASK_SHORT_LEN,
 };
+use crate::content_type;
 
 use super::{
     BodyPreview,
@@ -158,7 +159,7 @@ impl LogSanitizer {
     /// # Returns
     /// `true` when the content type declares JSON or the bytes look like JSON.
     fn is_json_preview(&self, preview: &BodyPreview<'_>, bytes: &[u8]) -> bool {
-        if preview.content_type.is_some_and(is_json_content_type) {
+        if preview.content_type.is_some_and(content_type::is_json) {
             return true;
         }
         let trimmed = trim_ascii_whitespace(bytes);
@@ -173,7 +174,7 @@ impl LogSanitizer {
     /// # Returns
     /// `true` when the content type declares NDJSON.
     fn is_ndjson_preview(&self, preview: &BodyPreview<'_>) -> bool {
-        preview.content_type.is_some_and(is_ndjson_content_type)
+        preview.content_type.is_some_and(content_type::is_ndjson)
     }
 
     /// Returns whether `preview` should be parsed as form URL encoded data.
@@ -184,18 +185,20 @@ impl LogSanitizer {
     /// # Returns
     /// `true` when the content type declares a URL-encoded form.
     fn is_form_preview(&self, preview: &BodyPreview<'_>) -> bool {
-        preview.content_type.is_some_and(is_form_content_type)
+        preview
+            .content_type
+            .is_some_and(content_type::is_form_urlencoded)
     }
 
-    /// Returns whether `preview` should be treated as multipart form data.
+    /// Returns whether `preview` should be treated as multipart data.
     ///
     /// # Parameters
     /// - `preview`: Preview metadata.
     ///
     /// # Returns
-    /// `true` when the content type declares multipart form data.
+    /// `true` when the content type declares any multipart media type.
     fn is_multipart_preview(&self, preview: &BodyPreview<'_>) -> bool {
-        preview.content_type.is_some_and(is_multipart_content_type)
+        preview.content_type.is_some_and(content_type::is_multipart)
     }
 
     /// Redacts sensitive JSON object keys.
@@ -294,7 +297,7 @@ impl LogSanitizer {
             return None;
         }
         let content_type = preview.content_type?;
-        let boundary = multipart_boundary(content_type)?;
+        let boundary = content_type::multipart_boundary(content_type)?;
         let text = std::str::from_utf8(bytes).ok()?;
         let segments = multipart_part_segments(text, &boundary)?;
         let mut lines = Vec::with_capacity(segments.len());
@@ -328,9 +331,10 @@ impl LogSanitizer {
                 content_type = Some(header_value);
             }
         }
-        let name = content_disposition.and_then(|value| header_parameter(value, "name"));
+        let name = content_disposition.and_then(|value| content_type::parameter(value, "name"));
         let filename = content_disposition.and_then(|value| {
-            header_parameter(value, "filename").or_else(|| header_parameter(value, "filename*"))
+            content_type::parameter(value, "filename")
+                .or_else(|| content_type::parameter(value, "filename*"))
         });
         let field_name = name.as_deref().unwrap_or(MULTIPART_UNNAMED_FIELD);
         let value =
@@ -367,20 +371,20 @@ impl LogSanitizer {
         let Some(content_type) = content_type else {
             return body.to_string();
         };
-        if is_json_content_type(content_type) {
+        if content_type::is_json(content_type) {
             return self
                 .sanitize_json(body.as_bytes())
                 .unwrap_or_else(|| MULTIPART_PART_REDACTED.to_string());
         }
-        if is_ndjson_content_type(content_type) {
+        if content_type::is_ndjson(content_type) {
             return self
                 .sanitize_ndjson(body.as_bytes())
                 .unwrap_or_else(|| MULTIPART_PART_REDACTED.to_string());
         }
-        if is_form_content_type(content_type) {
+        if content_type::is_form_urlencoded(content_type) {
             return self.sanitize_form(body.as_bytes());
         }
-        if is_text_content_type(content_type) {
+        if content_type::is_text(content_type) {
             return body.to_string();
         }
         MULTIPART_PART_REDACTED.to_string()
@@ -413,98 +417,13 @@ fn mask_sensitive_value(value: &str) -> String {
     }
 }
 
-/// Returns whether a content type declares JSON.
-///
-/// # Parameters
-/// - `content_type`: Header value.
-///
-/// # Returns
-/// `true` for `application/json` and `*+json` media types.
-fn is_json_content_type(content_type: &str) -> bool {
-    let media_type = content_type_media_type(content_type).to_ascii_lowercase();
-    media_type == "application/json"
-        || media_type.ends_with("+json")
-        || media_type.ends_with("/json")
-}
-
-/// Returns whether a content type declares NDJSON.
-///
-/// # Parameters
-/// - `content_type`: Header value.
-///
-/// # Returns
-/// `true` for `application/x-ndjson` and compatible aliases.
-fn is_ndjson_content_type(content_type: &str) -> bool {
-    let media_type = content_type_media_type(content_type).to_ascii_lowercase();
-    media_type == "application/x-ndjson" || media_type == "application/ndjson"
-}
-
-/// Returns whether a content type declares URL-encoded form data.
-///
-/// # Parameters
-/// - `content_type`: Header value.
-///
-/// # Returns
-/// `true` for `application/x-www-form-urlencoded`.
-fn is_form_content_type(content_type: &str) -> bool {
-    content_type_media_type(content_type).eq_ignore_ascii_case("application/x-www-form-urlencoded")
-}
-
-/// Returns whether a content type declares multipart form data.
-///
-/// # Parameters
-/// - `content_type`: Header value.
-///
-/// # Returns
-/// `true` for `multipart/form-data`.
-fn is_multipart_content_type(content_type: &str) -> bool {
-    content_type_media_type(content_type).eq_ignore_ascii_case("multipart/form-data")
-}
-
-/// Returns whether a content type declares textual data.
-///
-/// # Parameters
-/// - `content_type`: Header value.
-///
-/// # Returns
-/// `true` for `text/*` media types.
-fn is_text_content_type(content_type: &str) -> bool {
-    content_type_media_type(content_type)
-        .to_ascii_lowercase()
-        .starts_with("text/")
-}
-
-/// Returns the media type part of a content type value.
-///
-/// # Parameters
-/// - `content_type`: Header value.
-///
-/// # Returns
-/// Trimmed media type without parameters.
-fn content_type_media_type(content_type: &str) -> &str {
-    content_type
-        .split(';')
-        .next()
-        .map(str::trim)
-        .unwrap_or_default()
-}
-
-/// Extracts a valid multipart boundary parameter.
-///
-/// # Parameters
-/// - `content_type`: Multipart content type header value.
-///
-/// # Returns
-/// Boundary string, or `None` when absent or invalid.
-fn multipart_boundary(content_type: &str) -> Option<String> {
-    if !is_multipart_content_type(content_type) {
-        return None;
-    }
-    let boundary = header_parameter(content_type, "boundary")?;
-    if boundary.is_empty() || boundary.chars().any(char::is_control) {
-        return None;
-    }
-    Some(boundary)
+/// Kind of multipart delimiter line found in a body.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MultipartDelimiter {
+    /// Delimiter before a regular part.
+    Part,
+    /// Final closing delimiter.
+    Closing,
 }
 
 /// Splits a complete multipart body into raw part segments.
@@ -516,30 +435,71 @@ fn multipart_boundary(content_type: &str) -> Option<String> {
 /// # Returns
 /// Raw part segments without boundary delimiter lines, or `None` for malformed bodies.
 fn multipart_part_segments<'a>(text: &'a str, boundary: &str) -> Option<Vec<&'a str>> {
-    let delimiter = format!("--{boundary}");
+    let mut current_start = None;
     let mut segments = Vec::new();
-    let mut split = text.split(&delimiter);
-    let _preamble = split.next()?;
-    let mut saw_closing_delimiter = false;
-    for segment in split {
-        if let Some(rest) = segment.strip_prefix("--") {
-            if !rest.trim().is_empty() {
-                return None;
-            }
-            saw_closing_delimiter = true;
-            break;
-        }
-        let segment = strip_one_leading_line_ending(segment);
-        let segment = strip_one_trailing_line_ending(segment);
-        if segment.trim().is_empty() {
+    let mut position = 0;
+    while position < text.len() {
+        let (line_start, line_end, next_position) = next_line_bounds(text, position);
+        let line = &text[line_start..line_end];
+        let Some(delimiter) = multipart_delimiter(line, boundary) else {
+            position = next_position;
             continue;
+        };
+        if let Some(start) = current_start {
+            let segment = strip_one_trailing_line_ending(&text[start..line_start]);
+            if !segment.trim().is_empty() {
+                segments.push(segment);
+            }
         }
-        segments.push(segment);
+        if delimiter == MultipartDelimiter::Closing {
+            if text[next_position..].trim().is_empty() {
+                return Some(segments);
+            }
+            return None;
+        }
+        current_start = Some(next_position);
+        position = next_position;
     }
-    if !saw_closing_delimiter {
-        return None;
+    None
+}
+
+/// Returns the next line range and the following scan position.
+///
+/// # Parameters
+/// - `text`: Source text.
+/// - `position`: Byte offset where the next line starts.
+///
+/// # Returns
+/// `(line_start, line_end_without_line_ending, next_position)`.
+fn next_line_bounds(text: &str, position: usize) -> (usize, usize, usize) {
+    if let Some(relative_end) = text[position..].find('\n') {
+        let line_end = position + relative_end;
+        let trimmed_end = line_end
+            .checked_sub(1)
+            .filter(|index| text.as_bytes()[*index] == b'\r')
+            .unwrap_or(line_end);
+        return (position, trimmed_end, line_end + 1);
     }
-    Some(segments)
+    (position, text.len(), text.len())
+}
+
+/// Classifies a multipart boundary delimiter line.
+///
+/// # Parameters
+/// - `line`: One logical line without the trailing CRLF/LF.
+/// - `boundary`: Boundary parameter without the leading `--`.
+///
+/// # Returns
+/// Delimiter kind for exact delimiter lines, otherwise `None`.
+fn multipart_delimiter(line: &str, boundary: &str) -> Option<MultipartDelimiter> {
+    let delimiter = format!("--{boundary}");
+    if line == delimiter {
+        Some(MultipartDelimiter::Part)
+    } else if line == format!("{delimiter}--") {
+        Some(MultipartDelimiter::Closing)
+    } else {
+        None
+    }
 }
 
 /// Splits multipart part headers from the part body.
@@ -557,104 +517,6 @@ fn split_multipart_headers_and_body(segment: &str) -> Option<(&str, &str)> {
         return Some((&segment[..index], &segment[index + 2..]));
     }
     None
-}
-
-/// Extracts one semicolon-separated header parameter.
-///
-/// # Parameters
-/// - `value`: Header value containing parameters.
-/// - `parameter_name`: Parameter name to find.
-///
-/// # Returns
-/// Decoded parameter value, or `None` when absent or malformed.
-fn header_parameter(value: &str, parameter_name: &str) -> Option<String> {
-    for segment in header_parameter_segments(value)?.into_iter().skip(1) {
-        let Some((name, raw_value)) = segment.split_once('=') else {
-            continue;
-        };
-        if !name.trim().eq_ignore_ascii_case(parameter_name) {
-            continue;
-        }
-        return decode_header_parameter(raw_value.trim());
-    }
-    None
-}
-
-/// Splits header parameters without treating quoted semicolons as separators.
-///
-/// # Parameters
-/// - `value`: Header value containing semicolon-separated parameters.
-///
-/// # Returns
-/// Parameter segments, or `None` when quotes are malformed.
-fn header_parameter_segments(value: &str) -> Option<Vec<&str>> {
-    let mut segments = Vec::new();
-    let mut start = 0;
-    let mut in_quote = false;
-    let mut escaped = false;
-    for (index, ch) in value.char_indices() {
-        if escaped {
-            escaped = false;
-            continue;
-        }
-        if in_quote && ch == '\\' {
-            escaped = true;
-            continue;
-        }
-        if ch == '"' {
-            in_quote = !in_quote;
-            continue;
-        }
-        if ch == ';' && !in_quote {
-            segments.push(value[start..index].trim());
-            start = index + ch.len_utf8();
-        }
-    }
-    if in_quote || escaped {
-        return None;
-    }
-    segments.push(value[start..].trim());
-    Some(segments)
-}
-
-/// Decodes a simple HTTP header parameter value.
-///
-/// # Parameters
-/// - `value`: Raw parameter value.
-///
-/// # Returns
-/// Unquoted value, or `None` for malformed quoted strings.
-fn decode_header_parameter(value: &str) -> Option<String> {
-    if !value.starts_with('"') {
-        return Some(value.trim().to_string());
-    }
-    if !value.ends_with('"') || value.len() < 2 {
-        return None;
-    }
-    let mut result = String::new();
-    let mut chars = value[1..value.len() - 1].chars();
-    while let Some(ch) = chars.next() {
-        let value = if ch == '\\' { chars.next()? } else { ch };
-        if value == '\r' || value == '\n' {
-            return None;
-        }
-        result.push(value);
-    }
-    Some(result)
-}
-
-/// Removes one leading multipart line ending.
-///
-/// # Parameters
-/// - `value`: Text that may start with a line ending.
-///
-/// # Returns
-/// Text without one leading line ending.
-fn strip_one_leading_line_ending(value: &str) -> &str {
-    value
-        .strip_prefix("\r\n")
-        .or_else(|| value.strip_prefix('\n'))
-        .unwrap_or(value)
 }
 
 /// Removes one trailing multipart line ending.

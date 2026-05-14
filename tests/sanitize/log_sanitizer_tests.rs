@@ -181,6 +181,46 @@ fn test_log_sanitizer_sanitize_body_preview_redacts_multipart_form_fields() {
 }
 
 #[test]
+fn test_log_sanitizer_sanitize_body_preview_redacts_multipart_mixed_fields() {
+    let sanitizer = LogSanitizer::default();
+    let body = Bytes::from_static(
+        b"--boundary\r\n\
+          Content-Disposition: form-data; name=\"password\"\r\n\
+          \r\n\
+          secret-password\r\n\
+          --boundary--\r\n",
+    );
+    let preview = BodyPreview::new(&body, body.len(), BodyLogContext::Request)
+        .with_content_type("multipart/mixed; boundary=boundary");
+
+    let sanitized = sanitizer.sanitize_body_preview(&preview);
+
+    assert!(sanitized.contains("password=****"));
+    assert!(!sanitized.contains("secret-password"));
+    assert!(!sanitized.contains("boundary"));
+}
+
+#[test]
+fn test_log_sanitizer_sanitize_body_preview_redacts_multipart_mixed_without_boundary() {
+    let sanitizer = LogSanitizer::default();
+    let body = Bytes::from_static(
+        b"--boundary\r\n\
+          Content-Disposition: form-data; name=\"password\"\r\n\
+          \r\n\
+          secret-password\r\n\
+          --boundary--\r\n",
+    );
+    let preview = BodyPreview::new(&body, body.len(), BodyLogContext::Request)
+        .with_content_type("multipart/mixed");
+
+    let sanitized = sanitizer.sanitize_body_preview(&preview);
+
+    assert_eq!(sanitized, "<redacted: multipart body>");
+    assert!(!sanitized.contains("secret-password"));
+    assert!(!sanitized.contains("boundary"));
+}
+
+#[test]
 fn test_log_sanitizer_sanitize_body_preview_accepts_multipart_boundary_after_malformed_parameter() {
     let sanitizer = LogSanitizer::default();
     let body = Bytes::from_static(
@@ -238,6 +278,26 @@ fn test_log_sanitizer_sanitize_body_preview_keeps_multipart_text_part() {
 
     assert!(sanitized.contains("description=plain text value"));
     assert!(!sanitized.contains("boundary"));
+}
+
+#[test]
+fn test_log_sanitizer_sanitize_body_preview_keeps_multipart_text_containing_boundary_text() {
+    let sanitizer = LogSanitizer::default();
+    let body = Bytes::from_static(
+        b"--boundary\r\n\
+          Content-Disposition: form-data; name=\"description\"\r\n\
+          Content-Type: text/plain\r\n\
+          \r\n\
+          plain text mentions --boundary inside the value\r\n\
+          --boundary--\r\n",
+    );
+    let preview = BodyPreview::new(&body, body.len(), BodyLogContext::Request)
+        .with_content_type("multipart/form-data; boundary=boundary");
+
+    let sanitized = sanitizer.sanitize_body_preview(&preview);
+
+    assert!(sanitized.contains("description=plain text mentions --boundary inside the value"));
+    assert!(!sanitized.contains("<redacted: multipart body>"));
 }
 
 #[test]
