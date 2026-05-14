@@ -357,7 +357,7 @@ body 可用方式：
 | `text()` | 基于 `bytes()`，用 UTF-8 解码完整 body |
 | `json<T>()` | 基于 `bytes()`，用 serde JSON 反序列化完整 body |
 | `stream()` | 返回 `HttpByteStream`；若 body 已缓存则为单块内存流。未缓存时调用本身**不会**立刻读完整 body，而是把底层响应交给返回的流，**在轮询该流时**按需读取字节块 |
-| `sse_events()` | 消费 `self`，按当前 SSE 行/帧上限等选项将 body 解码为 SSE 事件流（详见下文「SSE 解码」） |
+| `sse_messages()` | 消费 `self`，按当前 SSE 行/帧上限等选项将 body 解码为 SSE 消息流（详见下文「SSE 解码」） |
 | `sse_chunks::<T>()` | 消费 `self`，将 SSE `data:` JSON chunk 解码为 `SseChunk<T>` 流（JSON 模式、完成标记等见下文「SSE JSON chunk」） |
 
 ### 使用示例
@@ -414,7 +414,7 @@ async fn read_stream_example(client: &qubit_http::HttpClient) -> qubit_http::Htt
 }
 ```
 
-**SSE（`sse_events` / `sse_chunks`）**：二者都会**消费** `self`（转移所有权），内部仍基于同一条 body 流；若要在解码前调整行/帧上限、JSON 模式、完成标记等，可将各 `sse_*` 配置方法与 `sse_events()` / `sse_chunks::<T>()` 写在同一条链上（完整说明见下文「SSE 解码」「SSE JSON chunk」）。
+**SSE（`sse_messages` / `sse_chunks`）**：二者都会**消费** `self`（转移所有权），内部仍基于同一条 body 流；若要在解码前调整行/帧上限、JSON 模式、完成标记等，可将各 `sse_*` 配置方法与 `sse_messages()` / `sse_chunks::<T>()` 写在同一条链上（完整说明见下文「SSE 解码」「SSE JSON chunk」）。
 
 ```rust
 use futures_util::StreamExt;
@@ -430,7 +430,7 @@ async fn read_sse_examples(client: &qubit_http::HttpClient) -> qubit_http::HttpR
     let mut ev = client
         .execute(client.request(Method::GET, "/events").build())
         .await?;
-    let mut events = ev.sse_events();
+    let mut events = ev.sse_messages();
     while let Some(item) = events.next().await {
         let _event = item?;
     }
@@ -449,12 +449,12 @@ async fn read_sse_examples(client: &qubit_http::HttpClient) -> qubit_http::HttpR
 }
 ```
 
-注意：底层 `reqwest` 响应体在同一 `HttpResponse` 上只能有一条消费路径。调用 `bytes`、`text` 或 `json` 会把完整 body 读入并缓存；之后 `stream` 会返回由缓存构成的单块流。若在未缓存时先调用 `stream`，底层句柄已交给返回的流，须通过该流读完 body；此时再调用 `bytes` / `text` / `json` 不会再从网络补读（会得到空 body），因此不要混用「先流式、再整包读」。`sse_events` / `sse_chunks` 也会走这条路径（内部基于 `stream`），且调用后 `HttpResponse` 已被消费，不能再对同一对象调用其它读 body 方法。
+注意：底层 `reqwest` 响应体在同一 `HttpResponse` 上只能有一条消费路径。调用 `bytes`、`text` 或 `json` 会把完整 body 读入并缓存；之后 `stream` 会返回由缓存构成的单块流。若在未缓存时先调用 `stream`，底层句柄已交给返回的流，须通过该流读完 body；此时再调用 `bytes` / `text` / `json` 不会再从网络补读（会得到空 body），因此不要混用「先流式、再整包读」。`sse_messages` / `sse_chunks` 也会走这条路径（内部基于 `stream`），且调用后 `HttpResponse` 已被消费，不能再对同一对象调用其它读 body 方法。
 
 | 可以 | 避免 |
 | --- | --- |
 | `bytes()` / `text()` / `json()` 读取完整响应体并复用缓存 | 先 `stream()`，再对同一响应调用 `bytes()` / `text()` / `json()` |
-| `bytes()` 后再调用 `stream()`，得到基于缓存的单块流 | 调用 `sse_events()` 或 `sse_chunks()` 后继续读同一个响应 |
+| `bytes()` 后再调用 `stream()`，得到基于缓存的单块流 | 调用 `sse_messages()` 或 `sse_chunks()` 后继续读同一个响应 |
 | 在同一条表达式中链式设置 `sse_*` 选项并消费 SSE | 对同一个 `HttpResponse` 同时设计多条消费路径 |
 
 `retry_after_hint()` 会在响应状态为 429 或 5xx 且存在合法 `Retry-After` header 时返回延迟。它支持 `delta-seconds` 和 HTTP-date 两种格式；HTTP-date 早于当前时间时返回 0 秒。`HttpResponseMeta` 上也有同名方法，响应拦截器可以在只拿到 metadata 时读取这个提示。
@@ -550,7 +550,7 @@ HTTP 日志使用 `tracing::trace!`。必须同时满足：
 
 可分别控制请求头、请求体、响应头、响应体。body 只记录前 `logging.body_size_limit` 字节，超出部分显示截断提示；二进制体显示为 `<binary N bytes>`。请求体日志只预览已缓冲的 body 变体（`bytes_body`、`text_body`、`json_body`、`form_body`、`multipart_body`、`ndjson_body`）；`stream_body` 和 `streaming_body` 会记录为 `<empty>`，因为 logger 不会消费上传流。
 
-敏感 header 会脱敏。默认内置常见认证、token、cookie、secret、password 类 header 名。短值整体显示为 `****`；长值保留前后各 2 个字符，中间替换为 `****`。配置 `sensitive_headers` 会用自定义集合替换默认集合；代码里也可以通过 `SensitiveHttpHeaders` 自行维护集合。
+日志统一经过 `LogSanitizer` 和 `LogSanitizePolicy` 脱敏。敏感 header 会被掩码；URL query 参数以及 JSON/form body 字段如果命中策略中的敏感名称，会被替换为 `****`。默认策略内置常见认证、token、cookie、secret、password 类名称。短 header 值整体显示为 `****`；长 header 值保留前后各 2 个字符，中间替换为 `****`。配置 `sensitive_headers` 会覆盖默认敏感 header 集合；代码里也可以直接调整 `options.log_sanitize_policy`。
 
 注意：如果 TRACE 日志开启且 `log_response_body = true`，响应体日志只会在 body 已缓存，或响应不是 SSE 且存在 `Content-Length`、并且长度不超过 `logging.body_size_limit` 时读取并缓存完整 body；未知长度、超过限制或 SSE 响应会记录为跳过，不会为了日志消费后端流。
 
@@ -582,11 +582,11 @@ options.proxy.port = Some(1080);
 
 | 目标 | 使用 |
 | --- | --- |
-| 读取原始 SSE event | `response.sse_events()` |
+| 读取原始 SSE message | `response.sse_messages()` |
 | 读取 OpenAI 风格 JSON chunk 或 `[DONE]` 完成标记 | `response.sse_chunks::<T>()` |
 | 长连接断开后自动重连 | `client.execute_sse_with_reconnect(...)` |
 
-SSE 事件解码从 `HttpResponse` 开始：
+SSE 消息解码从 `HttpResponse` 开始：
 
 ```rust
 use futures_util::StreamExt;
@@ -596,16 +596,19 @@ let response = client
     .execute(client.request(Method::GET, "/stream").build())
     .await?;
 
-let mut events = response.sse_events();
-while let Some(item) = events.next().await {
-    let event = item?;
-    println!("event={:?} id={:?} data={}", event.event, event.id, event.data);
+let mut messages = response.sse_messages();
+while let Some(item) = messages.next().await {
+    let message = item?;
+    println!(
+        "event={:?} last_event_id={:?} data={}",
+        message.event, message.last_event_id, message.data
+    );
 }
 ```
 
-### 配置 `sse_events` 选项
+### 配置 `sse_messages` 选项
 
-`sse_max_line_bytes` 与 `sse_max_frame_bytes` 均返回 `HttpResponse`（按值移动后的 `self`），可在消费响应体之前与 `sse_events()` 写在同一条链上，依次写入本响应上的 SSE 解析上限（`sse_events` 会按此时的配置从 `stream()` 解码）：
+`sse_max_line_bytes` 与 `sse_max_frame_bytes` 均返回 `HttpResponse`（按值移动后的 `self`），可在消费响应体之前与 `sse_messages()` 写在同一条链上，依次写入本响应上的 SSE 解析上限（`sse_messages` 会按此时的配置从 `stream()` 解码）：
 
 ```rust
 use futures_util::StreamExt;
@@ -615,35 +618,37 @@ let response = client
     .execute(client.request(Method::GET, "/stream").build())
     .await?;
 
-let mut events = response
+let mut messages = response
     .sse_max_line_bytes(64 * 1024)      // 单行最大字节数
     .sse_max_frame_bytes(1024 * 1024) // 单帧最大字节数
-    .sse_events();
-while let Some(item) = events.next().await {
-    let event = item?;
-    println!("event={:?} id={:?} data={}", event.event, event.id, event.data);
+    .sse_messages();
+while let Some(item) = messages.next().await {
+    let message = item?;
+    println!(
+        "event={:?} last_event_id={:?} data={}",
+        message.event, message.last_event_id, message.data
+    );
 }
 ```
 
-`SseEvent` 字段：
+`SseMessage` 字段：
 
 | 字段 | 含义 |
 | --- | --- |
 | `event` | `event:` 字段，可选 |
 | `data` | 多行 `data:` 用 `\n` 拼接 |
-| `id` | `id:` 字段，可选 |
-| `retry` | 合法 `retry:` 毫秒值，可选 |
+| `last_event_id` | 应用当前帧以及之前 control-only `id:` 帧后的 EventSource last-event-id |
 
 协议行为：
 
 - 按 `\n` 分行，剥离行尾 `\r`。
 - 每行必须是 UTF-8，否则返回 `HttpErrorKind::SseProtocol`。
-- 空行 flush 一个 event。
+- 空行在存在可派发 `data:` 时 flush 一个 message。
 - 注释行（以 `:` 开头）忽略。
 - 未知字段忽略。
-- `retry:` 只有能解析为 `u64` 时才记录。
-- 流结束时如果还有未 flush 字段，会输出最后一个 event。
-- 单行和单帧上限默认来自 `HttpClientOptions`；若本次响应需要不同上限，在调用 `sse_events` 之前将 `sse_max_line_bytes` / `sse_max_frame_bytes` 与 `sse_events()` 链在同一条表达式上即可（完整示例见本节上文「配置 `sse_events` 选项」）。
+- `retry:` 和 control-only `id:` 帧只作为内部控制记录使用，不会作为 `SseMessage` 暴露。
+- 流结束时如果还有未 flush 的可派发字段，会输出最后一个 message。
+- 单行和单帧上限默认来自 `HttpClientOptions`；若本次响应需要不同上限，在调用 `sse_messages` 之前将 `sse_max_line_bytes` / `sse_max_frame_bytes` 与 `sse_messages()` 链在同一条表达式上即可（完整示例见本节上文「配置 `sse_messages` 选项」）。
 
 ### SSE JSON chunk
 

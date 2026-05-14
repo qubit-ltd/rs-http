@@ -13,28 +13,37 @@
 //!
 
 mod done_marker_policy;
-mod event_decoder;
 mod frame_decoder;
 mod json_decoder;
 mod line_decoder;
+mod message_decoder;
 mod sse_chunk;
 mod sse_chunk_stream;
-mod sse_event;
-mod sse_event_stream;
+mod sse_control;
 mod sse_json_mode;
+mod sse_message;
+mod sse_message_stream;
 mod sse_reconnect_options;
 mod sse_reconnect_runner;
+mod sse_record;
+mod sse_record_stream;
 
-pub(crate) use event_decoder::decode_events_from_stream_with_limits;
+pub(crate) use message_decoder::{
+    decode_messages_from_stream_with_limits,
+    decode_records_from_stream_with_limits,
+};
 pub(crate) use sse_reconnect_runner::SseReconnectRunner;
 
 pub use done_marker_policy::DoneMarkerPolicy;
 pub use sse_chunk::SseChunk;
 pub use sse_chunk_stream::SseChunkStream;
-pub use sse_event::SseEvent;
-pub use sse_event_stream::SseEventStream;
 pub use sse_json_mode::SseJsonMode;
+pub use sse_message::SseMessage;
+pub use sse_message_stream::SseMessageStream;
 pub use sse_reconnect_options::SseReconnectOptions;
 
 pub(crate) use json_decoder::decode_json_chunks_from_stream_with_limits;
+pub(crate) use sse_control::SseControl;
 pub(crate) use sse_reconnect_options::DEFAULT_SSE_MAX_RECONNECT_DELAY;
+pub(crate) use sse_record::SseRecord;
+pub(crate) use sse_record_stream::SseRecordStream;

@@ -19,7 +19,7 @@ use qubit_http::HttpResponse;
 use url::Url;
 
 #[tokio::test]
-async fn test_event_decoder_decodes_multiple_sse_events_from_response_body() {
+async fn test_message_decoder_decodes_multiple_sse_messages_from_response_body() {
     let response = HttpResponse::new(
         StatusCode::OK,
         HeaderMap::new(),
@@ -28,16 +28,16 @@ async fn test_event_decoder_decodes_multiple_sse_events_from_response_body() {
         Method::GET,
     );
 
-    let events = response
-        .sse_events()
-        .map(|item| item.expect("event should decode"))
+    let messages = response
+        .sse_messages()
+        .map(|item| item.expect("message should decode"))
         .collect::<Vec<_>>()
         .await;
 
-    assert_eq!(events.len(), 2);
-    assert_eq!(events[0].id.as_deref(), Some("1"));
-    assert_eq!(events[0].event.as_deref(), Some("add"));
-    assert_eq!(events[0].data, "one");
-    assert_eq!(events[1].id.as_deref(), Some("2"));
-    assert_eq!(events[1].data, "two");
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[0].last_event_id.as_deref(), Some("1"));
+    assert_eq!(messages[0].event.as_deref(), Some("add"));
+    assert_eq!(messages[0].data, "one");
+    assert_eq!(messages[1].last_event_id.as_deref(), Some("2"));
+    assert_eq!(messages[1].data, "two");
 }

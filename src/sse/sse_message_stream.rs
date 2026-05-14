@@ -7,8 +7,7 @@
  *    Licensed under the Apache License, Version 2.0.
  *
  ******************************************************************************/
-//! Pin-boxed stream of [`SseEvent`](crate::sse::SseEvent) or [`HttpError`](crate::HttpError).
-//!
+//! Pin-boxed stream of [`SseMessage`](crate::sse::SseMessage) values.
 
 use std::pin::Pin;
 
@@ -16,7 +15,7 @@ use futures_util::Stream;
 
 use crate::HttpResult;
 
-use super::sse_event::SseEvent;
+use super::sse_message::SseMessage;
 
-/// Pin-boxed stream of parsed [`SseEvent`] or [`HttpError`](crate::HttpError).
-pub type SseEventStream = Pin<Box<dyn Stream<Item = HttpResult<SseEvent>> + Send>>;
+/// Pin-boxed stream of parsed [`SseMessage`] values or [`HttpError`](crate::HttpError).
+pub type SseMessageStream = Pin<Box<dyn Stream<Item = HttpResult<SseMessage>> + Send>>;

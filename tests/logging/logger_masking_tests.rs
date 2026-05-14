@@ -37,7 +37,7 @@ fn capture_request_header_logs(name: HeaderName, value: HeaderValue) -> String {
     let sensitive_headers = SensitiveHttpHeaders::default();
     let mut client_options = HttpClientOptions::default();
     client_options.logging = options;
-    client_options.sensitive_headers = sensitive_headers;
+    client_options.log_sanitize_policy.sensitive_headers = sensitive_headers;
     let logger = HttpLogger::new(&client_options);
     let mut headers = HeaderMap::new();
     headers.insert(name, value);

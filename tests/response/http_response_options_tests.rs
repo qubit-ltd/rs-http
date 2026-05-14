@@ -33,7 +33,7 @@ async fn test_http_response_options_clamp_sse_line_limit_to_at_least_one() {
 
     let error = response
         .sse_max_line_bytes(0)
-        .sse_events()
+        .sse_messages()
         .next()
         .await
         .expect("stream should yield an item")

@@ -41,10 +41,12 @@ use crate::error::{
 use crate::sse::{
     DoneMarkerPolicy,
     SseChunkStream,
-    SseEventStream,
     SseJsonMode,
+    SseMessageStream,
 };
 use crate::{
+    BodyLogContext,
+    BodyPreview,
     HttpByteStream,
     HttpError,
     HttpErrorKind,
@@ -356,23 +358,21 @@ impl HttpResponse {
         }
         if let Some(body) = self.buffered_body.take() {
             let end = body.len().min(limit);
+            let content_type = Self::content_type_value(&self.meta.headers);
             return Ok(Self::render_error_body_preview(
                 &body[..end],
+                body.len(),
                 body.len() > limit,
+                content_type.as_deref(),
+                &self.options.log_sanitizer,
             ));
         }
         let Some(backend) = self.backend.take() else {
             return Ok("<empty>".to_string());
         };
-        Self::read_error_body_preview(
-            backend,
-            self.runtime.read_timeout,
-            self.runtime.cancellation_token.clone(),
-            self.meta.method.clone(),
-            self.runtime.request_url.clone(),
-            limit,
-        )
-        .await
+        let content_type = Self::content_type_value(&self.meta.headers);
+        self.read_error_body_preview(backend, limit, content_type)
+            .await
     }
 
     /// Returns full body bytes, consuming backend stream lazily on first call.
@@ -532,7 +532,7 @@ impl HttpResponse {
     /// Overrides the maximum allowed size (in bytes) for one SSE line on this response.
     ///
     /// Values below 1 are clamped to 1. Returns `self` so callers can chain configuration
-    /// before consuming the body with [`Self::sse_events`] or [`Self::sse_chunks`]
+    /// before consuming the body with [`Self::sse_messages`] or [`Self::sse_chunks`]
     /// (together with [`Self::sse_json_mode`], [`Self::sse_done_marker_policy`], etc.).
     #[inline]
     pub fn sse_max_line_bytes(mut self, max_line_bytes: usize) -> Self {
@@ -563,14 +563,31 @@ impl HttpResponse {
         self
     }
 
-    /// Decodes body stream as SSE events using this response's SSE line/frame byte limits (from
+    /// Decodes body stream as SSE messages using this response's SSE line/frame byte limits (from
     /// client defaults unless overridden via [`Self::sse_max_line_bytes`] /
     /// [`Self::sse_max_frame_bytes`]).
-    pub fn sse_events(mut self) -> SseEventStream {
+    pub fn sse_messages(mut self) -> SseMessageStream {
         let max_line_bytes = self.options.sse_max_line_bytes;
         let max_frame_bytes = self.options.sse_max_frame_bytes;
         match self.stream() {
-            Ok(stream) => crate::sse::decode_events_from_stream_with_limits(
+            Ok(stream) => crate::sse::decode_messages_from_stream_with_limits(
+                stream,
+                max_line_bytes,
+                max_frame_bytes,
+            ),
+            Err(error) => Box::pin(futures_stream::once(async move { Err(error) })),
+        }
+    }
+
+    /// Decodes body stream as internal SSE records for reconnect state handling.
+    ///
+    /// # Returns
+    /// Stream of internal records, or one error item when the body cannot be opened.
+    pub(crate) fn sse_records(mut self) -> crate::sse::SseRecordStream {
+        let max_line_bytes = self.options.sse_max_line_bytes;
+        let max_frame_bytes = self.options.sse_max_frame_bytes;
+        match self.stream() {
+            Ok(stream) => crate::sse::decode_records_from_stream_with_limits(
                 stream,
                 max_line_bytes,
                 max_frame_bytes,
@@ -636,14 +653,16 @@ impl HttpResponse {
     /// when the supplied cancellation token fires while waiting for preview
     /// bytes.
     async fn read_error_body_preview(
+        &self,
         mut response: reqwest::Response,
-        read_timeout: Duration,
-        cancellation_token: Option<CancellationToken>,
-        method: Method,
-        url: Url,
         max_bytes: usize,
+        content_type: Option<String>,
     ) -> HttpResult<String> {
         let limit = max_bytes.max(1);
+        let read_timeout = self.runtime.read_timeout;
+        let cancellation_token = self.runtime.cancellation_token.clone();
+        let method = self.meta.method.clone();
+        let url = self.runtime.request_url.clone();
         let mut preview = Vec::new();
         let mut truncated = false;
 
@@ -691,7 +710,13 @@ impl HttpResponse {
                 }
             }
         }
-        Ok(Self::render_error_body_preview(&preview, truncated))
+        Ok(Self::render_error_body_preview(
+            &preview,
+            preview.len(),
+            truncated,
+            content_type.as_deref(),
+            &self.options.log_sanitizer,
+        ))
     }
 
     /// Returns a cancellation error with response read context when cancelled.
@@ -741,14 +766,38 @@ impl HttpResponse {
             })
     }
 
-    fn render_error_body_preview(bytes: &[u8], truncated: bool) -> String {
-        if bytes.is_empty() {
-            return "<empty>".to_string();
-        }
-        let suffix = if truncated { "...<truncated>" } else { "" };
-        match std::str::from_utf8(bytes) {
-            Ok(text) => format!("{text}{suffix}"),
-            Err(_) => format!("<binary {} bytes>{suffix}", bytes.len()),
-        }
+    fn render_error_body_preview(
+        bytes: &[u8],
+        source_len: usize,
+        truncated: bool,
+        content_type: Option<&str>,
+        log_sanitizer: &crate::LogSanitizer,
+    ) -> String {
+        let preview = BodyPreview::from_limited_bytes(
+            bytes,
+            source_len,
+            truncated,
+            BodyLogContext::ErrorResponse,
+        );
+        let preview = if let Some(content_type) = content_type {
+            preview.with_content_type(content_type)
+        } else {
+            preview
+        };
+        log_sanitizer.sanitize_body_preview(&preview)
+    }
+
+    /// Extracts a UTF-8 Content-Type header value.
+    ///
+    /// # Parameters
+    /// - `headers`: Headers to inspect.
+    ///
+    /// # Returns
+    /// Owned Content-Type value when present and UTF-8.
+    fn content_type_value(headers: &HeaderMap) -> Option<String> {
+        headers
+            .get(CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string)
     }
 }

@@ -25,7 +25,6 @@ use super::http_logging_options::HttpLoggingOptions;
 use super::http_retry_options::HttpRetryOptions;
 use super::http_timeout_options::HttpTimeoutOptions;
 use super::proxy_options::ProxyOptions;
-use super::sensitive_http_headers::SensitiveHttpHeaders;
 use super::HttpConfigError;
 use crate::{
     constants::{
@@ -34,6 +33,10 @@ use crate::{
         DEFAULT_SSE_MAX_LINE_BYTES,
     },
     request::parse_header,
+    sanitize::{
+        LogSanitizePolicy,
+        SensitiveHttpHeaders,
+    },
     sse::{
         DoneMarkerPolicy,
         SseJsonMode,
@@ -69,8 +72,8 @@ pub struct HttpClientOptions {
     pub use_env_proxy: bool,
     /// Retry options.
     pub retry: HttpRetryOptions,
-    /// Sensitive headers for masking.
-    pub sensitive_headers: SensitiveHttpHeaders,
+    /// Log sanitization policy for URL, header, and body previews.
+    pub log_sanitize_policy: LogSanitizePolicy,
     /// Whether IPv4-only DNS behavior is requested.
     pub ipv4_only: bool,
     /// Default JSON handling mode used by [`crate::HttpResponse::sse_chunks`].
@@ -85,8 +88,8 @@ pub struct HttpClientOptions {
 
 impl Default for HttpClientOptions {
     /// Default: no base URL, empty headers, default timeouts/proxy/logging,
-    /// default sensitive headers, IPv4-only off, lenient SSE JSON mode, default SSE done-marker
-    /// policy, and crate default SSE line/frame limits.
+    /// default log sanitization, IPv4-only off, lenient SSE JSON mode, default
+    /// SSE done-marker policy, and crate default SSE line/frame limits.
     ///
     /// # Returns
     /// Default [`HttpClientOptions`].
@@ -104,7 +107,7 @@ impl Default for HttpClientOptions {
             pool_max_idle_per_host: None,
             use_env_proxy: false,
             retry: HttpRetryOptions::default(),
-            sensitive_headers: SensitiveHttpHeaders::default(),
+            log_sanitize_policy: LogSanitizePolicy::default(),
             ipv4_only: false,
             sse_json_mode: SseJsonMode::Lenient,
             sse_done_marker_policy: DoneMarkerPolicy::default(),
@@ -451,7 +454,7 @@ impl HttpClientOptions {
         if let Some(names) = root.sensitive_headers {
             let mut sh = SensitiveHttpHeaders::new();
             sh.extend(names);
-            opts.sensitive_headers = sh;
+            opts.log_sanitize_policy.sensitive_headers = sh;
         }
 
         Ok(opts)

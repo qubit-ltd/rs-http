@@ -110,7 +110,10 @@ fn test_http_client_options_new_matches_default() {
     );
     assert_eq!(options.use_env_proxy, defaults.use_env_proxy);
     assert_eq!(options.retry, defaults.retry);
-    assert_eq!(options.sensitive_headers, defaults.sensitive_headers);
+    assert_eq!(
+        options.log_sanitize_policy.sensitive_headers,
+        defaults.log_sanitize_policy.sensitive_headers
+    );
     assert_eq!(options.ipv4_only, defaults.ipv4_only);
     assert_eq!(options.sse_json_mode, defaults.sse_json_mode);
     assert_eq!(
@@ -368,8 +371,14 @@ fn test_http_client_options_sensitive_headers() {
         .unwrap();
 
     let opts = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap();
-    assert!(opts.sensitive_headers.contains("x-custom-secret"));
-    assert!(opts.sensitive_headers.contains("x-api-token"));
+    assert!(opts
+        .log_sanitize_policy
+        .sensitive_headers
+        .contains("x-custom-secret"));
+    assert!(opts
+        .log_sanitize_policy
+        .sensitive_headers
+        .contains("x-api-token"));
 }
 
 #[test]
@@ -957,7 +966,10 @@ fn test_http_client_options_from_root_config_all_sections() {
     assert_eq!(opts.pool_max_idle_per_host, Some(9));
     assert!(opts.use_env_proxy);
     assert!(opts.default_headers.contains_key("x-root"));
-    assert!(opts.sensitive_headers.contains("x-root-secret"));
+    assert!(opts
+        .log_sanitize_policy
+        .sensitive_headers
+        .contains("x-root-secret"));
     assert_eq!(opts.timeouts.connect_timeout, Duration::from_secs(3));
     assert_eq!(opts.timeouts.request_timeout, Some(Duration::from_secs(6)));
     assert!(opts.proxy.enabled);
@@ -989,7 +1001,7 @@ fn test_http_client_options_sensitive_headers_number_from_config_is_converted() 
 
     let opts = HttpClientOptions::from_config(&config.prefix_view("http")).unwrap();
 
-    assert!(opts.sensitive_headers.contains("123"));
+    assert!(opts.log_sanitize_policy.sensitive_headers.contains("123"));
 }
 
 #[test]

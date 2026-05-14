@@ -25,7 +25,6 @@ mod http_retry_options;
 mod http_timeout_options;
 mod proxy_options;
 mod proxy_type;
-mod sensitive_http_headers;
 
 pub use http_client_options::HttpClientOptions;
 pub use http_config_error::HttpConfigError;
@@ -36,4 +35,3 @@ pub use http_retry_options::HttpRetryOptions;
 pub use http_timeout_options::HttpTimeoutOptions;
 pub use proxy_options::ProxyOptions;
 pub use proxy_type::ProxyType;
-pub use sensitive_http_headers::SensitiveHttpHeaders;

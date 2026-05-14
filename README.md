@@ -65,6 +65,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+## Logging And Sensitive Headers
+
+HTTP TRACE logs are sanitized before they are emitted. The default policy masks
+common credential-like headers, query parameters, and JSON/form body fields.
+You can extend the policy when a service uses custom secret names:
+
+```rust
+use qubit_http::{HttpClientFactory, HttpClientOptions};
+
+let mut options = HttpClientOptions::new();
+options.logging.enabled = true;
+options.logging.log_request_body = true;
+options.log_sanitize_policy.sensitive_headers.insert("x-api-key");
+options
+    .log_sanitize_policy
+    .sensitive_query_params
+    .insert("access_token");
+options
+    .log_sanitize_policy
+    .sensitive_body_fields
+    .insert("password");
+
+let client = HttpClientFactory::new().create(options)?;
+```
+
 ## Common Next Steps
 
 | Task | Read |
@@ -74,7 +99,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 | Add default headers, header injectors, and interceptors | [User Guide](doc/user_guide.en.md) |
 | Configure timeouts, retries, cancellation, and `Retry-After` handling | [User Guide](doc/user_guide.en.md) |
 | Read bytes, text, JSON, streams, or SSE chunks | [User Guide](doc/user_guide.en.md) |
-| Configure logging, sensitive headers, proxy, redirects, and IPv4-only mode | [User Guide](doc/user_guide.en.md) |
+| Configure logging sanitization, proxy, redirects, and IPv4-only mode | [User Guide](doc/user_guide.en.md) |
 | Handle status, transport, timeout, cancellation, decode, and retry errors | [User Guide](doc/user_guide.en.md) |
 
 ## Core API At A Glance

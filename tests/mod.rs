@@ -28,4 +28,5 @@ mod proxy;
 mod request;
 mod response;
 mod retry_hint;
+mod sanitize;
 mod sse;

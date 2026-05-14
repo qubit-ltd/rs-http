@@ -24,8 +24,10 @@ use http::header::{
 use tokio_util::sync::CancellationToken;
 
 use super::{
-    SseEventStream,
+    SseControl,
+    SseMessageStream,
     SseReconnectOptions,
+    SseRecord,
     DEFAULT_SSE_MAX_RECONNECT_DELAY,
 };
 use crate::{
@@ -91,11 +93,11 @@ impl SseReconnectRunner {
         }
     }
 
-    /// Starts the reconnect loop and returns a merged SSE event stream.
+    /// Starts the reconnect loop and returns a merged SSE message stream.
     ///
     /// # Returns
-    /// SSE event stream yielding events from one or more reconnect sessions.
-    pub(crate) fn run(self) -> SseEventStream {
+    /// SSE message stream yielding messages from one or more reconnect sessions.
+    pub(crate) fn run(self) -> SseMessageStream {
         let client = self.client;
         let request_template = self.request_template;
         let options = self.options;
@@ -183,21 +185,24 @@ impl SseReconnectRunner {
                     return;
                 }
 
-                let mut events = response.sse_events();
+                let mut records = response.sse_records();
                 let mut stream_error: Option<HttpError> = None;
-                while let Some(item) = events.next().await {
+                while let Some(item) = records.next().await {
                     match item {
-                        Ok(event) => {
-                            if let Some(id) = event.id.clone() {
+                        Ok(SseRecord::Dispatch(message)) => {
+                            if let Some(id) = message.last_event_id.clone() {
                                 last_event_id = Some(id);
                             }
+                            yield Ok(message);
+                        }
+                        Ok(SseRecord::Control(SseControl::ReconnectDelayMs(retry_ms))) => {
                             if options.honor_server_retry {
-                                if let Some(retry_ms) = event.retry {
-                                    pending_server_retry_delay =
-                                        Some(server_retry_delay(retry_ms, &retry_options, &options));
-                                }
+                                pending_server_retry_delay =
+                                    Some(server_retry_delay(retry_ms, &retry_options, &options));
                             }
-                            yield Ok(event);
+                        }
+                        Ok(SseRecord::Control(SseControl::LastEventId(id))) => {
+                            last_event_id = Some(id);
                         }
                         Err(error) => {
                             stream_error = Some(error);

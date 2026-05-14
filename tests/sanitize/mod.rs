@@ -7,15 +7,11 @@
  *    Licensed under the Apache License, Version 2.0.
  *
  ******************************************************************************/
-mod done_marker_policy_tests;
-mod frame_decoder_tests;
-mod json_decoder_tests;
-mod line_decoder_tests;
-mod message_decoder_tests;
-mod mod_tests;
-mod sse_chunk_tests;
-mod sse_integration_tests;
-mod sse_json_mode_tests;
-mod sse_message_tests;
-mod sse_reconnect_options_tests;
-mod sse_reconnect_runner_tests;
+
+mod body_log_context_tests;
+mod body_preview_tests;
+mod log_sanitize_policy_tests;
+mod log_sanitizer_tests;
+mod sensitive_body_fields_tests;
+mod sensitive_http_headers_tests;
+mod sensitive_query_params_tests;

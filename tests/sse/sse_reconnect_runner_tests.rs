@@ -132,7 +132,7 @@ async fn test_execute_sse_with_reconnect_propagates_last_event_id() {
     );
     let first = events.next().await.unwrap().unwrap();
     assert_eq!(first.data, "first");
-    assert_eq!(first.id.as_deref(), Some("evt-1"));
+    assert_eq!(first.last_event_id.as_deref(), Some("evt-1"));
     let second = events.next().await.unwrap().unwrap();
     assert_eq!(second.data, "second");
     assert!(events.next().await.is_none());

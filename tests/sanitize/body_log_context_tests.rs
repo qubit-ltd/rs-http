@@ -7,15 +7,14 @@
  *    Licensed under the Apache License, Version 2.0.
  *
  ******************************************************************************/
-mod done_marker_policy_tests;
-mod frame_decoder_tests;
-mod json_decoder_tests;
-mod line_decoder_tests;
-mod message_decoder_tests;
-mod mod_tests;
-mod sse_chunk_tests;
-mod sse_integration_tests;
-mod sse_json_mode_tests;
-mod sse_message_tests;
-mod sse_reconnect_options_tests;
-mod sse_reconnect_runner_tests;
+
+use qubit_http::BodyLogContext;
+
+#[test]
+fn test_body_log_context_debug_and_copy() {
+    let context = BodyLogContext::ErrorResponse;
+    let copied = context;
+
+    assert_eq!(context, copied);
+    assert_eq!(format!("{context:?}"), "ErrorResponse");
+}
