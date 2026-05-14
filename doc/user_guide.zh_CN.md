@@ -156,7 +156,7 @@ let client = HttpClientFactory::new()
 | `logging.enabled` | 是否允许 TRACE HTTP 日志 |
 | `log_sanitize.sensitive_headers` | 日志脱敏使用的敏感 header 名称集合 |
 | `log_sanitize.sensitive_query_params` | 日志脱敏使用的敏感 query 参数名称集合 |
-| `log_sanitize.sensitive_body_fields` | 日志脱敏使用的敏感 JSON/form body 字段名称集合 |
+| `log_sanitize.sensitive_body_fields` | 日志脱敏使用的敏感 JSON/form/multipart body 字段名称集合 |
 | `retry.enabled` | 是否启用内置重试 |
 | `retry.max_attempts` | 最大尝试次数，含第一次请求 |
 | `retry.delay_strategy` | `NONE`、`FIXED`、`RANDOM`、`EXPONENTIAL_BACKOFF` 或 `EXPONENTIAL` |
@@ -211,7 +211,7 @@ let request = client
 | `text_body` | 文本体；缺少 `Content-Type` 时设置 `text/plain; charset=utf-8` |
 | `json_body` | 序列化 JSON；缺少 `Content-Type` 时设置 `application/json` |
 | `form_body` | `application/x-www-form-urlencoded` |
-| `multipart_body` | 原始 multipart 字节；需要非空 boundary，缺少 `Content-Type` 时设置 multipart |
+| `multipart_body` | 原始 multipart 字节；需要 1 到 70 个 token-safe 字符的 boundary，缺少 `Content-Type` 时设置 multipart |
 | `ndjson_body` | 每条记录一行 JSON；缺少 `Content-Type` 时设置 `application/x-ndjson` |
 
 请求级覆盖：
@@ -555,7 +555,7 @@ HTTP 日志使用 `tracing::trace!`。必须同时满足：
 
 可分别控制请求头、请求体、响应头、响应体。body 只记录前 `logging.body_size_limit` 字节，超出部分显示截断提示；二进制体显示为 `<binary N bytes>`。请求体日志只预览已缓冲的 body 变体（`bytes_body`、`text_body`、`json_body`、`form_body`、`multipart_body`、`ndjson_body`）；`stream_body` 和 `streaming_body` 会记录为 `<empty>`，因为 logger 不会消费上传流。
 
-日志统一经过 `LogSanitizer` 和 `LogSanitizePolicy` 脱敏。敏感 header 会被掩码；URL query 参数以及 JSON/form/multipart body 字段如果命中策略中的敏感名称，会被替换为 `****`。multipart 文件 part 会显示为 `<redacted: file part>`；格式异常、缺少 boundary 或已截断的 multipart body 会显示为 `<redacted: multipart body>`，避免原始上传字节泄露到日志。默认策略内置常见认证、token、cookie、secret、password 类名称。短 header 值整体显示为 `****`；长 header 值保留前后各 2 个字符，中间替换为 `****`。`log_sanitize.*` 下的配置项会替换对应的默认敏感名称集合；代码里也可以直接调整 `options.log_sanitize_policy`。
+日志统一经过 `LogSanitizer` 和 `LogSanitizePolicy` 脱敏。敏感 header 会被掩码；URL query 参数以及 JSON/form/multipart body 字段如果命中策略中的敏感名称，会被替换为 `****`。multipart 脱敏适用于所有 `multipart/*` 媒体类型。multipart 文件 part 会显示为 `<redacted: file part>`；格式异常、缺少 boundary 或已截断的 multipart body 会显示为 `<redacted: multipart body>`，避免原始上传字节泄露到日志。默认策略内置常见认证、token、cookie、secret、password 类名称。短 header 值整体显示为 `****`；长 header 值保留前后各 2 个字符，中间替换为 `****`。`log_sanitize.*` 下的配置项会替换对应的默认敏感名称集合；代码里也可以直接调整 `options.log_sanitize_policy`。
 
 示例：
 

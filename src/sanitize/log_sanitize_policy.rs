@@ -21,7 +21,7 @@ pub struct LogSanitizePolicy {
     pub sensitive_headers: SensitiveHttpHeaders,
     /// Sensitive URL query parameter names.
     pub sensitive_query_params: SensitiveQueryParams,
-    /// Sensitive JSON/form body field names.
+    /// Sensitive JSON/form/multipart body field names.
     pub sensitive_body_fields: SensitiveBodyFields,
 }
 
