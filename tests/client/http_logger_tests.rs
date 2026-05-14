@@ -88,5 +88,7 @@ fn test_http_logger_does_not_leak_multipart_body_sensitive_values() {
 
     let logs = capture_trace_logs(|| logger.log_request(&request));
 
+    assert!(logs.contains("password=****"));
     assert!(!logs.contains("secret-password"));
+    assert!(!logs.contains("--boundary"));
 }
