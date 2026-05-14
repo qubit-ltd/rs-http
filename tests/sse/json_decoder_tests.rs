@@ -80,6 +80,24 @@ async fn test_decode_json_chunks_strict_fails_on_bad_json() {
 }
 
 #[tokio::test]
+async fn test_decode_json_chunks_strict_error_includes_message_context() {
+    let response = stream_response_from_chunks(vec![
+        "event: response.delta\n",
+        "id: evt-42\n",
+        "data: malformed-json\n\n",
+    ]);
+    let mut stream = response
+        .sse_json_mode(SseJsonMode::Strict)
+        .sse_chunks::<TestChunk>();
+
+    let error = stream.next().await.unwrap().unwrap_err();
+
+    assert_eq!(error.kind, qubit_http::HttpErrorKind::SseDecode);
+    assert!(error.message.contains("event=Some(\"response.delta\")"));
+    assert!(error.message.contains("last_event_id=Some(\"evt-42\")"));
+}
+
+#[tokio::test]
 async fn test_decode_json_chunks_with_custom_done_marker() {
     let response = stream_response_from_chunks(vec!["data: {\"value\": 2}\n\n", "data: <END>\n\n"]);
     let chunks = collect_results(

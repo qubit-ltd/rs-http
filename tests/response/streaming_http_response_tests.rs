@@ -150,12 +150,14 @@ async fn test_http_response_bytes_remembers_read_failure() {
         .await
         .expect_err("truncated body should fail first read");
     assert_eq!(first_error.kind, HttpErrorKind::Transport);
+    assert_eq!(first_error.status, Some(StatusCode::OK));
 
     let second_error = response
         .bytes()
         .await
         .expect_err("second read should preserve the prior body read failure");
     assert_eq!(second_error.kind, HttpErrorKind::Transport);
+    assert_eq!(second_error.status, Some(StatusCode::OK));
     assert!(second_error
         .message
         .contains("previous response body read failed"));
@@ -203,6 +205,7 @@ async fn test_http_response_stream_remembers_read_failure() {
         .expect("second stream item should contain read error")
         .expect_err("truncated stream should fail");
     assert_eq!(stream_error.kind, HttpErrorKind::Transport);
+    assert_eq!(stream_error.status, Some(StatusCode::OK));
     drop(stream);
 
     let second_error = response
@@ -210,6 +213,7 @@ async fn test_http_response_stream_remembers_read_failure() {
         .await
         .expect_err("bytes after stream failure should preserve the read failure");
     assert_eq!(second_error.kind, HttpErrorKind::Transport);
+    assert_eq!(second_error.status, Some(StatusCode::OK));
     assert!(second_error
         .message
         .contains("previous response body read failed"));
@@ -218,4 +222,51 @@ async fn test_http_response_stream_remembers_read_failure() {
         .await
         .expect("server finish timed out");
     assert_eq!(captured.target, "/stream-read-failure");
+}
+
+#[tokio::test]
+async fn test_http_response_stream_reports_prior_bytes_read_failure() {
+    let server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
+        status: 200,
+        headers: vec![],
+        total_length: 8,
+        prefix: b"abc".to_vec(),
+        delay: Duration::from_millis(0),
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.logging.log_response_body = false;
+    let client = HttpClientFactory::new()
+        .create(options)
+        .expect("client should be created");
+
+    let request = client
+        .request(Method::GET, "/stream-after-bytes-failure")
+        .build();
+    let mut response = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .expect("request should start");
+    let first_error = response
+        .bytes()
+        .await
+        .expect_err("truncated body should fail first read");
+    assert_eq!(first_error.kind, HttpErrorKind::Transport);
+
+    let stream_error = match response.stream() {
+        Ok(_) => panic!("stream should preserve the prior body read failure"),
+        Err(error) => error,
+    };
+    assert_eq!(stream_error.kind, HttpErrorKind::Transport);
+    assert_eq!(stream_error.status, Some(StatusCode::OK));
+    assert!(stream_error
+        .message
+        .contains("previous response body read failed"));
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.target, "/stream-after-bytes-failure");
 }

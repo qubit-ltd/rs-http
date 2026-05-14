@@ -32,6 +32,42 @@ fn stream_response_from_chunks(chunks: Vec<String>) -> HttpResponse {
 }
 
 #[tokio::test]
+async fn test_decode_events_accepts_cr_only_line_endings() {
+    let response = stream_response_from_chunks(vec!["data: one\r\rdata: two\r\r".to_string()]);
+    let mut events = response
+        .sse_max_line_bytes(64)
+        .sse_max_frame_bytes(1024)
+        .sse_messages();
+
+    let first = events.next().await.unwrap().unwrap();
+    let second = events.next().await.unwrap().unwrap();
+    assert_eq!(first.data, "one");
+    assert_eq!(second.data, "two");
+    assert!(events.next().await.is_none());
+}
+
+#[tokio::test]
+async fn test_decode_events_accepts_crlf_split_across_chunks() {
+    let response = stream_response_from_chunks(vec![
+        "data: one\r".to_string(),
+        "\r".to_string(),
+        "\ndata: two\r".to_string(),
+        "\n\r".to_string(),
+        "\n".to_string(),
+    ]);
+    let mut events = response
+        .sse_max_line_bytes(64)
+        .sse_max_frame_bytes(1024)
+        .sse_messages();
+
+    let first = events.next().await.unwrap().unwrap();
+    let second = events.next().await.unwrap().unwrap();
+    assert_eq!(first.data, "one");
+    assert_eq!(second.data, "two");
+    assert!(events.next().await.is_none());
+}
+
+#[tokio::test]
 async fn test_decode_events_with_limits_rejects_line_exceeding_max_bytes() {
     let long_line = format!("data: {}\n\n", "a".repeat(64));
     let response = stream_response_from_chunks(vec![long_line]);

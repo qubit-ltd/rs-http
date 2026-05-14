@@ -1,6 +1,6 @@
 # qubit-http User Guide
 
-This guide is based on the current source code and tests. It applies to crate `qubit-http` 0.4.x, imported from Rust code as `qubit_http`.
+This guide is based on the current source code and tests. It applies to crate `qubit-http` 0.7, imported from Rust code as `qubit_http`.
 
 `qubit-http` is an asynchronous HTTP client infrastructure crate. It wraps `reqwest` and provides unified client options, request building, response reading, error classification, TRACE logging with URL/header/body sanitization, retries, proxies, IPv4-only resolution, request/response interceptors, and Server-Sent Events (SSE) decoding and reconnection.
 
@@ -17,7 +17,7 @@ This guide is based on the current source code and tests. It applies to crate `q
 
 ```toml
 [dependencies]
-qubit-http = "0.4"
+qubit-http = "0.7"
 http = "1.4"
 qubit-config = "0.9"
 serde = { version = "1", features = ["derive"] }
@@ -89,7 +89,7 @@ Default behavior:
 | Automatic retry | Disabled |
 | Retry max attempts | 3, including the first attempt |
 | Retry method policy | Idempotent methods only |
-| Sensitive headers | Built-in common auth/token/cookie/secret/password names |
+| Log sanitization | Built-in common auth/token/cookie/secret/password names for headers, query parameters, and body fields |
 | IPv4-only | Disabled |
 | SSE JSON mode | `Lenient` |
 | SSE done-marker policy | `DefaultDone`, recognizing `[DONE]` |
@@ -154,6 +154,9 @@ Common configuration keys:
 | `proxy.enabled` | Enables outbound proxying |
 | `use_env_proxy` | Whether to inherit environment proxies when explicit proxying is disabled |
 | `logging.enabled` | Allows TRACE HTTP logs |
+| `log_sanitize.sensitive_headers` | Sensitive header name set for log sanitization |
+| `log_sanitize.sensitive_query_params` | Sensitive query-parameter name set for log sanitization |
+| `log_sanitize.sensitive_body_fields` | Sensitive JSON/form body-field name set for log sanitization |
 | `retry.enabled` | Enables built-in retry |
 | `retry.max_attempts` | Max attempts, including the first request |
 | `retry.delay_strategy` | `NONE`, `FIXED`, `RANDOM`, `EXPONENTIAL_BACKOFF`, or `EXPONENTIAL` |
@@ -550,7 +553,7 @@ HTTP logs use `tracing::trace!`. Both conditions must be true:
 
 Request headers, request body, response headers, and response body can be toggled separately. Body logs include only the first `logging.body_size_limit` bytes and show a truncation marker for the remainder. Binary bodies are rendered as `<binary N bytes>`. Request-body logging previews buffered body variants (`bytes_body`, `text_body`, `json_body`, `form_body`, `multipart_body`, and `ndjson_body`); `stream_body` and `streaming_body` are logged as `<empty>` because the logger does not consume upload streams.
 
-Logs are sanitized through `LogSanitizer` and `LogSanitizePolicy`. Sensitive headers are masked. Sensitive URL query parameters and JSON/form body fields are redacted with `****` when their names match the policy. The default policy covers common auth, token, cookie, secret, and password names. Header values shorter than or equal to 4 characters are rendered as `****`; longer header values keep the first and last 2 characters and replace the middle with `****`. Configuring `sensitive_headers` replaces the default header-name set; code can also tune `options.log_sanitize_policy` directly.
+Logs are sanitized through `LogSanitizer` and `LogSanitizePolicy`. Sensitive headers are masked. Sensitive URL query parameters and JSON/form body fields are redacted with `****` when their names match the policy. The default policy covers common auth, token, cookie, secret, and password names. Header values shorter than or equal to 4 characters are rendered as `****`; longer header values keep the first and last 2 characters and replace the middle with `****`. Configuration keys under `log_sanitize.*` replace the corresponding default name set; code can also tune `options.log_sanitize_policy` directly.
 
 Example:
 
@@ -791,7 +794,9 @@ The table below lists every configuration key supported by `HttpClientOptions::f
 | `pool_idle_timeout` | Connection pool idle timeout |
 | `pool_max_idle_per_host` | Max idle connections per host |
 | `use_env_proxy` | Whether to inherit environment proxies when explicit proxying is disabled; defaults to `false` |
-| `sensitive_headers` | String list that replaces the default sensitive-header set |
+| `log_sanitize.sensitive_headers` | String list that replaces the default sensitive-header set |
+| `log_sanitize.sensitive_query_params` | String list that replaces the default sensitive-query-parameter set |
+| `log_sanitize.sensitive_body_fields` | String list that replaces the default sensitive-body-field set |
 | `default_headers` | JSON map string of default request headers; cannot be combined with `default_headers.<name>` |
 | `default_headers.<name>` | One default request header subkey; cannot be combined with the `default_headers` JSON map |
 | `timeouts.connect_timeout` | Connect timeout |

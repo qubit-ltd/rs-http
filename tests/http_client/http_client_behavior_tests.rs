@@ -86,7 +86,7 @@ async fn test_absolute_url_request_bypasses_base_url_join() {
         .await
         .expect("execute timed out")
         .unwrap();
-    assert_eq!(response.meta.status.as_u16(), 200);
+    assert_eq!(response.status().as_u16(), 200);
 
     let captured = timeout(Duration::from_secs(3), target_server.finish())
         .await
@@ -348,7 +348,7 @@ async fn test_clear_response_interceptors_restores_success_path() {
 
     let request = client.request(Method::GET, "/response-clear").build();
     let response = client.execute(request).await.unwrap();
-    assert_eq!(response.meta.status.as_u16(), 200);
+    assert_eq!(response.status().as_u16(), 200);
 }
 
 #[tokio::test]

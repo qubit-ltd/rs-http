@@ -25,9 +25,11 @@
 //! sse.json_mode              – String (`LENIENT` / `STRICT`)
 //! sse.max_line_bytes         – usize
 //! sse.max_frame_bytes        – usize
+//! log_sanitize.sensitive_headers       – String-compatible values
+//! log_sanitize.sensitive_query_params  – String-compatible values
+//! log_sanitize.sensitive_body_fields   – String-compatible values
 //!
 //! default_headers.*          – String-compatible values (sub-key form)
-//! sensitive_headers          – String-compatible values
 //! ```
 //!
 

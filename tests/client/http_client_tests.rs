@@ -98,7 +98,7 @@ async fn test_execute_success_with_header_injector_and_request_override() {
         .await
         .expect("execute timed out")
         .unwrap();
-    assert_eq!(response.meta.status, StatusCode::OK);
+    assert_eq!(response.status(), StatusCode::OK);
     let json = response.json::<serde_json::Value>().await.unwrap();
     assert_eq!(json["ok"], true);
     assert_eq!(json["value"], 7);
@@ -404,7 +404,7 @@ async fn test_execute_with_text_body_and_request_timeout() {
         .await
         .expect("execute timed out")
         .unwrap();
-    assert_eq!(response.meta.status, StatusCode::OK);
+    assert_eq!(response.status(), StatusCode::OK);
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
@@ -440,7 +440,7 @@ async fn test_execute_with_bytes_body() {
         .await
         .expect("execute timed out")
         .unwrap();
-    assert_eq!(response.meta.status, StatusCode::OK);
+    assert_eq!(response.status(), StatusCode::OK);
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
@@ -944,7 +944,7 @@ async fn test_execute_retries_retryable_status_until_success() {
         .expect("execute timed out")
         .unwrap();
 
-    assert_eq!(response.meta.status, StatusCode::OK);
+    assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(response.bytes().await.unwrap(), Bytes::from_static(b"ok"));
     assert_eq!(*injector_count.lock().unwrap(), 2);
 
@@ -1156,7 +1156,7 @@ async fn test_execute_retries_post_when_all_methods_policy_is_enabled() {
         .expect("execute timed out")
         .unwrap();
 
-    assert_eq!(response.meta.status, StatusCode::OK);
+    assert_eq!(response.status(), StatusCode::OK);
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
         .expect("server finish timed out");
@@ -1196,7 +1196,7 @@ async fn test_execute_retries_write_timeout_until_success() {
         .expect("execute timed out")
         .unwrap();
 
-    assert_eq!(response.meta.status, StatusCode::OK);
+    assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(response.bytes().await.unwrap(), Bytes::from_static(b"ok"));
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await

@@ -25,10 +25,15 @@ fn test_sensitive_body_fields_extend_clear_and_ignore_blank() {
     let mut fields = SensitiveBodyFields::new();
 
     fields.extend(["password", " ", "Token"]);
+    assert_eq!(fields.len(), 2);
+    assert!(!fields.is_empty());
+    assert_eq!(fields.iter().collect::<Vec<_>>(), vec!["password", "token"]);
     assert!(fields.contains("PASSWORD"));
     assert!(fields.contains("token"));
 
     fields.clear();
+    assert_eq!(fields.len(), 0);
+    assert!(fields.is_empty());
     assert!(!fields.contains("password"));
     assert!(!fields.contains(""));
 }

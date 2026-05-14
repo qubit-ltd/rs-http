@@ -71,10 +71,6 @@ struct BodyReadFailure {
     url: Option<Url>,
     /// Optional HTTP status context.
     status: Option<StatusCode>,
-    /// Optional body preview context.
-    response_body_preview: Option<String>,
-    /// Optional retry-after context.
-    retry_after: Option<Duration>,
 }
 
 impl BodyReadFailure {
@@ -92,8 +88,6 @@ impl BodyReadFailure {
             method: error.method.clone(),
             url: error.url.clone(),
             status: error.status,
-            response_body_preview: error.response_body_preview.clone(),
-            retry_after: error.retry_after,
         }
     }
 
@@ -115,12 +109,6 @@ impl BodyReadFailure {
         if let Some(status) = self.status {
             error = error.with_status(status);
         }
-        if let Some(preview) = self.response_body_preview.as_ref() {
-            error = error.with_response_body_preview(preview.clone());
-        }
-        if let Some(retry_after) = self.retry_after {
-            error = error.with_retry_after(retry_after);
-        }
         error
     }
 }
@@ -138,20 +126,27 @@ type BodyReadFailureState = Arc<Mutex<Option<BodyReadFailure>>>;
 /// # Returns
 /// [`HttpErrorKind::ReadTimeout`] for timeout errors, otherwise
 /// [`HttpErrorKind::Transport`] for backend body read failures.
-fn map_response_read_error(error: reqwest::Error, method: Method, url: Url) -> HttpError {
+fn map_response_read_error(
+    error: reqwest::Error,
+    method: Method,
+    url: Url,
+    status: StatusCode,
+) -> HttpError {
     if error.is_timeout() {
         return map_reqwest_error(
             error,
             HttpErrorKind::Transport,
             ReqwestErrorPhase::Read,
-            Some(method),
-            Some(url),
-        );
+            method,
+            url,
+        )
+        .with_status(status);
     }
 
     HttpError::transport(format!("Failed to read response body: {}", error))
         .with_method(&method)
         .with_url(&url)
+        .with_status(status)
         .with_source(error)
 }
 
@@ -188,7 +183,7 @@ impl HttpResponseRuntime {
 #[derive(Debug)]
 pub struct HttpResponse {
     /// Response metadata (status, headers, final URL, request method).
-    pub meta: HttpResponseMeta,
+    pub(crate) meta: HttpResponseMeta,
     /// Raw backend response until consumed.
     backend: Option<reqwest::Response>,
     /// Cached full body bytes after eager or lazy read.
@@ -280,17 +275,10 @@ impl HttpResponse {
     /// Returns a previous body read failure, if any.
     ///
     /// # Returns
-    /// `Some(HttpError)` when an earlier body read failed or the failure-state
-    /// lock is poisoned; otherwise `None`.
+    /// `Some(HttpError)` when an earlier body read failed; otherwise `None`.
     fn previous_body_read_error(&self) -> Option<HttpError> {
-        match self.runtime.body_read_failure.lock() {
-            Ok(guard) => guard.as_ref().map(BodyReadFailure::to_error),
-            Err(_) => Some(
-                HttpError::other("Response body read failure state lock poisoned")
-                    .with_method(&self.meta.method)
-                    .with_url(&self.runtime.request_url),
-            ),
-        }
+        let guard = self.runtime.body_read_failure.lock().ok()?;
+        guard.as_ref().map(BodyReadFailure::to_error)
     }
 
     /// Stores the first body read failure for later read attempts.
@@ -308,9 +296,7 @@ impl HttpResponse {
     /// - `error`: Error produced while reading the response body.
     fn remember_body_read_failure_state(state: &BodyReadFailureState, error: &HttpError) {
         if let Ok(mut guard) = state.lock() {
-            if guard.is_none() {
-                *guard = Some(BodyReadFailure::from_error(error));
-            }
+            guard.get_or_insert_with(|| BodyReadFailure::from_error(error));
         }
     }
 
@@ -351,22 +337,6 @@ impl HttpResponse {
     /// read.
     pub(crate) async fn into_error_body_preview(mut self, max_bytes: usize) -> HttpResult<String> {
         let limit = max_bytes.max(1);
-        if let Some(error) = self.cancelled_error_if_needed(
-            "Request cancelled while reading status error response body preview",
-        ) {
-            return Err(error);
-        }
-        if let Some(body) = self.buffered_body.take() {
-            let end = body.len().min(limit);
-            let content_type = Self::content_type_value(&self.meta.headers);
-            return Ok(Self::render_error_body_preview(
-                &body[..end],
-                body.len(),
-                body.len() > limit,
-                content_type.as_deref(),
-                &self.options.log_sanitizer,
-            ));
-        }
         let Some(backend) = self.backend.take() else {
             return Ok("<empty>".to_string());
         };
@@ -390,6 +360,7 @@ impl HttpResponse {
 
         let method = self.meta.method.clone();
         let url = self.runtime.request_url.clone();
+        let status = self.meta.status;
         let read_timeout = self.runtime.read_timeout;
         let cancellation_token = self.runtime.cancellation_token.clone();
         let mut body = bytes::BytesMut::new();
@@ -400,7 +371,8 @@ impl HttpResponse {
                     _ = token.cancelled() => {
                         let error = HttpError::cancelled("Request cancelled while reading response body")
                             .with_method(&method)
-                            .with_url(&url);
+                            .with_url(&url)
+                            .with_status(status);
                         self.remember_body_read_failure(&error);
                         return Err(error);
                     }
@@ -418,7 +390,7 @@ impl HttpResponse {
                     return Ok(body);
                 }
                 Ok(Err(error)) => {
-                    let error = map_response_read_error(error, method, url);
+                    let error = map_response_read_error(error, method, url, status);
                     self.remember_body_read_failure(&error);
                     return Err(error);
                 }
@@ -428,7 +400,8 @@ impl HttpResponse {
                         read_timeout
                     ))
                     .with_method(&self.meta.method)
-                    .with_url(&self.runtime.request_url);
+                    .with_url(&self.runtime.request_url)
+                    .with_status(status);
                     self.remember_body_read_failure(&error);
                     return Err(error);
                 }
@@ -456,6 +429,7 @@ impl HttpResponse {
 
         let method = self.meta.method.clone();
         let url = self.runtime.request_url.clone();
+        let status = self.meta.status;
         let read_timeout = self.runtime.read_timeout;
         let cancellation_token = self.runtime.cancellation_token.clone();
         let body_read_failure = self.runtime.body_read_failure.clone();
@@ -467,7 +441,8 @@ impl HttpResponse {
                         _ = token.cancelled() => {
                             let error = HttpError::cancelled("Streaming response cancelled while reading body")
                                 .with_method(&method)
-                                .with_url(&url);
+                                .with_url(&url)
+                                .with_status(status);
                             Self::remember_body_read_failure_state(&body_read_failure, &error);
                             yield Err(error);
                             break;
@@ -480,7 +455,7 @@ impl HttpResponse {
                 match next {
                     Ok(Some(Ok(bytes))) => yield Ok(bytes),
                     Ok(Some(Err(error))) => {
-                        let mapped = map_response_read_error(error, method.clone(), url.clone());
+                        let mapped = map_response_read_error(error, method.clone(), url.clone(), status);
                         Self::remember_body_read_failure_state(&body_read_failure, &mapped);
                         yield Err(mapped);
                         break;
@@ -492,7 +467,8 @@ impl HttpResponse {
                             read_timeout
                         ))
                         .with_method(&method)
-                        .with_url(&url);
+                        .with_url(&url)
+                        .with_status(status);
                         Self::remember_body_read_failure_state(&body_read_failure, &error);
                         yield Err(error);
                         break;

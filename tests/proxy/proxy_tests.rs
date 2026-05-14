@@ -53,7 +53,7 @@ async fn test_http_proxy_forwards_request_and_sends_proxy_auth() {
         .await
         .expect("execute timed out")
         .unwrap();
-    assert_eq!(response.meta.status.as_u16(), 200);
+    assert_eq!(response.status().as_u16(), 200);
 
     let proxy_captured = timeout(Duration::from_secs(3), proxy.finish())
         .await
@@ -104,7 +104,7 @@ async fn test_proxy_disabled_does_not_use_environment_proxy() {
     std::env::remove_var("HTTPS_PROXY");
 
     let response = result.unwrap();
-    assert_eq!(response.meta.status.as_u16(), 200);
+    assert_eq!(response.status().as_u16(), 200);
     let backend_captured = timeout(Duration::from_secs(3), backend.finish())
         .await
         .expect("backend finish timed out");
