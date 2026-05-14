@@ -38,9 +38,14 @@ pub type SseLineStream = Pin<Box<dyn Stream<Item = HttpResult<String>> + Send>>;
 /// # Returns
 /// UTF-8 line text.
 fn take_buffered_line(buffer: &mut BytesMut) -> HttpResult<String> {
-    String::from_utf8(buffer.split_to(buffer.len()).to_vec()).map_err(|error| {
-        HttpError::sse_protocol(format!("Failed to decode SSE line as UTF-8: {}", error))
-    })
+    let decoded = match std::str::from_utf8(buffer.as_ref()) {
+        Ok(text) => Ok(text.to_string()),
+        Err(error) => Err(HttpError::sse_protocol(format!(
+            "Failed to decode SSE line as UTF-8: {error}"
+        ))),
+    };
+    buffer.clear();
+    decoded
 }
 
 /// Buffers chunks from `stream`, splits on LF, CR, or CRLF, and validates UTF-8 per line.
