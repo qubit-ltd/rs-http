@@ -9,6 +9,7 @@
  ******************************************************************************/
 
 use std::collections::HashMap;
+use std::fmt;
 use std::time::Duration;
 
 use http::HeaderMap;
@@ -35,9 +36,7 @@ use crate::{
     request::parse_header,
     sanitize::{
         LogSanitizePolicy,
-        SensitiveBodyFields,
-        SensitiveHttpHeaders,
-        SensitiveQueryParams,
+        LogSanitizer,
     },
     sse::{
         DoneMarkerPolicy,
@@ -47,7 +46,7 @@ use crate::{
 };
 
 /// Aggregated settings for [`crate::HttpClient`] and [`crate::HttpClientFactory`].
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct HttpClientOptions {
     /// Optional base URL.
     pub base_url: Option<Url>,
@@ -119,6 +118,43 @@ impl Default for HttpClientOptions {
     }
 }
 
+impl fmt::Debug for HttpClientOptions {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let sanitizer = LogSanitizer::for_debug(&self.log_sanitize_policy);
+        let base_url = self
+            .base_url
+            .as_ref()
+            .map(|url| sanitizer.sanitize_url(url));
+        formatter
+            .debug_struct("HttpClientOptions")
+            .field("base_url", &base_url)
+            .field(
+                "default_headers",
+                &sanitizer.sanitize_header_map(&self.default_headers),
+            )
+            .field("timeouts", &self.timeouts)
+            .field("proxy", &self.proxy)
+            .field("logging", &self.logging)
+            .field(
+                "error_response_preview_limit",
+                &self.error_response_preview_limit,
+            )
+            .field("user_agent", &self.user_agent)
+            .field("max_redirects", &self.max_redirects)
+            .field("pool_idle_timeout", &self.pool_idle_timeout)
+            .field("pool_max_idle_per_host", &self.pool_max_idle_per_host)
+            .field("use_env_proxy", &self.use_env_proxy)
+            .field("retry", &self.retry)
+            .field("log_sanitize_policy", &self.log_sanitize_policy)
+            .field("ipv4_only", &self.ipv4_only)
+            .field("sse_json_mode", &self.sse_json_mode)
+            .field("sse_done_marker_policy", &self.sse_done_marker_policy)
+            .field("sse_max_line_bytes", &self.sse_max_line_bytes)
+            .field("sse_max_frame_bytes", &self.sse_max_frame_bytes)
+            .finish()
+    }
+}
+
 /// Top-level scalar keys read before nested sections and `default_headers` iteration.
 struct HttpClientRootConfigInput {
     base_url: Option<String>,
@@ -139,7 +175,7 @@ struct HttpClientSseConfigInput {
     max_frame_bytes: Option<usize>,
 }
 
-/// Log sanitization keys read from `log_sanitize.*`.
+/// Log sanitization keys read from `log_sanitize.*` and added to defaults.
 struct HttpClientLogSanitizeConfigInput {
     sensitive_headers: Option<Vec<String>>,
     sensitive_query_params: Option<Vec<String>>,
@@ -431,19 +467,15 @@ impl HttpClientOptions {
                 }
             };
             if let Some(names) = log_sanitize.sensitive_headers {
-                let mut sensitive_headers = SensitiveHttpHeaders::new();
-                sensitive_headers.extend(names);
-                opts.log_sanitize_policy.sensitive_headers = sensitive_headers;
+                opts.log_sanitize_policy.sensitive_headers.extend(names);
             }
             if let Some(names) = log_sanitize.sensitive_query_params {
-                let mut sensitive_query_params = SensitiveQueryParams::new();
-                sensitive_query_params.extend(names);
-                opts.log_sanitize_policy.sensitive_query_params = sensitive_query_params;
+                opts.log_sanitize_policy
+                    .sensitive_query_params
+                    .extend(names);
             }
             if let Some(names) = log_sanitize.sensitive_body_fields {
-                let mut sensitive_body_fields = SensitiveBodyFields::new();
-                sensitive_body_fields.extend(names);
-                opts.log_sanitize_policy.sensitive_body_fields = sensitive_body_fields;
+                opts.log_sanitize_policy.sensitive_body_fields.extend(names);
             }
         }
 

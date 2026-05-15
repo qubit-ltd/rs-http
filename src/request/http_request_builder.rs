@@ -11,6 +11,7 @@
 
 use std::time::Duration;
 use std::{
+    fmt,
     future::Future,
     pin::Pin,
 };
@@ -37,6 +38,8 @@ use crate::{
     HttpRequestStreamingBody,
     HttpResult,
     HttpRetryMethodPolicy,
+    LogSanitizePolicy,
+    LogSanitizer,
 };
 
 use super::http_request::HttpRequest;
@@ -46,7 +49,7 @@ use super::parse_header;
 use super::validate_positive_timeout;
 
 /// Builder for [`HttpRequest`](super::http_request::HttpRequest).
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct HttpRequestBuilder {
     /// HTTP method (e.g. GET, POST).
     pub(super) method: Method,
@@ -80,6 +83,48 @@ pub struct HttpRequestBuilder {
     pub(super) injectors: Vec<HttpHeaderInjector>,
     /// Async header injectors snapshot from the originating client.
     pub(super) async_injectors: Vec<AsyncHttpHeaderInjector>,
+    /// Log sanitization policy snapshot from the originating client.
+    pub(super) log_sanitize_policy: LogSanitizePolicy,
+}
+
+impl fmt::Debug for HttpRequestBuilder {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let sanitizer = LogSanitizer::for_debug(&self.log_sanitize_policy);
+        let url = self
+            .debug_resolved_url()
+            .map(|url| sanitizer.sanitize_url(&url));
+        let base_url = self
+            .base_url
+            .as_ref()
+            .map(|url| sanitizer.sanitize_url(url));
+        formatter
+            .debug_struct("HttpRequestBuilder")
+            .field("method", &self.method)
+            .field("url", &url)
+            .field("headers", &sanitizer.sanitize_header_map(&self.headers))
+            .field("body", &self.body)
+            .field(
+                "streaming_body",
+                &self.streaming_body.as_ref().map(|_| "present"),
+            )
+            .field("request_timeout", &self.request_timeout)
+            .field("write_timeout", &self.write_timeout)
+            .field("read_timeout", &self.read_timeout)
+            .field("base_url", &base_url)
+            .field("ipv4_only", &self.ipv4_only)
+            .field(
+                "cancellation_token_present",
+                &self.cancellation_token.is_some(),
+            )
+            .field("retry_override", &self.retry_override)
+            .field(
+                "default_headers",
+                &sanitizer.sanitize_header_map(&self.default_headers),
+            )
+            .field("injector_count", &self.injectors.len())
+            .field("async_injector_count", &self.async_injectors.len())
+            .finish()
+    }
 }
 
 impl HttpRequestBuilder {
@@ -111,6 +156,7 @@ impl HttpRequestBuilder {
             default_headers: client.headers_snapshot(),
             injectors: client.injectors_snapshot(),
             async_injectors: client.async_injectors_snapshot(),
+            log_sanitize_policy: options.log_sanitize_policy.clone(),
         }
     }
 
@@ -535,5 +581,23 @@ impl HttpRequestBuilder {
     /// Built [`HttpRequest`].
     pub fn build(self) -> HttpRequest {
         HttpRequest::new(self)
+    }
+
+    /// Returns the URL this builder would send if it can be resolved now.
+    ///
+    /// # Returns
+    /// Resolved URL including builder query pairs, or `None` when unresolved.
+    fn debug_resolved_url(&self) -> Option<Url> {
+        let mut url = match Url::parse(&self.path) {
+            Ok(url) => url,
+            Err(_) => self.base_url.as_ref()?.join(&self.path).ok()?,
+        };
+        if !self.query.is_empty() {
+            let mut pairs = url.query_pairs_mut();
+            for (key, value) in &self.query {
+                pairs.append_pair(key, value);
+            }
+        }
+        Some(url)
     }
 }

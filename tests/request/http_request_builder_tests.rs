@@ -49,6 +49,57 @@ fn new_builder(method: Method, path: &str) -> qubit_http::HttpRequestBuilder {
 }
 
 #[test]
+fn test_request_builder_debug_masks_sensitive_values() {
+    let mut options = HttpClientOptions::new();
+    options
+        .set_base_url("https://api.example.com/root/")
+        .expect("base URL should be valid");
+    options
+        .log_sanitize_policy
+        .sensitive_headers
+        .insert("x-debug-secret");
+    options
+        .log_sanitize_policy
+        .sensitive_query_params
+        .insert("debugToken");
+    let mut default_headers = HeaderMap::new();
+    default_headers.insert(
+        "x-debug-secret",
+        HeaderValue::from_static("debug-default-header-secret"),
+    );
+    options.default_headers = default_headers;
+    let client = HttpClientFactory::new()
+        .create(options)
+        .expect("client should be created");
+
+    let relative = client
+        .request(Method::POST, "items?debugToken=debug-query-secret")
+        .query_param("clientSecret", "debug-added-query-secret")
+        .header("x-debug-secret", "debug-request-header-secret")
+        .expect("header should be accepted")
+        .text_body("debug-text-secret")
+        .request_timeout(Duration::from_secs(1))
+        .expect("positive timeout should be accepted")
+        .cancellation_token(CancellationToken::new());
+    let absolute = client.request(
+        Method::GET,
+        "https://debug-user:debug-url-secret@example.com/path",
+    );
+
+    let debug = format!("{relative:?}\n{absolute:?}");
+
+    assert!(debug.contains("HttpRequestBuilder"));
+    assert!(debug.contains("****"));
+    assert!(!debug.contains("debug-default-header-secret"));
+    assert!(!debug.contains("debug-request-header-secret"));
+    assert!(!debug.contains("debug-query-secret"));
+    assert!(!debug.contains("debug-added-query-secret"));
+    assert!(!debug.contains("debug-text-secret"));
+    assert!(!debug.contains("debug-user"));
+    assert!(!debug.contains("debug-url-secret"));
+}
+
+#[test]
 fn test_request_builder_copies_base_url_and_ipv4_only_defaults() {
     let mut options = HttpClientOptions::default();
     options.set_base_url("https://api.example.com/v1/").unwrap();

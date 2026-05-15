@@ -689,6 +689,42 @@ async fn test_execute_non_success_error_body_preview_sanitizes_json_fields() {
 }
 
 #[tokio::test]
+async fn test_execute_status_error_message_sanitizes_sensitive_url_parts() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 401,
+        headers: vec![],
+        body: b"unauthorized".to_vec(),
+    })
+    .await;
+    let mut url = server
+        .base_url()
+        .join("/status-sensitive-url?accessToken=query-secret")
+        .expect("request URL should join");
+    url.set_username("debug-user")
+        .expect("URL should accept username");
+    url.set_password(Some("url-secret"))
+        .expect("URL should accept password");
+    url.set_fragment(Some("fragment-secret"));
+
+    let client = HttpClientFactory::new().create_default().unwrap();
+    let request = client.request(Method::GET, url.as_str()).build();
+    let error = client.execute(request).await.unwrap_err();
+
+    assert_eq!(error.kind, HttpErrorKind::Status);
+    assert!(!error.message.contains("debug-user"));
+    assert!(!error.message.contains("url-secret"));
+    assert!(!error.message.contains("query-secret"));
+    assert!(!error.message.contains("fragment-secret"));
+    assert!(error.message.contains("****"));
+
+    let captured = server.finish().await;
+    assert_eq!(
+        captured.target,
+        "/status-sensitive-url?accessToken=query-secret"
+    );
+}
+
+#[tokio::test]
 async fn test_execute_non_success_error_body_preview_truncates_when_limit_reached_before_next_chunk(
 ) {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {

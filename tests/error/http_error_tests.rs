@@ -31,6 +31,51 @@ fn test_http_error_builder_methods() {
 }
 
 #[test]
+fn test_http_error_debug_masks_sensitive_url_values() {
+    let url = url::Url::parse(
+        "https://debug-user:debug-url-secret@example.com/path?accessToken=debug-query-secret#debug-fragment-secret",
+    )
+    .expect("URL should parse");
+    let error = HttpError::transport(
+        "transport failed for https://debug-user:debug-url-secret@example.com/path?accessToken=debug-query-secret#debug-fragment-secret",
+    )
+    .with_method(&http::Method::GET)
+    .with_url(&url);
+
+    let debug = format!("{error:?}");
+
+    assert!(!debug.contains("debug-user"));
+    assert!(!debug.contains("debug-url-secret"));
+    assert!(!debug.contains("debug-query-secret"));
+    assert!(!debug.contains("debug-fragment-secret"));
+    assert!(debug.contains("****"));
+}
+
+#[test]
+fn test_http_error_debug_sanitizes_url_tokens_with_punctuation() {
+    let error = HttpError::transport(
+        "failed (https://debug-user:debug-url-secret@example.com/path?accessToken=debug-query-secret). retry http://debug-user:debug-url-secret@example.com/next?clientSecret=debug-query-secret!",
+    );
+
+    let debug = format!("{error:?}");
+
+    assert!(!debug.contains("debug-user"));
+    assert!(!debug.contains("debug-url-secret"));
+    assert!(!debug.contains("debug-query-secret"));
+    assert!(debug.contains("****"));
+}
+
+#[test]
+fn test_http_error_debug_keeps_invalid_url_like_tokens() {
+    let error = HttpError::transport("failed near https:// and plain text");
+
+    let debug = format!("{error:?}");
+
+    assert!(debug.contains("https://"));
+    assert!(debug.contains("plain"));
+}
+
+#[test]
 fn test_http_error_build_client_constructor() {
     let error = HttpError::build_client("builder failed");
     assert_eq!(error.kind, HttpErrorKind::BuildClient);

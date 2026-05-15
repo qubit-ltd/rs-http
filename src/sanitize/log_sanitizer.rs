@@ -8,7 +8,10 @@
  *
  ******************************************************************************/
 
+use std::collections::BTreeMap;
+
 use http::{
+    HeaderMap,
     HeaderName,
     HeaderValue,
 };
@@ -52,6 +55,27 @@ impl LogSanitizer {
     /// New [`LogSanitizer`].
     pub fn new(policy: LogSanitizePolicy) -> Self {
         Self { policy }
+    }
+
+    /// Creates a debug sanitizer that keeps built-in sensitive names active.
+    ///
+    /// # Parameters
+    /// - `policy`: User-visible policy whose custom names should also apply.
+    ///
+    /// # Returns
+    /// Sanitizer that always includes safe built-in defaults plus custom names.
+    pub(crate) fn for_debug(policy: &LogSanitizePolicy) -> Self {
+        let mut debug_policy = LogSanitizePolicy::default();
+        debug_policy
+            .sensitive_headers
+            .extend(policy.sensitive_headers.iter());
+        debug_policy
+            .sensitive_query_params
+            .extend(policy.sensitive_query_params.iter());
+        debug_policy
+            .sensitive_body_fields
+            .extend(policy.sensitive_body_fields.iter());
+        Self::new(debug_policy)
     }
 
     /// Returns the underlying policy.
@@ -114,6 +138,38 @@ impl LogSanitizer {
             return value.to_string();
         }
         mask_sensitive_value(value)
+    }
+
+    /// Returns log-safe headers for structured debug output.
+    ///
+    /// # Parameters
+    /// - `headers`: Header map to render.
+    ///
+    /// # Returns
+    /// Deterministic map of lowercase header names to sanitized values.
+    pub(crate) fn sanitize_header_map(&self, headers: &HeaderMap) -> BTreeMap<String, Vec<String>> {
+        let mut result = BTreeMap::<String, Vec<String>>::new();
+        for (name, value) in headers {
+            result
+                .entry(name.as_str().to_string())
+                .or_default()
+                .push(self.sanitize_header_value(name, value));
+        }
+        result
+    }
+
+    /// Sanitizes URL-looking tokens inside a diagnostic message.
+    ///
+    /// # Parameters
+    /// - `text`: Message that may contain one or more absolute URLs.
+    ///
+    /// # Returns
+    /// Message with parseable URLs sanitized.
+    pub(crate) fn sanitize_diagnostic_text(&self, text: &str) -> String {
+        text.split_whitespace()
+            .map(|token| self.sanitize_diagnostic_token(token))
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 
     /// Returns a log-safe preview string for body bytes.
@@ -395,6 +451,35 @@ impl LogSanitizer {
         }
         MULTIPART_PART_REDACTED.to_string()
     }
+
+    /// Sanitizes a single whitespace-delimited diagnostic token.
+    ///
+    /// # Parameters
+    /// - `token`: One token from a diagnostic message.
+    ///
+    /// # Returns
+    /// Token with embedded URL credentials and query secrets masked.
+    fn sanitize_diagnostic_token(&self, token: &str) -> String {
+        let Some(scheme_start) = find_url_scheme_start(token) else {
+            return token.to_string();
+        };
+        let prefix = &token[..scheme_start];
+        let mut candidate_end = token.len();
+        loop {
+            let candidate = &token[scheme_start..candidate_end];
+            if let Ok(url) = Url::parse(candidate) {
+                let suffix = &token[candidate_end..];
+                return format!("{prefix}{}{suffix}", self.sanitize_url(&url));
+            }
+            let Some((previous, ch)) = previous_char_boundary(token, candidate_end) else {
+                return token.to_string();
+            };
+            if previous <= scheme_start || !is_trimmable_url_suffix(ch) {
+                return token.to_string();
+            }
+            candidate_end = previous;
+        }
+    }
 }
 
 impl Default for LogSanitizer {
@@ -421,6 +506,48 @@ fn mask_sensitive_value(value: &str) -> String {
         let suffix: String = chars[chars.len() - edge..].iter().collect();
         format!("{prefix}{SENSITIVE_HEADER_MASK_PLACEHOLDER}{suffix}")
     }
+}
+
+/// Finds the first absolute HTTP URL scheme inside `token`.
+///
+/// # Parameters
+/// - `token`: Diagnostic token to inspect.
+///
+/// # Returns
+/// Byte offset where the scheme starts, or `None`.
+fn find_url_scheme_start(token: &str) -> Option<usize> {
+    match (token.find("http://"), token.find("https://")) {
+        (Some(http), Some(https)) => Some(http.min(https)),
+        (Some(http), None) => Some(http),
+        (None, Some(https)) => Some(https),
+        (None, None) => None,
+    }
+}
+
+/// Returns the previous UTF-8 character boundary and character.
+///
+/// # Parameters
+/// - `text`: Source text.
+/// - `end`: Current byte end offset.
+///
+/// # Returns
+/// Previous byte offset and character, or `None` at the start.
+fn previous_char_boundary(text: &str, end: usize) -> Option<(usize, char)> {
+    text[..end].char_indices().next_back()
+}
+
+/// Returns whether `ch` is punctuation commonly adjacent to a URL in prose.
+///
+/// # Parameters
+/// - `ch`: Candidate trailing character.
+///
+/// # Returns
+/// `true` if the character may be peeled from a failed URL parse attempt.
+fn is_trimmable_url_suffix(ch: char) -> bool {
+    matches!(
+        ch,
+        '.' | ',' | ';' | ':' | '!' | '?' | ')' | ']' | '}' | '"' | '\''
+    )
 }
 
 /// Kind of multipart delimiter line found in a body.

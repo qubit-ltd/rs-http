@@ -292,7 +292,7 @@ impl SseReconnectRunner {
         let output = stream! {
             let retry_options = options.retry.clone();
             let max_reconnects = retry_options.max_attempts().saturating_sub(1);
-            let request_url = request_template.resolved_url_with_query().ok();
+            let request_url = request_template.resolved_url().ok();
             let request_method = request_template.method().clone();
             let cancellation_token = request_template.cancellation_token().cloned();
             let started_at = Instant::now();

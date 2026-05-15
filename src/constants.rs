@@ -9,35 +9,7 @@
  ******************************************************************************/
 //! Crate-wide defaults and fixed tuning values for HTTP client behavior and logging.
 
-// ---------------------------------------------------------------------------
-// Sensitive headers (log masking)
-// ---------------------------------------------------------------------------
-
-/// Built-in header names preloaded into [`crate::SensitiveHttpHeaders::default`]
-/// for log masking.
-pub const DEFAULT_SENSITIVE_HEADER_NAMES: [&str; 21] = [
-    "Authorization",
-    "Proxy-Authorization",
-    "Api-Key",
-    "X-Api-Key",
-    "Bearer",
-    "Cookie",
-    "Set-Cookie",
-    "Secret-Key",
-    "Client-Secret",
-    "Access-Token",
-    "Refresh-Token",
-    "Private-Token",
-    "Session-Token",
-    "JWT-Token",
-    "Password",
-    "X-Auth-Password",
-    "X-Client-ID",
-    "X-Client-Secret",
-    "X-Auth-Token",
-    "X-Auth-App-Token",
-    "X-Auth-User-Token",
-];
+pub use crate::sanitize::DEFAULT_SENSITIVE_HEADER_NAMES;
 
 // ---------------------------------------------------------------------------
 // Timeouts ([`crate::HttpTimeoutOptions::default`])
