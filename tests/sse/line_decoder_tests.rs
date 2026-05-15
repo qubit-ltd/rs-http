@@ -68,6 +68,26 @@ async fn test_decode_events_accepts_crlf_split_across_chunks() {
 }
 
 #[tokio::test]
+async fn test_decode_events_accepts_dense_mixed_line_endings_in_one_chunk() {
+    let response = stream_response_from_chunks(vec![
+        "event: add\ndata: one\n\revent: add\rdata: two\r\r\n".to_string(),
+    ]);
+    let mut events = response
+        .sse_max_line_bytes(64)
+        .sse_max_frame_bytes(1024)
+        .sse_messages();
+
+    let first = events.next().await.unwrap().unwrap();
+    let second = events.next().await.unwrap().unwrap();
+
+    assert_eq!(first.event.as_deref(), Some("add"));
+    assert_eq!(first.data, "one");
+    assert_eq!(second.event.as_deref(), Some("add"));
+    assert_eq!(second.data, "two");
+    assert!(events.next().await.is_none());
+}
+
+#[tokio::test]
 async fn test_decode_events_with_limits_rejects_line_exceeding_max_bytes() {
     let long_line = format!("data: {}\n\n", "a".repeat(64));
     let response = stream_response_from_chunks(vec![long_line]);
