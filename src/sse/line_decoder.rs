@@ -65,42 +65,43 @@ pub fn decode_lines(mut stream: HttpByteStream, max_line_bytes: usize) -> SseLin
         while let Some(item) = stream.next().await {
             match item {
                 Ok(chunk) => {
-                    for &byte in chunk.iter() {
-                        match byte {
-                            b'\r' => {
-                                match take_buffered_line(&mut buffer) {
-                                    Ok(text) => yield Ok(text),
-                                    Err(error) => {
-                                        yield Err(error);
-                                        return;
-                                    }
-                                }
-                                pending_cr = true;
+                    let mut remaining = chunk.as_ref();
+                    while !remaining.is_empty() {
+                        let Some(index) = remaining.iter().position(|byte| is_line_terminator(*byte)) else {
+                            pending_cr = false;
+                            if let Err(error) =
+                                append_line_bytes(&mut buffer, remaining, max_line_bytes)
+                            {
+                                yield Err(error);
+                                return;
                             }
-                            b'\n' => {
-                                if pending_cr {
-                                    pending_cr = false;
-                                    continue;
-                                }
-                                match take_buffered_line(&mut buffer) {
-                                    Ok(text) => yield Ok(text),
-                                    Err(error) => {
-                                        yield Err(error);
-                                        return;
-                                    }
-                                }
-                            }
-                            byte => {
-                                pending_cr = false;
-                                buffer.extend_from_slice(&[byte]);
-                                if buffer.len() > max_line_bytes {
-                                    yield Err(HttpError::sse_protocol(format!(
-                                        "SSE line exceeds max_line_bytes ({max_line_bytes})"
-                                    )));
-                                    return;
-                                }
+                            break;
+                        };
+
+                        let segment = &remaining[..index];
+                        if !segment.is_empty() {
+                            pending_cr = false;
+                        }
+                        if let Err(error) = append_line_bytes(&mut buffer, segment, max_line_bytes) {
+                            yield Err(error);
+                            return;
+                        }
+
+                        let terminator = remaining[index];
+                        remaining = &remaining[index + 1..];
+                        if terminator == b'\n' && pending_cr {
+                            pending_cr = false;
+                            continue;
+                        }
+
+                        match take_buffered_line(&mut buffer) {
+                            Ok(text) => yield Ok(text),
+                            Err(error) => {
+                                yield Err(error);
+                                return;
                             }
                         }
+                        pending_cr = terminator == b'\r';
                     }
                 }
                 Err(error) => {
@@ -119,4 +120,34 @@ pub fn decode_lines(mut stream: HttpByteStream, max_line_bytes: usize) -> SseLin
     };
 
     Box::pin(output)
+}
+
+/// Appends one contiguous line segment and enforces the configured byte limit.
+///
+/// # Parameters
+/// - `buffer`: Current line buffer.
+/// - `bytes`: Bytes before the next line terminator.
+/// - `max_line_bytes`: Maximum allowed bytes for one line.
+///
+/// # Returns
+/// `Ok(())` when appended, or [`HttpError`] when the line is too large.
+fn append_line_bytes(buffer: &mut BytesMut, bytes: &[u8], max_line_bytes: usize) -> HttpResult<()> {
+    if buffer.len() + bytes.len() > max_line_bytes {
+        return Err(HttpError::sse_protocol(format!(
+            "SSE line exceeds max_line_bytes ({max_line_bytes})"
+        )));
+    }
+    buffer.extend_from_slice(bytes);
+    Ok(())
+}
+
+/// Returns whether a byte terminates one SSE line.
+///
+/// # Parameters
+/// - `byte`: Byte to test.
+///
+/// # Returns
+/// `true` for CR or LF.
+fn is_line_terminator(byte: u8) -> bool {
+    matches!(byte, b'\r' | b'\n')
 }
