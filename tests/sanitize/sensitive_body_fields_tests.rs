@@ -21,6 +21,17 @@ fn test_sensitive_body_fields_case_insensitive() {
 }
 
 #[test]
+fn test_sensitive_body_fields_canonicalizes_common_name_styles() {
+    let fields = SensitiveBodyFields::default();
+
+    assert!(fields.contains("accessToken"));
+    assert!(fields.contains("clientSecret"));
+    assert!(fields.contains("refresh-token"));
+    assert!(fields.contains("id_token"));
+    assert!(fields.contains("apiKey"));
+}
+
+#[test]
 fn test_sensitive_body_fields_extend_clear_and_ignore_blank() {
     let mut fields = SensitiveBodyFields::new();
 

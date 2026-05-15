@@ -10,10 +10,18 @@
 
 use std::collections::BTreeSet;
 
-/// Case-insensitive set of structured body field names whose values should be masked.
+use super::default_sensitive_names::{
+    canonicalize_structured_sensitive_name,
+    DEFAULT_SENSITIVE_BODY_FIELD_NAMES,
+};
+
+/// Set of structured body field names whose values should be masked.
+///
+/// Names are matched case-insensitively and common `_` / `-` separators are
+/// ignored, so `client_secret`, `client-secret`, and `clientSecret` are equivalent.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SensitiveBodyFields {
-    /// Normalized lowercase body field names.
+    /// Canonical body field names.
     names: BTreeSet<String>,
 }
 
@@ -36,7 +44,8 @@ impl SensitiveBodyFields {
     /// # Returns
     /// `true` if the field value should be masked.
     pub fn contains(&self, name: &str) -> bool {
-        self.names.contains(&name.to_lowercase())
+        self.names
+            .contains(&canonicalize_structured_sensitive_name(name))
     }
 
     /// Inserts one field name.
@@ -44,7 +53,7 @@ impl SensitiveBodyFields {
     /// # Parameters
     /// - `name`: Field name to mark sensitive.
     pub fn insert(&mut self, name: &str) {
-        let value = name.trim().to_lowercase();
+        let value = canonicalize_structured_sensitive_name(name);
         if !value.is_empty() {
             self.names.insert(value);
         }
@@ -85,10 +94,10 @@ impl SensitiveBodyFields {
         self.names.is_empty()
     }
 
-    /// Iterates normalized body field names.
+    /// Iterates canonical body field names.
     ///
     /// # Returns
-    /// Iterator over lowercase body field names.
+    /// Iterator over stored canonical body field names.
     pub fn iter(&self) -> impl Iterator<Item = &str> {
         self.names.iter().map(String::as_str)
     }
@@ -98,17 +107,7 @@ impl Default for SensitiveBodyFields {
     /// Creates a set containing common credential and token field names.
     fn default() -> Self {
         let mut result = Self::new();
-        result.extend([
-            "access_token",
-            "api_key",
-            "authorization",
-            "client_secret",
-            "id_token",
-            "password",
-            "refresh_token",
-            "secret",
-            "token",
-        ]);
+        result.extend(DEFAULT_SENSITIVE_BODY_FIELD_NAMES);
         result
     }
 }

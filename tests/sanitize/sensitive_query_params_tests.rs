@@ -21,6 +21,17 @@ fn test_sensitive_query_params_case_insensitive() {
 }
 
 #[test]
+fn test_sensitive_query_params_canonicalizes_common_name_styles() {
+    let params = SensitiveQueryParams::default();
+
+    assert!(params.contains("accessToken"));
+    assert!(params.contains("clientSecret"));
+    assert!(params.contains("refresh-token"));
+    assert!(params.contains("id_token"));
+    assert!(params.contains("apiKey"));
+}
+
+#[test]
 fn test_sensitive_query_params_extend_clear_and_ignore_blank() {
     let mut params = SensitiveQueryParams::new();
 

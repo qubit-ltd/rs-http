@@ -336,7 +336,7 @@ impl HttpClient {
             return Err(error);
         }
         let logger = HttpLogger::new(&self.options);
-        let request_url = request.resolved_url_with_query()?;
+        let request_url = request.resolved_url()?;
         let backend_response = request.send_impl(&self.backend, &logger).await?;
         let meta = HttpResponseMeta::new(
             backend_response.status(),
@@ -412,7 +412,7 @@ impl HttpClient {
 
         let cancellation_token = request.cancellation_token().cloned();
         let request_method = request.method().clone();
-        let request_url = request.resolved_url_with_query().ok();
+        let request_url = request.resolved_url().ok();
         let retry_request = request.clone();
         let retry_future = retry_policy.run_async(|| {
             let attempt_request = retry_request.clone();

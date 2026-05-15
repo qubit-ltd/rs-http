@@ -10,7 +10,7 @@
 
 use std::collections::BTreeSet;
 
-use crate::constants::DEFAULT_SENSITIVE_HEADER_NAMES;
+use super::default_sensitive_names::DEFAULT_SENSITIVE_HEADER_NAMES;
 
 /// Case-insensitive set of HTTP header names whose values should be masked in logs.
 #[derive(Debug, Clone, PartialEq, Eq)]

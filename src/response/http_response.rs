@@ -9,6 +9,7 @@
  ******************************************************************************/
 //! Unified HTTP response type and helpers.
 
+use std::fmt;
 use std::sync::{
     Arc,
     Mutex,
@@ -52,6 +53,7 @@ use crate::{
     HttpError,
     HttpErrorKind,
     HttpResult,
+    LogSanitizer,
 };
 
 use super::{
@@ -144,6 +146,7 @@ fn map_response_read_error(
         .with_status(status);
     }
 
+    let error = error.without_url();
     HttpError::transport(format!("Failed to read response body: {}", error))
         .with_method(&method)
         .with_url(&url)
@@ -181,7 +184,6 @@ impl HttpResponseRuntime {
 }
 
 /// Unified HTTP response with lazily consumed body.
-#[derive(Debug)]
 pub struct HttpResponse {
     /// Response metadata (status, headers, final URL, request method).
     pub(crate) meta: HttpResponseMeta,
@@ -193,6 +195,36 @@ pub struct HttpResponse {
     runtime: HttpResponseRuntime,
     /// Decode and error-preview options inherited from client options.
     options: HttpResponseOptions,
+}
+
+impl fmt::Debug for HttpResponse {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let sanitizer = LogSanitizer::for_debug(self.options.log_sanitizer.policy());
+        let url = sanitizer.sanitize_url(self.meta.url());
+        let request_url = sanitizer.sanitize_url(&self.runtime.request_url);
+        formatter
+            .debug_struct("HttpResponse")
+            .field("status", &self.meta.status())
+            .field(
+                "headers",
+                &sanitizer.sanitize_header_map(self.meta.headers()),
+            )
+            .field("url", &url)
+            .field("request_url", &request_url)
+            .field("method", self.meta.method())
+            .field("backend_present", &self.backend.is_some())
+            .field(
+                "buffered_body_len",
+                &self.buffered_body.as_ref().map(Bytes::len),
+            )
+            .field("read_timeout", &self.runtime.read_timeout)
+            .field(
+                "cancellation_token_present",
+                &self.runtime.cancellation_token.is_some(),
+            )
+            .field("options", &self.options)
+            .finish()
+    }
 }
 
 impl HttpResponse {
@@ -315,10 +347,15 @@ impl HttpResponse {
         let method = self.meta.method().clone();
         let url = self.request_url().clone();
         let error_preview_limit = self.options.error_response_preview_limit;
+        let diagnostic_sanitizer = LogSanitizer::for_debug(self.options.log_sanitizer.policy());
         let body_preview = self.into_error_body_preview(error_preview_limit).await?;
         let message = format!(
             "{} with status {} for {} {}; response body preview: {}",
-            message_prefix, status, method, url, body_preview
+            message_prefix,
+            status,
+            method,
+            diagnostic_sanitizer.sanitize_url(&url),
+            body_preview
         );
         let mut mapped = HttpError::status(status, message)
             .with_method(&method)
@@ -676,6 +713,7 @@ impl HttpResponse {
                 }
                 Ok(Ok(None)) => break,
                 Ok(Err(error)) => {
+                    let error = error.without_url();
                     return Ok(format!(
                         "<error body unavailable: failed to read response body: {}>",
                         error

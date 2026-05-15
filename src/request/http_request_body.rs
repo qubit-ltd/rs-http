@@ -9,6 +9,8 @@
  ******************************************************************************/
 //! Request body variants.
 
+use std::fmt;
+
 use bytes::Bytes;
 use serde::{
     Deserialize,
@@ -20,7 +22,7 @@ use strum::{
 };
 
 /// Encodes how the outbound body is represented before sending via reqwest.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, Display, EnumString)]
+#[derive(Clone, PartialEq, Eq, Default, Serialize, Deserialize, Display, EnumString)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub enum HttpRequestBody {
@@ -50,4 +52,41 @@ pub enum HttpRequestBody {
     /// The client sends this variant through reqwest streaming body support.
     #[strum(disabled)]
     Stream(Vec<Bytes>),
+}
+
+impl fmt::Debug for HttpRequestBody {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Empty => formatter.write_str("Empty"),
+            Self::Bytes(bytes) => formatter
+                .debug_struct("Bytes")
+                .field("len", &bytes.len())
+                .finish(),
+            Self::Text(text) => formatter
+                .debug_struct("Text")
+                .field("len", &text.len())
+                .finish(),
+            Self::Json(bytes) => formatter
+                .debug_struct("Json")
+                .field("len", &bytes.len())
+                .finish(),
+            Self::Form(bytes) => formatter
+                .debug_struct("Form")
+                .field("len", &bytes.len())
+                .finish(),
+            Self::Multipart(bytes) => formatter
+                .debug_struct("Multipart")
+                .field("len", &bytes.len())
+                .finish(),
+            Self::Ndjson(bytes) => formatter
+                .debug_struct("Ndjson")
+                .field("len", &bytes.len())
+                .finish(),
+            Self::Stream(chunks) => formatter
+                .debug_struct("Stream")
+                .field("chunks", &chunks.len())
+                .field("len", &chunks.iter().map(Bytes::len).sum::<usize>())
+                .finish(),
+        }
+    }
 }

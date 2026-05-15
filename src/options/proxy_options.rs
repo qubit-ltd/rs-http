@@ -8,6 +8,9 @@
  *
  ******************************************************************************/
 
+use std::fmt;
+use std::str::FromStr;
+
 use qubit_config::{
     ConfigReader,
     ConfigResult,
@@ -16,10 +19,9 @@ use qubit_config::{
 use super::HttpConfigError;
 
 use super::proxy_type::ProxyType;
-use std::str::FromStr;
 
 /// Outbound proxy configuration applied when building the reqwest client.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct ProxyOptions {
     /// Whether proxy is enabled.
     pub enabled: bool,
@@ -33,6 +35,21 @@ pub struct ProxyOptions {
     pub username: Option<String>,
     /// Proxy password.
     pub password: Option<String>,
+}
+
+impl fmt::Debug for ProxyOptions {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let password = self.password.as_ref().map(|_| "****");
+        formatter
+            .debug_struct("ProxyOptions")
+            .field("enabled", &self.enabled)
+            .field("proxy_type", &self.proxy_type)
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("username", &self.username)
+            .field("password", &password)
+            .finish()
+    }
 }
 
 impl Default for ProxyOptions {

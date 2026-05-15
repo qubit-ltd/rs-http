@@ -40,6 +40,37 @@ async fn test_http_response_text_decode_error_contains_status_and_url() {
     );
 }
 
+#[test]
+fn test_http_response_debug_masks_sensitive_values() {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "set-cookie",
+        HeaderValue::from_static("session=debug-cookie-secret"),
+    );
+    let mut url = Url::parse(
+        "https://debug-user:debug-url-secret@example.com/data?access_token=debug-query-secret",
+    )
+    .expect("URL should parse");
+    url.set_fragment(Some("debug-fragment-secret"));
+    let response = HttpResponse::new(
+        StatusCode::OK,
+        headers,
+        Bytes::from_static(b"debug-response-body-secret"),
+        url,
+        Method::GET,
+    );
+
+    let debug = format!("{response:?}");
+
+    assert!(!debug.contains("debug-user"));
+    assert!(!debug.contains("debug-url-secret"));
+    assert!(!debug.contains("debug-query-secret"));
+    assert!(!debug.contains("debug-fragment-secret"));
+    assert!(!debug.contains("debug-cookie-secret"));
+    assert!(!debug.contains("debug-response-body-secret"));
+    assert!(debug.contains("****"));
+}
+
 #[tokio::test]
 async fn test_http_response_json_decode_error_contains_status_and_url() {
     let mut response = HttpResponse::new(

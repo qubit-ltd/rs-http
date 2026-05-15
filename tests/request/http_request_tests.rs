@@ -68,6 +68,75 @@ fn test_http_request_setters_update_method_path_query_and_body() {
 }
 
 #[test]
+fn test_http_request_debug_masks_sensitive_values() {
+    let client = HttpClientFactory::new()
+        .create_default()
+        .expect("default options should create client");
+    let request = client
+        .request(
+            Method::POST,
+            "https://debug-user:debug-url-secret@example.com/v1?access_token=debug-query-secret#debug-fragment-secret",
+        )
+        .header("authorization", "Bearer debug-header-secret")
+        .expect("authorization header should be accepted")
+        .json_body(&serde_json::json!({
+            "password": "debug-body-secret",
+            "user": "alice"
+        }))
+        .expect("json body should serialize")
+        .build();
+    let mut options = HttpClientOptions::new();
+    options
+        .set_base_url(
+            "https://debug-user:debug-url-secret@example.com/root/?accessToken=debug-base-query-secret",
+        )
+        .expect("base URL should be valid");
+    let relative_client = HttpClientFactory::new()
+        .create(options)
+        .expect("client should be created");
+    let relative_request = relative_client
+        .request(Method::GET, "items")
+        .query_param("clientSecret", "debug-added-query-secret")
+        .build();
+
+    let debug = format!("{request:?}\n{relative_request:?}");
+
+    assert!(!debug.contains("debug-user"));
+    assert!(!debug.contains("debug-url-secret"));
+    assert!(!debug.contains("debug-query-secret"));
+    assert!(!debug.contains("debug-base-query-secret"));
+    assert!(!debug.contains("debug-added-query-secret"));
+    assert!(!debug.contains("debug-fragment-secret"));
+    assert!(!debug.contains("debug-header-secret"));
+    assert!(!debug.contains("debug-body-secret"));
+    assert!(debug.contains("****"));
+}
+
+#[test]
+fn test_http_request_resolved_url_is_public() {
+    let mut options = HttpClientOptions::new();
+    options
+        .set_base_url("https://api.example.com/root/")
+        .expect("base URL should be valid");
+    let client = HttpClientFactory::new()
+        .create(options)
+        .expect("client should be created");
+    let request = client
+        .request(Method::GET, "items?existing=1")
+        .query_param("added", "two words")
+        .build();
+
+    let url = request
+        .resolved_url()
+        .expect("resolved request URL should be public");
+
+    assert_eq!(
+        url.as_str(),
+        "https://api.example.com/root/items?existing=1&added=two+words"
+    );
+}
+
+#[test]
 fn test_http_request_setters_update_headers_timeout_retry_and_cancellation() {
     let mut request = new_request(Method::GET, "/v1/resources");
 

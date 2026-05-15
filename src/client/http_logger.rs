@@ -200,7 +200,7 @@ impl<'a> HttpLogger<'a> {
     /// when URL resolution fails before send.
     fn request_log_url(&self, request: &HttpRequest) -> String {
         request
-            .resolved_url_with_query()
+            .resolved_url()
             .map(|url| self.sanitizer.sanitize_url(&url))
             .unwrap_or_else(|_| UNRESOLVED_REQUEST_URL.to_string())
     }

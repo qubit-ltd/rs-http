@@ -37,6 +37,24 @@ fn test_log_sanitizer_sanitize_url_masks_sensitive_query_params() {
 }
 
 #[test]
+fn test_log_sanitizer_sanitize_url_masks_camel_case_sensitive_query_params() {
+    let sanitizer = LogSanitizer::default();
+    let url = Url::parse(
+        "https://api.example.com/search?accessToken=secret-access&clientSecret=secret-client",
+    )
+    .expect("test URL should parse");
+
+    let sanitized = sanitizer.sanitize_url(&url);
+
+    assert_eq!(
+        sanitized,
+        "https://api.example.com/search?accessToken=****&clientSecret=****"
+    );
+    assert!(!sanitized.contains("secret-access"));
+    assert!(!sanitized.contains("secret-client"));
+}
+
+#[test]
 fn test_log_sanitizer_policy_returns_underlying_policy() {
     let sanitizer = LogSanitizer::default();
 
@@ -116,6 +134,24 @@ fn test_log_sanitizer_sanitize_body_preview_redacts_json_fields() {
         sanitized,
         r#"{"nested":{"token":"****"},"password":"****","user":"alice"}"#
     );
+}
+
+#[test]
+fn test_log_sanitizer_sanitize_body_preview_redacts_camel_case_json_fields() {
+    let sanitizer = LogSanitizer::default();
+    let body = Bytes::from_static(
+        br#"{"accessToken":"secret-access","clientSecret":"secret-client","user":"alice"}"#,
+    );
+    let preview = BodyPreview::new(body.as_ref(), 1024, BodyLogContext::Request);
+
+    let sanitized = sanitizer.sanitize_body_preview(&preview);
+
+    assert_eq!(
+        sanitized,
+        r#"{"accessToken":"****","clientSecret":"****","user":"alice"}"#
+    );
+    assert!(!sanitized.contains("secret-access"));
+    assert!(!sanitized.contains("secret-client"));
 }
 
 #[test]

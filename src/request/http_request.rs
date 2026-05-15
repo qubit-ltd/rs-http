@@ -9,6 +9,7 @@
  ******************************************************************************/
 //! Immutable HTTP request object.
 
+use std::fmt;
 use std::future::Future;
 use std::sync::RwLock;
 use std::time::Duration;
@@ -39,6 +40,8 @@ use crate::{
     HttpLogger,
     HttpRequestStreamingBody,
     HttpResult,
+    LogSanitizePolicy,
+    LogSanitizer,
 };
 
 use super::http_request_body::HttpRequestBody;
@@ -75,11 +78,12 @@ struct HttpRequestContext {
     injectors: Vec<HttpHeaderInjector>,
     /// Client async header injectors snapshot captured when this request builder was created.
     async_injectors: Vec<AsyncHttpHeaderInjector>,
+    /// Log sanitization policy snapshot captured when this request builder was created.
+    log_sanitize_policy: LogSanitizePolicy,
 }
 
 /// Immutable snapshot of a single HTTP call produced by
 /// [`crate::HttpRequestBuilder`].
-#[derive(Debug)]
 pub struct HttpRequest {
     /// HTTP method (GET, POST, …).
     method: Method,
@@ -103,6 +107,44 @@ pub struct HttpRequest {
     execution_options: HttpRequestExecutionOptions,
     /// Client-derived context for URL and header resolution.
     context: HttpRequestContext,
+}
+
+impl fmt::Debug for HttpRequest {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let sanitizer = LogSanitizer::for_debug(&self.context.log_sanitize_policy);
+        let url = self
+            .resolved_url()
+            .ok()
+            .map(|url| sanitizer.sanitize_url(&url));
+        let base_url = self
+            .context
+            .base_url
+            .as_ref()
+            .map(|url| sanitizer.sanitize_url(url));
+        formatter
+            .debug_struct("HttpRequest")
+            .field("method", &self.method)
+            .field("url", &url)
+            .field("headers", &sanitizer.sanitize_header_map(&self.headers))
+            .field("body", &self.body)
+            .field(
+                "streaming_body",
+                &self.streaming_body.as_ref().map(|_| "present"),
+            )
+            .field("request_timeout", &self.execution_options.request_timeout)
+            .field("write_timeout", &self.execution_options.write_timeout)
+            .field("read_timeout", &self.execution_options.read_timeout)
+            .field(
+                "cancellation_token_present",
+                &self.execution_options.cancellation_token.is_some(),
+            )
+            .field("retry_override", &self.execution_options.retry_override)
+            .field("base_url", &base_url)
+            .field("ipv4_only", &self.context.ipv4_only)
+            .field("injector_count", &self.context.injectors.len())
+            .field("async_injector_count", &self.context.async_injectors.len())
+            .finish()
+    }
 }
 
 impl HttpRequest {
@@ -137,6 +179,7 @@ impl HttpRequest {
                 default_headers: builder.default_headers,
                 injectors: builder.injectors,
                 async_injectors: builder.async_injectors,
+                log_sanitize_policy: builder.log_sanitize_policy,
             },
         };
         request.refresh_resolved_url_cache();
@@ -545,7 +588,7 @@ impl HttpRequest {
         // are refreshed instead of reusing stale headers from prior attempts.
         self.invalidate_effective_headers_cache();
         let method = self.method().clone();
-        let request_url_context = self.resolved_url_with_query().ok();
+        let request_url_context = self.resolved_url().ok();
         let write_timeout = self.execution_options.write_timeout;
         let cancellation_token = self.execution_options.cancellation_token.clone();
         let headers = Self::await_pre_send_future(
@@ -562,8 +605,8 @@ impl HttpRequest {
         )
         .await?
         .clone();
-        let url = self.resolved_url()?;
-        let request_url = self.resolved_url_with_query()?;
+        let url = self.resolved_base_url()?;
+        let request_url = self.resolved_url()?;
         // Log the request after computing effective headers so TRACE logs
         // include the same query string used by the actual send path.
         logger.log_request(self);
@@ -727,17 +770,18 @@ impl HttpRequest {
         error
     }
 
-    /// Returns the resolved URL for current request fields, computing and
+    /// Returns the resolved base URL for current request fields, computing and
     /// caching it on demand.
     ///
     /// # Returns
-    /// Resolved [`Url`] value (cloned from cache when already computed).
+    /// Resolved [`Url`] value without builder query pairs (cloned from cache
+    /// when already computed).
     ///
     /// # Errors
     /// Returns [`HttpError::invalid_url`] when parsing fails, the base URL is
     /// missing for a relative path, joining fails, or [`Self::ipv4_only`]
     /// rejects an IPv6 literal host.
-    pub(crate) fn resolved_url(&self) -> Result<Url, HttpError> {
+    fn resolved_base_url(&self) -> Result<Url, HttpError> {
         let cached = match self.resolved_url.read() {
             Ok(guard) => guard.clone(),
             Err(_) => return Err(HttpError::other("Resolved URL cache read lock poisoned")),
@@ -755,7 +799,7 @@ impl HttpRequest {
 
     /// Returns the resolved URL plus request-builder query parameters.
     ///
-    /// This mirrors the URL sent by [`Self::send_impl`]: query pairs already
+    /// This mirrors the URL sent by the request execution path: query pairs already
     /// present in [`Self::path`] are preserved, and pairs from
     /// [`Self::query`] are appended in insertion order.
     ///
@@ -763,9 +807,9 @@ impl HttpRequest {
     /// Resolved [`Url`] including query parameters from this request snapshot.
     ///
     /// # Errors
-    /// Propagates [`Self::resolved_url`] errors for invalid or unresolved URLs.
-    pub(crate) fn resolved_url_with_query(&self) -> Result<Url, HttpError> {
-        let mut url = self.resolved_url()?;
+    /// Propagates URL-resolution errors for invalid or unresolved URLs.
+    pub fn resolved_url(&self) -> Result<Url, HttpError> {
+        let mut url = self.resolved_base_url()?;
         if !self.query.is_empty() {
             {
                 let mut pairs = url.query_pairs_mut();
@@ -928,7 +972,7 @@ impl HttpRequest {
             .is_some_and(CancellationToken::is_cancelled)
         {
             let mut error = HttpError::cancelled(message.to_string()).with_method(&self.method);
-            if let Ok(url) = self.resolved_url_with_query() {
+            if let Ok(url) = self.resolved_url() {
                 error = error.with_url(&url);
             }
             Some(error)

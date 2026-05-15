@@ -10,6 +10,7 @@
 //! Unified [`HttpError`] type.
 
 use std::error::Error;
+use std::fmt;
 use std::time::Duration;
 
 use http::{
@@ -20,12 +21,13 @@ use thiserror::Error;
 use url::Url;
 
 use super::RetryHint;
+use crate::LogSanitizer;
 use qubit_error::BoxError;
 
 use super::HttpErrorKind;
 
 /// Unified HTTP error type.
-#[derive(Debug, Error)]
+#[derive(Error)]
 #[error("{message}")]
 pub struct HttpError {
     /// Error category.
@@ -45,6 +47,26 @@ pub struct HttpError {
     /// Optional source error.
     #[source]
     pub source: Option<BoxError>,
+}
+
+impl fmt::Debug for HttpError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let sanitizer = LogSanitizer::default();
+        let url = self.url.as_ref().map(|url| sanitizer.sanitize_url(url));
+        let message = sanitizer.sanitize_diagnostic_text(&self.message);
+        let response_body_preview_len = self.response_body_preview.as_ref().map(String::len);
+        formatter
+            .debug_struct("HttpError")
+            .field("kind", &self.kind)
+            .field("method", &self.method)
+            .field("url", &url)
+            .field("status", &self.status)
+            .field("message", &message)
+            .field("response_body_preview_len", &response_body_preview_len)
+            .field("retry_after", &self.retry_after)
+            .field("source_present", &self.source.is_some())
+            .finish()
+    }
 }
 
 impl HttpError {
@@ -381,6 +403,7 @@ impl From<reqwest::Error> for HttpError {
     /// # Returns
     /// Wrapped [`HttpError`].
     fn from(error: reqwest::Error) -> Self {
+        let error = error.without_url();
         Self::build_client(format!("Failed to build reqwest client: {}", error)).with_source(error)
     }
 }

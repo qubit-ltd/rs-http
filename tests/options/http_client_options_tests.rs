@@ -125,6 +125,33 @@ fn test_http_client_options_new_matches_default() {
 }
 
 #[test]
+fn test_http_client_options_debug_masks_sensitive_values() {
+    let mut options = HttpClientOptions::new();
+    options
+        .set_base_url(
+            "https://debug-user:debug-url-secret@example.com/root/?accessToken=debug-query-secret",
+        )
+        .expect("base URL should be valid");
+    options
+        .add_header("authorization", "Bearer debug-secret-token")
+        .expect("sensitive default header should be accepted");
+    options.proxy.enabled = true;
+    options.proxy.host = Some("proxy.example.com".to_string());
+    options.proxy.port = Some(8080);
+    options.proxy.username = Some("debug-user".to_string());
+    options.proxy.password = Some("debug-proxy-secret".to_string());
+
+    let debug = format!("{options:?}");
+
+    assert!(!debug.contains("debug-secret-token"));
+    assert!(!debug.contains("debug-url-secret"));
+    assert!(!debug.contains("debug-query-secret"));
+    assert!(!debug.contains("debug-proxy-secret"));
+    assert!(debug.contains("authorization"));
+    assert!(debug.contains("****"));
+}
+
+#[test]
 fn test_http_retry_options_new_matches_default() {
     assert_eq!(HttpRetryOptions::new(), HttpRetryOptions::default());
 }
@@ -393,12 +420,24 @@ fn test_http_client_options_log_sanitize_section() {
         .contains("x-api-token"));
     assert!(opts
         .log_sanitize_policy
+        .sensitive_headers
+        .contains("authorization"));
+    assert!(opts
+        .log_sanitize_policy
         .sensitive_query_params
         .contains("session_token"));
     assert!(opts
         .log_sanitize_policy
+        .sensitive_query_params
+        .contains("access_token"));
+    assert!(opts
+        .log_sanitize_policy
         .sensitive_body_fields
         .contains("customer_secret"));
+    assert!(opts
+        .log_sanitize_policy
+        .sensitive_body_fields
+        .contains("client_secret"));
 }
 
 #[test]

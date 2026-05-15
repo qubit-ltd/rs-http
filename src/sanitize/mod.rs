@@ -11,6 +11,7 @@
 
 mod body_log_context;
 mod body_preview;
+mod default_sensitive_names;
 mod log_sanitize_policy;
 mod log_sanitizer;
 mod sensitive_body_fields;
@@ -19,6 +20,7 @@ mod sensitive_query_params;
 
 pub use body_log_context::BodyLogContext;
 pub use body_preview::BodyPreview;
+pub use default_sensitive_names::DEFAULT_SENSITIVE_HEADER_NAMES;
 pub use log_sanitize_policy::LogSanitizePolicy;
 pub use log_sanitizer::LogSanitizer;
 pub use sensitive_body_fields::SensitiveBodyFields;
