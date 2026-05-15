@@ -154,9 +154,9 @@ let client = HttpClientFactory::new()
 | `proxy.enabled` | 是否启用代理 |
 | `use_env_proxy` | 显式代理禁用时，是否继承环境变量代理 |
 | `logging.enabled` | 是否允许 TRACE HTTP 日志 |
-| `log_sanitize.sensitive_headers` | 日志脱敏使用的敏感 header 名称集合 |
-| `log_sanitize.sensitive_query_params` | 日志脱敏使用的敏感 query 参数名称集合 |
-| `log_sanitize.sensitive_body_fields` | 日志脱敏使用的敏感 JSON/form/multipart body 字段名称集合 |
+| `log_sanitize.sensitive_headers` | 追加到默认集合的敏感 header 名称 |
+| `log_sanitize.sensitive_query_params` | 追加到默认集合的敏感 query 参数名称 |
+| `log_sanitize.sensitive_body_fields` | 追加到默认集合的敏感 JSON/form/multipart body 字段名称 |
 | `retry.enabled` | 是否启用内置重试 |
 | `retry.max_attempts` | 最大尝试次数，含第一次请求 |
 | `retry.delay_strategy` | `NONE`、`FIXED`、`RANDOM`、`EXPONENTIAL_BACKOFF` 或 `EXPONENTIAL` |
@@ -199,6 +199,21 @@ let request = client
     .request_timeout(Duration::from_secs(10))?
     .read_timeout(Duration::from_secs(30))?
     .build();
+```
+
+`build()` 后可以调用 `HttpRequest::resolved_url()` 取得真实发送 URL：绝对 `path` 会保持绝对 URL；相对路径会和 `base_url` join；`path` 中已有的 query 会保留，builder 或拦截器追加的 query 会按顺序继续追加。
+
+```rust
+let request = client
+    .request(Method::GET, "/users?active=true")
+    .query_param("expand", "profile")
+    .build();
+
+let url = request.resolved_url()?;
+assert_eq!(
+    url.as_str(),
+    "https://api.example.com/users?active=true&expand=profile",
+);
 ```
 
 请求体构建方法：
@@ -555,7 +570,11 @@ HTTP 日志使用 `tracing::trace!`。必须同时满足：
 
 可分别控制请求头、请求体、响应头、响应体。body 只记录前 `logging.body_size_limit` 字节，超出部分显示截断提示；二进制体显示为 `<binary N bytes>`。请求体日志只预览已缓冲的 body 变体（`bytes_body`、`text_body`、`json_body`、`form_body`、`multipart_body`、`ndjson_body`）；`stream_body` 和 `streaming_body` 会记录为 `<skipped: streaming request body>`，因为 logger 不会消费上传流。
 
-日志统一经过 `LogSanitizer` 和 `LogSanitizePolicy` 脱敏。敏感 header 会被掩码；URL username、password、fragment 和敏感 query 参数会被掩码；JSON/form/multipart body 字段如果命中策略中的敏感名称，会被替换为 `****`。multipart 脱敏适用于所有 `multipart/*` 媒体类型。multipart 文件 part 会显示为 `<redacted: file part>`；格式异常、缺少 boundary 或已截断的 multipart body 会显示为 `<redacted: multipart body>`，避免原始上传字节泄露到日志。默认策略内置常见认证、token、cookie、secret、password 类名称。短 header 值整体显示为 `****`；长 header 值保留前后各 2 个字符，中间替换为 `****`。`log_sanitize.*` 下的配置项会替换对应的默认敏感名称集合；代码里也可以直接调整 `options.log_sanitize_policy`。
+日志统一经过 `LogSanitizer` 和 `LogSanitizePolicy` 脱敏。敏感 header 会被掩码；URL username、password、fragment 和敏感 query 参数会被掩码；JSON/form/multipart body 字段如果命中策略中的敏感名称，会被替换为 `****`。multipart 脱敏适用于所有 `multipart/*` 媒体类型。multipart 文件 part 会显示为 `<redacted: file part>`；格式异常、缺少 boundary 或已截断的 multipart body 会显示为 `<redacted: multipart body>`，避免原始上传字节泄露到日志。短 header 值整体显示为 `****`；长 header 值保留前后各 2 个字符，中间替换为 `****`。
+
+内置默认敏感 header 包括 `Authorization`、`Proxy-Authorization`、`Api-Key`、`X-Api-Key`、`Bearer`、`Cookie`、`Set-Cookie`、`Secret-Key`、`Client-Secret`、`Access-Token`、`Refresh-Token`、`Private-Token`、`Session-Token`、`JWT-Token`、`Password`、`X-Auth-Password`、`X-Client-ID`、`X-Client-Secret`、`X-Auth-Token`、`X-Auth-App-Token` 和 `X-Auth-User-Token`。默认敏感 query 参数包括 `access_token`、`api_key`、`client_secret`、`id_token`、`password`、`refresh_token`、`secret` 和 `token`。默认敏感 body 字段与 query 参数相同，并额外包含 `authorization`。
+
+header 名称按大小写不敏感匹配。query 参数和 body 字段会先 trim、转小写，并忽略 `_` 与 `-`，因此 `access_token`、`access-token` 和 `accessToken` 会命中同一个默认项。`log_sanitize.*` 下的配置项会扩展默认集合；代码里也可以直接调整 `options.log_sanitize_policy`，如果确实要使用完全自定义集合，可以先对对应集合调用 `clear()`。
 
 示例：
 
@@ -796,9 +815,9 @@ while let Some(item) = events.next().await {
 | `pool_idle_timeout` | 连接池空闲超时 |
 | `pool_max_idle_per_host` | 每个 host 最大空闲连接数 |
 | `use_env_proxy` | 显式代理禁用时是否继承环境代理；默认 `false` |
-| `log_sanitize.sensitive_headers` | 覆盖默认敏感 header 集合的字符串列表 |
-| `log_sanitize.sensitive_query_params` | 覆盖默认敏感 query 参数集合的字符串列表 |
-| `log_sanitize.sensitive_body_fields` | 覆盖默认敏感 body 字段集合的字符串列表 |
+| `log_sanitize.sensitive_headers` | 追加到默认敏感 header 集合的字符串列表 |
+| `log_sanitize.sensitive_query_params` | 追加到默认敏感 query 参数集合的字符串列表 |
+| `log_sanitize.sensitive_body_fields` | 追加到默认敏感 body 字段集合的字符串列表 |
 | `default_headers` | 默认请求 header 的 JSON map 字符串；不能与 `default_headers.<name>` 同时使用 |
 | `default_headers.<name>` | 一个默认请求 header 子键；不能与 `default_headers` JSON map 同时使用 |
 | `timeouts.connect_timeout` | 连接超时 |

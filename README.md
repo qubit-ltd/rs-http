@@ -72,7 +72,9 @@ common credential-like headers, URL userinfo, URL fragments, query parameters,
 and JSON/form/multipart body fields. Multipart field values use the same
 body-field policy; file parts and malformed, missing-boundary, or truncated
 multipart bodies are redacted instead of being logged raw. You can
-extend the policy when a service uses custom secret names:
+extend the policy when a service uses custom secret names. Query and body
+names are matched case-insensitively across common styles such as
+`access_token`, `access-token`, and `accessToken`:
 
 ```rust
 use qubit_http::{HttpClientFactory, HttpClientOptions};

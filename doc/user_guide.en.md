@@ -154,9 +154,9 @@ Common configuration keys:
 | `proxy.enabled` | Enables outbound proxying |
 | `use_env_proxy` | Whether to inherit environment proxies when explicit proxying is disabled |
 | `logging.enabled` | Allows TRACE HTTP logs |
-| `log_sanitize.sensitive_headers` | Sensitive header name set for log sanitization |
-| `log_sanitize.sensitive_query_params` | Sensitive query-parameter name set for log sanitization |
-| `log_sanitize.sensitive_body_fields` | Sensitive JSON/form/multipart body-field name set for log sanitization |
+| `log_sanitize.sensitive_headers` | Extra sensitive header names added to the default log-sanitization set |
+| `log_sanitize.sensitive_query_params` | Extra sensitive query-parameter names added to the default set |
+| `log_sanitize.sensitive_body_fields` | Extra sensitive JSON/form/multipart body-field names added to the default set |
 | `retry.enabled` | Enables built-in retry |
 | `retry.max_attempts` | Max attempts, including the first request |
 | `retry.delay_strategy` | `NONE`, `FIXED`, `RANDOM`, `EXPONENTIAL_BACKOFF`, or `EXPONENTIAL` |
@@ -199,6 +199,21 @@ let request = client
     .request_timeout(Duration::from_secs(10))?
     .read_timeout(Duration::from_secs(30))?
     .build();
+```
+
+After `build()`, `HttpRequest::resolved_url()` returns the actual outbound URL: absolute `path` values stay absolute, relative paths are joined with `base_url`, query pairs already present in `path` are preserved, and builder/query-interceptor pairs are appended in order.
+
+```rust
+let request = client
+    .request(Method::GET, "/users?active=true")
+    .query_param("expand", "profile")
+    .build();
+
+let url = request.resolved_url()?;
+assert_eq!(
+    url.as_str(),
+    "https://api.example.com/users?active=true&expand=profile",
+);
 ```
 
 Request body builders:
@@ -555,7 +570,11 @@ HTTP logs use `tracing::trace!`. Both conditions must be true:
 
 Request headers, request body, response headers, and response body can be toggled separately. Body logs include only the first `logging.body_size_limit` bytes and show a truncation marker for the remainder. Binary bodies are rendered as `<binary N bytes>`. Request-body logging previews buffered body variants (`bytes_body`, `text_body`, `json_body`, `form_body`, `multipart_body`, and `ndjson_body`); `stream_body` and `streaming_body` are logged as `<skipped: streaming request body>` because the logger does not consume upload streams.
 
-Logs are sanitized through `LogSanitizer` and `LogSanitizePolicy`. Sensitive headers are masked. URL username, password, fragment, and sensitive query parameters are masked; JSON/form/multipart body fields are redacted with `****` when their names match the policy. Multipart sanitization applies to every `multipart/*` media type. Multipart file parts are rendered as `<redacted: file part>`, and malformed, missing-boundary, or truncated multipart bodies are rendered as `<redacted: multipart body>` so raw upload bytes are not leaked. The default policy covers common auth, token, cookie, secret, and password names. Header values shorter than or equal to 4 characters are rendered as `****`; longer header values keep the first and last 2 characters and replace the middle with `****`. Configuration keys under `log_sanitize.*` replace the corresponding default name set; code can also tune `options.log_sanitize_policy` directly.
+Logs are sanitized through `LogSanitizer` and `LogSanitizePolicy`. Sensitive headers are masked. URL username, password, fragment, and sensitive query parameters are masked; JSON/form/multipart body fields are redacted with `****` when their names match the policy. Multipart sanitization applies to every `multipart/*` media type. Multipart file parts are rendered as `<redacted: file part>`, and malformed, missing-boundary, or truncated multipart bodies are rendered as `<redacted: multipart body>` so raw upload bytes are not leaked. Header values shorter than or equal to 4 characters are rendered as `****`; longer header values keep the first and last 2 characters and replace the middle with `****`.
+
+The built-in default sensitive headers are `Authorization`, `Proxy-Authorization`, `Api-Key`, `X-Api-Key`, `Bearer`, `Cookie`, `Set-Cookie`, `Secret-Key`, `Client-Secret`, `Access-Token`, `Refresh-Token`, `Private-Token`, `Session-Token`, `JWT-Token`, `Password`, `X-Auth-Password`, `X-Client-ID`, `X-Client-Secret`, `X-Auth-Token`, `X-Auth-App-Token`, and `X-Auth-User-Token`. Default sensitive query parameters are `access_token`, `api_key`, `client_secret`, `id_token`, `password`, `refresh_token`, `secret`, and `token`. Default sensitive body fields are the same as query parameters plus `authorization`.
+
+Header-name matching is case-insensitive. Query parameter and body field matching trims whitespace, lowercases names, and ignores `_` and `-`, so `access_token`, `access-token`, and `accessToken` match the same default. Configuration keys under `log_sanitize.*` extend the default name sets. Code can also tune `options.log_sanitize_policy` directly; call `clear()` on a set first if you intentionally want a custom-only policy.
 
 Example:
 
@@ -796,9 +815,9 @@ The table below lists every configuration key supported by `HttpClientOptions::f
 | `pool_idle_timeout` | Connection pool idle timeout |
 | `pool_max_idle_per_host` | Max idle connections per host |
 | `use_env_proxy` | Whether to inherit environment proxies when explicit proxying is disabled; defaults to `false` |
-| `log_sanitize.sensitive_headers` | String list that replaces the default sensitive-header set |
-| `log_sanitize.sensitive_query_params` | String list that replaces the default sensitive-query-parameter set |
-| `log_sanitize.sensitive_body_fields` | String list that replaces the default sensitive-body-field set |
+| `log_sanitize.sensitive_headers` | String list added to the default sensitive-header set |
+| `log_sanitize.sensitive_query_params` | String list added to the default sensitive-query-parameter set |
+| `log_sanitize.sensitive_body_fields` | String list added to the default sensitive-body-field set |
 | `default_headers` | JSON map string of default request headers; cannot be combined with `default_headers.<name>` |
 | `default_headers.<name>` | One default request header subkey; cannot be combined with the `default_headers` JSON map |
 | `timeouts.connect_timeout` | Connect timeout |
