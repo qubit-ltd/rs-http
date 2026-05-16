@@ -20,6 +20,7 @@ use http::{
 use url::Url;
 
 use super::HttpResponseMeta;
+use crate::LogSanitizePolicy;
 
 /// Metadata view passed to response interceptors.
 ///
@@ -37,6 +38,8 @@ pub struct HttpResponseInterceptorContext {
     url: Url,
     /// Originating request method captured before interceptor execution.
     method: Method,
+    /// Sanitization policy snapshot used by standalone debug output.
+    log_sanitize_policy: LogSanitizePolicy,
 }
 
 impl HttpResponseInterceptorContext {
@@ -56,7 +59,20 @@ impl HttpResponseInterceptorContext {
             headers,
             url,
             method,
+            log_sanitize_policy: LogSanitizePolicy::default(),
         }
+    }
+
+    /// Attaches the log sanitization policy used for standalone debug output.
+    ///
+    /// # Parameters
+    /// - `policy`: Policy snapshot to apply when formatting this context.
+    ///
+    /// # Returns
+    /// Updated context.
+    pub fn with_log_sanitize_policy(mut self, policy: LogSanitizePolicy) -> Self {
+        self.log_sanitize_policy = policy;
+        self
     }
 
     /// Copies response metadata into a mutable interceptor context.
@@ -73,6 +89,7 @@ impl HttpResponseInterceptorContext {
             meta.url().clone(),
             meta.method().clone(),
         )
+        .with_log_sanitize_policy(meta.log_sanitize_policy().clone())
     }
 
     /// Returns response status code.
@@ -154,12 +171,13 @@ impl HttpResponseInterceptorContext {
     pub(super) fn apply_to_meta(self, meta: &mut HttpResponseMeta) {
         meta.set_headers(self.headers);
         meta.set_url(self.url);
+        meta.set_log_sanitize_policy(self.log_sanitize_policy);
     }
 }
 
 impl fmt::Debug for HttpResponseInterceptorContext {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let sanitizer = crate::LogSanitizer::default();
+        let sanitizer = crate::LogSanitizer::for_debug(&self.log_sanitize_policy);
         let url = sanitizer.sanitize_url(&self.url);
         formatter
             .debug_struct("HttpResponseInterceptorContext")

@@ -24,6 +24,8 @@ use http::{
 use httpdate::parse_http_date;
 use url::Url;
 
+use crate::LogSanitizePolicy;
+
 /// HTTP response metadata available before body buffering/stream consumption.
 #[derive(Clone)]
 pub struct HttpResponseMeta {
@@ -35,6 +37,8 @@ pub struct HttpResponseMeta {
     url: Url,
     /// Originating request method.
     method: Method,
+    /// Sanitization policy snapshot used by standalone debug output.
+    log_sanitize_policy: LogSanitizePolicy,
 }
 
 impl HttpResponseMeta {
@@ -45,7 +49,20 @@ impl HttpResponseMeta {
             headers,
             url,
             method,
+            log_sanitize_policy: LogSanitizePolicy::default(),
         }
+    }
+
+    /// Attaches the log sanitization policy used for standalone debug output.
+    ///
+    /// # Parameters
+    /// - `policy`: Policy snapshot to apply when formatting this metadata.
+    ///
+    /// # Returns
+    /// Updated metadata.
+    pub fn with_log_sanitize_policy(mut self, policy: LogSanitizePolicy) -> Self {
+        self.log_sanitize_policy = policy;
+        self
     }
 
     /// Returns response status code.
@@ -135,11 +152,30 @@ impl HttpResponseMeta {
     pub(super) fn set_url(&mut self, url: Url) {
         self.url = url;
     }
+
+    /// Returns the log sanitization policy snapshot for response diagnostics.
+    ///
+    /// # Returns
+    /// Borrowed policy snapshot.
+    pub(super) fn log_sanitize_policy(&self) -> &LogSanitizePolicy {
+        &self.log_sanitize_policy
+    }
+
+    /// Replaces the log sanitization policy snapshot.
+    ///
+    /// # Parameters
+    /// - `policy`: New policy snapshot.
+    ///
+    /// # Returns
+    /// Nothing.
+    pub(super) fn set_log_sanitize_policy(&mut self, policy: LogSanitizePolicy) {
+        self.log_sanitize_policy = policy;
+    }
 }
 
 impl fmt::Debug for HttpResponseMeta {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let sanitizer = crate::LogSanitizer::default();
+        let sanitizer = crate::LogSanitizer::for_debug(&self.log_sanitize_policy);
         let url = sanitizer.sanitize_url(&self.url);
         formatter
             .debug_struct("HttpResponseMeta")

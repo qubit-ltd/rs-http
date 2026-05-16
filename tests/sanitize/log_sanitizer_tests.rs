@@ -200,6 +200,21 @@ fn test_log_sanitizer_error_response_truncated_json_uses_status_error_suffix() {
 }
 
 #[test]
+fn test_log_sanitizer_error_response_truncation_normalizes_suffix_only() {
+    let sanitizer = LogSanitizer::default();
+    let body = Bytes::from_static(b"body marker ...<truncated 2 bytes> staysXX");
+    let preview = BodyPreview::new(&body, body.len() - 2, BodyLogContext::ErrorResponse)
+        .with_content_type("text/plain");
+
+    let sanitized = sanitizer.sanitize_body_preview(&preview);
+
+    assert_eq!(
+        sanitized,
+        "body marker ...<truncated 2 bytes> stays...<truncated>"
+    );
+}
+
+#[test]
 fn test_log_sanitizer_sanitize_body_preview_redacts_json_arrays() {
     let sanitizer = LogSanitizer::default();
     let body = Bytes::from_static(br#"[{"token":"abc"},{"nested":{"password":"secret"}}]"#);

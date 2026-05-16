@@ -37,6 +37,15 @@ fn test_sensitive_http_headers_default_is_case_normalized() {
 }
 
 #[test]
+fn test_sensitive_http_headers_contains_uses_suffix_matching() {
+    let mut headers = SensitiveHttpHeaders::default();
+    headers.insert("tenant-secret");
+
+    assert!(headers.contains("x-openai-api-key"));
+    assert!(headers.contains("x-tenant-secret"));
+}
+
+#[test]
 fn test_sensitive_http_headers_case_insensitive() {
     let mut headers = SensitiveHttpHeaders::new();
     headers.insert("Authorization");
