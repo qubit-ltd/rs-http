@@ -9,12 +9,6 @@
  ******************************************************************************/
 //! Crate-wide defaults and fixed tuning values for HTTP client behavior and logging.
 
-pub use crate::sanitize::{
-    DEFAULT_SENSITIVE_BODY_FIELD_NAMES,
-    DEFAULT_SENSITIVE_HEADER_NAMES,
-    DEFAULT_SENSITIVE_QUERY_PARAM_NAMES,
-};
-
 // ---------------------------------------------------------------------------
 // Timeouts ([`crate::HttpTimeoutOptions::default`])
 // ---------------------------------------------------------------------------

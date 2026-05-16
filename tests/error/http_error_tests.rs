@@ -12,8 +12,10 @@ use http::StatusCode;
 use qubit_http::{
     HttpError,
     HttpErrorKind,
+    LogSanitizePolicy,
     RetryHint,
 };
+use qubit_sanitize::SensitivityLevel;
 
 #[test]
 fn test_http_error_builder_methods() {
@@ -77,6 +79,41 @@ fn test_http_error_debug_sanitizes_first_url_scheme_inside_token() {
     assert!(!debug.contains("debug-url-secret"));
     assert!(!debug.contains("debug-query-secret"));
     assert!(debug.contains("prefixhttps://****:****@example.com"));
+}
+
+#[test]
+fn test_http_error_debug_sanitizes_uppercase_url_scheme_tokens() {
+    let error = HttpError::transport(
+        "failed HTTPS://debug-user:debug-url-secret@example.com/path?accessToken=debug-query-secret.",
+    );
+
+    let debug = format!("{error:?}");
+
+    assert!(!debug.contains("debug-user"));
+    assert!(!debug.contains("debug-url-secret"));
+    assert!(!debug.contains("debug-query-secret"));
+    assert!(debug.contains("://****:****@example.com"));
+}
+
+#[test]
+fn test_http_error_debug_uses_custom_log_sanitize_policy() {
+    let mut policy = LogSanitizePolicy::default();
+    policy
+        .sensitive_query_params
+        .insert("customer_secret", SensitivityLevel::High);
+    let url =
+        url::Url::parse("https://example.com/path?customer_secret=debug-custom-secret&visible=ok")
+            .expect("URL should parse");
+    let error = HttpError::transport(
+        "transport failed for https://example.com/path?customer_secret=debug-custom-secret&visible=ok",
+    )
+    .with_url(&url)
+    .with_log_sanitize_policy(policy);
+
+    let debug = format!("{error:?}");
+
+    assert!(!debug.contains("debug-custom-secret"));
+    assert!(debug.contains("customer_secret=****"));
 }
 
 #[test]

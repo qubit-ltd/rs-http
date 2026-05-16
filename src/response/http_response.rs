@@ -347,6 +347,7 @@ impl HttpResponse {
         let error_preview_limit = self.options.error_response_preview_limit;
         let diagnostic_sanitizer = LogSanitizer::for_debug(self.options.log_sanitizer.policy());
         let body_preview = self.into_error_body_preview(error_preview_limit).await?;
+        let log_sanitize_policy = diagnostic_sanitizer.policy().clone();
         let message = format!(
             "{} with status {} for {} {}; response body preview: {}",
             message_prefix,
@@ -358,7 +359,8 @@ impl HttpResponse {
         let mut mapped = HttpError::status(status, message)
             .with_method(&method)
             .with_url(&url)
-            .with_response_body_preview(body_preview);
+            .with_response_body_preview(body_preview)
+            .with_log_sanitize_policy(log_sanitize_policy);
         if let Some(retry_after) = retry_after {
             mapped = mapped.with_retry_after(retry_after);
         }

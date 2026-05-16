@@ -109,13 +109,18 @@ pub(crate) fn parameter(value: &str, parameter_name: &str) -> Option<String> {
 /// `Some(false)` when no such parameter exists, or `None` when parameter
 /// quoting is malformed.
 pub(crate) fn has_parameter_name(value: &str, parameter_name: &str) -> Option<bool> {
-    Some(
-        header_parameter_segments(value)?
-            .into_iter()
-            .skip(1)
-            .filter_map(|parameter| parameter.split_once('='))
-            .any(|(name, _)| name.trim().eq_ignore_ascii_case(parameter_name)),
-    )
+    for parameter in header_parameter_segments(value)?.into_iter().skip(1) {
+        let Some((name, _)) = parameter.split_once('=') else {
+            if parameter.trim().eq_ignore_ascii_case(parameter_name) {
+                return None;
+            }
+            continue;
+        };
+        if name.trim().eq_ignore_ascii_case(parameter_name) {
+            return Some(true);
+        }
+    }
+    Some(false)
 }
 
 /// Returns whether one byte is allowed in generated multipart boundaries.

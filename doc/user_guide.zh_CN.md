@@ -572,28 +572,32 @@ HTTP 日志使用 `tracing::trace!`。必须同时满足：
 
 日志统一经过 `LogSanitizer` 和 `LogSanitizePolicy` 脱敏，底层复用 `qubit-sanitize` 的 URL、header 和 HTTP body 适配器。URL username、password、fragment 和敏感 query 参数会被掩码；JSON/form/multipart body 字段如果命中策略中的敏感名称，也会被掩码。具体 mask 字符串遵循 `qubit-sanitize` 的敏感级别：token/header 类字段通常显示为 `****`，`password`、`client_secret` 这类 secret 字段显示为 `<redacted>`。multipart 脱敏适用于所有 `multipart/*` 媒体类型。multipart 文件 part 会显示为 `<redacted: file part>`；格式异常、缺少 boundary 或已截断的 multipart body 会显示为 `<redacted: multipart body>`，避免原始上传字节泄露到日志。
 
-默认敏感名称由 `rs-http` 自己定义，并通过 `qubit_http` 和 `qubit_http::constants` 导出为 `DEFAULT_SENSITIVE_HEADER_NAMES`、`DEFAULT_SENSITIVE_QUERY_PARAM_NAMES` 和 `DEFAULT_SENSITIVE_BODY_FIELD_NAMES`。默认集合覆盖 credentials、auth tokens、HTTP auth/cookie、session 和少量额外运维 secret。匹配时会 trim、转小写、移除 `_`、`-`、`.`、空格等常见分隔符，并启用后缀匹配，因此 `access_token`、`access-token`、`accessToken` 和 `x-openai-api-key` 会命中同一类默认项。`log_sanitize.*` 下的配置项会扩展默认集合；代码里也可以直接调整 `options.log_sanitize_policy`，如果确实要使用完全自定义集合，可以先对对应集合调用 `clear()`。
+默认敏感名称和掩码级别来自 `qubit_sanitize::SensitiveFields`，`rs-http` 不再维护或导出自己的敏感名称列表。匹配时会 trim、转小写、移除 `_`、`-`、`.`、空格等常见分隔符，并启用后缀匹配，因此 `access_token`、`access-token`、`accessToken` 和 `x-openai-api-key` 会命中同一类默认项。`log_sanitize.*` 下的配置项会扩展默认集合；代码里也可以直接调整 `options.log_sanitize_policy`，如果确实要使用完全自定义集合，可以先把对应字段赋值为 `qubit_sanitize::SensitiveFields::new()`。
 
 示例：
 
 ```rust
 use http::Method;
 use qubit_http::{HttpClientFactory, HttpClientOptions};
+use qubit_sanitize::SensitivityLevel;
 use serde_json::json;
 
 let mut options = HttpClientOptions::new();
 options.logging.enabled = true;
 options.logging.log_request_header = true;
 options.logging.log_request_body = true;
-options.log_sanitize_policy.sensitive_headers.insert("x-api-key");
+options
+    .log_sanitize_policy
+    .sensitive_headers
+    .insert("x-api-key", SensitivityLevel::High);
 options
     .log_sanitize_policy
     .sensitive_query_params
-    .insert("access_token");
+    .insert("access_token", SensitivityLevel::High);
 options
     .log_sanitize_policy
     .sensitive_body_fields
-    .insert("password");
+    .insert("password", SensitivityLevel::Secret);
 
 let client = HttpClientFactory::new().create(options)?;
 let request = client

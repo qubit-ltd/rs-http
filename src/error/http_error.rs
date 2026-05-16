@@ -22,6 +22,7 @@ use url::Url;
 
 use super::RetryHint;
 use crate::sanitize::SanitizedDebugger;
+use crate::LogSanitizePolicy;
 use qubit_error::BoxError;
 
 use super::HttpErrorKind;
@@ -47,11 +48,13 @@ pub struct HttpError {
     /// Optional source error.
     #[source]
     pub source: Option<BoxError>,
+    /// Policy used when rendering this error with [`Debug`](fmt::Debug).
+    pub log_sanitize_policy: Box<LogSanitizePolicy>,
 }
 
 impl fmt::Debug for HttpError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let debugger = SanitizedDebugger::default();
+        let debugger = SanitizedDebugger::new(&self.log_sanitize_policy);
         let url = debugger.optional_url(self.url.as_ref());
         let message = debugger.diagnostic_text(&self.message);
         let response_body_preview_len = self.response_body_preview.as_ref().map(String::len);
@@ -88,6 +91,7 @@ impl HttpError {
             response_body_preview: None,
             retry_after: None,
             source: None,
+            log_sanitize_policy: Box::new(LogSanitizePolicy::default()),
         }
     }
 
@@ -163,6 +167,18 @@ impl HttpError {
     /// `self` for chaining.
     pub fn with_retry_after(mut self, retry_after: Duration) -> Self {
         self.retry_after = Some(retry_after);
+        self
+    }
+
+    /// Attaches the log sanitization policy used by [`Debug`](fmt::Debug).
+    ///
+    /// # Parameters
+    /// - `policy`: Policy whose custom sensitive names should be honored.
+    ///
+    /// # Returns
+    /// `self` for chaining.
+    pub fn with_log_sanitize_policy(mut self, policy: LogSanitizePolicy) -> Self {
+        self.log_sanitize_policy = Box::new(policy);
         self
     }
 

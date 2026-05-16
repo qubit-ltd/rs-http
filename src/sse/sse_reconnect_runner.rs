@@ -86,7 +86,7 @@ enum ReconnectAction {
     /// Reconnect is exhausted without an error to yield.
     Stop,
     /// Reconnect failed and caller should yield this error.
-    Fail(HttpError),
+    Fail(Box<HttpError>),
 }
 
 /// Mutable reconnect counters and pending retry delay state.
@@ -154,14 +154,14 @@ impl ReconnectState {
             ReconnectDecision::MaxElapsedExceeded {
                 elapsed,
                 max_elapsed,
-            } => ReconnectAction::Fail(max_elapsed_exceeded_error_with_last_error(
+            } => ReconnectAction::Fail(Box::new(max_elapsed_exceeded_error_with_last_error(
                 error,
                 elapsed,
                 max_elapsed,
                 runtime.request_method,
                 runtime.request_url,
-            )),
-            ReconnectDecision::MaxReconnectsReached => ReconnectAction::Fail(error),
+            ))),
+            ReconnectDecision::MaxReconnectsReached => ReconnectAction::Fail(Box::new(error)),
         }
     }
 
@@ -188,12 +188,12 @@ impl ReconnectState {
             ReconnectDecision::MaxElapsedExceeded {
                 elapsed,
                 max_elapsed,
-            } => ReconnectAction::Fail(max_elapsed_exceeded_error(
+            } => ReconnectAction::Fail(Box::new(max_elapsed_exceeded_error(
                 elapsed,
                 max_elapsed,
                 runtime.request_method,
                 runtime.request_url,
-            )),
+            ))),
             ReconnectDecision::MaxReconnectsReached => ReconnectAction::Stop,
         }
     }
@@ -240,7 +240,7 @@ impl ReconnectState {
         )
         .await
         {
-            return ReconnectAction::Fail(error);
+            return ReconnectAction::Fail(Box::new(error));
         }
         self.backoff_delay = next_reconnect_delay(runtime.retry_options, self.backoff_delay);
         self.pending_server_retry_delay = None;
@@ -328,7 +328,7 @@ impl SseReconnectRunner {
                                 ReconnectAction::Continue => continue,
                                 ReconnectAction::Stop => return,
                                 ReconnectAction::Fail(error) => {
-                                    yield Err(error);
+                                    yield Err(*error);
                                     return;
                                 }
                             }
@@ -377,7 +377,7 @@ impl SseReconnectRunner {
                             ReconnectAction::Continue => continue,
                             ReconnectAction::Stop => return,
                             ReconnectAction::Fail(error) => {
-                                yield Err(error);
+                                yield Err(*error);
                                 return;
                             }
                         }
@@ -391,7 +391,7 @@ impl SseReconnectRunner {
                         ReconnectAction::Continue => continue,
                         ReconnectAction::Stop => return,
                         ReconnectAction::Fail(error) => {
-                            yield Err(error);
+                            yield Err(*error);
                             return;
                         }
                     }
@@ -418,7 +418,8 @@ impl SseReconnectRunner {
 fn apply_last_event_id_header(request: &mut HttpRequest, last_event_id: &str) -> HttpResult<()> {
     let header_value = HeaderValue::from_str(last_event_id).map_err(|error| {
         HttpError::other(format!(
-            "Invalid Last-Event-ID header value '{last_event_id}': {error}"
+            "Invalid Last-Event-ID header value ({} bytes): {error}",
+            last_event_id.len()
         ))
     })?;
     request.set_typed_header(HeaderName::from_static(LAST_EVENT_ID_HEADER), header_value);

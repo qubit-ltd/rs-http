@@ -40,6 +40,7 @@ use qubit_http::{
     HttpRetryMethodPolicy,
     RetryDelay,
 };
+use qubit_sanitize::SensitivityLevel;
 use tokio::time::timeout;
 
 use crate::common::{
@@ -707,11 +708,11 @@ async fn test_execute_response_metadata_debug_uses_custom_log_policy() {
     options
         .log_sanitize_policy
         .sensitive_headers
-        .insert("x-tenant-secret");
+        .insert("x-tenant-secret", SensitivityLevel::High);
     options
         .log_sanitize_policy
         .sensitive_query_params
-        .insert("tenant_marker");
+        .insert("tenant_marker", SensitivityLevel::High);
 
     let captured_context_debug = Arc::new(Mutex::new(None));
     let captured_context_debug_for_interceptor = Arc::clone(&captured_context_debug);

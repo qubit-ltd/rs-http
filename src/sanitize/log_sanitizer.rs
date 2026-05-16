@@ -14,9 +14,13 @@ use http::{
     HeaderValue,
 };
 use qubit_sanitize::{
+    FieldSanitizePolicy,
+    FieldSanitizer,
     HttpBodySanitizer,
     HttpHeaderSanitizer,
+    MaskPolicies,
     NameMatchMode,
+    SensitiveFields,
     UrlSanitizer,
 };
 use url::Url;
@@ -53,9 +57,9 @@ impl LogSanitizer {
     /// New [`LogSanitizer`].
     pub fn new(policy: LogSanitizePolicy) -> Self {
         Self {
-            url_sanitizer: UrlSanitizer::new(policy.sensitive_query_params.field_sanitizer()),
-            header_sanitizer: HttpHeaderSanitizer::new(policy.sensitive_headers.field_sanitizer()),
-            body_sanitizer: HttpBodySanitizer::new(policy.sensitive_body_fields.field_sanitizer()),
+            url_sanitizer: UrlSanitizer::new(field_sanitizer(&policy.sensitive_query_params)),
+            header_sanitizer: HttpHeaderSanitizer::new(field_sanitizer(&policy.sensitive_headers)),
+            body_sanitizer: HttpBodySanitizer::new(field_sanitizer(&policy.sensitive_body_fields)),
             policy,
         }
     }
@@ -69,15 +73,18 @@ impl LogSanitizer {
     /// Sanitizer that always includes safe built-in defaults plus custom names.
     pub(crate) fn for_debug(policy: &LogSanitizePolicy) -> Self {
         let mut debug_policy = LogSanitizePolicy::default();
-        debug_policy
-            .sensitive_headers
-            .extend_from(&policy.sensitive_headers);
-        debug_policy
-            .sensitive_query_params
-            .extend_from(&policy.sensitive_query_params);
-        debug_policy
-            .sensitive_body_fields
-            .extend_from(&policy.sensitive_body_fields);
+        extend_sensitive_fields(
+            &mut debug_policy.sensitive_headers,
+            &policy.sensitive_headers,
+        );
+        extend_sensitive_fields(
+            &mut debug_policy.sensitive_query_params,
+            &policy.sensitive_query_params,
+        );
+        extend_sensitive_fields(
+            &mut debug_policy.sensitive_body_fields,
+            &policy.sensitive_body_fields,
+        );
         Self::new(debug_policy)
     }
 
@@ -246,6 +253,19 @@ impl LogSanitizer {
     }
 }
 
+fn field_sanitizer(fields: &SensitiveFields) -> FieldSanitizer {
+    FieldSanitizer::new(FieldSanitizePolicy {
+        sensitive_fields: fields.clone(),
+        mask_policies: MaskPolicies::default(),
+    })
+}
+
+fn extend_sensitive_fields(target: &mut SensitiveFields, source: &SensitiveFields) {
+    for (field, level) in source.iter() {
+        target.insert(field, level);
+    }
+}
+
 impl Default for LogSanitizer {
     /// Creates a sanitizer using [`LogSanitizePolicy::default`].
     fn default() -> Self {
@@ -261,12 +281,33 @@ impl Default for LogSanitizer {
 /// # Returns
 /// Byte offset where the scheme starts, or `None`.
 fn find_url_scheme_start(token: &str) -> Option<usize> {
-    match (token.find("http://"), token.find("https://")) {
+    match (
+        find_ascii_case_insensitive(token, "http://"),
+        find_ascii_case_insensitive(token, "https://"),
+    ) {
         (Some(http), Some(https)) => Some(http.min(https)),
         (Some(http), None) => Some(http),
         (None, Some(https)) => Some(https),
         (None, None) => None,
     }
+}
+
+/// Finds an ASCII needle inside `text` without requiring matching case.
+///
+/// # Parameters
+/// - `text`: Text to scan.
+/// - `needle`: ASCII substring to find.
+///
+/// # Returns
+/// Byte offset of the first match, or `None`.
+fn find_ascii_case_insensitive(text: &str, needle: &str) -> Option<usize> {
+    let needle = needle.as_bytes();
+    if needle.is_empty() || text.len() < needle.len() {
+        return None;
+    }
+    text.as_bytes()
+        .windows(needle.len())
+        .position(|window| window.eq_ignore_ascii_case(needle))
 }
 
 /// Returns the previous UTF-8 character boundary and character.

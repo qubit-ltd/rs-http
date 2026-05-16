@@ -1152,6 +1152,7 @@ async fn test_execute_sse_with_reconnect_reports_invalid_last_event_id_header_va
     let error = events.next().await.unwrap().unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::Other);
     assert!(error.message.contains("Invalid Last-Event-ID"));
+    assert!(!error.message.contains("bad"));
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
