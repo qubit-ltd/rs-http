@@ -11,3 +11,4 @@ mod backend_error_mapper_tests;
 mod http_error_kind_tests;
 mod http_error_tests;
 mod reqwest_error_phase_tests;
+mod retry_hint_tests;
