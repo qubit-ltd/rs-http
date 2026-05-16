@@ -20,6 +20,10 @@ use qubit_http::{
     LogSanitizePolicy,
     LogSanitizer,
 };
+use qubit_sanitize::{
+    SensitiveFields,
+    SensitivityLevel,
+};
 use url::Url;
 
 #[test]
@@ -660,8 +664,10 @@ fn test_log_sanitizer_sanitize_body_preview_redacts_form_fields() {
 #[test]
 fn test_log_sanitizer_sanitize_body_preview_uses_custom_policy() {
     let mut policy = LogSanitizePolicy::default();
-    policy.sensitive_body_fields.clear();
-    policy.sensitive_body_fields.insert("customer_id");
+    policy.sensitive_body_fields = SensitiveFields::new();
+    policy
+        .sensitive_body_fields
+        .insert("customer_id", SensitivityLevel::High);
     let sanitizer = LogSanitizer::new(policy);
     let body = Bytes::from_static(br#"{"customer_id":"C-001","password":"kept"}"#);
     let preview = BodyPreview::new(&body, body.len(), BodyLogContext::Request)

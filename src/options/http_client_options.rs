@@ -18,6 +18,7 @@ use qubit_config::{
     ConfigReader,
     ConfigResult,
 };
+use qubit_sanitize::SensitivityLevel;
 use std::str::FromStr;
 use url::Url;
 
@@ -461,15 +462,19 @@ impl HttpClientOptions {
                 }
             };
             if let Some(names) = log_sanitize.sensitive_headers {
-                opts.log_sanitize_policy.sensitive_headers.extend(names);
+                opts.log_sanitize_policy
+                    .sensitive_headers
+                    .extend(names, SensitivityLevel::High);
             }
             if let Some(names) = log_sanitize.sensitive_query_params {
                 opts.log_sanitize_policy
                     .sensitive_query_params
-                    .extend(names);
+                    .extend(names, SensitivityLevel::High);
             }
             if let Some(names) = log_sanitize.sensitive_body_fields {
-                opts.log_sanitize_policy.sensitive_body_fields.extend(names);
+                opts.log_sanitize_policy
+                    .sensitive_body_fields
+                    .extend(names, SensitivityLevel::High);
             }
         }
 

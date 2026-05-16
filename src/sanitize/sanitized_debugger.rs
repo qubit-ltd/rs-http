@@ -84,10 +84,3 @@ impl SanitizedDebugger {
         self.sanitizer.sanitize_diagnostic_text(text)
     }
 }
-
-impl Default for SanitizedDebugger {
-    /// Creates a debugger using [`LogSanitizePolicy::default`].
-    fn default() -> Self {
-        Self::new(&LogSanitizePolicy::default())
-    }
-}

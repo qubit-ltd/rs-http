@@ -35,7 +35,6 @@ use qubit_http::{
     HttpRequestBodyByteStream,
     HttpResponse,
     HttpResponseMeta,
-    SensitiveHttpHeaders,
 };
 use tokio::time::timeout;
 use url::Url;
@@ -74,10 +73,8 @@ fn test_log_request_disabled_emits_nothing() {
     options.enabled = false;
     let mut headers = HeaderMap::new();
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-    let sensitive_headers = SensitiveHttpHeaders::default();
     let mut client_options = HttpClientOptions::default();
     client_options.logging = options;
-    client_options.log_sanitize_policy.sensitive_headers = sensitive_headers;
     let logger = HttpLogger::new(&client_options);
 
     let request = logging_request(
@@ -100,10 +97,8 @@ fn test_log_request_toggles_header_and_body() {
 
     let mut headers = HeaderMap::new();
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-    let sensitive_headers = SensitiveHttpHeaders::default();
     let mut client_options = HttpClientOptions::default();
     client_options.logging = options;
-    client_options.log_sanitize_policy.sensitive_headers = sensitive_headers;
     let logger = HttpLogger::new(&client_options);
 
     let request = logging_request(
@@ -129,10 +124,8 @@ fn test_log_response_masks_sensitive_headers() {
         HeaderValue::from_static("Bearer very-secret-token"),
     );
     let options = HttpLoggingOptions::default();
-    let sensitive_headers = SensitiveHttpHeaders::default();
     let mut client_options = HttpClientOptions::default();
     client_options.logging = options;
-    client_options.log_sanitize_policy.sensitive_headers = sensitive_headers;
     let logger = HttpLogger::new(&client_options);
 
     let logs = capture_trace_logs(|| {
@@ -217,10 +210,8 @@ fn test_log_response_binary_body_and_truncation() {
         ..HttpLoggingOptions::default()
     };
     let headers = HeaderMap::new();
-    let sensitive_headers = SensitiveHttpHeaders::default();
     let mut client_options = HttpClientOptions::default();
     client_options.logging = options;
-    client_options.log_sanitize_policy.sensitive_headers = sensitive_headers;
     let logger = HttpLogger::new(&client_options);
 
     let logs = capture_trace_logs(|| {
@@ -248,10 +239,8 @@ fn test_log_stream_response_headers_respects_toggle() {
     options.log_response_header = false;
     let mut headers = HeaderMap::new();
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("text/event-stream"));
-    let sensitive_headers = SensitiveHttpHeaders::default();
     let mut client_options = HttpClientOptions::default();
     client_options.logging = options;
-    client_options.log_sanitize_policy.sensitive_headers = sensitive_headers;
     let logger = HttpLogger::new(&client_options);
 
     let logs = capture_trace_logs(|| {
@@ -290,10 +279,8 @@ fn test_log_request_includes_builder_query_params() {
 fn test_log_request_text_body() {
     let options = HttpLoggingOptions::default();
     let headers = HeaderMap::new();
-    let sensitive_headers = SensitiveHttpHeaders::default();
     let mut client_options = HttpClientOptions::default();
     client_options.logging = options;
-    client_options.log_sanitize_policy.sensitive_headers = sensitive_headers;
     let logger = HttpLogger::new(&client_options);
 
     let request = logging_request(
@@ -313,10 +300,8 @@ fn test_log_request_text_body() {
 fn test_log_request_stream_body_logged_as_skipped() {
     let options = HttpLoggingOptions::default();
     let headers = HeaderMap::new();
-    let sensitive_headers = SensitiveHttpHeaders::default();
     let mut client_options = HttpClientOptions::default();
     client_options.logging = options;
-    client_options.log_sanitize_policy.sensitive_headers = sensitive_headers;
     let logger = HttpLogger::new(&client_options);
 
     let request = logging_request(
@@ -335,10 +320,8 @@ fn test_log_request_stream_body_logged_as_skipped() {
 #[test]
 fn test_log_request_streaming_body_logged_as_skipped() {
     let options = HttpLoggingOptions::default();
-    let sensitive_headers = SensitiveHttpHeaders::default();
     let mut client_options = HttpClientOptions::default();
     client_options.logging = options;
-    client_options.log_sanitize_policy.sensitive_headers = sensitive_headers;
     let logger = HttpLogger::new(&client_options);
     let client = HttpClientFactory::new()
         .create_default()

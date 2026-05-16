@@ -25,6 +25,7 @@ use qubit_http::{
     HttpRequestBody,
     HttpRetryMethodPolicy,
 };
+use qubit_sanitize::SensitivityLevel;
 use serde::ser::{
     Error as _,
     Serializer,
@@ -57,11 +58,11 @@ fn test_request_builder_debug_masks_sensitive_values() {
     options
         .log_sanitize_policy
         .sensitive_headers
-        .insert("x-debug-secret");
+        .insert("x-debug-secret", SensitivityLevel::High);
     options
         .log_sanitize_policy
         .sensitive_query_params
-        .insert("debugToken");
+        .insert("debugToken", SensitivityLevel::High);
     let mut default_headers = HeaderMap::new();
     default_headers.insert(
         "x-debug-secret",
@@ -763,6 +764,19 @@ fn test_request_builder_multipart_body_skips_parameter_without_value_before_boun
             .expect("multipart content-type should be kept"),
         "multipart/mixed; charset; boundary=abc"
     );
+}
+
+#[test]
+fn test_request_builder_multipart_body_rejects_boundary_parameter_without_value() {
+    let error = new_builder(Method::POST, "/v1/multipart")
+        .header(CONTENT_TYPE.as_str(), "multipart/mixed; boundary")
+        .expect("custom content-type header should be valid")
+        .multipart_body(Bytes::from_static(b"payload"), "abc")
+        .expect_err("value-less boundary parameter should fail");
+
+    assert_eq!(error.kind, HttpErrorKind::Other);
+    assert!(error.message.contains("boundary"));
+    assert!(error.message.contains("malformed"));
 }
 
 #[test]

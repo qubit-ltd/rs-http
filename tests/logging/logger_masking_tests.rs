@@ -23,7 +23,6 @@ use qubit_http::{
     HttpClientOptions,
     HttpLogger,
     HttpLoggingOptions,
-    SensitiveHttpHeaders,
 };
 
 use crate::common::capture_trace_logs;
@@ -34,10 +33,8 @@ fn capture_request_header_logs(name: HeaderName, value: HeaderValue) -> String {
         log_request_body: false,
         ..HttpLoggingOptions::default()
     };
-    let sensitive_headers = SensitiveHttpHeaders::default();
     let mut client_options = HttpClientOptions::default();
     client_options.logging = options;
-    client_options.log_sanitize_policy.sensitive_headers = sensitive_headers;
     let logger = HttpLogger::new(&client_options);
     let mut headers = HeaderMap::new();
     headers.insert(name, value);
