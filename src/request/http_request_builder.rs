@@ -29,6 +29,7 @@ use url::form_urlencoded;
 use url::Url;
 
 use crate::content_type;
+use crate::sanitize::SanitizedDebugger;
 use crate::{
     AsyncHttpHeaderInjector,
     HttpClient,
@@ -39,7 +40,6 @@ use crate::{
     HttpResult,
     HttpRetryMethodPolicy,
     LogSanitizePolicy,
-    LogSanitizer,
 };
 
 use super::http_request::HttpRequest;
@@ -69,7 +69,7 @@ pub struct HttpRequestBuilder {
     pub(super) write_timeout: Duration,
     /// Per-request read timeout used by buffered/stream response reading.
     pub(super) read_timeout: Duration,
-    /// Base URL copied from client options and used by [`HttpRequest::resolve_url`].
+    /// Base URL copied from client options and used by [`HttpRequest::resolved_url`].
     pub(super) base_url: Option<Url>,
     /// Whether IPv6 literal hosts are rejected during URL resolution.
     pub(super) ipv4_only: bool,
@@ -89,19 +89,14 @@ pub struct HttpRequestBuilder {
 
 impl fmt::Debug for HttpRequestBuilder {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let sanitizer = LogSanitizer::for_debug(&self.log_sanitize_policy);
-        let url = self
-            .debug_resolved_url()
-            .map(|url| sanitizer.sanitize_url(&url));
-        let base_url = self
-            .base_url
-            .as_ref()
-            .map(|url| sanitizer.sanitize_url(url));
+        let debugger = SanitizedDebugger::new(&self.log_sanitize_policy);
+        let url = self.debug_resolved_url().map(|url| debugger.url(&url));
+        let base_url = self.base_url.as_ref().map(|url| debugger.url(url));
         formatter
             .debug_struct("HttpRequestBuilder")
             .field("method", &self.method)
             .field("url", &url)
-            .field("headers", &sanitizer.sanitize_header_map(&self.headers))
+            .field("headers", &debugger.headers(&self.headers))
             .field("body", &self.body)
             .field(
                 "streaming_body",
@@ -117,10 +112,7 @@ impl fmt::Debug for HttpRequestBuilder {
                 &self.cancellation_token.is_some(),
             )
             .field("retry_override", &self.retry_override)
-            .field(
-                "default_headers",
-                &sanitizer.sanitize_header_map(&self.default_headers),
-            )
+            .field("default_headers", &debugger.headers(&self.default_headers))
             .field("injector_count", &self.injectors.len())
             .field("async_injector_count", &self.async_injectors.len())
             .finish()

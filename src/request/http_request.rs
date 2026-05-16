@@ -32,6 +32,7 @@ use crate::error::{
     backend_error_mapper::map_reqwest_error,
     ReqwestErrorPhase,
 };
+use crate::sanitize::SanitizedDebugger;
 use crate::{
     AsyncHttpHeaderInjector,
     HttpError,
@@ -41,7 +42,6 @@ use crate::{
     HttpRequestStreamingBody,
     HttpResult,
     LogSanitizePolicy,
-    LogSanitizer,
 };
 
 use super::http_request_body::HttpRequestBody;
@@ -111,21 +111,14 @@ pub struct HttpRequest {
 
 impl fmt::Debug for HttpRequest {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let sanitizer = LogSanitizer::for_debug(&self.context.log_sanitize_policy);
-        let url = self
-            .resolved_url()
-            .ok()
-            .map(|url| sanitizer.sanitize_url(&url));
-        let base_url = self
-            .context
-            .base_url
-            .as_ref()
-            .map(|url| sanitizer.sanitize_url(url));
+        let debugger = SanitizedDebugger::new(&self.context.log_sanitize_policy);
+        let url = self.resolved_url().ok().map(|url| debugger.url(&url));
+        let base_url = self.context.base_url.as_ref().map(|url| debugger.url(url));
         formatter
             .debug_struct("HttpRequest")
             .field("method", &self.method)
             .field("url", &url)
-            .field("headers", &sanitizer.sanitize_header_map(&self.headers))
+            .field("headers", &debugger.headers(&self.headers))
             .field("body", &self.body)
             .field(
                 "streaming_body",
@@ -821,8 +814,12 @@ impl HttpRequest {
         Ok(url)
     }
 
-    /// Returns cached resolved URL when available.
-    pub fn resolved_url_cached(&self) -> Option<Url> {
+    /// Returns the cached resolved base URL when available.
+    ///
+    /// # Returns
+    /// Cached URL without builder query pairs, or `None` when URL resolution has
+    /// not succeeded for the current request fields.
+    fn resolved_base_url_cached(&self) -> Option<Url> {
         self.resolved_url
             .read()
             .map(|guard| guard.clone())
@@ -1023,7 +1020,7 @@ impl Clone for HttpRequest {
             headers: self.headers.clone(),
             body: self.body.clone(),
             streaming_body: self.streaming_body.clone(),
-            resolved_url: RwLock::new(self.resolved_url_cached()),
+            resolved_url: RwLock::new(self.resolved_base_url_cached()),
             effective_headers: self.effective_headers.clone(),
             execution_options: self.execution_options.clone(),
             context: self.context.clone(),

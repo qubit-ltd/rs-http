@@ -17,6 +17,11 @@ use qubit_sanitize::{
     SensitivityLevel,
 };
 
+use super::{
+    default_sensitive_names::default_sensitive_fields,
+    DEFAULT_SENSITIVE_BODY_FIELD_NAMES,
+};
+
 /// Set of structured body field names whose values should be masked.
 ///
 /// Names use the same canonical field-name rules as `qubit-sanitize`, so
@@ -131,7 +136,7 @@ impl Default for SensitiveBodyFields {
     /// Creates a set containing common credential and token field names.
     fn default() -> Self {
         Self {
-            fields: SensitiveFields::default(),
+            fields: default_sensitive_fields(DEFAULT_SENSITIVE_BODY_FIELD_NAMES),
         }
     }
 }

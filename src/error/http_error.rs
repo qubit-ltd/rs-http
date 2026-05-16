@@ -21,7 +21,7 @@ use thiserror::Error;
 use url::Url;
 
 use super::RetryHint;
-use crate::LogSanitizer;
+use crate::sanitize::SanitizedDebugger;
 use qubit_error::BoxError;
 
 use super::HttpErrorKind;
@@ -51,9 +51,9 @@ pub struct HttpError {
 
 impl fmt::Debug for HttpError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let sanitizer = LogSanitizer::default();
-        let url = self.url.as_ref().map(|url| sanitizer.sanitize_url(url));
-        let message = sanitizer.sanitize_diagnostic_text(&self.message);
+        let debugger = SanitizedDebugger::default();
+        let url = debugger.optional_url(self.url.as_ref());
+        let message = debugger.diagnostic_text(&self.message);
         let response_body_preview_len = self.response_body_preview.as_ref().map(String::len);
         formatter
             .debug_struct("HttpError")

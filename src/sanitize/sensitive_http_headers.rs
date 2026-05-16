@@ -17,6 +17,11 @@ use qubit_sanitize::{
     SensitivityLevel,
 };
 
+use super::{
+    default_sensitive_names::default_sensitive_fields,
+    DEFAULT_SENSITIVE_HEADER_NAMES,
+};
+
 /// Canonical set of HTTP header names whose values should be masked in logs.
 ///
 /// Matching is case-insensitive and uses the same canonical field-name rules as
@@ -131,7 +136,7 @@ impl Default for SensitiveHttpHeaders {
     /// Creates a set containing built-in sensitive header names.
     fn default() -> Self {
         Self {
-            fields: SensitiveFields::default(),
+            fields: default_sensitive_fields(DEFAULT_SENSITIVE_HEADER_NAMES),
         }
     }
 }

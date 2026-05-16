@@ -25,7 +25,7 @@ fn test_request_interceptors_apply_uses_parsed_path_when_resolved_url_cache_miss
         .expect("default options should create client");
     let mut request = client.request(Method::GET, "http://[::1]/resource").build();
     request.set_ipv4_only(true);
-    assert!(request.resolved_url_cached().is_none());
+    assert!(request.resolved_url().is_err());
 
     let mut interceptors = HttpRequestInterceptors::new();
     interceptors.push(HttpRequestInterceptor::new(|_request| {
@@ -49,7 +49,7 @@ fn test_request_interceptors_apply_keeps_url_empty_when_path_is_not_absolute() {
         .create_default()
         .expect("default options should create client");
     let mut request = client.request(Method::GET, "/relative-only").build();
-    assert!(request.resolved_url_cached().is_none());
+    assert!(request.resolved_url().is_err());
 
     let mut interceptors = HttpRequestInterceptors::new();
     interceptors.push(HttpRequestInterceptor::new(|_request| {

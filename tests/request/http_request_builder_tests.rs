@@ -608,6 +608,29 @@ fn test_request_builder_multipart_body_rejects_boundary_with_space() {
 }
 
 #[test]
+fn test_request_builder_multipart_body_rejects_boundary_with_unquoted_parameter_chars() {
+    for boundary in [
+        "bad/boundary",
+        "bad:boundary",
+        "bad=boundary",
+        "bad?boundary",
+        "bad(boundary)",
+        "bad,boundary",
+    ] {
+        let error = new_builder(Method::POST, "/v1/multipart")
+            .multipart_body(Bytes::from_static(b"payload"), boundary)
+            .expect_err("unquoted Content-Type parameter boundary should reject non-token chars");
+
+        assert_eq!(error.kind, HttpErrorKind::Other);
+        assert!(
+            error.message.contains("Invalid multipart boundary"),
+            "unexpected error for boundary {boundary}: {}",
+            error.message
+        );
+    }
+}
+
+#[test]
 fn test_request_builder_multipart_body_adds_boundary_to_existing_multipart_content_type() {
     let request = new_builder(Method::POST, "/v1/multipart")
         .header(CONTENT_TYPE.as_str(), "multipart/mixed")

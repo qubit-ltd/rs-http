@@ -69,9 +69,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 HTTP TRACE 日志在输出前会统一脱敏。默认策略会掩码常见凭证类 header、
 URL 用户信息、URL fragment、query 参数和 JSON/form/multipart body 字段。
-multipart 字段值使用同一套 body 字段策略；文件 part、格式异常、缺少 boundary
-或已截断的 multipart body 会整体隐藏，不会原样写入日志。若某个服务使用自定义敏感名称，
-可以在客户端配置中扩展脱敏策略。query 和 body 名称会按大小写不敏感方式匹配，
+内置名称集合通过 `qubit_http` 和 `qubit_http::constants` 导出：
+`DEFAULT_SENSITIVE_HEADER_NAMES`、`DEFAULT_SENSITIVE_QUERY_PARAM_NAMES` 和
+`DEFAULT_SENSITIVE_BODY_FIELD_NAMES`。multipart 字段值使用同一套 body 字段策略；
+文件 part、格式异常、缺少 boundary 或已截断的 multipart body 会整体隐藏，不会原样写入日志。
+若某个服务使用自定义敏感名称，可以在客户端配置中扩展脱敏策略。query 和 body 名称会按大小写不敏感方式匹配，
 并兼容 `access_token`、`access-token`、`accessToken` 这类常见写法：
 
 ```rust

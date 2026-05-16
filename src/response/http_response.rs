@@ -40,6 +40,7 @@ use crate::error::{
     backend_error_mapper::map_reqwest_error,
     ReqwestErrorPhase,
 };
+use crate::sanitize::SanitizedDebugger;
 use crate::sse::{
     DoneMarkerPolicy,
     SseChunkStream,
@@ -199,16 +200,13 @@ pub struct HttpResponse {
 
 impl fmt::Debug for HttpResponse {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let sanitizer = LogSanitizer::for_debug(self.options.log_sanitizer.policy());
-        let url = sanitizer.sanitize_url(self.meta.url());
-        let request_url = sanitizer.sanitize_url(&self.runtime.request_url);
+        let debugger = SanitizedDebugger::new(self.options.log_sanitizer.policy());
+        let url = debugger.url(self.meta.url());
+        let request_url = debugger.url(&self.runtime.request_url);
         formatter
             .debug_struct("HttpResponse")
             .field("status", &self.meta.status())
-            .field(
-                "headers",
-                &sanitizer.sanitize_header_map(self.meta.headers()),
-            )
+            .field("headers", &debugger.headers(self.meta.headers()))
             .field("url", &url)
             .field("request_url", &request_url)
             .field("method", self.meta.method())
