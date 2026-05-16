@@ -9,6 +9,7 @@
  ******************************************************************************/
 //! Response interceptor context with controlled metadata mutation.
 
+use std::fmt;
 use std::time::Duration;
 
 use http::{
@@ -26,7 +27,7 @@ use super::HttpResponseMeta;
 /// invalidate the `HttpClient::execute` success-status contract after the
 /// client has already accepted the response. Interceptors may still mutate
 /// response headers and the final response URL.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct HttpResponseInterceptorContext {
     /// Response status code captured before interceptor execution.
     status: StatusCode,
@@ -153,5 +154,19 @@ impl HttpResponseInterceptorContext {
     pub(super) fn apply_to_meta(self, meta: &mut HttpResponseMeta) {
         meta.set_headers(self.headers);
         meta.set_url(self.url);
+    }
+}
+
+impl fmt::Debug for HttpResponseInterceptorContext {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let sanitizer = crate::LogSanitizer::default();
+        let url = sanitizer.sanitize_url(&self.url);
+        formatter
+            .debug_struct("HttpResponseInterceptorContext")
+            .field("status", &self.status)
+            .field("headers", &sanitizer.sanitize_header_map(&self.headers))
+            .field("url", &url)
+            .field("method", &self.method)
+            .finish()
     }
 }

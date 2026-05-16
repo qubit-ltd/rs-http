@@ -11,6 +11,7 @@
 use std::time::Duration;
 
 use http::header::RETRY_AFTER;
+use http::header::SET_COOKIE;
 use http::{
     HeaderMap,
     HeaderValue,
@@ -81,4 +82,30 @@ fn test_http_response_interceptor_context_from_meta_preserves_retry_after_hint()
     let context = HttpResponseInterceptorContext::from_meta(&meta);
 
     assert_eq!(context.retry_after_hint(), Some(Duration::from_secs(3)));
+}
+
+#[test]
+fn test_http_response_interceptor_context_debug_masks_sensitive_values() {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        SET_COOKIE,
+        HeaderValue::from_static("session=debug-cookie-secret"),
+    );
+    let context = HttpResponseInterceptorContext::new(
+        StatusCode::OK,
+        headers,
+        Url::parse("https://debug-user:debug-url-secret@example.test/context?password=debug-password-secret&access_token=debug-token-secret")
+            .expect("valid URL"),
+        Method::GET,
+    );
+
+    let debug = format!("{context:?}");
+
+    assert!(!debug.contains("debug-user"));
+    assert!(!debug.contains("debug-url-secret"));
+    assert!(!debug.contains("debug-password-secret"));
+    assert!(!debug.contains("debug-token-secret"));
+    assert!(!debug.contains("debug-cookie-secret"));
+    assert!(debug.contains("%3Credacted%3E"));
+    assert!(debug.contains("****"));
 }

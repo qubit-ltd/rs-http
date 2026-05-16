@@ -66,6 +66,20 @@ fn test_http_error_debug_sanitizes_url_tokens_with_punctuation() {
 }
 
 #[test]
+fn test_http_error_debug_sanitizes_first_url_scheme_inside_token() {
+    let error = HttpError::transport(
+        "failed prefixhttps://debug-user:debug-url-secret@example.com/path?accessToken=debug-query-secret/http://not-a-second-url",
+    );
+
+    let debug = format!("{error:?}");
+
+    assert!(!debug.contains("debug-user"));
+    assert!(!debug.contains("debug-url-secret"));
+    assert!(!debug.contains("debug-query-secret"));
+    assert!(debug.contains("prefixhttps://****:****@example.com"));
+}
+
+#[test]
 fn test_http_error_debug_keeps_invalid_url_like_tokens() {
     let error = HttpError::transport("failed near https:// and plain text");
 

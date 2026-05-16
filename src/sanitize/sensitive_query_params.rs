@@ -8,21 +8,22 @@
  *
  ******************************************************************************/
 
-use std::collections::BTreeSet;
-
-use super::default_sensitive_names::{
-    canonicalize_structured_sensitive_name,
-    DEFAULT_SENSITIVE_QUERY_PARAM_NAMES,
+use qubit_sanitize::{
+    FieldSanitizePolicy,
+    FieldSanitizer,
+    MaskPolicies,
+    SensitiveFields,
+    SensitivityLevel,
 };
 
 /// Set of query parameter names whose values should be masked.
 ///
-/// Names are matched case-insensitively and common `_` / `-` separators are
-/// ignored, so `access_token`, `access-token`, and `accessToken` are equivalent.
+/// Names use the same canonical field-name rules as `qubit-sanitize`, so
+/// `access_token`, `access-token`, and `accessToken` are equivalent.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SensitiveQueryParams {
-    /// Canonical query parameter names.
-    names: BTreeSet<String>,
+    /// Shared sensitive field set used by `qubit-sanitize`.
+    fields: SensitiveFields,
 }
 
 impl SensitiveQueryParams {
@@ -32,7 +33,7 @@ impl SensitiveQueryParams {
     /// Empty [`SensitiveQueryParams`].
     pub fn new() -> Self {
         Self {
-            names: BTreeSet::new(),
+            fields: SensitiveFields::new(),
         }
     }
 
@@ -44,8 +45,7 @@ impl SensitiveQueryParams {
     /// # Returns
     /// `true` if the value should be masked in logged URLs.
     pub fn contains(&self, name: &str) -> bool {
-        self.names
-            .contains(&canonicalize_structured_sensitive_name(name))
+        self.fields.contains(name)
     }
 
     /// Inserts one query parameter name.
@@ -53,10 +53,7 @@ impl SensitiveQueryParams {
     /// # Parameters
     /// - `name`: Query parameter name to mark sensitive.
     pub fn insert(&mut self, name: &str) {
-        let value = canonicalize_structured_sensitive_name(name);
-        if !value.is_empty() {
-            self.names.insert(value);
-        }
+        self.fields.insert(name, SensitivityLevel::High);
     }
 
     /// Inserts many query parameter names.
@@ -75,7 +72,7 @@ impl SensitiveQueryParams {
 
     /// Clears all names.
     pub fn clear(&mut self) {
-        self.names.clear();
+        self.fields = SensitiveFields::new();
     }
 
     /// Returns the number of stored query parameter names.
@@ -83,7 +80,7 @@ impl SensitiveQueryParams {
     /// # Returns
     /// Stored query parameter count.
     pub fn len(&self) -> usize {
-        self.names.len()
+        self.fields.len()
     }
 
     /// Returns whether no query parameter names are stored.
@@ -91,7 +88,7 @@ impl SensitiveQueryParams {
     /// # Returns
     /// `true` when empty.
     pub fn is_empty(&self) -> bool {
-        self.names.is_empty()
+        self.fields.is_empty()
     }
 
     /// Iterates canonical query parameter names.
@@ -99,15 +96,36 @@ impl SensitiveQueryParams {
     /// # Returns
     /// Iterator over stored canonical query parameter names.
     pub fn iter(&self) -> impl Iterator<Item = &str> {
-        self.names.iter().map(String::as_str)
+        self.fields.iter().map(|(field, _)| field)
+    }
+
+    /// Extends this set with another query set, preserving sensitivity levels.
+    ///
+    /// # Parameters
+    /// - `other`: Source query set.
+    pub(crate) fn extend_from(&mut self, other: &Self) {
+        for (field, level) in other.fields.iter() {
+            self.fields.insert(field, level);
+        }
+    }
+
+    /// Creates a core field sanitizer from this query set.
+    ///
+    /// # Returns
+    /// Field sanitizer using shared `qubit-sanitize` masking rules.
+    pub(crate) fn field_sanitizer(&self) -> FieldSanitizer {
+        FieldSanitizer::new(FieldSanitizePolicy {
+            sensitive_fields: self.fields.clone(),
+            mask_policies: MaskPolicies::default(),
+        })
     }
 }
 
 impl Default for SensitiveQueryParams {
     /// Creates a set containing common token-like query parameter names.
     fn default() -> Self {
-        let mut result = Self::new();
-        result.extend(DEFAULT_SENSITIVE_QUERY_PARAM_NAMES);
-        result
+        Self {
+            fields: SensitiveFields::default(),
+        }
     }
 }

@@ -9,8 +9,6 @@
  ******************************************************************************/
 //! Crate-wide defaults and fixed tuning values for HTTP client behavior and logging.
 
-pub use crate::sanitize::DEFAULT_SENSITIVE_HEADER_NAMES;
-
 // ---------------------------------------------------------------------------
 // Timeouts ([`crate::HttpTimeoutOptions::default`])
 // ---------------------------------------------------------------------------
@@ -43,16 +41,3 @@ pub const DEFAULT_SSE_MAX_LINE_BYTES: usize = 64 * 1024;
 
 /// Default maximum bytes allowed for one SSE frame (between blank lines) before raising a protocol error.
 pub const DEFAULT_SSE_MAX_FRAME_BYTES: usize = 1024 * 1024;
-
-// ---------------------------------------------------------------------------
-// Sensitive header value masking rules used by [`crate::HttpLogger`]
-// ---------------------------------------------------------------------------
-
-/// Values with at most this many characters are fully replaced by [`SENSITIVE_HEADER_MASK_PLACEHOLDER`].
-pub const SENSITIVE_HEADER_MASK_SHORT_LEN: usize = 4;
-
-/// How many characters to keep visible at the start and end when masking longer values.
-pub const SENSITIVE_HEADER_MASK_EDGE_CHARS: usize = 2;
-
-/// Replacement string for fully masked or middle segments of sensitive header values.
-pub const SENSITIVE_HEADER_MASK_PLACEHOLDER: &str = "****";

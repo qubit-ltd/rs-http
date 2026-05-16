@@ -8,15 +8,22 @@
  *
  ******************************************************************************/
 
-use std::collections::BTreeSet;
+use qubit_sanitize::{
+    FieldSanitizePolicy,
+    FieldSanitizer,
+    MaskPolicies,
+    SensitiveFields,
+    SensitivityLevel,
+};
 
-use super::default_sensitive_names::DEFAULT_SENSITIVE_HEADER_NAMES;
-
-/// Case-insensitive set of HTTP header names whose values should be masked in logs.
+/// Canonical set of HTTP header names whose values should be masked in logs.
+///
+/// Matching is case-insensitive and uses the same canonical field-name rules as
+/// `qubit-sanitize`, including removal of common separators.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SensitiveHttpHeaders {
-    /// Normalized lowercase header names.
-    headers: BTreeSet<String>,
+    /// Shared sensitive field set used by `qubit-sanitize`.
+    fields: SensitiveFields,
 }
 
 impl SensitiveHttpHeaders {
@@ -26,7 +33,7 @@ impl SensitiveHttpHeaders {
     /// Empty [`SensitiveHttpHeaders`].
     pub fn new() -> Self {
         Self {
-            headers: BTreeSet::new(),
+            fields: SensitiveFields::new(),
         }
     }
 
@@ -38,18 +45,15 @@ impl SensitiveHttpHeaders {
     /// # Returns
     /// `true` if values for this header should be masked.
     pub fn contains(&self, header_name: &str) -> bool {
-        self.headers.contains(&header_name.to_lowercase())
+        self.fields.contains(header_name)
     }
 
-    /// Inserts one header name after trimming and lowercasing.
+    /// Inserts one header name after canonicalizing it.
     ///
     /// # Parameters
     /// - `header_name`: Header name to mark sensitive.
     pub fn insert(&mut self, header_name: &str) {
-        let value = header_name.trim().to_lowercase();
-        if !value.is_empty() {
-            self.headers.insert(value);
-        }
+        self.fields.insert(header_name, SensitivityLevel::High);
     }
 
     /// Inserts each header from `headers`.
@@ -68,7 +72,7 @@ impl SensitiveHttpHeaders {
 
     /// Clears all sensitive header names.
     pub fn clear(&mut self) {
-        self.headers.clear();
+        self.fields = SensitiveFields::new();
     }
 
     /// Returns the number of stored header names.
@@ -76,7 +80,7 @@ impl SensitiveHttpHeaders {
     /// # Returns
     /// Stored header count.
     pub fn len(&self) -> usize {
-        self.headers.len()
+        self.fields.len()
     }
 
     /// Returns whether no header names are stored.
@@ -84,23 +88,44 @@ impl SensitiveHttpHeaders {
     /// # Returns
     /// `true` when empty.
     pub fn is_empty(&self) -> bool {
-        self.headers.is_empty()
+        self.fields.is_empty()
     }
 
-    /// Iterates normalized header names.
+    /// Iterates canonical header names.
     ///
     /// # Returns
-    /// Iterator over lowercase header names.
+    /// Iterator over stored canonical header names.
     pub fn iter(&self) -> impl Iterator<Item = &str> {
-        self.headers.iter().map(String::as_str)
+        self.fields.iter().map(|(field, _)| field)
+    }
+
+    /// Extends this set with another header set, preserving sensitivity levels.
+    ///
+    /// # Parameters
+    /// - `other`: Source header set.
+    pub(crate) fn extend_from(&mut self, other: &Self) {
+        for (field, level) in other.fields.iter() {
+            self.fields.insert(field, level);
+        }
+    }
+
+    /// Creates a core field sanitizer from this header set.
+    ///
+    /// # Returns
+    /// Field sanitizer using shared `qubit-sanitize` masking rules.
+    pub(crate) fn field_sanitizer(&self) -> FieldSanitizer {
+        FieldSanitizer::new(FieldSanitizePolicy {
+            sensitive_fields: self.fields.clone(),
+            mask_policies: MaskPolicies::default(),
+        })
     }
 }
 
 impl Default for SensitiveHttpHeaders {
     /// Creates a set containing built-in sensitive header names.
     fn default() -> Self {
-        let mut result = SensitiveHttpHeaders::new();
-        result.extend(DEFAULT_SENSITIVE_HEADER_NAMES);
-        result
+        Self {
+            fields: SensitiveFields::default(),
+        }
     }
 }

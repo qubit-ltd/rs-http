@@ -65,7 +65,7 @@ fn test_http_logger_sanitizes_request_url_query_and_json_body() {
     let logs = capture_trace_logs(|| logger.log_request(&request));
 
     assert!(logs.contains("--> POST https://example.com/login?access_token=****"));
-    assert!(logs.contains(r#""password":"****""#));
+    assert!(logs.contains(r#""password":"<redacted>""#));
     assert!(!logs.contains("raw-token"));
     assert!(!logs.contains("secret"));
 }
@@ -88,7 +88,7 @@ fn test_http_logger_does_not_leak_multipart_body_sensitive_values() {
 
     let logs = capture_trace_logs(|| logger.log_request(&request));
 
-    assert!(logs.contains("password=****"));
+    assert!(logs.contains("password=<redacted>"));
     assert!(!logs.contains("secret-password"));
     assert!(!logs.contains("--boundary"));
 }
@@ -113,7 +113,7 @@ fn test_http_logger_does_not_leak_multipart_mixed_body_sensitive_values() {
 
     let logs = capture_trace_logs(|| logger.log_request(&request));
 
-    assert!(logs.contains("password=****"));
+    assert!(logs.contains("password=<redacted>"));
     assert!(!logs.contains("secret-password"));
     assert!(!logs.contains("--boundary"));
 }
