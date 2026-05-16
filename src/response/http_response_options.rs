@@ -14,11 +14,11 @@ use crate::constants::{
     DEFAULT_SSE_MAX_FRAME_BYTES,
     DEFAULT_SSE_MAX_LINE_BYTES,
 };
+use crate::sanitize::LogSanitizer;
 use crate::sse::{
     DoneMarkerPolicy,
     SseJsonMode,
 };
-use crate::LogSanitizer;
 
 /// Decode/error-preview options bound to one response instance.
 #[derive(Debug, Clone, PartialEq, Eq)]

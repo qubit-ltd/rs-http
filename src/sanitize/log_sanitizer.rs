@@ -136,6 +136,60 @@ impl LogSanitizer {
             .sanitize_headers(headers, LOG_NAME_MATCH_MODE)
     }
 
+    /// Returns a log-safe request body preview.
+    ///
+    /// # Parameters
+    /// - `body`: Source request body bytes.
+    /// - `limit`: Maximum preview bytes; values below 1 are clamped to 1.
+    /// - `content_type`: Optional Content-Type header used for structured redaction.
+    ///
+    /// # Returns
+    /// Sanitized request body preview with request-style truncation suffix.
+    pub fn sanitize_request_body_preview(
+        &self,
+        body: &[u8],
+        limit: usize,
+        content_type: Option<&str>,
+    ) -> String {
+        self.sanitize_body_bytes(body, limit, BodyLogContext::Request, content_type)
+    }
+
+    /// Returns a log-safe response body preview.
+    ///
+    /// # Parameters
+    /// - `body`: Source response body bytes.
+    /// - `limit`: Maximum preview bytes; values below 1 are clamped to 1.
+    /// - `content_type`: Optional Content-Type header used for structured redaction.
+    ///
+    /// # Returns
+    /// Sanitized response body preview with response-style truncation suffix.
+    pub fn sanitize_response_body_preview(
+        &self,
+        body: &[u8],
+        limit: usize,
+        content_type: Option<&str>,
+    ) -> String {
+        self.sanitize_body_bytes(body, limit, BodyLogContext::Response, content_type)
+    }
+
+    /// Returns a log-safe status-error body preview.
+    ///
+    /// # Parameters
+    /// - `body`: Source non-success response body bytes.
+    /// - `limit`: Maximum preview bytes; values below 1 are clamped to 1.
+    /// - `content_type`: Optional Content-Type header used for structured redaction.
+    ///
+    /// # Returns
+    /// Sanitized error body preview with status-error truncation suffix.
+    pub fn sanitize_error_response_body_preview(
+        &self,
+        body: &[u8],
+        limit: usize,
+        content_type: Option<&str>,
+    ) -> String {
+        self.sanitize_body_bytes(body, limit, BodyLogContext::ErrorResponse, content_type)
+    }
+
     /// Sanitizes URL-looking tokens inside a diagnostic message.
     ///
     /// # Parameters
@@ -169,7 +223,7 @@ impl LogSanitizer {
     ///
     /// # Returns
     /// Sanitized preview with context-appropriate truncation marker.
-    pub fn sanitize_body_preview(&self, preview: &BodyPreview<'_>) -> String {
+    pub(crate) fn sanitize_body_preview(&self, preview: &BodyPreview<'_>) -> String {
         let content_type = match preview.content_type {
             Some(content_type) => match HeaderValue::from_str(content_type) {
                 Ok(content_type) => Some(content_type),
@@ -184,6 +238,32 @@ impl LogSanitizer {
             LOG_NAME_MATCH_MODE,
         );
         Self::normalize_error_truncation_suffix(rendered, preview)
+    }
+
+    /// Sanitizes body bytes for one logging call site.
+    ///
+    /// # Parameters
+    /// - `body`: Source body bytes.
+    /// - `limit`: Maximum preview bytes.
+    /// - `context`: Logging call site that controls truncation wording.
+    /// - `content_type`: Optional Content-Type header used for structured redaction.
+    ///
+    /// # Returns
+    /// Sanitized body preview text.
+    fn sanitize_body_bytes(
+        &self,
+        body: &[u8],
+        limit: usize,
+        context: BodyLogContext,
+        content_type: Option<&str>,
+    ) -> String {
+        let preview = BodyPreview::new(body, limit, context);
+        let preview = if let Some(content_type) = content_type {
+            preview.with_content_type(content_type)
+        } else {
+            preview
+        };
+        self.sanitize_body_preview(&preview)
     }
 
     /// Sanitizes a single whitespace-delimited diagnostic token.

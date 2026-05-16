@@ -14,9 +14,11 @@
 
 use http::header::CONTENT_TYPE;
 
-use crate::sanitize::SanitizedLogger;
-use crate::{
+use crate::sanitize::{
     BodyLogContext,
+    SanitizedLogger,
+};
+use crate::{
     HttpClientOptions,
     HttpLoggingOptions,
     HttpRequest,

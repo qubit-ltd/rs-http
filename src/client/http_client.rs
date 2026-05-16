@@ -29,6 +29,7 @@ use qubit_retry::{
     RetryErrorReason,
 };
 
+use crate::sanitize::LogSanitizer;
 use crate::sse::SseReconnectRunner;
 use crate::{
     response::HttpResponseOptions,
@@ -351,7 +352,7 @@ impl HttpClient {
             self.options.sse_max_line_bytes,
             self.options.sse_max_frame_bytes,
             self.options.sse_done_marker_policy.clone(),
-            crate::LogSanitizer::new(self.options.log_sanitize_policy.clone()),
+            LogSanitizer::new(self.options.log_sanitize_policy.clone()),
         );
         Ok(HttpResponse::from_backend(
             meta,

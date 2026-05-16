@@ -15,8 +15,6 @@ use http::header::{
     AUTHORIZATION,
 };
 use qubit_http::{
-    BodyLogContext,
-    BodyPreview,
     LogSanitizePolicy,
     LogSanitizer,
 };
@@ -25,6 +23,56 @@ use qubit_sanitize::{
     SensitivityLevel,
 };
 use url::Url;
+
+#[derive(Clone, Copy)]
+enum BodyLogContext {
+    Request,
+    ErrorResponse,
+}
+
+struct BodyPreview<'a> {
+    bytes: &'a [u8],
+    limit: usize,
+    content_type: Option<&'a str>,
+    context: BodyLogContext,
+}
+
+impl<'a> BodyPreview<'a> {
+    fn new(bytes: &'a [u8], limit: usize, context: BodyLogContext) -> Self {
+        Self {
+            bytes,
+            limit,
+            content_type: None,
+            context,
+        }
+    }
+
+    fn with_content_type(mut self, content_type: &'a str) -> Self {
+        self.content_type = Some(content_type);
+        self
+    }
+}
+
+trait TestLogSanitizerExt {
+    fn sanitize_body_preview(&self, preview: &BodyPreview<'_>) -> String;
+}
+
+impl TestLogSanitizerExt for LogSanitizer {
+    fn sanitize_body_preview(&self, preview: &BodyPreview<'_>) -> String {
+        match preview.context {
+            BodyLogContext::Request => self.sanitize_request_body_preview(
+                preview.bytes,
+                preview.limit,
+                preview.content_type,
+            ),
+            BodyLogContext::ErrorResponse => self.sanitize_error_response_body_preview(
+                preview.bytes,
+                preview.limit,
+                preview.content_type,
+            ),
+        }
+    }
+}
 
 #[test]
 fn test_log_sanitizer_sanitize_url_masks_sensitive_query_params() {
