@@ -90,6 +90,30 @@ fn test_http_error_debug_keeps_invalid_url_like_tokens() {
 }
 
 #[test]
+fn test_http_error_debug_trims_suffix_before_rejecting_invalid_url_token() {
+    let error = HttpError::transport("failed near https://example.com/%zz).");
+
+    let debug = format!("{error:?}");
+
+    assert!(debug.contains("https://example.com/%zz)."));
+}
+
+#[test]
+fn test_http_error_debug_preserves_diagnostic_message_whitespace() {
+    let error = HttpError::transport(
+        "first line\tthen https://debug-user:debug-url-secret@example.com/path?accessToken=debug-query-secret\nsecond line",
+    );
+
+    let debug = format!("{error:?}");
+
+    assert!(debug.contains("\\tthen"));
+    assert!(debug.contains("\\nsecond line"));
+    assert!(!debug.contains("debug-user"));
+    assert!(!debug.contains("debug-url-secret"));
+    assert!(!debug.contains("debug-query-secret"));
+}
+
+#[test]
 fn test_http_error_build_client_constructor() {
     let error = HttpError::build_client("builder failed");
     assert_eq!(error.kind, HttpErrorKind::BuildClient);

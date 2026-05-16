@@ -680,6 +680,7 @@ impl HttpResponse {
         let status = self.meta.status();
         let mut preview = Vec::new();
         let mut truncated = false;
+        let capture_limit = limit.saturating_add(1);
 
         loop {
             let next = if let Some(token) = cancellation_token.as_ref() {
@@ -699,17 +700,17 @@ impl HttpResponse {
             };
             match next {
                 Ok(Ok(Some(chunk))) => {
-                    if preview.len() >= limit {
-                        truncated = true;
-                        break;
-                    }
-                    let remaining = limit - preview.len();
+                    let remaining = capture_limit.saturating_sub(preview.len());
                     if chunk.len() > remaining {
                         preview.extend_from_slice(&chunk[..remaining]);
                         truncated = true;
                         break;
                     }
                     preview.extend_from_slice(&chunk);
+                    if preview.len() > limit {
+                        truncated = true;
+                        break;
+                    }
                 }
                 Ok(Ok(None)) => break,
                 Ok(Err(error)) => {
@@ -727,9 +728,14 @@ impl HttpResponse {
                 }
             }
         }
+        let source_len = preview.len();
+        if preview.len() > limit {
+            preview.truncate(limit);
+            truncated = true;
+        }
         Ok(Self::render_error_body_preview(
             &preview,
-            preview.len(),
+            source_len,
             truncated,
             content_type.as_deref(),
             &self.options.log_sanitizer,

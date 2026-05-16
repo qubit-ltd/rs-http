@@ -36,6 +36,7 @@ use qubit_http::{
     HttpError,
     HttpErrorKind,
     HttpHeaderInjector,
+    HttpResponseInterceptor,
     HttpRetryMethodPolicy,
     RetryDelay,
 };
@@ -660,6 +661,87 @@ async fn test_execute_non_success_error_body_preview_is_truncated_by_limit() {
         error.response_body_preview.as_deref(),
         Some("<redacted: unsupported HTTP body>...<truncated>")
     );
+}
+
+#[tokio::test]
+async fn test_execute_non_success_error_body_preview_is_not_truncated_at_exact_limit() {
+    let body = "abcdefgh";
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 500,
+        headers: vec![],
+        body: body.as_bytes().to_vec(),
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.error_response_preview_limit = body.len();
+
+    let client = HttpClientFactory::new().create(options).unwrap();
+    let request = client
+        .request(Method::GET, "/status-exact-preview-limit")
+        .build();
+    let error = client.execute(request).await.unwrap_err();
+
+    assert_eq!(error.kind, HttpErrorKind::Status);
+    assert_eq!(
+        error.response_body_preview.as_deref(),
+        Some("<redacted: unsupported HTTP body>")
+    );
+}
+
+#[tokio::test]
+async fn test_execute_response_metadata_debug_uses_custom_log_policy() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 200,
+        headers: vec![(
+            "x-tenant-secret".to_string(),
+            "custom-header-secret".to_string(),
+        )],
+        body: b"ok".to_vec(),
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options
+        .log_sanitize_policy
+        .sensitive_headers
+        .insert("x-tenant-secret");
+    options
+        .log_sanitize_policy
+        .sensitive_query_params
+        .insert("tenant_marker");
+
+    let captured_context_debug = Arc::new(Mutex::new(None));
+    let captured_context_debug_for_interceptor = Arc::clone(&captured_context_debug);
+    let mut client = HttpClientFactory::new().create(options).unwrap();
+    client.add_response_interceptor(HttpResponseInterceptor::new(move |context| {
+        *captured_context_debug_for_interceptor
+            .lock()
+            .expect("lock captured context debug") = Some(format!("{context:?}"));
+        Ok(())
+    }));
+
+    let request = client
+        .request(
+            Method::GET,
+            "/status-custom-policy?tenant_marker=custom-query-secret",
+        )
+        .build();
+    let response = client.execute(request).await.unwrap();
+    let meta_debug = format!("{:?}", response.meta());
+    let context_debug = captured_context_debug
+        .lock()
+        .expect("lock captured context debug for assertion")
+        .clone()
+        .expect("response interceptor should capture debug output");
+
+    for debug in [&meta_debug, &context_debug] {
+        assert!(!debug.contains("custom-header-secret"));
+        assert!(!debug.contains("custom-query-secret"));
+        assert!(debug.contains("****"));
+    }
 }
 
 #[tokio::test]

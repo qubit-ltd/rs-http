@@ -12,6 +12,7 @@ use qubit_sanitize::{
     FieldSanitizePolicy,
     FieldSanitizer,
     MaskPolicies,
+    NameMatchMode,
     SensitiveFields,
     SensitivityLevel,
 };
@@ -39,13 +40,18 @@ impl SensitiveHttpHeaders {
 
     /// Returns whether `header_name` is treated as sensitive.
     ///
+    /// Matching follows log sanitization semantics: exact canonical names and
+    /// contextual suffixes are both accepted.
+    ///
     /// # Parameters
     /// - `header_name`: Header name to test.
     ///
     /// # Returns
     /// `true` if values for this header should be masked.
     pub fn contains(&self, header_name: &str) -> bool {
-        self.fields.contains(header_name)
+        self.field_sanitizer()
+            .sensitivity_for_name(header_name, NameMatchMode::ExactOrSuffix)
+            .is_some()
     }
 
     /// Inserts one header name after canonicalizing it.

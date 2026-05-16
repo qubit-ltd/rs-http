@@ -12,6 +12,7 @@ use qubit_sanitize::{
     FieldSanitizePolicy,
     FieldSanitizer,
     MaskPolicies,
+    NameMatchMode,
     SensitiveFields,
     SensitivityLevel,
 };
@@ -39,13 +40,18 @@ impl SensitiveBodyFields {
 
     /// Returns whether `name` is sensitive.
     ///
+    /// Matching follows log sanitization semantics: exact canonical names and
+    /// contextual suffixes are both accepted.
+    ///
     /// # Parameters
     /// - `name`: Structured body field name.
     ///
     /// # Returns
     /// `true` if the field value should be masked.
     pub fn contains(&self, name: &str) -> bool {
-        self.fields.contains(name)
+        self.field_sanitizer()
+            .sensitivity_for_name(name, NameMatchMode::ExactOrSuffix)
+            .is_some()
     }
 
     /// Inserts one field name.

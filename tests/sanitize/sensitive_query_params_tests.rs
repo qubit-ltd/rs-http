@@ -32,6 +32,16 @@ fn test_sensitive_query_params_canonicalizes_common_name_styles() {
 }
 
 #[test]
+fn test_sensitive_query_params_contains_uses_suffix_matching() {
+    let mut params = SensitiveQueryParams::default();
+    params.insert("tenant-marker");
+
+    assert!(params.contains("openai_access_token"));
+    assert!(params.contains("tenant_marker"));
+    assert!(params.contains("request_tenant_marker"));
+}
+
+#[test]
 fn test_sensitive_query_params_extend_clear_and_ignore_blank() {
     let mut params = SensitiveQueryParams::new();
 

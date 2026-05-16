@@ -32,6 +32,16 @@ fn test_sensitive_body_fields_canonicalizes_common_name_styles() {
 }
 
 #[test]
+fn test_sensitive_body_fields_contains_uses_suffix_matching() {
+    let mut fields = SensitiveBodyFields::default();
+    fields.insert("tenant-marker");
+
+    assert!(fields.contains("payload_client_secret"));
+    assert!(fields.contains("tenant_marker"));
+    assert!(fields.contains("request_tenant_marker"));
+}
+
+#[test]
 fn test_sensitive_body_fields_extend_clear_and_ignore_blank() {
     let mut fields = SensitiveBodyFields::new();
 

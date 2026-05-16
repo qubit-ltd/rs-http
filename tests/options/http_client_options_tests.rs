@@ -455,7 +455,8 @@ fn test_http_client_options_root_sensitive_headers_is_not_supported() {
     assert!(!opts
         .log_sanitize_policy
         .sensitive_headers
-        .contains("x-legacy-secret"));
+        .iter()
+        .any(|header| header == "xlegacysecret"));
 }
 
 #[test]

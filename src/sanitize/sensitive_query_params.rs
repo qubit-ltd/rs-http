@@ -12,6 +12,7 @@ use qubit_sanitize::{
     FieldSanitizePolicy,
     FieldSanitizer,
     MaskPolicies,
+    NameMatchMode,
     SensitiveFields,
     SensitivityLevel,
 };
@@ -39,13 +40,18 @@ impl SensitiveQueryParams {
 
     /// Returns whether `name` is sensitive.
     ///
+    /// Matching follows log sanitization semantics: exact canonical names and
+    /// contextual suffixes are both accepted.
+    ///
     /// # Parameters
     /// - `name`: Query parameter name.
     ///
     /// # Returns
     /// `true` if the value should be masked in logged URLs.
     pub fn contains(&self, name: &str) -> bool {
-        self.fields.contains(name)
+        self.field_sanitizer()
+            .sensitivity_for_name(name, NameMatchMode::ExactOrSuffix)
+            .is_some()
     }
 
     /// Inserts one query parameter name.

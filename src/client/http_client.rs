@@ -343,7 +343,8 @@ impl HttpClient {
             backend_response.headers().clone(),
             backend_response.url().clone(),
             request.method().clone(),
-        );
+        )
+        .with_log_sanitize_policy(self.options.log_sanitize_policy.clone());
         let response_options = HttpResponseOptions::new(
             self.options.error_response_preview_limit,
             self.options.sse_json_mode,

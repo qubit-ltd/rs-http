@@ -137,10 +137,22 @@ impl LogSanitizer {
     /// # Returns
     /// Message with parseable URLs sanitized.
     pub(crate) fn sanitize_diagnostic_text(&self, text: &str) -> String {
-        text.split_whitespace()
-            .map(|token| self.sanitize_diagnostic_token(token))
-            .collect::<Vec<_>>()
-            .join(" ")
+        let mut sanitized = String::with_capacity(text.len());
+        let mut token_start = None;
+        for (index, ch) in text.char_indices() {
+            if ch.is_whitespace() {
+                if let Some(start) = token_start.take() {
+                    sanitized.push_str(&self.sanitize_diagnostic_token(&text[start..index]));
+                }
+                sanitized.push(ch);
+            } else if token_start.is_none() {
+                token_start = Some(index);
+            }
+        }
+        if let Some(start) = token_start {
+            sanitized.push_str(&self.sanitize_diagnostic_token(&text[start..]));
+        }
+        sanitized
     }
 
     /// Returns a log-safe preview string for body bytes.
@@ -186,9 +198,8 @@ impl LogSanitizer {
                 let suffix = &token[candidate_end..];
                 return format!("{prefix}{}{suffix}", self.sanitize_url(&url));
             }
-            let Some((previous, ch)) = previous_char_boundary(token, candidate_end) else {
-                return token.to_string();
-            };
+            let (previous, ch) = previous_char_boundary(token, candidate_end)
+                .expect("candidate end is always after URL scheme start");
             if previous <= scheme_start || !is_trimmable_url_suffix(ch) {
                 return token.to_string();
             }
@@ -227,11 +238,10 @@ impl LogSanitizer {
             "...<truncated {} bytes>",
             preview.source_len().saturating_sub(preview.prefix().len())
         );
-        let normalized = rendered.replace(&counted, "...<truncated>");
-        if normalized == rendered {
-            format!("{rendered}...<truncated>")
+        if let Some(prefix) = rendered.strip_suffix(&counted) {
+            format!("{prefix}{}", preview.truncation_suffix())
         } else {
-            normalized
+            format!("{rendered}{}", preview.truncation_suffix())
         }
     }
 }
