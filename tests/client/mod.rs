@@ -9,4 +9,6 @@
  ******************************************************************************/
 mod http_client_factory_tests;
 mod http_client_tests;
+mod http_logger_masking_tests;
+mod http_logger_policy_tests;
 mod http_logger_tests;

@@ -15,10 +15,11 @@ use http::{
 };
 use url::Url;
 
-use crate::{
+use crate::HttpClientOptions;
+
+use super::{
     BodyLogContext,
     BodyPreview,
-    HttpClientOptions,
     LogSanitizePolicy,
     LogSanitizer,
 };
