@@ -17,6 +17,11 @@ use qubit_sanitize::{
     SensitivityLevel,
 };
 
+use super::{
+    default_sensitive_names::default_sensitive_fields,
+    DEFAULT_SENSITIVE_QUERY_PARAM_NAMES,
+};
+
 /// Set of query parameter names whose values should be masked.
 ///
 /// Names use the same canonical field-name rules as `qubit-sanitize`, so
@@ -131,7 +136,7 @@ impl Default for SensitiveQueryParams {
     /// Creates a set containing common token-like query parameter names.
     fn default() -> Self {
         Self {
-            fields: SensitiveFields::default(),
+            fields: default_sensitive_fields(DEFAULT_SENSITIVE_QUERY_PARAM_NAMES),
         }
     }
 }

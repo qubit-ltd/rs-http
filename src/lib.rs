@@ -87,5 +87,8 @@ pub use sanitize::{
     SensitiveBodyFields,
     SensitiveHttpHeaders,
     SensitiveQueryParams,
+    DEFAULT_SENSITIVE_BODY_FIELD_NAMES,
+    DEFAULT_SENSITIVE_HEADER_NAMES,
+    DEFAULT_SENSITIVE_QUERY_PARAM_NAMES,
 };
 pub use tokio_util::sync::CancellationToken;

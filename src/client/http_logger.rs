@@ -16,15 +16,15 @@ use http::header::CONTENT_TYPE;
 
 use crate::{
     BodyLogContext,
-    BodyPreview,
     HttpClientOptions,
     HttpLoggingOptions,
     HttpRequest,
     HttpRequestBody,
     HttpResponse,
     HttpResponseMeta,
-    LogSanitizer,
 };
+
+use super::sanitized_logger::SanitizedLogger;
 
 const UNRESOLVED_REQUEST_URL: &str = "<unresolved request URL>";
 const STREAMING_REQUEST_BODY_SKIPPED: &str = "<skipped: streaming request body>";
@@ -33,7 +33,7 @@ const STREAMING_REQUEST_BODY_SKIPPED: &str = "<skipped: streaming request body>"
 #[derive(Debug, Clone)]
 pub struct HttpLogger<'a> {
     options: &'a HttpLoggingOptions,
-    sanitizer: LogSanitizer,
+    sanitized_logger: SanitizedLogger,
 }
 
 /// Request body preview category used by TRACE logging.
@@ -58,7 +58,7 @@ impl<'a> HttpLogger<'a> {
     pub fn new(options: &'a HttpClientOptions) -> Self {
         Self {
             options: &options.logging,
-            sanitizer: LogSanitizer::new(options.log_sanitize_policy.clone()),
+            sanitized_logger: SanitizedLogger::from_options(options),
         }
     }
 
@@ -84,7 +84,7 @@ impl<'a> HttpLogger<'a> {
 
         if self.options.log_request_header {
             for (name, value) in headers {
-                let masked = self.sanitizer.sanitize_header_value(name, value);
+                let masked = self.sanitized_logger.header_value(name, value);
                 tracing::trace!("{}: {}", name.as_str(), masked);
             }
         }
@@ -95,7 +95,8 @@ impl<'a> HttpLogger<'a> {
                     let content_type = Self::content_type(headers);
                     tracing::trace!(
                         "Request body: {}",
-                        self.render_body(bytes, BodyLogContext::Request, content_type)
+                        self.sanitized_logger
+                            .body(bytes, BodyLogContext::Request, content_type)
                     );
                 }
                 RequestBodyLogPreview::Empty => tracing::trace!("Request body: <empty>"),
@@ -122,12 +123,12 @@ impl<'a> HttpLogger<'a> {
         tracing::trace!(
             "<-- {} {}",
             response.status().as_u16(),
-            self.sanitizer.sanitize_url(response.url())
+            self.sanitized_logger.url(response.url())
         );
 
         if self.options.log_response_header {
             for (name, value) in response.headers() {
-                let masked = self.sanitizer.sanitize_header_value(name, value);
+                let masked = self.sanitized_logger.header_value(name, value);
                 tracing::trace!("{}: {}", name.as_str(), masked);
             }
         }
@@ -137,7 +138,7 @@ impl<'a> HttpLogger<'a> {
             if let Some(body) = response.buffered_body_for_logging() {
                 tracing::trace!(
                     "Response body: {}",
-                    self.render_body(
+                    self.sanitized_logger.body(
                         body.as_ref(),
                         BodyLogContext::Response,
                         content_type.as_deref()
@@ -147,7 +148,7 @@ impl<'a> HttpLogger<'a> {
                 let body = response.bytes().await?;
                 tracing::trace!(
                     "Response body: {}",
-                    self.render_body(
+                    self.sanitized_logger.body(
                         body.as_ref(),
                         BodyLogContext::Response,
                         content_type.as_deref()
@@ -175,12 +176,12 @@ impl<'a> HttpLogger<'a> {
         tracing::trace!(
             "<-- {} {} (stream)",
             response_meta.status().as_u16(),
-            self.sanitizer.sanitize_url(response_meta.url())
+            self.sanitized_logger.url(response_meta.url())
         );
 
         if self.options.log_response_header {
             for (name, value) in response_meta.headers() {
-                let masked = self.sanitizer.sanitize_header_value(name, value);
+                let masked = self.sanitized_logger.header_value(name, value);
                 tracing::trace!("{}: {}", name.as_str(), masked);
             }
         }
@@ -205,32 +206,8 @@ impl<'a> HttpLogger<'a> {
     fn request_log_url(&self, request: &HttpRequest) -> String {
         request
             .resolved_url()
-            .map(|url| self.sanitizer.sanitize_url(&url))
+            .map(|url| self.sanitized_logger.url(&url))
             .unwrap_or_else(|_| UNRESOLVED_REQUEST_URL.to_string())
-    }
-
-    /// Formats up to configured `body_size_limit` bytes of `body` for TRACE output.
-    ///
-    /// # Parameters
-    /// - `body`: Raw bytes.
-    /// - `context`: Body logging call site.
-    /// - `content_type`: Optional Content-Type value.
-    ///
-    /// # Returns
-    /// Human-readable sanitized body preview string.
-    fn render_body(
-        &self,
-        body: &[u8],
-        context: BodyLogContext,
-        content_type: Option<&str>,
-    ) -> String {
-        let preview = BodyPreview::new(body, self.options.body_size_limit, context);
-        let preview = if let Some(content_type) = content_type {
-            preview.with_content_type(content_type)
-        } else {
-            preview
-        };
-        self.sanitizer.sanitize_body_preview(&preview)
     }
 
     /// Borrows request body content only when body logging is safe.

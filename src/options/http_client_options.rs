@@ -36,7 +36,7 @@ use crate::{
     request::parse_header,
     sanitize::{
         LogSanitizePolicy,
-        LogSanitizer,
+        SanitizedDebugger,
     },
     sse::{
         DoneMarkerPolicy,
@@ -120,18 +120,12 @@ impl Default for HttpClientOptions {
 
 impl fmt::Debug for HttpClientOptions {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let sanitizer = LogSanitizer::for_debug(&self.log_sanitize_policy);
-        let base_url = self
-            .base_url
-            .as_ref()
-            .map(|url| sanitizer.sanitize_url(url));
+        let debugger = SanitizedDebugger::new(&self.log_sanitize_policy);
+        let base_url = debugger.optional_url(self.base_url.as_ref());
         formatter
             .debug_struct("HttpClientOptions")
             .field("base_url", &base_url)
-            .field(
-                "default_headers",
-                &sanitizer.sanitize_header_map(&self.default_headers),
-            )
+            .field("default_headers", &debugger.headers(&self.default_headers))
             .field("timeouts", &self.timeouts)
             .field("proxy", &self.proxy)
             .field("logging", &self.logging)

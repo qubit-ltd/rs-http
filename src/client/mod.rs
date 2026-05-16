@@ -12,6 +12,7 @@
 mod http_client;
 mod http_client_factory;
 pub mod http_logger;
+mod sanitized_logger;
 
 pub use http_client::HttpClient;
 pub use http_client_factory::HttpClientFactory;

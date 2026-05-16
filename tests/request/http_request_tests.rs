@@ -241,7 +241,7 @@ fn test_http_request_timeout_setters_reject_zero_and_keep_previous_values() {
 }
 
 #[test]
-fn test_http_request_setters_refresh_resolved_url_cache_for_base_url_and_ipv4_only() {
+fn test_http_request_setters_update_resolved_url_for_base_url_and_ipv4_only() {
     let mut options = HttpClientOptions::default();
     options
         .set_base_url("https://api.example.com/v1/")
@@ -253,32 +253,44 @@ fn test_http_request_setters_refresh_resolved_url_cache_for_base_url_and_ipv4_on
     let mut request = client.request(Method::GET, "users").build();
 
     assert_eq!(
-        request.resolved_url_cached().as_ref().map(Url::as_str),
-        Some("https://api.example.com/v1/users")
+        request
+            .resolved_url()
+            .expect("request URL should resolve")
+            .as_str(),
+        "https://api.example.com/v1/users"
     );
 
     request.set_path("orders");
     assert_eq!(
-        request.resolved_url_cached().as_ref().map(Url::as_str),
-        Some("https://api.example.com/v1/orders")
+        request
+            .resolved_url()
+            .expect("request URL should resolve after path change")
+            .as_str(),
+        "https://api.example.com/v1/orders"
     );
 
     request.clear_base_url();
-    assert!(request.resolved_url_cached().is_none());
+    assert!(request.resolved_url().is_err());
 
     request.set_base_url(Url::parse("https://api.example.com/v2/").unwrap());
     assert_eq!(
-        request.resolved_url_cached().as_ref().map(Url::as_str),
-        Some("https://api.example.com/v2/orders")
+        request
+            .resolved_url()
+            .expect("request URL should resolve after base URL change")
+            .as_str(),
+        "https://api.example.com/v2/orders"
     );
 
     request.set_ipv4_only(true).set_path("http://[::1]/ipv6");
-    assert!(request.resolved_url_cached().is_none());
+    assert!(request.resolved_url().is_err());
 
     request.set_ipv4_only(false);
     assert_eq!(
-        request.resolved_url_cached().as_ref().map(Url::as_str),
-        Some("http://[::1]/ipv6")
+        request
+            .resolved_url()
+            .expect("IPv6 URL should resolve after ipv4_only is disabled")
+            .as_str(),
+        "http://[::1]/ipv6"
     );
 }
 

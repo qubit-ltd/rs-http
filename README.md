@@ -67,15 +67,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Logging Sanitization
 
-HTTP TRACE logs are sanitized before they are emitted. The default policy is
-backed by `qubit-sanitize`, so URL userinfo/fragments, sensitive headers,
-query parameters, and JSON/form/multipart body fields share the same field
-matching and mask levels. Unsupported bodies without a structured or textual
-`Content-Type` are redacted instead of being logged raw. Multipart file parts
-and malformed, missing-boundary, or truncated multipart bodies are redacted as
-well. You can extend the policy when a service uses custom secret names. Names
-are matched case-insensitively across common styles such as `access_token`,
-`access-token`, and `accessToken`:
+HTTP TRACE logs are sanitized before they are emitted. The default policy masks
+URL userinfo/fragments, sensitive headers, query parameters, and
+JSON/form/multipart body fields with shared field matching and mask levels.
+The built-in name sets are exported as `DEFAULT_SENSITIVE_HEADER_NAMES`,
+`DEFAULT_SENSITIVE_QUERY_PARAM_NAMES`, and `DEFAULT_SENSITIVE_BODY_FIELD_NAMES`
+from both `qubit_http` and `qubit_http::constants`. Unsupported bodies without
+a structured or textual `Content-Type` are redacted instead of being logged raw.
+Multipart file parts and malformed, missing-boundary, or truncated multipart
+bodies are redacted as well. You can extend the policy when a service uses
+custom secret names. Names are matched case-insensitively across common styles
+such as `access_token`, `access-token`, and `accessToken`:
 
 ```rust
 use qubit_http::{HttpClientFactory, HttpClientOptions};

@@ -124,25 +124,28 @@ pub(crate) fn has_parameter_name(value: &str, parameter_name: &str) -> Option<bo
 /// - `byte`: ASCII byte to validate.
 ///
 /// # Returns
-/// `true` for alphanumeric bytes and conservative RFC-compatible punctuation.
+/// `true` for alphanumeric bytes and HTTP token-safe punctuation.
 fn is_valid_multipart_boundary_byte(byte: u8) -> bool {
     matches!(
         byte,
         b'0'..=b'9'
             | b'A'..=b'Z'
             | b'a'..=b'z'
+            | b'!'
+            | b'#'
+            | b'$'
+            | b'%'
+            | b'&'
             | b'\''
-            | b'('
-            | b')'
+            | b'*'
             | b'+'
-            | b'_'
-            | b','
             | b'-'
             | b'.'
-            | b'/'
-            | b':'
-            | b'='
-            | b'?'
+            | b'^'
+            | b'_'
+            | b'`'
+            | b'|'
+            | b'~'
     )
 }
 
