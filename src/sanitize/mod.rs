@@ -14,9 +14,11 @@ mod body_preview;
 mod log_sanitize_policy;
 mod log_sanitizer;
 mod sanitized_debugger;
+mod sanitized_logger;
 
 pub use body_log_context::BodyLogContext;
 pub use body_preview::BodyPreview;
 pub use log_sanitize_policy::LogSanitizePolicy;
 pub use log_sanitizer::LogSanitizer;
 pub(crate) use sanitized_debugger::SanitizedDebugger;
+pub(crate) use sanitized_logger::SanitizedLogger;

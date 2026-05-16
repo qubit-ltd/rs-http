@@ -22,7 +22,6 @@ mod common;
 mod error;
 mod factory;
 mod http_client;
-mod logging;
 mod options;
 mod proxy;
 mod request;

@@ -14,6 +14,7 @@
 
 use http::header::CONTENT_TYPE;
 
+use crate::sanitize::SanitizedLogger;
 use crate::{
     BodyLogContext,
     HttpClientOptions,
@@ -23,8 +24,6 @@ use crate::{
     HttpResponse,
     HttpResponseMeta,
 };
-
-use super::sanitized_logger::SanitizedLogger;
 
 const UNRESOLVED_REQUEST_URL: &str = "<unresolved request URL>";
 const STREAMING_REQUEST_BODY_SKIPPED: &str = "<skipped: streaming request body>";
