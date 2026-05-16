@@ -40,7 +40,12 @@ use crate::error::{
     backend_error_mapper::map_reqwest_error,
     ReqwestErrorPhase,
 };
-use crate::sanitize::SanitizedDebugger;
+use crate::sanitize::{
+    BodyLogContext,
+    BodyPreview,
+    LogSanitizer,
+    SanitizedDebugger,
+};
 use crate::sse::{
     DoneMarkerPolicy,
     SseChunkStream,
@@ -48,13 +53,10 @@ use crate::sse::{
     SseMessageStream,
 };
 use crate::{
-    BodyLogContext,
-    BodyPreview,
     HttpByteStream,
     HttpError,
     HttpErrorKind,
     HttpResult,
-    LogSanitizer,
 };
 
 use super::{
@@ -790,7 +792,7 @@ impl HttpResponse {
         source_len: usize,
         truncated: bool,
         content_type: Option<&str>,
-        log_sanitizer: &crate::LogSanitizer,
+        log_sanitizer: &LogSanitizer,
     ) -> String {
         let preview = BodyPreview::from_limited_bytes(
             bytes,

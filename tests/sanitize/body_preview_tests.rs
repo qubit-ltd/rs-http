@@ -8,19 +8,14 @@
  *
  ******************************************************************************/
 
-use qubit_http::{
-    BodyLogContext,
-    BodyPreview,
-    LogSanitizer,
-};
+use qubit_http::LogSanitizer;
 
 #[test]
 fn test_body_preview_new_clamps_zero_limit() {
     let sanitizer = LogSanitizer::default();
-    let preview = BodyPreview::new(b"abc", 0, BodyLogContext::Request);
 
     assert_eq!(
-        sanitizer.sanitize_body_preview(&preview),
+        sanitizer.sanitize_request_body_preview(b"abc", 0, None),
         "<redacted: unsupported HTTP body>...<truncated 2 bytes>"
     );
 }
@@ -28,15 +23,10 @@ fn test_body_preview_new_clamps_zero_limit() {
 #[test]
 fn test_body_preview_with_content_type_enables_structured_redaction() {
     let sanitizer = LogSanitizer::default();
-    let preview = BodyPreview::new(
-        br#"{"token":"secret","name":"alice"}"#,
-        1024,
-        BodyLogContext::Request,
-    )
-    .with_content_type("application/json");
+    let body = br#"{"token":"secret","name":"alice"}"#;
 
     assert_eq!(
-        sanitizer.sanitize_body_preview(&preview),
+        sanitizer.sanitize_request_body_preview(body, 1024, Some("application/json"),),
         r#"{"name":"alice","token":"****"}"#
     );
 }
@@ -44,11 +34,9 @@ fn test_body_preview_with_content_type_enables_structured_redaction() {
 #[test]
 fn test_body_preview_invalid_content_type_keeps_empty_truncation_suffix_when_complete() {
     let sanitizer = LogSanitizer::default();
-    let preview =
-        BodyPreview::new(b"secret", 1024, BodyLogContext::Request).with_content_type("bad\nvalue");
 
     assert_eq!(
-        sanitizer.sanitize_body_preview(&preview),
+        sanitizer.sanitize_request_body_preview(b"secret", 1024, Some("bad\nvalue")),
         "<redacted: invalid content type body>"
     );
 }
@@ -56,11 +44,9 @@ fn test_body_preview_invalid_content_type_keeps_empty_truncation_suffix_when_com
 #[test]
 fn test_body_preview_invalid_content_type_uses_response_truncation_suffix() {
     let sanitizer = LogSanitizer::default();
-    let preview =
-        BodyPreview::new(b"secret", 2, BodyLogContext::Response).with_content_type("bad\nvalue");
 
     assert_eq!(
-        sanitizer.sanitize_body_preview(&preview),
+        sanitizer.sanitize_response_body_preview(b"secret", 2, Some("bad\nvalue")),
         "<redacted: invalid content type body>...<truncated 4 bytes>"
     );
 }
@@ -68,11 +54,9 @@ fn test_body_preview_invalid_content_type_uses_response_truncation_suffix() {
 #[test]
 fn test_body_preview_invalid_content_type_uses_error_response_truncation_suffix() {
     let sanitizer = LogSanitizer::default();
-    let preview = BodyPreview::new(b"secret", 2, BodyLogContext::ErrorResponse)
-        .with_content_type("bad\nvalue");
 
     assert_eq!(
-        sanitizer.sanitize_body_preview(&preview),
+        sanitizer.sanitize_error_response_body_preview(b"secret", 2, Some("bad\nvalue")),
         "<redacted: invalid content type body>...<truncated>"
     );
 }

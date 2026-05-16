@@ -80,8 +80,6 @@ pub use response::{
     HttpResponseMeta,
 };
 pub use sanitize::{
-    BodyLogContext,
-    BodyPreview,
     LogSanitizePolicy,
     LogSanitizer,
 };

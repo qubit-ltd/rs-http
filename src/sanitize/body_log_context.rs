@@ -10,7 +10,7 @@
 
 /// Body logging call site used to render truncation markers consistently.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BodyLogContext {
+pub(crate) enum BodyLogContext {
     /// Request body TRACE preview.
     Request,
     /// Response body TRACE preview.

@@ -8,7 +8,6 @@
  *
  ******************************************************************************/
 
-mod body_log_context_tests;
 mod body_preview_tests;
 mod log_sanitize_policy_tests;
 mod log_sanitizer_tests;

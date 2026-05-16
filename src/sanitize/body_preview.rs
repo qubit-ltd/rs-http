@@ -12,7 +12,7 @@ use super::BodyLogContext;
 
 /// Bounded body bytes plus enough context to render a log-safe preview.
 #[derive(Debug, Clone, Copy)]
-pub struct BodyPreview<'a> {
+pub(crate) struct BodyPreview<'a> {
     /// Full body bytes, or an already bounded prefix when `truncated` is set.
     pub(crate) bytes: &'a [u8],
     /// Maximum bytes allowed in the rendered preview.
@@ -37,7 +37,7 @@ impl<'a> BodyPreview<'a> {
     ///
     /// # Returns
     /// Preview descriptor borrowing `bytes`.
-    pub fn new(bytes: &'a [u8], limit: usize, context: BodyLogContext) -> Self {
+    pub(crate) fn new(bytes: &'a [u8], limit: usize, context: BodyLogContext) -> Self {
         Self {
             bytes,
             limit: limit.max(1),
@@ -81,7 +81,7 @@ impl<'a> BodyPreview<'a> {
     ///
     /// # Returns
     /// Updated preview descriptor.
-    pub fn with_content_type(mut self, content_type: &'a str) -> Self {
+    pub(crate) fn with_content_type(mut self, content_type: &'a str) -> Self {
         self.content_type = Some(content_type);
         self
     }
