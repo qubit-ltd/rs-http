@@ -23,7 +23,7 @@ fn test_sensitive_http_headers_deduplicates_trimmed_case_insensitive_names() {
     assert!(headers.contains("x-secret"));
     assert_eq!(
         headers.iter().collect::<Vec<_>>(),
-        vec!["authorization", "x-secret"]
+        vec!["authorization", "xsecret"]
     );
 }
 
@@ -66,7 +66,7 @@ fn test_sensitive_http_headers_iter_returns_normalized_names() {
     headers.insert("X-Custom");
 
     let names: Vec<_> = headers.iter().collect();
-    assert_eq!(names, vec!["content-type", "x-custom"]);
+    assert_eq!(names, vec!["contenttype", "xcustom"]);
 }
 
 #[test]

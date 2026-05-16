@@ -77,7 +77,7 @@ fn test_mask_header_value_sensitive_exactly_four_chars() {
 #[test]
 fn test_mask_header_value_sensitive_long_value() {
     let logs = capture_request_header_logs(AUTHORIZATION, HeaderValue::from_static("abcdefghijk"));
-    assert!(logs.contains("authorization: ab****jk"));
+    assert!(logs.contains("authorization: ****"));
 }
 
 #[test]
@@ -86,7 +86,7 @@ fn test_mask_header_value_sensitive_case_insensitive() {
         HeaderName::from_static("x-api-key"),
         HeaderValue::from_static("1234567890"),
     );
-    assert!(logs.contains("x-api-key: 12****90"));
+    assert!(logs.contains("x-api-key: ****"));
 }
 
 #[test]

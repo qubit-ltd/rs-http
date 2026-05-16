@@ -568,13 +568,11 @@ HTTP 日志使用 `tracing::trace!`。必须同时满足：
 1. `options.logging.enabled = true`。
 2. 当前 tracing subscriber 开启 TRACE 级别。
 
-可分别控制请求头、请求体、响应头、响应体。body 只记录前 `logging.body_size_limit` 字节，超出部分显示截断提示；二进制体显示为 `<binary N bytes>`。请求体日志只预览已缓冲的 body 变体（`bytes_body`、`text_body`、`json_body`、`form_body`、`multipart_body`、`ndjson_body`）；`stream_body` 和 `streaming_body` 会记录为 `<skipped: streaming request body>`，因为 logger 不会消费上传流。
+可分别控制请求头、请求体、响应头、响应体。body 只记录前 `logging.body_size_limit` 字节，超出部分显示截断提示；二进制体显示为 `<binary N bytes>`。没有结构化或文本 `Content-Type` 的 unsupported body 会显示为 `<redacted: unsupported HTTP body>`，不会直接打印原始内容。请求体日志只预览已缓冲的 body 变体（`bytes_body`、`text_body`、`json_body`、`form_body`、`multipart_body`、`ndjson_body`）；`stream_body` 和 `streaming_body` 会记录为 `<skipped: streaming request body>`，因为 logger 不会消费上传流。
 
-日志统一经过 `LogSanitizer` 和 `LogSanitizePolicy` 脱敏。敏感 header 会被掩码；URL username、password、fragment 和敏感 query 参数会被掩码；JSON/form/multipart body 字段如果命中策略中的敏感名称，会被替换为 `****`。multipart 脱敏适用于所有 `multipart/*` 媒体类型。multipart 文件 part 会显示为 `<redacted: file part>`；格式异常、缺少 boundary 或已截断的 multipart body 会显示为 `<redacted: multipart body>`，避免原始上传字节泄露到日志。短 header 值整体显示为 `****`；长 header 值保留前后各 2 个字符，中间替换为 `****`。
+日志统一经过 `LogSanitizer` 和 `LogSanitizePolicy` 脱敏，底层复用 `qubit-sanitize` 的 URL、header 和 HTTP body 适配器。URL username、password、fragment 和敏感 query 参数会被掩码；JSON/form/multipart body 字段如果命中策略中的敏感名称，也会被掩码。具体 mask 字符串遵循 `qubit-sanitize` 的敏感级别：token/header 类字段通常显示为 `****`，`password`、`client_secret` 这类 secret 字段显示为 `<redacted>`。multipart 脱敏适用于所有 `multipart/*` 媒体类型。multipart 文件 part 会显示为 `<redacted: file part>`；格式异常、缺少 boundary 或已截断的 multipart body 会显示为 `<redacted: multipart body>`，避免原始上传字节泄露到日志。
 
-内置默认敏感 header 包括 `Authorization`、`Proxy-Authorization`、`Api-Key`、`X-Api-Key`、`Bearer`、`Cookie`、`Set-Cookie`、`Secret-Key`、`Client-Secret`、`Access-Token`、`Refresh-Token`、`Private-Token`、`Session-Token`、`JWT-Token`、`Password`、`X-Auth-Password`、`X-Client-ID`、`X-Client-Secret`、`X-Auth-Token`、`X-Auth-App-Token` 和 `X-Auth-User-Token`。默认敏感 query 参数包括 `access_token`、`api_key`、`client_secret`、`id_token`、`password`、`refresh_token`、`secret` 和 `token`。默认敏感 body 字段与 query 参数相同，并额外包含 `authorization`。
-
-header 名称按大小写不敏感匹配。query 参数和 body 字段会先 trim、转小写，并忽略 `_` 与 `-`，因此 `access_token`、`access-token` 和 `accessToken` 会命中同一个默认项。`log_sanitize.*` 下的配置项会扩展默认集合；代码里也可以直接调整 `options.log_sanitize_policy`，如果确实要使用完全自定义集合，可以先对对应集合调用 `clear()`。
+默认敏感名称来自 `qubit-sanitize` 的 credentials、auth tokens、HTTP auth/cookie、session 和少量额外运维 secret 预设。匹配时会 trim、转小写、移除 `_`、`-`、`.`、空格等常见分隔符，并启用后缀匹配，因此 `access_token`、`access-token`、`accessToken` 和 `x-openai-api-key` 会命中同一类默认项。`log_sanitize.*` 下的配置项会扩展默认集合；代码里也可以直接调整 `options.log_sanitize_policy`，如果确实要使用完全自定义集合，可以先对对应集合调用 `clear()`。
 
 示例：
 

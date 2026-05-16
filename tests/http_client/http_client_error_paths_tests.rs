@@ -53,7 +53,7 @@ async fn test_execute_maps_retry_after_to_retryable_http_error() {
     assert_eq!(error.retry_after, Some(Duration::from_secs(2)));
     assert_eq!(
         error.response_body_preview.as_deref(),
-        Some("too many requests")
+        Some("<redacted: unsupported HTTP body>")
     );
 
     let captured = timeout(Duration::from_secs(3), server.finish())

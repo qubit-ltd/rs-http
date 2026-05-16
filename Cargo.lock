@@ -1077,6 +1077,7 @@ dependencies = [
  "qubit-error",
  "qubit-function",
  "qubit-retry",
+ "qubit-sanitize",
  "reqwest",
  "serde",
  "serde_json",
@@ -1103,6 +1104,17 @@ dependencies = [
  "rand 0.10.1",
  "serde",
  "tokio",
+]
+
+[[package]]
+name = "qubit-sanitize"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5284751ed89bfdf7bd12ac843fa286f353ed98bd317b1ecfad2c80fb4bdb71ca"
+dependencies = [
+ "http",
+ "serde_json",
+ "url",
 ]
 
 [[package]]

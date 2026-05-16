@@ -51,45 +51,6 @@ pub(crate) fn is_sse(content_type: &str) -> bool {
     has_media_type(content_type, "text/event-stream")
 }
 
-/// Returns whether a content type declares JSON.
-///
-/// # Parameters
-/// - `content_type`: Raw Content-Type header value.
-///
-/// # Returns
-/// `true` for `application/json`, subtype aliases ending with `/json`, and
-/// structured syntax suffixes ending with `+json`.
-pub(crate) fn is_json(content_type: &str) -> bool {
-    let media_type = media_type(content_type).to_ascii_lowercase();
-    media_type == "application/json"
-        || media_type.ends_with("+json")
-        || media_type.ends_with("/json")
-}
-
-/// Returns whether a content type declares newline-delimited JSON.
-///
-/// # Parameters
-/// - `content_type`: Raw Content-Type header value.
-///
-/// # Returns
-/// `true` for `application/x-ndjson` and `application/ndjson`.
-pub(crate) fn is_ndjson(content_type: &str) -> bool {
-    let media_type = media_type(content_type);
-    media_type.eq_ignore_ascii_case("application/x-ndjson")
-        || media_type.eq_ignore_ascii_case("application/ndjson")
-}
-
-/// Returns whether a content type declares URL-encoded form data.
-///
-/// # Parameters
-/// - `content_type`: Raw Content-Type header value.
-///
-/// # Returns
-/// `true` for `application/x-www-form-urlencoded`.
-pub(crate) fn is_form_urlencoded(content_type: &str) -> bool {
-    has_media_type(content_type, "application/x-www-form-urlencoded")
-}
-
 /// Returns whether a content type declares multipart content.
 ///
 /// # Parameters
@@ -101,39 +62,6 @@ pub(crate) fn is_multipart(content_type: &str) -> bool {
     media_type(content_type)
         .to_ascii_lowercase()
         .starts_with("multipart/")
-}
-
-/// Returns whether a content type declares textual data.
-///
-/// # Parameters
-/// - `content_type`: Raw Content-Type header value.
-///
-/// # Returns
-/// `true` for `text/*` media types.
-pub(crate) fn is_text(content_type: &str) -> bool {
-    media_type(content_type)
-        .to_ascii_lowercase()
-        .starts_with("text/")
-}
-
-/// Extracts and validates the `boundary` parameter from a multipart content type.
-///
-/// # Parameters
-/// - `content_type`: Raw Content-Type header value.
-///
-/// # Returns
-/// Decoded boundary string when the media type is multipart and the boundary is
-/// syntactically valid; otherwise `None`.
-pub(crate) fn multipart_boundary(content_type: &str) -> Option<String> {
-    if !is_multipart(content_type) {
-        return None;
-    }
-    let boundary = parameter(content_type, "boundary")?;
-    if is_valid_multipart_boundary(&boundary) {
-        Some(boundary)
-    } else {
-        None
-    }
 }
 
 /// Returns whether `boundary` is safe for unquoted multipart Content-Type use.

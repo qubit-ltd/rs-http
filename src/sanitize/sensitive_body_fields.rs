@@ -8,21 +8,22 @@
  *
  ******************************************************************************/
 
-use std::collections::BTreeSet;
-
-use super::default_sensitive_names::{
-    canonicalize_structured_sensitive_name,
-    DEFAULT_SENSITIVE_BODY_FIELD_NAMES,
+use qubit_sanitize::{
+    FieldSanitizePolicy,
+    FieldSanitizer,
+    MaskPolicies,
+    SensitiveFields,
+    SensitivityLevel,
 };
 
 /// Set of structured body field names whose values should be masked.
 ///
-/// Names are matched case-insensitively and common `_` / `-` separators are
-/// ignored, so `client_secret`, `client-secret`, and `clientSecret` are equivalent.
+/// Names use the same canonical field-name rules as `qubit-sanitize`, so
+/// `client_secret`, `client-secret`, and `clientSecret` are equivalent.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SensitiveBodyFields {
-    /// Canonical body field names.
-    names: BTreeSet<String>,
+    /// Shared sensitive field set used by `qubit-sanitize`.
+    fields: SensitiveFields,
 }
 
 impl SensitiveBodyFields {
@@ -32,7 +33,7 @@ impl SensitiveBodyFields {
     /// Empty [`SensitiveBodyFields`].
     pub fn new() -> Self {
         Self {
-            names: BTreeSet::new(),
+            fields: SensitiveFields::new(),
         }
     }
 
@@ -44,8 +45,7 @@ impl SensitiveBodyFields {
     /// # Returns
     /// `true` if the field value should be masked.
     pub fn contains(&self, name: &str) -> bool {
-        self.names
-            .contains(&canonicalize_structured_sensitive_name(name))
+        self.fields.contains(name)
     }
 
     /// Inserts one field name.
@@ -53,10 +53,7 @@ impl SensitiveBodyFields {
     /// # Parameters
     /// - `name`: Field name to mark sensitive.
     pub fn insert(&mut self, name: &str) {
-        let value = canonicalize_structured_sensitive_name(name);
-        if !value.is_empty() {
-            self.names.insert(value);
-        }
+        self.fields.insert(name, SensitivityLevel::High);
     }
 
     /// Inserts many field names.
@@ -75,7 +72,7 @@ impl SensitiveBodyFields {
 
     /// Clears all field names.
     pub fn clear(&mut self) {
-        self.names.clear();
+        self.fields = SensitiveFields::new();
     }
 
     /// Returns the number of stored body field names.
@@ -83,7 +80,7 @@ impl SensitiveBodyFields {
     /// # Returns
     /// Stored body field count.
     pub fn len(&self) -> usize {
-        self.names.len()
+        self.fields.len()
     }
 
     /// Returns whether no body field names are stored.
@@ -91,7 +88,7 @@ impl SensitiveBodyFields {
     /// # Returns
     /// `true` when empty.
     pub fn is_empty(&self) -> bool {
-        self.names.is_empty()
+        self.fields.is_empty()
     }
 
     /// Iterates canonical body field names.
@@ -99,15 +96,36 @@ impl SensitiveBodyFields {
     /// # Returns
     /// Iterator over stored canonical body field names.
     pub fn iter(&self) -> impl Iterator<Item = &str> {
-        self.names.iter().map(String::as_str)
+        self.fields.iter().map(|(field, _)| field)
+    }
+
+    /// Extends this set with another body field set, preserving sensitivity levels.
+    ///
+    /// # Parameters
+    /// - `other`: Source body field set.
+    pub(crate) fn extend_from(&mut self, other: &Self) {
+        for (field, level) in other.fields.iter() {
+            self.fields.insert(field, level);
+        }
+    }
+
+    /// Creates a core field sanitizer from this body field set.
+    ///
+    /// # Returns
+    /// Field sanitizer using shared `qubit-sanitize` masking rules.
+    pub(crate) fn field_sanitizer(&self) -> FieldSanitizer {
+        FieldSanitizer::new(FieldSanitizePolicy {
+            sensitive_fields: self.fields.clone(),
+            mask_policies: MaskPolicies::default(),
+        })
     }
 }
 
 impl Default for SensitiveBodyFields {
     /// Creates a set containing common credential and token field names.
     fn default() -> Self {
-        let mut result = Self::new();
-        result.extend(DEFAULT_SENSITIVE_BODY_FIELD_NAMES);
-        result
+        Self {
+            fields: SensitiveFields::default(),
+        }
     }
 }

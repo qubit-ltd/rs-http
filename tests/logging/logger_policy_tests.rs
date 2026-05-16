@@ -151,8 +151,63 @@ fn test_log_response_masks_sensitive_headers() {
             .block_on(async { logger.log_response(&mut response).await })
             .expect("response logging should succeed");
     });
-    assert!(logs.contains("set-cookie: se****ue"));
-    assert!(logs.contains("authorization: Be****en"));
+    assert!(logs.contains("set-cookie: ****"));
+    assert!(logs.contains("authorization: ****"));
+}
+
+#[test]
+fn test_log_response_masks_sensitive_response_url() {
+    let options = HttpLoggingOptions::default();
+    let mut client_options = HttpClientOptions::default();
+    client_options.logging = options;
+    let logger = HttpLogger::new(&client_options);
+
+    let logs = capture_trace_logs(|| {
+        let mut response = HttpResponse::new(
+            StatusCode::OK,
+            HeaderMap::new(),
+            Bytes::from_static(b"ok"),
+            Url::parse("https://example.com/data?password=secret&access_token=raw-access-secret")
+                .expect("response URL should parse"),
+            Method::GET,
+        );
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("failed to build tokio runtime");
+        runtime
+            .block_on(async { logger.log_response(&mut response).await })
+            .expect("response logging should succeed");
+    });
+
+    assert!(
+        logs.contains("<-- 200 https://example.com/data?password=%3Credacted%3E&access_token=****")
+    );
+    assert!(!logs.contains("secret"));
+}
+
+#[test]
+fn test_log_stream_response_headers_masks_sensitive_response_url() {
+    let options = HttpLoggingOptions::default();
+    let mut client_options = HttpClientOptions::default();
+    client_options.logging = options;
+    let logger = HttpLogger::new(&client_options);
+    let response_meta = HttpResponseMeta::new(
+        StatusCode::OK,
+        HeaderMap::new(),
+        Url::parse("https://example.com/stream?password=secret&access_token=raw-access-secret")
+            .expect("response URL should parse"),
+        Method::GET,
+    );
+
+    let logs = capture_trace_logs(|| {
+        logger.log_stream_response_headers(&response_meta);
+    });
+
+    assert!(logs.contains(
+        "<-- 200 https://example.com/stream?password=%3Credacted%3E&access_token=**** (stream)"
+    ));
+    assert!(!logs.contains("secret"));
 }
 
 #[test]
@@ -644,7 +699,7 @@ fn test_execute_logs_response_body_from_backend_when_trace_enabled() {
             assert_eq!(captured.target, "/logger-backend-path");
         });
     });
-    assert!(logs.contains("Response body: backend-log-body"));
+    assert!(logs.contains("Response body: <redacted: unsupported HTTP body>"));
 }
 
 #[test]
@@ -663,7 +718,7 @@ fn test_log_request_bytes_body_variant_is_logged() {
     let logs = capture_trace_logs(|| {
         logger.log_request(&bytes_request);
     });
-    assert!(logs.contains("Request body: raw-bytes"));
+    assert!(logs.contains("Request body: <redacted: unsupported HTTP body>"));
 }
 
 #[test]

@@ -145,7 +145,7 @@ async fn test_execute_maps_non_success_status_to_http_error() {
     assert_eq!(error.method, Some(Method::GET));
     assert_eq!(
         error.response_body_preview.as_deref(),
-        Some("service unavailable")
+        Some("<redacted: unsupported HTTP body>")
     );
     assert!(error.message.contains("response body preview"));
     assert!(error
@@ -627,7 +627,7 @@ async fn test_execute_stream_maps_non_success_status_to_http_error() {
     assert_eq!(error.method, Some(Method::GET));
     assert_eq!(
         error.response_body_preview.as_deref(),
-        Some("service unavailable")
+        Some("<redacted: unsupported HTTP body>")
     );
     assert!(error.message.contains("response body preview"));
 
@@ -658,7 +658,7 @@ async fn test_execute_non_success_error_body_preview_is_truncated_by_limit() {
     assert_eq!(error.kind, HttpErrorKind::Status);
     assert_eq!(
         error.response_body_preview.as_deref(),
-        Some("abcdefgh...<truncated>")
+        Some("<redacted: unsupported HTTP body>...<truncated>")
     );
 }
 
@@ -683,7 +683,7 @@ async fn test_execute_non_success_error_body_preview_sanitizes_json_fields() {
     assert_eq!(error.kind, HttpErrorKind::Status);
     assert_eq!(
         error.response_body_preview.as_deref(),
-        Some(r#"{"password":"****","user":"alice"}"#)
+        Some(r#"{"password":"<redacted>","user":"alice"}"#)
     );
     assert!(!error.message.contains("secret"));
 }
@@ -757,7 +757,7 @@ async fn test_execute_non_success_error_body_preview_truncates_when_limit_reache
     assert_eq!(error.kind, HttpErrorKind::Status);
     assert_eq!(
         error.response_body_preview.as_deref(),
-        Some("abc...<truncated>")
+        Some("<redacted: unsupported HTTP body>...<truncated>")
     );
 }
 
@@ -785,7 +785,7 @@ async fn test_execute_error_body_preview_limit_is_decoupled_from_logging_limit()
     assert_eq!(error.kind, HttpErrorKind::Status);
     assert_eq!(
         error.response_body_preview.as_deref(),
-        Some("abcdefghijkl...<truncated>")
+        Some("<redacted: unsupported HTTP body>...<truncated>")
     );
 }
 

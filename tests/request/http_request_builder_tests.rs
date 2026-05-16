@@ -644,6 +644,42 @@ fn test_request_builder_multipart_body_preserves_matching_existing_boundary() {
 }
 
 #[test]
+fn test_request_builder_multipart_body_preserves_matching_quoted_existing_boundary() {
+    let request = new_builder(Method::POST, "/v1/multipart")
+        .header(CONTENT_TYPE.as_str(), "multipart/mixed; boundary=\"abc\"")
+        .expect("custom content-type header should be valid")
+        .multipart_body(Bytes::from_static(b"payload"), "abc")
+        .expect("quoted multipart boundary should be decoded")
+        .build();
+
+    assert_eq!(
+        request
+            .headers()
+            .get(CONTENT_TYPE)
+            .expect("multipart content-type should be kept"),
+        "multipart/mixed; boundary=\"abc\""
+    );
+}
+
+#[test]
+fn test_request_builder_multipart_body_preserves_matching_escaped_existing_boundary() {
+    let request = new_builder(Method::POST, "/v1/multipart")
+        .header(CONTENT_TYPE.as_str(), "multipart/mixed; boundary=\"ab\\c\"")
+        .expect("custom content-type header should be valid")
+        .multipart_body(Bytes::from_static(b"payload"), "abc")
+        .expect("escaped multipart boundary should be decoded")
+        .build();
+
+    assert_eq!(
+        request
+            .headers()
+            .get(CONTENT_TYPE)
+            .expect("multipart content-type should be kept"),
+        "multipart/mixed; boundary=\"ab\\c\""
+    );
+}
+
+#[test]
 fn test_request_builder_multipart_body_ignores_quoted_boundary_text_in_other_parameters() {
     let request = new_builder(Method::POST, "/v1/multipart")
         .header(
@@ -661,6 +697,48 @@ fn test_request_builder_multipart_body_ignores_quoted_boundary_text_in_other_par
             .get(CONTENT_TYPE)
             .expect("multipart content-type should be kept"),
         "multipart/mixed; title=\"not; boundary=real\"; boundary=abc"
+    );
+}
+
+#[test]
+fn test_request_builder_multipart_body_ignores_escaped_separator_in_other_parameters() {
+    let request = new_builder(Method::POST, "/v1/multipart")
+        .header(
+            CONTENT_TYPE.as_str(),
+            "multipart/mixed; title=\"not\\; boundary=real\"",
+        )
+        .expect("custom content-type header should be valid")
+        .multipart_body(Bytes::from_static(b"payload"), "abc")
+        .expect("missing boundary should be repaired")
+        .build();
+
+    assert_eq!(
+        request
+            .headers()
+            .get(CONTENT_TYPE)
+            .expect("multipart content-type should be kept"),
+        "multipart/mixed; title=\"not\\; boundary=real\"; boundary=abc"
+    );
+}
+
+#[test]
+fn test_request_builder_multipart_body_skips_parameter_without_value_before_boundary() {
+    let request = new_builder(Method::POST, "/v1/multipart")
+        .header(
+            CONTENT_TYPE.as_str(),
+            "multipart/mixed; charset; boundary=abc",
+        )
+        .expect("custom content-type header should be valid")
+        .multipart_body(Bytes::from_static(b"payload"), "abc")
+        .expect("boundary after value-less parameter should be decoded")
+        .build();
+
+    assert_eq!(
+        request
+            .headers()
+            .get(CONTENT_TYPE)
+            .expect("multipart content-type should be kept"),
+        "multipart/mixed; charset; boundary=abc"
     );
 }
 
@@ -684,6 +762,19 @@ fn test_request_builder_multipart_body_rejects_malformed_existing_boundary() {
         .expect("custom content-type header should be valid")
         .multipart_body(Bytes::from_static(b"payload"), "abc")
         .expect_err("malformed boundary should fail");
+
+    assert_eq!(error.kind, HttpErrorKind::Other);
+    assert!(error.message.contains("boundary"));
+    assert!(error.message.contains("malformed"));
+}
+
+#[test]
+fn test_request_builder_multipart_body_rejects_boundary_with_trailing_text_after_quote() {
+    let error = new_builder(Method::POST, "/v1/multipart")
+        .header(CONTENT_TYPE.as_str(), "multipart/mixed; boundary=\"abc\"x")
+        .expect("custom content-type header should be valid")
+        .multipart_body(Bytes::from_static(b"payload"), "abc")
+        .expect_err("quoted boundary with trailing text should fail");
 
     assert_eq!(error.kind, HttpErrorKind::Other);
     assert!(error.message.contains("boundary"));

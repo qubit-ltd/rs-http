@@ -119,7 +119,11 @@ impl<'a> HttpLogger<'a> {
             return Ok(());
         }
 
-        tracing::trace!("<-- {} {}", response.status().as_u16(), response.url());
+        tracing::trace!(
+            "<-- {} {}",
+            response.status().as_u16(),
+            self.sanitizer.sanitize_url(response.url())
+        );
 
         if self.options.log_response_header {
             for (name, value) in response.headers() {
@@ -171,7 +175,7 @@ impl<'a> HttpLogger<'a> {
         tracing::trace!(
             "<-- {} {} (stream)",
             response_meta.status().as_u16(),
-            response_meta.url()
+            self.sanitizer.sanitize_url(response_meta.url())
         );
 
         if self.options.log_response_header {

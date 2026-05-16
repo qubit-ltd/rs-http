@@ -9,6 +9,7 @@
  ******************************************************************************/
 //! Shared HTTP response metadata (status, headers, URL, request method).
 
+use std::fmt;
 use std::time::{
     Duration,
     SystemTime,
@@ -24,7 +25,7 @@ use httpdate::parse_http_date;
 use url::Url;
 
 /// HTTP response metadata available before body buffering/stream consumption.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct HttpResponseMeta {
     /// Response status code.
     status: StatusCode,
@@ -133,6 +134,20 @@ impl HttpResponseMeta {
     /// Nothing.
     pub(super) fn set_url(&mut self, url: Url) {
         self.url = url;
+    }
+}
+
+impl fmt::Debug for HttpResponseMeta {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let sanitizer = crate::LogSanitizer::default();
+        let url = sanitizer.sanitize_url(&self.url);
+        formatter
+            .debug_struct("HttpResponseMeta")
+            .field("status", &self.status)
+            .field("headers", &sanitizer.sanitize_header_map(&self.headers))
+            .field("url", &url)
+            .field("method", &self.method)
+            .finish()
     }
 }
 

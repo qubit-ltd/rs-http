@@ -37,7 +37,6 @@ pub mod sse;
 pub use client::http_logger::HttpLogger;
 pub use client::HttpClient;
 pub use client::HttpClientFactory;
-pub use constants::DEFAULT_SENSITIVE_HEADER_NAMES;
 pub use error::{
     HttpError,
     HttpErrorKind,

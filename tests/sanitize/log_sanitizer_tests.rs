@@ -48,10 +48,26 @@ fn test_log_sanitizer_sanitize_url_masks_camel_case_sensitive_query_params() {
 
     assert_eq!(
         sanitized,
-        "https://api.example.com/search?accessToken=****&clientSecret=****"
+        "https://api.example.com/search?accessToken=****&clientSecret=%3Credacted%3E"
     );
     assert!(!sanitized.contains("secret-access"));
     assert!(!sanitized.contains("secret-client"));
+}
+
+#[test]
+fn test_log_sanitizer_sanitize_url_uses_shared_secret_level_for_password_query() {
+    let sanitizer = LogSanitizer::default();
+    let url =
+        Url::parse("https://example.com/login?password=secret&access_token=raw-access-secret")
+            .expect("test URL should parse");
+
+    let sanitized = sanitizer.sanitize_url(&url);
+
+    assert_eq!(
+        sanitized,
+        "https://example.com/login?password=%3Credacted%3E&access_token=****"
+    );
+    assert!(!sanitized.contains("secret"));
 }
 
 #[test]
@@ -106,7 +122,7 @@ fn test_log_sanitizer_sanitize_header_masks_configured_header_names() {
         &HeaderValue::from_static("Bearer very-secret-token"),
     );
 
-    assert_eq!(sanitized, "Be****en");
+    assert_eq!(sanitized, "****");
 }
 
 #[test]
@@ -132,7 +148,7 @@ fn test_log_sanitizer_sanitize_body_preview_redacts_json_fields() {
 
     assert_eq!(
         sanitized,
-        r#"{"nested":{"token":"****"},"password":"****","user":"alice"}"#
+        r#"{"nested":{"token":"****"},"password":"<redacted>","user":"alice"}"#
     );
 }
 
@@ -148,7 +164,7 @@ fn test_log_sanitizer_sanitize_body_preview_redacts_camel_case_json_fields() {
 
     assert_eq!(
         sanitized,
-        r#"{"accessToken":"****","clientSecret":"****","user":"alice"}"#
+        r#"{"accessToken":"****","clientSecret":"<redacted>","user":"alice"}"#
     );
     assert!(!sanitized.contains("secret-access"));
     assert!(!sanitized.contains("secret-client"));
@@ -168,6 +184,22 @@ fn test_log_sanitizer_sanitize_body_preview_does_not_leak_truncated_json() {
 }
 
 #[test]
+fn test_log_sanitizer_error_response_truncated_json_uses_status_error_suffix() {
+    let sanitizer = LogSanitizer::default();
+    let body = Bytes::from_static(br#"{"password":"secret","user":"alice","tail":"long"}"#);
+    let preview = BodyPreview::new(&body, 20, BodyLogContext::ErrorResponse)
+        .with_content_type("application/json");
+
+    let sanitized = sanitizer.sanitize_body_preview(&preview);
+
+    assert_eq!(
+        sanitized,
+        "<redacted: invalid or truncated JSON>...<truncated>"
+    );
+    assert!(!sanitized.contains("secret"));
+}
+
+#[test]
 fn test_log_sanitizer_sanitize_body_preview_redacts_json_arrays() {
     let sanitizer = LogSanitizer::default();
     let body = Bytes::from_static(br#"[{"token":"abc"},{"nested":{"password":"secret"}}]"#);
@@ -178,7 +210,7 @@ fn test_log_sanitizer_sanitize_body_preview_redacts_json_arrays() {
 
     assert_eq!(
         sanitized,
-        r#"[{"token":"****"},{"nested":{"password":"****"}}]"#
+        r#"[{"token":"****"},{"nested":{"password":"<redacted>"}}]"#
     );
 }
 
@@ -231,7 +263,7 @@ fn test_log_sanitizer_sanitize_body_preview_redacts_multipart_form_fields() {
     let sanitized = sanitizer.sanitize_body_preview(&preview);
 
     assert!(sanitized.contains("username=alice"));
-    assert!(sanitized.contains("password=****"));
+    assert!(sanitized.contains("password=<redacted>"));
     assert!(!sanitized.contains("secret-password"));
     assert!(!sanitized.contains("boundary"));
     assert!(!sanitized.contains("<redacted: multipart body>"));
@@ -252,7 +284,7 @@ fn test_log_sanitizer_sanitize_body_preview_redacts_multipart_mixed_fields() {
 
     let sanitized = sanitizer.sanitize_body_preview(&preview);
 
-    assert!(sanitized.contains("password=****"));
+    assert!(sanitized.contains("password=<redacted>"));
     assert!(!sanitized.contains("secret-password"));
     assert!(!sanitized.contains("boundary"));
 }
@@ -413,7 +445,7 @@ fn test_log_sanitizer_sanitize_body_preview_redacts_multipart_form_part() {
 
     let sanitized = sanitizer.sanitize_body_preview(&preview);
 
-    assert!(sanitized.contains("payload=username=alice&password=****"));
+    assert!(sanitized.contains("payload=username=alice&password=%3Credacted%3E"));
     assert!(!sanitized.contains("secret-password"));
 }
 
@@ -489,52 +521,59 @@ fn test_log_sanitizer_sanitize_body_preview_redacts_non_utf8_multipart() {
 #[test]
 fn test_log_sanitizer_sanitize_body_preview_redacts_malformed_multipart_body() {
     let sanitizer = LogSanitizer::default();
-    let cases: [(&str, &'static [u8], &str); 7] = [
+    let cases: [(&str, &'static [u8], &str, &str); 7] = [
         (
             "missing closing delimiter",
             b"--boundary\r\nContent-Disposition: form-data; name=\"password\"\r\n\r\nsecret",
             "multipart/form-data; boundary=boundary",
+            "<redacted: multipart body>",
         ),
         (
             "malformed closing delimiter",
             b"--boundary\r\nContent-Disposition: form-data; name=\"password\"\r\n\r\nsecret\r\n--boundary--extra",
             "multipart/form-data; boundary=boundary",
+            "<redacted: multipart body>",
         ),
         (
             "malformed part header",
             b"--boundary\r\nContent-Disposition form-data; name=\"password\"\r\n\r\nsecret\r\n--boundary--",
             "multipart/form-data; boundary=boundary",
+            "<redacted: multipart body>",
         ),
         (
             "empty boundary",
             b"--boundary\r\nContent-Disposition: form-data; name=\"password\"\r\n\r\nsecret\r\n--boundary--",
             "multipart/form-data; boundary=\"\"",
+            "<redacted: multipart body>",
         ),
         (
             "unclosed boundary quote",
             b"--boundary\r\nContent-Disposition: form-data; name=\"password\"\r\n\r\nsecret\r\n--boundary--",
             "multipart/form-data; boundary=\"boundary",
+            "<redacted: multipart body>",
         ),
         (
             "trailing text after quoted boundary",
             b"--boundary\r\nContent-Disposition: form-data; name=\"password\"\r\n\r\nsecret\r\n--boundary--",
             "multipart/form-data; boundary=\"boundary\"x",
+            "<redacted: multipart body>",
         ),
         (
             "control character in boundary",
             b"--boundary\r\nContent-Disposition: form-data; name=\"password\"\r\n\r\nsecret\r\n--boundary--",
             "multipart/form-data; boundary=\"bad\nboundary\"",
+            "<redacted: invalid content type body>",
         ),
     ];
 
-    for (label, body, content_type) in cases {
+    for (label, body, content_type, expected) in cases {
         let bytes = Bytes::from_static(body);
         let preview = BodyPreview::new(&bytes, bytes.len(), BodyLogContext::Request)
             .with_content_type(content_type);
 
         let sanitized = sanitizer.sanitize_body_preview(&preview);
 
-        assert_eq!(sanitized, "<redacted: multipart body>", "{label}");
+        assert_eq!(sanitized, expected, "{label}");
         assert!(!sanitized.contains("secret"), "{label}");
     }
 }
@@ -597,7 +636,10 @@ fn test_log_sanitizer_sanitize_body_preview_redacts_form_fields() {
 
     let sanitized = sanitizer.sanitize_body_preview(&preview);
 
-    assert_eq!(sanitized, "username=alice&password=****&city=Shanghai");
+    assert_eq!(
+        sanitized,
+        "username=alice&password=%3Credacted%3E&city=Shanghai"
+    );
 }
 
 #[test]
