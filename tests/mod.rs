@@ -20,12 +20,8 @@
 mod client;
 mod common;
 mod error;
-mod factory;
-mod http_client;
 mod options;
-mod proxy;
 mod request;
 mod response;
-mod retry_hint;
 mod sanitize;
 mod sse;
