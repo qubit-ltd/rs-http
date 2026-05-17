@@ -1,6 +1,6 @@
 [package]
 name = "qubit-http"
-version = "0.7.1"
+version = "0.8.0"
 edition = "2021"
 rust-version = "1.94"
 authors = ["Haixing Hu <starfish.hu@gmail.com>"]
@@ -12,16 +12,15 @@ documentation = "https://docs.rs/qubit-http"
 readme = "README.md"
 keywords = ["http", "sse", "streaming", "network", "qubit"]
 categories = ["network-programming", "asynchronous"]
-exclude = [
-    "align-ci.sh",
-    "ci-check.sh",
-    "coverage.sh",
-    "style-check.sh",
-    "update-submodule.sh",
-    ".github/*",
-    ".rs-ci/**",
-    ".llvm-cov.toml",
-    ".cargo-audit.toml.example",
+include = [
+    "/Cargo.toml",
+    "/LICENSE",
+    "/README.md",
+    "/README.zh_CN.md",
+    "/doc/**/user_guide*.md",
+    "/examples/**",
+    "/src/**",
+    "/tests/**",
 ]
 
 [lib]
@@ -48,8 +47,8 @@ futures-util = "0.3"
 qubit-config = "0.13"
 qubit-datatype = "0.2"
 qubit-error = "0.2"
-qubit-function = "0.13"
-qubit-retry = { version = "0.12", features = ["tokio"] }
+qubit-function = "0.14"
+qubit-retry = { version = "0.13", features = ["tokio"] }
 qubit-sanitize = "0.2"
 
 [dev-dependencies]
