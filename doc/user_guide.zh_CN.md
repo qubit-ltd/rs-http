@@ -1,6 +1,6 @@
 # qubit-http 用户指南
 
-本文档基于当前源码和测试整理，适用于 crate `qubit-http` 0.7，Rust 代码中通过库名 `qubit_http` 使用。
+本文档基于当前源码和测试整理，适用于 crate `qubit-http` 0.8，Rust 代码中通过库名 `qubit_http` 使用。
 
 `qubit-http` 是一个异步 HTTP 客户端基础设施库。它封装 `reqwest`，提供统一的客户端配置、请求构建、响应读取、错误分类、TRACE 日志脱敏、自动重试、代理、IPv4-only 解析、请求/响应拦截器，以及 Server-Sent Events（SSE）解码和重连能力。
 
@@ -17,7 +17,7 @@
 
 ```toml
 [dependencies]
-qubit-http = "0.7"
+qubit-http = "0.8"
 http = "1.4"
 qubit-config = "0.9"
 serde = { version = "1", features = ["derive"] }
