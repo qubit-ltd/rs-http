@@ -1,6 +1,6 @@
 # qubit-http User Guide
 
-This guide is based on the current source code and tests. It applies to crate `qubit-http` 0.7, imported from Rust code as `qubit_http`.
+This guide is based on the current source code and tests. It applies to crate `qubit-http` 0.8, imported from Rust code as `qubit_http`.
 
 `qubit-http` is an asynchronous HTTP client infrastructure crate. It wraps `reqwest` and provides unified client options, request building, response reading, error classification, TRACE logging with URL/header/body sanitization, retries, proxies, IPv4-only resolution, request/response interceptors, and Server-Sent Events (SSE) decoding and reconnection.
 
@@ -17,7 +17,7 @@ This guide is based on the current source code and tests. It applies to crate `q
 
 ```toml
 [dependencies]
-qubit-http = "0.7"
+qubit-http = "0.8"
 http = "1.4"
 qubit-config = "0.9"
 serde = { version = "1", features = ["derive"] }
