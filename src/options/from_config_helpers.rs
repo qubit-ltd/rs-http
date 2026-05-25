@@ -55,24 +55,15 @@ use super::HttpConfigError;
 /// # Errors
 /// Returns [`HttpConfigError`] with the concrete header entry path when a
 /// header name or value is invalid.
-pub(crate) fn hashmap_to_headermap(
-    path: &str,
-    map: HashMap<String, String>,
-) -> Result<HeaderMap, HttpConfigError> {
+pub(crate) fn hashmap_to_headermap(path: &str, map: HashMap<String, String>) -> Result<HeaderMap, HttpConfigError> {
     let mut header_map = HeaderMap::new();
     for (name, value) in map {
         let entry_path = format!("{path}.{name}");
         let header_name = HeaderName::from_bytes(name.as_bytes()).map_err(|e| {
-            HttpConfigError::invalid_header(
-                entry_path.clone(),
-                format!("Invalid header name '{}': {}", name, e),
-            )
+            HttpConfigError::invalid_header(entry_path.clone(), format!("Invalid header name '{}': {}", name, e))
         })?;
         let header_value = HeaderValue::from_str(&value).map_err(|e| {
-            HttpConfigError::invalid_header(
-                entry_path,
-                format!("Invalid header value for '{}': {}", name, e),
-            )
+            HttpConfigError::invalid_header(entry_path, format!("Invalid header value for '{}': {}", name, e))
         })?;
         header_map.insert(header_name, header_value);
     }

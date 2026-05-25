@@ -40,11 +40,7 @@ impl HttpConfigError {
     ///
     /// # Returns
     /// New [`HttpConfigError`].
-    pub fn new(
-        kind: HttpConfigErrorKind,
-        path: impl Into<String>,
-        message: impl Into<String>,
-    ) -> Self {
+    pub fn new(kind: HttpConfigErrorKind, path: impl Into<String>, message: impl Into<String>) -> Self {
         Self {
             kind,
             path: path.into(),

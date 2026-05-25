@@ -58,30 +58,12 @@ impl fmt::Debug for HttpRequestBody {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Empty => formatter.write_str("Empty"),
-            Self::Bytes(bytes) => formatter
-                .debug_struct("Bytes")
-                .field("len", &bytes.len())
-                .finish(),
-            Self::Text(text) => formatter
-                .debug_struct("Text")
-                .field("len", &text.len())
-                .finish(),
-            Self::Json(bytes) => formatter
-                .debug_struct("Json")
-                .field("len", &bytes.len())
-                .finish(),
-            Self::Form(bytes) => formatter
-                .debug_struct("Form")
-                .field("len", &bytes.len())
-                .finish(),
-            Self::Multipart(bytes) => formatter
-                .debug_struct("Multipart")
-                .field("len", &bytes.len())
-                .finish(),
-            Self::Ndjson(bytes) => formatter
-                .debug_struct("Ndjson")
-                .field("len", &bytes.len())
-                .finish(),
+            Self::Bytes(bytes) => formatter.debug_struct("Bytes").field("len", &bytes.len()).finish(),
+            Self::Text(text) => formatter.debug_struct("Text").field("len", &text.len()).finish(),
+            Self::Json(bytes) => formatter.debug_struct("Json").field("len", &bytes.len()).finish(),
+            Self::Form(bytes) => formatter.debug_struct("Form").field("len", &bytes.len()).finish(),
+            Self::Multipart(bytes) => formatter.debug_struct("Multipart").field("len", &bytes.len()).finish(),
+            Self::Ndjson(bytes) => formatter.debug_struct("Ndjson").field("len", &bytes.len()).finish(),
             Self::Stream(chunks) => formatter
                 .debug_struct("Stream")
                 .field("chunks", &chunks.len())

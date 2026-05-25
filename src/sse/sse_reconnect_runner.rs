@@ -137,11 +137,7 @@ impl ReconnectState {
     ///
     /// # Side effects
     /// Sleeps asynchronously when another reconnect is allowed.
-    async fn after_error(
-        &mut self,
-        error: HttpError,
-        runtime: &ReconnectRuntime<'_>,
-    ) -> ReconnectAction {
+    async fn after_error(&mut self, error: HttpError, runtime: &ReconnectRuntime<'_>) -> ReconnectAction {
         let sleep_delay = self.sleep_delay(runtime);
         match reconnect_decision(
             self.count,
@@ -151,16 +147,15 @@ impl ReconnectState {
             sleep_delay,
         ) {
             ReconnectDecision::Allowed => self.sleep_and_advance(sleep_delay, runtime).await,
-            ReconnectDecision::MaxElapsedExceeded {
-                elapsed,
-                max_elapsed,
-            } => ReconnectAction::Fail(Box::new(max_elapsed_exceeded_error_with_last_error(
-                error,
-                elapsed,
-                max_elapsed,
-                runtime.request_method,
-                runtime.request_url,
-            ))),
+            ReconnectDecision::MaxElapsedExceeded { elapsed, max_elapsed } => {
+                ReconnectAction::Fail(Box::new(max_elapsed_exceeded_error_with_last_error(
+                    error,
+                    elapsed,
+                    max_elapsed,
+                    runtime.request_method,
+                    runtime.request_url,
+                )))
+            }
             ReconnectDecision::MaxReconnectsReached => ReconnectAction::Fail(Box::new(error)),
         }
     }
@@ -185,15 +180,9 @@ impl ReconnectState {
             sleep_delay,
         ) {
             ReconnectDecision::Allowed => self.sleep_and_advance(sleep_delay, runtime).await,
-            ReconnectDecision::MaxElapsedExceeded {
-                elapsed,
-                max_elapsed,
-            } => ReconnectAction::Fail(Box::new(max_elapsed_exceeded_error(
-                elapsed,
-                max_elapsed,
-                runtime.request_method,
-                runtime.request_url,
-            ))),
+            ReconnectDecision::MaxElapsedExceeded { elapsed, max_elapsed } => ReconnectAction::Fail(Box::new(
+                max_elapsed_exceeded_error(elapsed, max_elapsed, runtime.request_method, runtime.request_url),
+            )),
             ReconnectDecision::MaxReconnectsReached => ReconnectAction::Stop,
         }
     }
@@ -226,11 +215,7 @@ impl ReconnectState {
     ///
     /// # Side effects
     /// Sleeps asynchronously and mutates reconnect counters/backoff state.
-    async fn sleep_and_advance(
-        &mut self,
-        sleep_delay: Duration,
-        runtime: &ReconnectRuntime<'_>,
-    ) -> ReconnectAction {
+    async fn sleep_and_advance(&mut self, sleep_delay: Duration, runtime: &ReconnectRuntime<'_>) -> ReconnectAction {
         self.count += 1;
         if let Err(error) = sleep_reconnect_delay(
             sleep_delay,
@@ -269,11 +254,7 @@ impl SseReconnectRunner {
     ///
     /// # Returns
     /// New SSE reconnect runner.
-    pub(crate) fn new(
-        client: HttpClient,
-        request: HttpRequest,
-        options: SseReconnectOptions,
-    ) -> Self {
+    pub(crate) fn new(client: HttpClient, request: HttpRequest, options: SseReconnectOptions) -> Self {
         Self {
             client,
             request_template: request,
@@ -479,10 +460,7 @@ fn reconnect_decision(
     if let Some(max_elapsed) = retry_options.max_total_elapsed() {
         let elapsed = started_at.elapsed();
         if (elapsed >= max_elapsed) || will_exceed_elapsed(elapsed, sleep_delay, max_elapsed) {
-            return ReconnectDecision::MaxElapsedExceeded {
-                elapsed,
-                max_elapsed,
-            };
+            return ReconnectDecision::MaxElapsedExceeded { elapsed, max_elapsed };
         }
     }
     ReconnectDecision::Allowed
@@ -513,9 +491,7 @@ fn will_exceed_elapsed(elapsed: Duration, sleep_delay: Duration, max_elapsed: Du
 /// # Returns
 /// Initial reconnect base delay.
 fn initial_reconnect_delay(retry_options: &RetryOptions) -> Duration {
-    retry_options
-        .base_delay_for_attempt(1)
-        .max(Duration::from_millis(1))
+    retry_options.base_delay_for_attempt(1).max(Duration::from_millis(1))
 }
 
 /// Returns one reconnect sleep delay by applying configured jitter rules.
@@ -595,11 +571,7 @@ async fn sleep_reconnect_delay(
 ///
 /// # Returns
 /// Capped reconnect delay from server retry value.
-fn server_retry_delay(
-    retry_ms: u64,
-    retry_options: &RetryOptions,
-    options: &SseReconnectOptions,
-) -> Duration {
+fn server_retry_delay(retry_ms: u64, retry_options: &RetryOptions, options: &SseReconnectOptions) -> Duration {
     let raw = Duration::from_millis(retry_ms.max(1));
     let cap = server_retry_max_delay(retry_options, options);
     raw.min(cap).max(Duration::from_millis(1))
@@ -690,10 +662,7 @@ fn max_elapsed_exceeded_error_with_last_error(
     if let Some(status) = last_error.status {
         error = error.with_status(status);
     }
-    let mut message = format!(
-        "{}; last retryable error: {}",
-        error.message, last_error.message
-    );
+    let mut message = format!("{}; last retryable error: {}", error.message, last_error.message);
     if let Some(status) = last_error.status {
         message = format!("{message} (status: {status})");
     }
@@ -717,12 +686,10 @@ fn validate_sse_response_content_type(response: &HttpResponse) -> HttpResult<()>
     let method = response.meta().method().clone();
     let url = response.request_url().clone();
     let Some(value) = response.headers().get(CONTENT_TYPE) else {
-        return Err(
-            HttpError::sse_protocol("Missing Content-Type header for SSE response")
-                .with_status(response.status())
-                .with_method(&method)
-                .with_url(&url),
-        );
+        return Err(HttpError::sse_protocol("Missing Content-Type header for SSE response")
+            .with_status(response.status())
+            .with_method(&method)
+            .with_url(&url));
     };
     let content_type = value.to_str().map_err(|_| {
         HttpError::sse_protocol("Invalid non-UTF8 Content-Type header for SSE response")

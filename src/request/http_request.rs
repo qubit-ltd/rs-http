@@ -120,10 +120,7 @@ impl fmt::Debug for HttpRequest {
             .field("url", &url)
             .field("headers", &debugger.headers(&self.headers))
             .field("body", &self.body)
-            .field(
-                "streaming_body",
-                &self.streaming_body.as_ref().map(|_| "present"),
-            )
+            .field("streaming_body", &self.streaming_body.as_ref().map(|_| "present"))
             .field("request_timeout", &self.execution_options.request_timeout)
             .field("write_timeout", &self.execution_options.write_timeout)
             .field("read_timeout", &self.execution_options.read_timeout)
@@ -591,10 +588,7 @@ impl HttpRequest {
             &method,
             request_url_context.as_ref(),
             "Request cancelled while preparing request",
-            format!(
-                "Write timeout after {:?} while preparing request",
-                write_timeout
-            ),
+            format!("Write timeout after {:?} while preparing request", write_timeout),
         )
         .await?
         .clone();
@@ -630,8 +624,7 @@ impl HttpRequest {
             builder = Self::apply_request_body(builder, self.take_body());
         }
 
-        let send_future =
-            tokio::time::timeout(self.execution_options.write_timeout, builder.send());
+        let send_future = tokio::time::timeout(self.execution_options.write_timeout, builder.send());
         let next = if let Some(token) = self.execution_options.cancellation_token.as_ref() {
             tokio::select! {
                 _ = token.cancelled() => {
@@ -713,11 +706,7 @@ impl HttpRequest {
 
         match next {
             Ok(result) => result,
-            Err(_) => Err(Self::pre_send_write_timeout_error(
-                timeout_message,
-                method,
-                request_url,
-            )),
+            Err(_) => Err(Self::pre_send_write_timeout_error(timeout_message, method, request_url)),
         }
     }
 
@@ -730,11 +719,7 @@ impl HttpRequest {
     ///
     /// # Returns
     /// Cancellation [`HttpError`] with request context attached.
-    fn pre_send_cancelled_error(
-        message: &str,
-        method: &Method,
-        request_url: Option<&Url>,
-    ) -> HttpError {
+    fn pre_send_cancelled_error(message: &str, method: &Method, request_url: Option<&Url>) -> HttpError {
         let mut error = HttpError::cancelled(message).with_method(method);
         if let Some(request_url) = request_url {
             error = error.with_url(request_url);
@@ -751,11 +736,7 @@ impl HttpRequest {
     ///
     /// # Returns
     /// Write-timeout [`HttpError`] with request context attached.
-    fn pre_send_write_timeout_error(
-        message: String,
-        method: &Method,
-        request_url: Option<&Url>,
-    ) -> HttpError {
+    fn pre_send_write_timeout_error(message: String, method: &Method, request_url: Option<&Url>) -> HttpError {
         let mut error = HttpError::write_timeout(message).with_method(method);
         if let Some(request_url) = request_url {
             error = error.with_url(request_url);
@@ -820,10 +801,7 @@ impl HttpRequest {
     /// Cached URL without builder query pairs, or `None` when URL resolution has
     /// not succeeded for the current request fields.
     fn resolved_base_url_cached(&self) -> Option<Url> {
-        self.resolved_url
-            .read()
-            .map(|guard| guard.clone())
-            .unwrap_or_default()
+        self.resolved_url.read().map(|guard| guard.clone()).unwrap_or_default()
     }
 
     /// Recomputes and stores the current resolved URL.
@@ -841,10 +819,7 @@ impl HttpRequest {
         }
 
         let base = self.context.base_url.as_ref().ok_or_else(|| {
-            HttpError::invalid_url(format!(
-                "Cannot resolve relative path '{}' without base_url",
-                self.path
-            ))
+            HttpError::invalid_url(format!("Cannot resolve relative path '{}' without base_url", self.path))
         })?;
 
         let url = base.join(&self.path).map_err(|error| {
@@ -989,10 +964,7 @@ impl HttpRequest {
     /// # Returns
     /// The same builder with an appropriate `.body(...)` applied (or unchanged
     /// for [`HttpRequestBody::Empty`]).
-    fn apply_request_body(
-        builder: reqwest::RequestBuilder,
-        body: HttpRequestBody,
-    ) -> reqwest::RequestBuilder {
+    fn apply_request_body(builder: reqwest::RequestBuilder, body: HttpRequestBody) -> reqwest::RequestBuilder {
         match body {
             HttpRequestBody::Empty => builder,
             HttpRequestBody::Bytes(bytes)
@@ -1001,9 +973,7 @@ impl HttpRequest {
             | HttpRequestBody::Multipart(bytes)
             | HttpRequestBody::Ndjson(bytes) => builder.body(bytes),
             HttpRequestBody::Stream(chunks) => {
-                let body_stream = futures_stream::iter(
-                    chunks.into_iter().map(Result::<Bytes, std::io::Error>::Ok),
-                );
+                let body_stream = futures_stream::iter(chunks.into_iter().map(Result::<Bytes, std::io::Error>::Ok));
                 builder.body(reqwest::Body::wrap_stream(body_stream))
             }
             HttpRequestBody::Text(text) => builder.body(text),

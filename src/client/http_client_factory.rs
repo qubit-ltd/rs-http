@@ -131,9 +131,8 @@ impl HttpClientFactory {
                 .expect("proxy.port must exist after HttpClientOptions::validate");
 
             let proxy_url = format!("{}://{}:{}", options.proxy.proxy_type.scheme(), host, port);
-            let mut proxy = reqwest::Proxy::all(&proxy_url).map_err(|error| {
-                HttpError::proxy_config(format!("Invalid proxy URL '{}': {}", proxy_url, error))
-            })?;
+            let mut proxy = reqwest::Proxy::all(&proxy_url)
+                .map_err(|error| HttpError::proxy_config(format!("Invalid proxy URL '{}': {}", proxy_url, error)))?;
 
             if let Some(username) = options.proxy.username.clone() {
                 let password = options.proxy.password.as_deref().unwrap_or("");
@@ -167,11 +166,8 @@ impl HttpClientFactory {
     where
         R: ConfigReader + ?Sized,
     {
-        let options =
-            HttpClientOptions::from_config(config).map_err(|e| resolve_config_error(config, e))?;
-        options
-            .validate()
-            .map_err(|e| resolve_config_error(config, e))?;
+        let options = HttpClientOptions::from_config(config).map_err(|e| resolve_config_error(config, e))?;
+        options.validate().map_err(|e| resolve_config_error(config, e))?;
         self.create(options).map_err(|e| {
             HttpConfigError::new(
                 crate::HttpConfigErrorKind::InvalidValue,

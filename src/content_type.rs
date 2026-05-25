@@ -20,11 +20,7 @@ const MAX_MULTIPART_BOUNDARY_LEN: usize = 70;
 /// Trimmed text before the first `;`, or an empty string when the header value
 /// has no media type.
 pub(crate) fn media_type(content_type: &str) -> &str {
-    content_type
-        .split(';')
-        .next()
-        .map(str::trim)
-        .unwrap_or_default()
+    content_type.split(';').next().map(str::trim).unwrap_or_default()
 }
 
 /// Returns whether `content_type` has the expected media type.
@@ -59,9 +55,7 @@ pub(crate) fn is_sse(content_type: &str) -> bool {
 /// # Returns
 /// `true` for any `multipart/*` media type.
 pub(crate) fn is_multipart(content_type: &str) -> bool {
-    media_type(content_type)
-        .to_ascii_lowercase()
-        .starts_with("multipart/")
+    media_type(content_type).to_ascii_lowercase().starts_with("multipart/")
 }
 
 /// Returns whether `boundary` is safe for unquoted multipart Content-Type use.
@@ -73,8 +67,7 @@ pub(crate) fn is_multipart(content_type: &str) -> bool {
 /// `true` when the boundary is 1 to 70 ASCII token-safe characters.
 pub(crate) fn is_valid_multipart_boundary(boundary: &str) -> bool {
     let len = boundary.len();
-    (1..=MAX_MULTIPART_BOUNDARY_LEN).contains(&len)
-        && boundary.bytes().all(is_valid_multipart_boundary_byte)
+    (1..=MAX_MULTIPART_BOUNDARY_LEN).contains(&len) && boundary.bytes().all(is_valid_multipart_boundary_byte)
 }
 
 /// Extracts one semicolon-separated header parameter.
