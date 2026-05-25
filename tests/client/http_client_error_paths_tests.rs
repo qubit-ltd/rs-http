@@ -86,9 +86,7 @@ async fn test_execute_parses_retry_after_http_date_for_service_unavailable() {
 
     assert_eq!(error.kind, HttpErrorKind::Status);
     assert_eq!(error.status, Some(StatusCode::SERVICE_UNAVAILABLE));
-    let retry_after = error
-        .retry_after
-        .expect("Retry-After HTTP-date should be parsed");
+    let retry_after = error.retry_after.expect("Retry-After HTTP-date should be parsed");
     assert!(
         retry_after <= Duration::from_secs(3),
         "retry_after={retry_after:?} should not exceed remaining date delta"
@@ -174,9 +172,7 @@ async fn test_execute_rejects_ipv6_url_when_ipv4_only() {
         .create(options)
         .expect("client should be created");
 
-    let request = client
-        .request(Method::GET, "http://[::1]:18080/reject-ipv6")
-        .build();
+    let request = client.request(Method::GET, "http://[::1]:18080/reject-ipv6").build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")
@@ -203,9 +199,7 @@ async fn test_execute_status_error_preview_reports_body_read_failure() {
     let client = HttpClientFactory::new()
         .create(options)
         .expect("client should be created");
-    let request = client
-        .request(Method::GET, "/status-preview-read-error")
-        .build();
+    let request = client.request(Method::GET, "/status-preview-read-error").build();
 
     let error = timeout(Duration::from_secs(3), client.execute(request))
         .await

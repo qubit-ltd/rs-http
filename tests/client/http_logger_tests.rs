@@ -51,10 +51,7 @@ fn test_http_logger_sanitizes_request_url_query_and_json_body() {
         .create_default()
         .expect("default client should be created");
     let request = client
-        .request(
-            Method::POST,
-            "https://example.com/login?access_token=raw-token",
-        )
+        .request(Method::POST, "https://example.com/login?access_token=raw-token")
         .json_body(&serde_json::json!({
             "user": "alice",
             "password": "secret",

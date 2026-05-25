@@ -49,9 +49,7 @@ fn test_http_config_error_is_std_error() {
 #[test]
 fn test_http_config_error_from_config_error() {
     let mut config = Config::new();
-    config
-        .set("x", 42i32)
-        .expect("test config should accept integer value");
+    config.set("x", 42i32).expect("test config should accept integer value");
     let ce = config
         .get_strict::<bool>("x")
         .expect_err("strictly reading integer as bool should fail");
@@ -62,9 +60,7 @@ fn test_http_config_error_from_config_error() {
 
 #[test]
 fn test_http_config_error_from_property_has_no_value_maps_to_type_error() {
-    let error = HttpConfigError::from(qubit_config::ConfigError::PropertyHasNoValue(
-        "svc.token".to_string(),
-    ));
+    let error = HttpConfigError::from(qubit_config::ConfigError::PropertyHasNoValue("svc.token".to_string()));
 
     assert_eq!(error.kind, HttpConfigErrorKind::TypeError);
     assert_eq!(error.path, "svc.token");
@@ -72,9 +68,7 @@ fn test_http_config_error_from_property_has_no_value_maps_to_type_error() {
 
 #[test]
 fn test_http_config_error_from_property_not_found_maps_to_config_error_with_path() {
-    let error = HttpConfigError::from(qubit_config::ConfigError::PropertyNotFound(
-        "svc.base_url".to_string(),
-    ));
+    let error = HttpConfigError::from(qubit_config::ConfigError::PropertyNotFound("svc.base_url".to_string()));
 
     assert_eq!(error.kind, HttpConfigErrorKind::ConfigError);
     assert_eq!(error.path, "svc.base_url");

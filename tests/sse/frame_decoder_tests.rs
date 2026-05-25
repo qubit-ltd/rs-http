@@ -48,8 +48,7 @@ async fn test_decode_messages_does_not_emit_retry_only_control_frame() {
 
 #[tokio::test]
 async fn test_decode_messages_applies_control_only_id_to_next_message() {
-    let response =
-        stream_response_from_chunks(vec!["id: resume-token\n", "\n", "data: hello\n", "\n"]);
+    let response = stream_response_from_chunks(vec!["id: resume-token\n", "\n", "data: hello\n", "\n"]);
     let messages = collect_results(response.sse_messages()).await;
 
     assert_eq!(messages.len(), 1);
@@ -87,10 +86,7 @@ async fn test_decode_frames_ignores_unknown_field_name() {
 #[tokio::test]
 async fn test_decode_frames_rejects_frame_exceeding_max_bytes() {
     let response = stream_response_from_chunks(vec!["data: 12345\n", "data: 67890\n", "\n"]);
-    let mut events = response
-        .sse_max_line_bytes(128)
-        .sse_max_frame_bytes(12)
-        .sse_messages();
+    let mut events = response.sse_max_line_bytes(128).sse_max_frame_bytes(12).sse_messages();
     let error = events.next().await.unwrap().unwrap_err();
 
     assert_eq!(error.kind, qubit_http::HttpErrorKind::SseProtocol);
@@ -100,13 +96,7 @@ async fn test_decode_frames_rejects_frame_exceeding_max_bytes() {
 #[tokio::test]
 async fn test_decode_frames_ignores_comment_lines() {
     let response = stream_response_from_chunks(vec![": heartbeat\n", "data: hello\n", "\n"]);
-    let events = collect_results(
-        response
-            .sse_max_line_bytes(128)
-            .sse_max_frame_bytes(64)
-            .sse_messages(),
-    )
-    .await;
+    let events = collect_results(response.sse_max_line_bytes(128).sse_max_frame_bytes(64).sse_messages()).await;
 
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].data, "hello");

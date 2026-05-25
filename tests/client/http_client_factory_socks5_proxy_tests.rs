@@ -50,10 +50,7 @@ impl SocksServer {
     }
 
     async fn finish(self) -> (String, u16) {
-        let target = self
-            .target_rx
-            .await
-            .expect("failed to receive socks target");
+        let target = self.target_rx.await.expect("failed to receive socks target");
         self.join_handle.await.expect("socks server task panicked");
         target
     }
@@ -63,9 +60,7 @@ async fn spawn_socks5_server() -> SocksServer {
     let listener = TcpListener::bind("127.0.0.1:0")
         .await
         .expect("failed to bind socks5 server");
-    let addr = listener
-        .local_addr()
-        .expect("failed to query socks5 address");
+    let addr = listener.local_addr().expect("failed to query socks5 address");
     let (target_tx, target_rx) = oneshot::channel::<(String, u16)>();
 
     let join_handle = tokio::spawn(async move {
@@ -99,10 +94,7 @@ async fn spawn_socks5_server() -> SocksServer {
             .write_all(&response)
             .await
             .expect("failed to write proxied response");
-        stream
-            .flush()
-            .await
-            .expect("failed to flush proxied response");
+        stream.flush().await.expect("failed to flush proxied response");
     });
 
     SocksServer {
@@ -141,9 +133,8 @@ async fn socks5_handshake_and_target(stream: &mut TcpStream) -> std::io::Result<
             stream.read_exact(&mut len).await?;
             let mut domain = vec![0_u8; len[0] as usize];
             stream.read_exact(&mut domain).await?;
-            String::from_utf8(domain).map_err(|e| {
-                std::io::Error::new(std::io::ErrorKind::InvalidData, format!("bad domain: {e}"))
-            })?
+            String::from_utf8(domain)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, format!("bad domain: {e}")))?
         }
         _ => {
             return Err(std::io::Error::new(
@@ -203,9 +194,7 @@ async fn read_http_message(stream: &mut TcpStream, output: &mut Vec<u8>) -> std:
 }
 
 fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
-    haystack
-        .windows(needle.len())
-        .position(|window| window == needle)
+    haystack.windows(needle.len()).position(|window| window == needle)
 }
 
 #[tokio::test]

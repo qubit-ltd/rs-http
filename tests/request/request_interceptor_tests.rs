@@ -37,10 +37,7 @@ fn test_request_interceptors_apply_uses_parsed_path_when_resolved_url_cache_miss
         .expect_err("interceptor failure should be propagated");
     assert_eq!(error.kind, HttpErrorKind::Other);
     assert_eq!(error.method, Some(Method::GET));
-    assert_eq!(
-        error.url,
-        Some(Url::parse("http://[::1]/resource").unwrap())
-    );
+    assert_eq!(error.url, Some(Url::parse("http://[::1]/resource").unwrap()));
 }
 
 #[test]
@@ -70,8 +67,7 @@ fn test_request_interceptors_apply_preserves_existing_error_url() {
         .create_default()
         .expect("default options should create client");
     let mut request = client.request(Method::GET, "/relative-only").build();
-    let expected_url =
-        Url::parse("https://upstream.example/interceptor-failed").expect("URL should parse");
+    let expected_url = Url::parse("https://upstream.example/interceptor-failed").expect("URL should parse");
 
     let mut interceptors = HttpRequestInterceptors::new();
     interceptors.push(HttpRequestInterceptor::new({

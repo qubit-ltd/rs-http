@@ -76,10 +76,7 @@ fn test_response_interceptor_apply_receives_context() {
     assert_eq!(seen.1, Url::parse("https://example.test/path").unwrap());
     assert_eq!(seen.2, Method::GET);
     assert_eq!(seen.3, "ok");
-    assert_eq!(
-        meta.url(),
-        &Url::parse("https://example.test/rewritten").unwrap()
-    );
+    assert_eq!(meta.url(), &Url::parse("https://example.test/rewritten").unwrap());
     assert_eq!(meta.status(), StatusCode::CREATED);
     assert_eq!(meta.method(), &Method::GET);
 }
@@ -122,8 +119,7 @@ fn test_response_interceptor_context_allows_header_mutation_without_status_mutat
 
 #[test]
 fn test_response_interceptor_apply_propagates_error() {
-    let interceptor =
-        HttpResponseInterceptor::new(|_meta| Err(HttpError::other("response interceptor failure")));
+    let interceptor = HttpResponseInterceptor::new(|_meta| Err(HttpError::other("response interceptor failure")));
     let meta = HttpResponseMeta::new(
         StatusCode::OK,
         HeaderMap::new(),
@@ -159,10 +155,7 @@ fn test_response_interceptors_apply_enriches_error_context() {
     assert_eq!(error.kind, HttpErrorKind::Other);
     assert_eq!(error.status, Some(StatusCode::ACCEPTED));
     assert_eq!(error.method, Some(Method::POST));
-    assert_eq!(
-        error.url,
-        Some(Url::parse("https://example.test/list").unwrap())
-    );
+    assert_eq!(error.url, Some(Url::parse("https://example.test/list").unwrap()));
 }
 
 #[test]

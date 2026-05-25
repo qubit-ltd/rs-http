@@ -30,15 +30,9 @@ fn test_log_sanitize_policy_clone_and_equality() {
         sensitive_query_params: SensitiveFields::new(),
         sensitive_body_fields: SensitiveFields::new(),
     };
-    policy
-        .sensitive_headers
-        .insert("X-Secret", SensitivityLevel::High);
-    policy
-        .sensitive_query_params
-        .insert("api_key", SensitivityLevel::High);
-    policy
-        .sensitive_body_fields
-        .insert("token", SensitivityLevel::High);
+    policy.sensitive_headers.insert("X-Secret", SensitivityLevel::High);
+    policy.sensitive_query_params.insert("api_key", SensitivityLevel::High);
+    policy.sensitive_body_fields.insert("token", SensitivityLevel::High);
 
     assert_eq!(policy, policy.clone());
     assert!(format!("{policy:?}").contains("LogSanitizePolicy"));

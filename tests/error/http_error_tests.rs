@@ -101,9 +101,8 @@ fn test_http_error_debug_uses_custom_log_sanitize_policy() {
     policy
         .sensitive_query_params
         .insert("customer_secret", SensitivityLevel::High);
-    let url =
-        url::Url::parse("https://example.com/path?customer_secret=debug-custom-secret&visible=ok")
-            .expect("URL should parse");
+    let url = url::Url::parse("https://example.com/path?customer_secret=debug-custom-secret&visible=ok")
+        .expect("URL should parse");
     let error = HttpError::transport(
         "transport failed for https://example.com/path?customer_secret=debug-custom-secret&visible=ok",
     )

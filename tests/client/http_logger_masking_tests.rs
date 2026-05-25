@@ -54,8 +54,7 @@ fn capture_request_header_logs(name: HeaderName, value: HeaderValue) -> String {
 
 #[test]
 fn test_mask_header_value_non_sensitive_header() {
-    let logs =
-        capture_request_header_logs(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    let logs = capture_request_header_logs(CONTENT_TYPE, HeaderValue::from_static("application/json"));
     assert!(logs.contains("content-type: application/json"));
 }
 

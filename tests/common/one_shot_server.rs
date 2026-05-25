@@ -137,9 +137,7 @@ impl OneShotServer {
             .request_rx
             .await
             .expect("one-shot test server dropped request sender");
-        self.join_handle
-            .await
-            .expect("one-shot test server task panicked");
+        self.join_handle.await.expect("one-shot test server task panicked");
         request
     }
 }
@@ -156,9 +154,7 @@ impl MultiShotServer {
             .request_rx
             .await
             .expect("multi-shot test server dropped request sender");
-        self.join_handle
-            .await
-            .expect("multi-shot test server task panicked");
+        self.join_handle.await.expect("multi-shot test server task panicked");
         requests
     }
 }
@@ -308,21 +304,16 @@ async fn read_request(stream: &mut TcpStream) -> std::io::Result<CapturedRequest
 
 async fn write_response(stream: &mut TcpStream, plan: ResponsePlan) -> std::io::Result<()> {
     match plan {
-        ResponsePlan::Immediate {
-            status,
-            headers,
-            body,
-        } => write_fixed_response(stream, status, headers, body).await?,
+        ResponsePlan::Immediate { status, headers, body } => {
+            write_fixed_response(stream, status, headers, body).await?
+        }
         ResponsePlan::ImmediateRawHeaders {
             status,
             mut headers,
             body,
         } => {
             if !contains_raw_header(&headers, "Content-Length") {
-                headers.push((
-                    "Content-Length".to_string(),
-                    body.len().to_string().into_bytes(),
-                ));
+                headers.push(("Content-Length".to_string(), body.len().to_string().into_bytes()));
             }
             write_status_and_raw_headers(stream, status, &headers).await?;
             if !body.is_empty() {
@@ -460,9 +451,7 @@ fn is_expected_client_disconnect(error: &std::io::Error) -> bool {
 }
 
 fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
-    haystack
-        .windows(needle.len())
-        .position(|window| window == needle)
+    haystack.windows(needle.len()).position(|window| window == needle)
 }
 
 fn reason_phrase(status: u16) -> &'static str {

@@ -51,10 +51,7 @@ use crate::common::{
 };
 
 fn retry_abort_inner_http(error: &HttpError) -> &HttpError {
-    let boxed = error
-        .source
-        .as_ref()
-        .expect("retry abort should chain inner error");
+    let boxed = error.source.as_ref().expect("retry abort should chain inner error");
     (boxed.as_ref() as &(dyn StdError + 'static))
         .downcast_ref::<HttpError>()
         .expect("inner should be HttpError")
@@ -76,14 +73,8 @@ async fn test_execute_success_with_header_injector_and_request_override() {
     let factory = HttpClientFactory::new();
     let mut client = factory.create(options).unwrap();
     client.add_header_injector(HttpHeaderInjector::new(|headers| {
-        headers.insert(
-            HeaderName::from_static("x-order"),
-            HeaderValue::from_static("injector"),
-        );
-        headers.insert(
-            AUTHORIZATION,
-            HeaderValue::from_static("Bearer secret-token"),
-        );
+        headers.insert(HeaderName::from_static("x-order"), HeaderValue::from_static("injector"));
+        headers.insert(AUTHORIZATION, HeaderValue::from_static("Bearer secret-token"));
         Ok(())
     }));
 
@@ -111,14 +102,8 @@ async fn test_execute_success_with_header_injector_and_request_override() {
     assert_eq!(captured.method, "POST");
     assert_eq!(captured.target, "/v1/messages?stream=false");
     assert_eq!(captured.headers.get("x-order").unwrap(), "request");
-    assert_eq!(
-        captured.headers.get("authorization").unwrap(),
-        "Bearer secret-token"
-    );
-    assert_eq!(
-        captured.headers.get("content-type").unwrap(),
-        "application/json"
-    );
+    assert_eq!(captured.headers.get("authorization").unwrap(), "Bearer secret-token");
+    assert_eq!(captured.headers.get("content-type").unwrap(), "application/json");
 
     assert!(captured.headers.contains_key("content-length"));
 }
@@ -150,11 +135,7 @@ async fn test_execute_maps_non_success_status_to_http_error() {
         Some("<redacted: unsupported HTTP body>")
     );
     assert!(error.message.contains("response body preview"));
-    assert!(error
-        .url
-        .unwrap()
-        .as_str()
-        .starts_with(&server.base_url().to_string()));
+    assert!(error.url.unwrap().as_str().starts_with(&server.base_url().to_string()));
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
@@ -318,15 +299,10 @@ async fn test_execute_stream_success_reads_all_chunks() {
         .expect("execute timed out")
         .unwrap();
     assert_eq!(stream_response.status(), StatusCode::OK);
-    assert_eq!(
-        stream_response.headers().get(CONTENT_TYPE).unwrap(),
-        "text/plain"
-    );
+    assert_eq!(stream_response.headers().get(CONTENT_TYPE).unwrap(), "text/plain");
 
     let mut body = Vec::new();
-    let mut stream = stream_response
-        .stream()
-        .expect("stream body should be available");
+    let mut stream = stream_response.stream().expect("stream body should be available");
     while let Some(item) = stream.next().await {
         let bytes = item.unwrap();
         body.extend_from_slice(&bytes);
@@ -500,10 +476,7 @@ async fn test_execute_stream_post_json_body_with_query_and_timeout() {
         .expect("server finish timed out");
     assert_eq!(captured.method, "POST");
     assert_eq!(captured.target, "/stream-post?mode=events");
-    assert_eq!(
-        captured.headers.get("content-type").unwrap(),
-        "application/json"
-    );
+    assert_eq!(captured.headers.get("content-type").unwrap(), "application/json");
     let json: serde_json::Value = serde_json::from_slice(&captured.body).unwrap();
     assert_eq!(json["hello"], "stream");
 }
@@ -561,10 +534,7 @@ async fn test_execute_stream_with_text_body() {
 async fn test_execute_stream_with_bytes_body() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
-        headers: vec![(
-            "Content-Type".to_string(),
-            "application/octet-stream".to_string(),
-        )],
+        headers: vec![("Content-Type".to_string(), "application/octet-stream".to_string())],
         chunks: vec![ResponseChunk {
             delay: Duration::from_millis(0),
             bytes: b"ok".to_vec(),
@@ -679,9 +649,7 @@ async fn test_execute_non_success_error_body_preview_is_not_truncated_at_exact_l
     options.error_response_preview_limit = body.len();
 
     let client = HttpClientFactory::new().create(options).unwrap();
-    let request = client
-        .request(Method::GET, "/status-exact-preview-limit")
-        .build();
+    let request = client.request(Method::GET, "/status-exact-preview-limit").build();
     let error = client.execute(request).await.unwrap_err();
 
     assert_eq!(error.kind, HttpErrorKind::Status);
@@ -695,10 +663,7 @@ async fn test_execute_non_success_error_body_preview_is_not_truncated_at_exact_l
 async fn test_execute_response_metadata_debug_uses_custom_log_policy() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
-        headers: vec![(
-            "x-tenant-secret".to_string(),
-            "custom-header-secret".to_string(),
-        )],
+        headers: vec![("x-tenant-secret".to_string(), "custom-header-secret".to_string())],
         body: b"ok".to_vec(),
     })
     .await;
@@ -725,10 +690,7 @@ async fn test_execute_response_metadata_debug_uses_custom_log_policy() {
     }));
 
     let request = client
-        .request(
-            Method::GET,
-            "/status-custom-policy?tenant_marker=custom-query-secret",
-        )
+        .request(Method::GET, "/status-custom-policy?tenant_marker=custom-query-secret")
         .build();
     let response = client.execute(request).await.unwrap();
     let meta_debug = format!("{:?}", response.meta());
@@ -758,9 +720,7 @@ async fn test_execute_non_success_error_body_preview_sanitizes_json_fields() {
     options.base_url = Some(server.base_url());
 
     let client = HttpClientFactory::new().create(options).unwrap();
-    let request = client
-        .request(Method::GET, "/status-sensitive-body")
-        .build();
+    let request = client.request(Method::GET, "/status-sensitive-body").build();
     let error = client.execute(request).await.unwrap_err();
 
     assert_eq!(error.kind, HttpErrorKind::Status);
@@ -783,8 +743,7 @@ async fn test_execute_status_error_message_sanitizes_sensitive_url_parts() {
         .base_url()
         .join("/status-sensitive-url?accessToken=query-secret")
         .expect("request URL should join");
-    url.set_username("debug-user")
-        .expect("URL should accept username");
+    url.set_username("debug-user").expect("URL should accept username");
     url.set_password(Some("url-secret"))
         .expect("URL should accept password");
     url.set_fragment(Some("fragment-secret"));
@@ -801,15 +760,11 @@ async fn test_execute_status_error_message_sanitizes_sensitive_url_parts() {
     assert!(error.message.contains("****"));
 
     let captured = server.finish().await;
-    assert_eq!(
-        captured.target,
-        "/status-sensitive-url?accessToken=query-secret"
-    );
+    assert_eq!(captured.target, "/status-sensitive-url?accessToken=query-secret");
 }
 
 #[tokio::test]
-async fn test_execute_non_success_error_body_preview_truncates_when_limit_reached_before_next_chunk(
-) {
+async fn test_execute_non_success_error_body_preview_truncates_when_limit_reached_before_next_chunk() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 500,
         headers: vec![],
@@ -832,9 +787,7 @@ async fn test_execute_non_success_error_body_preview_truncates_when_limit_reache
     options.error_response_preview_limit = 3;
 
     let client = HttpClientFactory::new().create(options).unwrap();
-    let request = client
-        .request(Method::GET, "/status-truncated-next-chunk")
-        .build();
+    let request = client.request(Method::GET, "/status-truncated-next-chunk").build();
     let error = client.execute(request).await.unwrap_err();
 
     assert_eq!(error.kind, HttpErrorKind::Status);
@@ -860,9 +813,7 @@ async fn test_execute_error_body_preview_limit_is_decoupled_from_logging_limit()
     options.error_response_preview_limit = 12;
 
     let client = HttpClientFactory::new().create(options).unwrap();
-    let request = client
-        .request(Method::GET, "/status-decoupled-limit")
-        .build();
+    let request = client.request(Method::GET, "/status-decoupled-limit").build();
     let error = client.execute(request).await.unwrap_err();
 
     assert_eq!(error.kind, HttpErrorKind::Status);
@@ -890,10 +841,7 @@ async fn test_execute_non_success_error_body_preview_for_binary_body() {
     let error = client.execute(request).await.unwrap_err();
 
     assert_eq!(error.kind, HttpErrorKind::Status);
-    assert_eq!(
-        error.response_body_preview.as_deref(),
-        Some("<binary 6 bytes>")
-    );
+    assert_eq!(error.response_body_preview.as_deref(), Some("<binary 6 bytes>"));
 }
 
 #[tokio::test]
@@ -967,11 +915,7 @@ async fn test_execute_maps_truncated_response_body_to_transport_error() {
 
     assert_eq!(error.kind, HttpErrorKind::Transport);
     assert_eq!(error.method, Some(Method::GET));
-    assert!(error
-        .url
-        .unwrap()
-        .as_str()
-        .starts_with(&server.base_url().to_string()));
+    assert!(error.url.unwrap().as_str().starts_with(&server.base_url().to_string()));
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
@@ -1014,11 +958,7 @@ async fn test_execute_maps_truncated_response_stream_to_transport_error() {
 
     assert_eq!(error.kind, HttpErrorKind::Transport);
     assert_eq!(error.method, Some(Method::GET));
-    assert!(error
-        .url
-        .unwrap()
-        .as_str()
-        .starts_with(&server.base_url().to_string()));
+    assert!(error.url.unwrap().as_str().starts_with(&server.base_url().to_string()));
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
@@ -1207,9 +1147,7 @@ async fn test_execute_retry_max_duration_zero_reports_no_retryable_failure() {
         .unwrap_err();
 
     assert_eq!(error.kind, HttpErrorKind::RetryMaxElapsedExceeded);
-    assert!(error
-        .message
-        .contains("before a retryable error was captured"));
+    assert!(error.message.contains("before a retryable error was captured"));
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
@@ -1407,11 +1345,7 @@ async fn test_execute_stream_does_not_retry_after_stream_is_returned() {
         .expect("execute timed out")
         .unwrap();
     let mut stream = response.stream().expect("stream body should be available");
-    let first = stream
-        .next()
-        .await
-        .expect("first stream item should exist")
-        .unwrap();
+    let first = stream.next().await.expect("first stream item should exist").unwrap();
     assert_eq!(first, b"first".as_slice());
     let error = stream
         .next()
@@ -1428,11 +1362,8 @@ async fn test_execute_stream_does_not_retry_after_stream_is_returned() {
 
 #[tokio::test]
 async fn test_execute_connect_refused_maps_to_transport_error() {
-    let listener =
-        std::net::TcpListener::bind("127.0.0.1:0").expect("ephemeral listener bind should work");
-    let addr = listener
-        .local_addr()
-        .expect("listener should expose a local address");
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("ephemeral listener bind should work");
+    let addr = listener.local_addr().expect("listener should expose a local address");
     drop(listener);
 
     let client = HttpClientFactory::new()
