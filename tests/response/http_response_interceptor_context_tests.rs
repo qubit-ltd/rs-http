@@ -87,10 +87,7 @@ fn test_http_response_interceptor_context_from_meta_preserves_retry_after_hint()
 #[test]
 fn test_http_response_interceptor_context_debug_masks_sensitive_values() {
     let mut headers = HeaderMap::new();
-    headers.insert(
-        SET_COOKIE,
-        HeaderValue::from_static("session=debug-cookie-secret"),
-    );
+    headers.insert(SET_COOKIE, HeaderValue::from_static("session=debug-cookie-secret"));
     let context = HttpResponseInterceptorContext::new(
         StatusCode::OK,
         headers,

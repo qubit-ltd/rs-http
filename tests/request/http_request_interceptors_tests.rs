@@ -42,9 +42,7 @@ fn test_http_request_interceptors_apply_in_insertion_order() {
         Ok(())
     }));
 
-    interceptors
-        .apply(&mut request)
-        .expect("interceptors should succeed");
+    interceptors.apply(&mut request).expect("interceptors should succeed");
 
     assert_eq!(request.headers().get("x-first").expect("x-first"), "1");
     assert_eq!(request.headers().get("x-second").expect("x-second"), "1");

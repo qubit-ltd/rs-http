@@ -27,12 +27,7 @@ async fn test_async_header_injector_apply_updates_header_map() {
         .await
         .expect("async injector should succeed");
 
-    assert_eq!(
-        headers
-            .get("x-async")
-            .expect("x-async header should be injected"),
-        "ok"
-    );
+    assert_eq!(headers.get("x-async").expect("x-async header should be injected"), "ok");
 }
 
 #[tokio::test]
@@ -42,10 +37,7 @@ async fn test_async_header_injector_apply_propagates_error() {
     });
 
     let mut headers = HeaderMap::new();
-    let error = injector
-        .apply(&mut headers)
-        .await
-        .expect_err("injector should fail");
+    let error = injector.apply(&mut headers).await.expect_err("injector should fail");
     assert_eq!(error.kind, qubit_http::HttpErrorKind::Other);
     assert!(error.message.contains("injector failed"));
 }

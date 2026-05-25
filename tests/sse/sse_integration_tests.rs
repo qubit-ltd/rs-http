@@ -79,10 +79,7 @@ async fn test_decode_events_handles_chunk_boundaries_and_trailing_flush() {
 #[tokio::test]
 async fn test_decode_events_reports_frame_limit_error() {
     let response = stream_response_from_chunks(vec![b"data: one\ndata: two\n\n".to_vec()]);
-    let mut events = response
-        .sse_max_line_bytes(1024)
-        .sse_max_frame_bytes(8)
-        .sse_messages();
+    let mut events = response.sse_max_line_bytes(1024).sse_max_frame_bytes(8).sse_messages();
     let error = events.next().await.unwrap().unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::SseProtocol);
 }

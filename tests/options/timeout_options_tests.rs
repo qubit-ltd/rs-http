@@ -49,9 +49,7 @@ fn test_timeout_options_all_fields() {
 #[test]
 fn test_timeout_options_partial_fields() {
     let mut config = Config::new();
-    config
-        .set("t.connect_timeout", Duration::from_millis(500))
-        .unwrap();
+    config.set("t.connect_timeout", Duration::from_millis(500)).unwrap();
 
     let opts = HttpTimeoutOptions::from_config(&config.prefix_view("t")).unwrap();
     assert_eq!(opts.connect_timeout, Duration::from_millis(500));
@@ -62,9 +60,7 @@ fn test_timeout_options_partial_fields() {
 #[test]
 fn test_timeout_options_no_request_timeout() {
     let mut config = Config::new();
-    config
-        .set("t.connect_timeout", Duration::from_secs(10))
-        .unwrap();
+    config.set("t.connect_timeout", Duration::from_secs(10)).unwrap();
 
     let opts = HttpTimeoutOptions::from_config(&config.prefix_view("t")).unwrap();
     assert_eq!(opts.request_timeout, None);

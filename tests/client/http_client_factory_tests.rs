@@ -22,9 +22,7 @@ use qubit_http::{
 #[test]
 fn test_factory_create_uses_default_options() {
     let factory = HttpClientFactory::new();
-    let client = factory
-        .create_default()
-        .expect("default options should create client");
+    let client = factory.create_default().expect("default options should create client");
 
     assert!(!client.options().ipv4_only);
     assert!(!client.options().proxy.enabled);
@@ -45,22 +43,11 @@ fn test_factory_create_preserves_options() {
     options.pool_idle_timeout = Some(Duration::from_secs(20));
     options.pool_max_idle_per_host = Some(24);
     options.use_env_proxy = true;
-    let client = factory
-        .create(options)
-        .expect("explicit options should create client");
-    assert_eq!(
-        client.options().timeouts.request_timeout,
-        Some(Duration::from_secs(2))
-    );
-    assert_eq!(
-        client.options().user_agent.as_deref(),
-        Some("qubit-http-tests/1.0")
-    );
+    let client = factory.create(options).expect("explicit options should create client");
+    assert_eq!(client.options().timeouts.request_timeout, Some(Duration::from_secs(2)));
+    assert_eq!(client.options().user_agent.as_deref(), Some("qubit-http-tests/1.0"));
     assert_eq!(client.options().max_redirects, Some(5));
-    assert_eq!(
-        client.options().pool_idle_timeout,
-        Some(Duration::from_secs(20))
-    );
+    assert_eq!(client.options().pool_idle_timeout, Some(Duration::from_secs(20)));
     assert_eq!(client.options().pool_max_idle_per_host, Some(24));
     assert!(client.options().use_env_proxy);
 }
@@ -248,24 +235,12 @@ fn test_factory_create_from_config_full() {
     let client = factory
         .create_from_config(&svc)
         .expect("full config should create client");
-    assert_eq!(
-        client.options().timeouts.connect_timeout,
-        Duration::from_secs(3)
-    );
-    assert_eq!(
-        client.options().timeouts.read_timeout,
-        Duration::from_secs(30)
-    );
+    assert_eq!(client.options().timeouts.connect_timeout, Duration::from_secs(3));
+    assert_eq!(client.options().timeouts.read_timeout, Duration::from_secs(30));
     assert_eq!(client.options().logging.body_size_limit, 4096);
-    assert_eq!(
-        client.options().user_agent.as_deref(),
-        Some("qubit-http-tests/1.0")
-    );
+    assert_eq!(client.options().user_agent.as_deref(), Some("qubit-http-tests/1.0"));
     assert_eq!(client.options().max_redirects, Some(4));
-    assert_eq!(
-        client.options().pool_idle_timeout,
-        Some(Duration::from_secs(10))
-    );
+    assert_eq!(client.options().pool_idle_timeout, Some(Duration::from_secs(10)));
     assert_eq!(client.options().pool_max_idle_per_host, Some(16));
 }
 
@@ -327,10 +302,7 @@ fn test_factory_create_accepts_proxy_without_auth_and_request_timeout() {
         .create(options)
         .expect("valid proxy config should create client");
 
-    assert_eq!(
-        client.options().timeouts.request_timeout,
-        Some(Duration::from_secs(2))
-    );
+    assert_eq!(client.options().timeouts.request_timeout, Some(Duration::from_secs(2)));
 }
 
 #[test]

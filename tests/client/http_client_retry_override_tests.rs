@@ -102,10 +102,7 @@ async fn test_request_retry_override_disable_retry_skips_client_retry_policy() {
         .create(options)
         .expect("client should be created");
 
-    let request = client
-        .request(Method::GET, "/disable-retry")
-        .disable_retry()
-        .build();
+    let request = client.request(Method::GET, "/disable-retry").disable_retry().build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")

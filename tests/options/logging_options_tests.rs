@@ -97,15 +97,10 @@ fn test_logging_validate_body_size_limit_zero_no_body_logging_ok() {
 fn test_logging_options_from_config_can_disable_individual_flags() {
     let mut config = Config::new();
     config.set("l.enabled", false).unwrap();
-    config
-        .set("l.log_request_header", false)
-        .expect("set boolean flag");
-    config
-        .set("l.log_response_body", false)
-        .expect("set boolean flag");
+    config.set("l.log_request_header", false).expect("set boolean flag");
+    config.set("l.log_response_body", false).expect("set boolean flag");
 
-    let opts =
-        HttpLoggingOptions::from_config(&config.prefix_view("l")).expect("read logging options");
+    let opts = HttpLoggingOptions::from_config(&config.prefix_view("l")).expect("read logging options");
     assert!(!opts.enabled);
     assert!(!opts.log_request_header);
     assert!(!opts.log_response_body);

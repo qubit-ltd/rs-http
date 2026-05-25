@@ -49,9 +49,7 @@ fn test_sse_message_decode_json_error_is_sse_decode_with_context() {
         .decode_json::<TestPayload>()
         .expect_err("invalid JSON should fail");
     assert_eq!(error.kind, HttpErrorKind::SseDecode);
-    assert!(error
-        .message
-        .contains("event=Some(\"response.output_text.delta\")"));
+    assert!(error.message.contains("event=Some(\"response.output_text.delta\")"));
     assert!(error.message.contains("last_event_id=Some(\"evt-2\")"));
 }
 

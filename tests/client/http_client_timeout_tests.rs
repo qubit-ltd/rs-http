@@ -159,9 +159,7 @@ async fn test_timeout_classification_is_retryable_in_deterministic_path() {
     options.timeouts.request_timeout = Some(Duration::from_millis(80));
 
     let client = HttpClientFactory::new().create(options).unwrap();
-    let request = client
-        .request(Method::GET, "/deterministic-timeout")
-        .build();
+    let request = client.request(Method::GET, "/deterministic-timeout").build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")
@@ -188,9 +186,7 @@ async fn test_truncated_body_with_request_timeout_context_is_transport_error() {
     options.timeouts.request_timeout = Some(Duration::from_secs(5));
 
     let client = HttpClientFactory::new().create(options).unwrap();
-    let request = client
-        .request(Method::GET, "/request-timeout-read-phase")
-        .build();
+    let request = client.request(Method::GET, "/request-timeout-read-phase").build();
     let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")
@@ -227,9 +223,7 @@ async fn test_reqwest_timeout_during_body_chunk_is_classified_as_read_timeout() 
     options.timeouts.request_timeout = Some(Duration::from_millis(80));
 
     let client = HttpClientFactory::new().create(options).unwrap();
-    let request = client
-        .request(Method::GET, "/request-timeout-body-chunk")
-        .build();
+    let request = client.request(Method::GET, "/request-timeout-body-chunk").build();
     let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")
@@ -352,17 +346,12 @@ async fn test_buffered_bytes_read_timeout_is_applied_per_chunk_wait() {
     options.timeouts.read_timeout = Duration::from_millis(300);
     let client = HttpClientFactory::new().create(options).unwrap();
 
-    let request = client
-        .request(Method::GET, "/bytes-per-chunk-timeout")
-        .build();
+    let request = client.request(Method::GET, "/bytes-per-chunk-timeout").build();
     let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")
         .expect("request should start");
-    let body = response
-        .bytes()
-        .await
-        .expect("buffered body should be readable");
+    let body = response.bytes().await.expect("buffered body should be readable");
     assert_eq!(body, b"firstsecond".as_slice());
 
     let _ = timeout(Duration::from_secs(3), server.finish())

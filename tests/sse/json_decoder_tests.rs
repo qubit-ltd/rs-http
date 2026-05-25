@@ -65,11 +65,8 @@ async fn test_decode_json_chunks_lenient_skips_bad_json_and_respects_done() {
 
 #[tokio::test]
 async fn test_decode_json_chunks_strict_fails_on_bad_json() {
-    let response =
-        stream_response_from_chunks(vec!["data: {\"value\": 1}\n\n", "data: malformed-json\n\n"]);
-    let mut stream = response
-        .sse_json_mode(SseJsonMode::Strict)
-        .sse_chunks::<TestChunk>();
+    let response = stream_response_from_chunks(vec!["data: {\"value\": 1}\n\n", "data: malformed-json\n\n"]);
+    let mut stream = response.sse_json_mode(SseJsonMode::Strict).sse_chunks::<TestChunk>();
 
     let first = stream.next().await.unwrap().unwrap();
     assert_eq!(first, SseChunk::Data(TestChunk { value: 1 }));
@@ -86,9 +83,7 @@ async fn test_decode_json_chunks_strict_error_includes_message_context() {
         "id: evt-42\n",
         "data: malformed-json\n\n",
     ]);
-    let mut stream = response
-        .sse_json_mode(SseJsonMode::Strict)
-        .sse_chunks::<TestChunk>();
+    let mut stream = response.sse_json_mode(SseJsonMode::Strict).sse_chunks::<TestChunk>();
 
     let error = stream.next().await.unwrap().unwrap_err();
 
@@ -114,11 +109,7 @@ async fn test_decode_json_chunks_with_custom_done_marker() {
 
 #[tokio::test]
 async fn test_decode_json_chunks_with_limits_reports_sse_protocol_error() {
-    let response = stream_response_from_chunks(vec![
-        "data: {\"value\": 1}\n",
-        "data: {\"value\": 2}\n",
-        "\n",
-    ]);
+    let response = stream_response_from_chunks(vec!["data: {\"value\": 1}\n", "data: {\"value\": 2}\n", "\n"]);
     let mut stream = response
         .sse_json_mode(SseJsonMode::Strict)
         .sse_max_line_bytes(256)
