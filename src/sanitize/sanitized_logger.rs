@@ -57,10 +57,7 @@ impl SanitizedLogger {
     /// # Returns
     /// Sanitized logger configured like [`crate::HttpLogger`].
     pub(crate) fn from_options(options: &HttpClientOptions) -> Self {
-        Self::new(
-            options.log_sanitize_policy.clone(),
-            options.logging.body_size_limit,
-        )
+        Self::new(options.log_sanitize_policy.clone(), options.logging.body_size_limit)
     }
 
     /// Returns a log-safe URL string.
@@ -96,12 +93,7 @@ impl SanitizedLogger {
     ///
     /// # Returns
     /// Human-readable sanitized body preview.
-    pub(crate) fn body(
-        &self,
-        body: &[u8],
-        context: BodyLogContext,
-        content_type: Option<&str>,
-    ) -> String {
+    pub(crate) fn body(&self, body: &[u8], context: BodyLogContext, content_type: Option<&str>) -> String {
         let preview = BodyPreview::new(body, self.body_size_limit, context);
         let preview = if let Some(content_type) = content_type {
             preview.with_content_type(content_type)

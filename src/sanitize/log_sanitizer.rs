@@ -73,18 +73,9 @@ impl LogSanitizer {
     /// Sanitizer that always includes safe built-in defaults plus custom names.
     pub(crate) fn for_debug(policy: &LogSanitizePolicy) -> Self {
         let mut debug_policy = LogSanitizePolicy::default();
-        extend_sensitive_fields(
-            &mut debug_policy.sensitive_headers,
-            &policy.sensitive_headers,
-        );
-        extend_sensitive_fields(
-            &mut debug_policy.sensitive_query_params,
-            &policy.sensitive_query_params,
-        );
-        extend_sensitive_fields(
-            &mut debug_policy.sensitive_body_fields,
-            &policy.sensitive_body_fields,
-        );
+        extend_sensitive_fields(&mut debug_policy.sensitive_headers, &policy.sensitive_headers);
+        extend_sensitive_fields(&mut debug_policy.sensitive_query_params, &policy.sensitive_query_params);
+        extend_sensitive_fields(&mut debug_policy.sensitive_body_fields, &policy.sensitive_body_fields);
         Self::new(debug_policy)
     }
 
@@ -117,8 +108,7 @@ impl LogSanitizer {
     /// Masked value for sensitive headers, original value for non-sensitive
     /// UTF-8 values, or `<non-utf8>` when header value is not valid UTF-8.
     pub fn sanitize_header_value(&self, name: &HeaderName, value: &HeaderValue) -> String {
-        self.header_sanitizer
-            .sanitize_value(name, value, LOG_NAME_MATCH_MODE)
+        self.header_sanitizer.sanitize_value(name, value, LOG_NAME_MATCH_MODE)
     }
 
     /// Returns log-safe headers for structured debug output.
@@ -128,12 +118,8 @@ impl LogSanitizer {
     ///
     /// # Returns
     /// Deterministic map of lowercase header names to sanitized values.
-    pub(crate) fn sanitize_header_map(
-        &self,
-        headers: &HeaderMap,
-    ) -> std::collections::BTreeMap<String, Vec<String>> {
-        self.header_sanitizer
-            .sanitize_headers(headers, LOG_NAME_MATCH_MODE)
+    pub(crate) fn sanitize_header_map(&self, headers: &HeaderMap) -> std::collections::BTreeMap<String, Vec<String>> {
+        self.header_sanitizer.sanitize_headers(headers, LOG_NAME_MATCH_MODE)
     }
 
     /// Returns a log-safe request body preview.
@@ -145,12 +131,7 @@ impl LogSanitizer {
     ///
     /// # Returns
     /// Sanitized request body preview with request-style truncation suffix.
-    pub fn sanitize_request_body_preview(
-        &self,
-        body: &[u8],
-        limit: usize,
-        content_type: Option<&str>,
-    ) -> String {
+    pub fn sanitize_request_body_preview(&self, body: &[u8], limit: usize, content_type: Option<&str>) -> String {
         self.sanitize_body_bytes(body, limit, BodyLogContext::Request, content_type)
     }
 
@@ -163,12 +144,7 @@ impl LogSanitizer {
     ///
     /// # Returns
     /// Sanitized response body preview with response-style truncation suffix.
-    pub fn sanitize_response_body_preview(
-        &self,
-        body: &[u8],
-        limit: usize,
-        content_type: Option<&str>,
-    ) -> String {
+    pub fn sanitize_response_body_preview(&self, body: &[u8], limit: usize, content_type: Option<&str>) -> String {
         self.sanitize_body_bytes(body, limit, BodyLogContext::Response, content_type)
     }
 
@@ -285,8 +261,8 @@ impl LogSanitizer {
                 let suffix = &token[candidate_end..];
                 return format!("{prefix}{}{suffix}", self.sanitize_url(&url));
             }
-            let (previous, ch) = previous_char_boundary(token, candidate_end)
-                .expect("candidate end is always after URL scheme start");
+            let (previous, ch) =
+                previous_char_boundary(token, candidate_end).expect("candidate end is always after URL scheme start");
             if previous <= scheme_start || !is_trimmable_url_suffix(ch) {
                 return token.to_string();
             }
@@ -302,10 +278,7 @@ impl LogSanitizer {
     /// # Returns
     /// Redaction marker with the rs-http truncation suffix.
     fn invalid_content_type_body(preview: &BodyPreview<'_>) -> String {
-        format!(
-            "{INVALID_CONTENT_TYPE_BODY_REDACTED}{}",
-            preview.truncation_suffix()
-        )
+        format!("{INVALID_CONTENT_TYPE_BODY_REDACTED}{}", preview.truncation_suffix())
     }
 
     /// Converts `qubit-sanitize` counted truncation suffix to rs-http's
@@ -410,8 +383,5 @@ fn previous_char_boundary(text: &str, end: usize) -> Option<(usize, char)> {
 /// # Returns
 /// `true` if the character may be peeled from a failed URL parse attempt.
 fn is_trimmable_url_suffix(ch: char) -> bool {
-    matches!(
-        ch,
-        '.' | ',' | ';' | ':' | '!' | '?' | ')' | ']' | '}' | '"' | '\''
-    )
+    matches!(ch, '.' | ',' | ';' | ':' | '!' | '?' | ')' | ']' | '}' | '"' | '\'')
 }

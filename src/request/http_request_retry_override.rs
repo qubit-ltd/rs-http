@@ -142,10 +142,7 @@ impl HttpRequestRetryOverride {
     ///
     /// # Returns
     /// Effective method policy for this request.
-    pub(crate) fn resolve_method_policy(
-        &self,
-        client_policy: HttpRetryMethodPolicy,
-    ) -> HttpRetryMethodPolicy {
+    pub(crate) fn resolve_method_policy(&self, client_policy: HttpRetryMethodPolicy) -> HttpRetryMethodPolicy {
         self.method_policy.unwrap_or(client_policy)
     }
 }

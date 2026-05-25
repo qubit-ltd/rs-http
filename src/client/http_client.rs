@@ -300,9 +300,7 @@ impl HttpClient {
         let response = self
             .prepare_and_send_once(request, "Request cancelled before sending")
             .await?;
-        let mut response = response
-            .into_success_or_status_error("HTTP request failed")
-            .await?;
+        let mut response = response.into_success_or_status_error("HTTP request failed").await?;
         self.response_interceptors.apply(&mut response.meta)?;
         let logger = HttpLogger::new(&self.options);
         logger.log_response(&mut response).await?;
@@ -383,11 +381,7 @@ impl HttpClient {
     ///
     /// # Side effects
     /// Multiple async HTTP attempts and optional sleeps.
-    async fn execute_with_retry(
-        &self,
-        request: HttpRequest,
-        options: HttpRetryOptions,
-    ) -> HttpResult<HttpResponse> {
+    async fn execute_with_retry(&self, request: HttpRequest, options: HttpRetryOptions) -> HttpResult<HttpResponse> {
         let honor_retry_after = request.retry_override().should_honor_retry_after();
         let retry_options = options.to_executor_options();
         let started_at = Instant::now();
@@ -396,19 +390,10 @@ impl HttpClient {
         let retry_delay_options = retry_options.clone();
         let retry_policy = Retry::<HttpError>::builder()
             .options(retry_options)
-            .retry_after_from_error(move |error| {
-                honor_retry_after.then_some(error.retry_after).flatten()
+            .retry_after_from_error(move |error| honor_retry_after.then_some(error.retry_after).flatten())
+            .on_failure(move |failure: &AttemptFailure<HttpError>, context: &RetryContext| {
+                Self::retry_failure_decision(failure, context, &retry_policy_options, &retry_delay_options)
             })
-            .on_failure(
-                move |failure: &AttemptFailure<HttpError>, context: &RetryContext| {
-                    Self::retry_failure_decision(
-                        failure,
-                        context,
-                        &retry_policy_options,
-                        &retry_delay_options,
-                    )
-                },
-            )
             .build()
             .expect("validated HTTP retry options should build retry policy");
 
@@ -457,9 +442,7 @@ impl HttpClient {
     /// `true` if another attempt may be scheduled.
     fn is_retryable_error(error: &HttpError, options: &HttpRetryOptions) -> bool {
         if error.kind == crate::HttpErrorKind::Status {
-            error
-                .status
-                .is_some_and(|status| options.is_retryable_status(status))
+            error.status.is_some_and(|status| options.is_retryable_status(status))
         } else {
             options.is_retryable_error_kind(error.kind)
         }
@@ -518,11 +501,7 @@ impl HttpClient {
     ///
     /// # Returns
     /// The same error with retry exhaustion details appended to its message.
-    fn map_retry_attempts_exhausted(
-        mut error: HttpError,
-        attempts: u32,
-        max_attempts: u32,
-    ) -> HttpError {
+    fn map_retry_attempts_exhausted(mut error: HttpError, attempts: u32, max_attempts: u32) -> HttpError {
         error.message = format!(
             "{} (retry attempts exhausted: {attempts}/{max_attempts})",
             error.message
@@ -603,14 +582,11 @@ impl HttpClient {
 
         match reason {
             RetryErrorReason::AttemptsExceeded => {
-                let error =
-                    last_error.expect("HTTP retry attempts exceeded should preserve last error");
+                let error = last_error.expect("HTTP retry attempts exceeded should preserve last error");
                 Self::map_retry_attempts_exhausted(error, attempts, max_attempts)
             }
-            RetryErrorReason::MaxOperationElapsedExceeded
-            | RetryErrorReason::MaxTotalElapsedExceeded => {
-                let max_duration =
-                    max_duration.expect("HTTP retry elapsed limit requires max_duration");
+            RetryErrorReason::MaxOperationElapsedExceeded | RetryErrorReason::MaxTotalElapsedExceeded => {
+                let max_duration = max_duration.expect("HTTP retry elapsed limit requires max_duration");
                 Self::map_retry_max_duration_exceeded(started_at, max_duration, last_error)
             }
             RetryErrorReason::Aborted => {
@@ -621,11 +597,9 @@ impl HttpClient {
                     Self::map_retry_aborted(error, attempts, started_at)
                 }
             }
-            RetryErrorReason::UnsupportedOperation | RetryErrorReason::WorkerStillRunning => {
-                HttpError::other(format!(
-                    "HTTP retry executor failed after {attempts} attempt(s): {reason:?}"
-                ))
-            }
+            RetryErrorReason::UnsupportedOperation | RetryErrorReason::WorkerStillRunning => HttpError::other(format!(
+                "HTTP retry executor failed after {attempts} attempt(s): {reason:?}"
+            )),
         }
     }
 
@@ -639,11 +613,7 @@ impl HttpClient {
     /// # Returns
     /// [`HttpErrorKind::Cancelled`](crate::HttpErrorKind::Cancelled) with request
     /// context.
-    fn retry_cancelled_error(
-        message: &str,
-        method: &http::Method,
-        url: Option<&url::Url>,
-    ) -> HttpError {
+    fn retry_cancelled_error(message: &str, method: &http::Method, url: Option<&url::Url>) -> HttpError {
         let mut error = HttpError::cancelled(message).with_method(method);
         if let Some(url) = url {
             error = error.with_url(url);
@@ -676,11 +646,7 @@ impl HttpClient {
     /// # Side effects
     /// Performs repeated HTTP requests and reads on reconnect; may sleep between
     /// attempts according to reconnect options.
-    pub fn execute_sse_with_reconnect(
-        &self,
-        request: HttpRequest,
-        options: SseReconnectOptions,
-    ) -> SseMessageStream {
+    pub fn execute_sse_with_reconnect(&self, request: HttpRequest, options: SseReconnectOptions) -> SseMessageStream {
         SseReconnectRunner::new(self.clone(), request, options).run()
     }
 }

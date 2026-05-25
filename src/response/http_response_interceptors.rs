@@ -25,8 +25,7 @@ use crate::HttpResult;
 /// and request method are immutable and headers/final URL are mutable.
 ///
 /// Returning `Err` short-circuits execution for the current attempt.
-pub type HttpResponseInterceptor =
-    ArcMutatingFunction<HttpResponseInterceptorContext, HttpResult<()>>;
+pub type HttpResponseInterceptor = ArcMutatingFunction<HttpResponseInterceptorContext, HttpResult<()>>;
 
 /// Ordered response interceptor list with unified application behavior.
 #[derive(Debug, Clone, Default)]

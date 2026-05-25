@@ -98,19 +98,13 @@ impl fmt::Debug for HttpRequestBuilder {
             .field("url", &url)
             .field("headers", &debugger.headers(&self.headers))
             .field("body", &self.body)
-            .field(
-                "streaming_body",
-                &self.streaming_body.as_ref().map(|_| "present"),
-            )
+            .field("streaming_body", &self.streaming_body.as_ref().map(|_| "present"))
             .field("request_timeout", &self.request_timeout)
             .field("write_timeout", &self.write_timeout)
             .field("read_timeout", &self.read_timeout)
             .field("base_url", &base_url)
             .field("ipv4_only", &self.ipv4_only)
-            .field(
-                "cancellation_token_present",
-                &self.cancellation_token.is_some(),
-            )
+            .field("cancellation_token_present", &self.cancellation_token.is_some())
             .field("retry_override", &self.retry_override)
             .field("default_headers", &debugger.headers(&self.default_headers))
             .field("injector_count", &self.injectors.len())
@@ -250,10 +244,7 @@ impl HttpRequestBuilder {
     /// `self` for chaining.
     pub fn streaming_body<F>(mut self, factory: F) -> Self
     where
-        F: Fn() -> Pin<Box<dyn Future<Output = HttpRequestBodyByteStream> + Send + 'static>>
-            + Send
-            + Sync
-            + 'static,
+        F: Fn() -> Pin<Box<dyn Future<Output = HttpRequestBodyByteStream> + Send + 'static>> + Send + Sync + 'static,
     {
         self.streaming_body = Some(HttpRequestStreamingBody::new(factory));
         self.body = HttpRequestBody::Empty;
@@ -269,10 +260,8 @@ impl HttpRequestBuilder {
     /// `self` for chaining.
     pub fn text_body(mut self, body: impl Into<String>) -> Self {
         if !self.headers.contains_key(CONTENT_TYPE) {
-            self.headers.insert(
-                CONTENT_TYPE,
-                HeaderValue::from_static("text/plain; charset=utf-8"),
-            );
+            self.headers
+                .insert(CONTENT_TYPE, HeaderValue::from_static("text/plain; charset=utf-8"));
         }
         self.body = HttpRequestBody::Text(body.into());
         self.streaming_body = None;
@@ -349,9 +338,7 @@ impl HttpRequestBuilder {
         }
         if let Some(existing) = self.headers.get(CONTENT_TYPE) {
             let existing = existing.to_str().map_err(|error| {
-                HttpError::other(format!(
-                    "Existing multipart Content-Type must be valid UTF-8: {error}"
-                ))
+                HttpError::other(format!("Existing multipart Content-Type must be valid UTF-8: {error}"))
             })?;
             if !content_type::is_multipart(existing) {
                 return Err(HttpError::other(
@@ -359,11 +346,7 @@ impl HttpRequestBuilder {
                 ));
             }
             let declares_boundary = content_type::has_parameter_name(existing, "boundary")
-                .ok_or_else(|| {
-                    HttpError::other(
-                        "Existing multipart Content-Type boundary is malformed or invalid",
-                    )
-                })?;
+                .ok_or_else(|| HttpError::other("Existing multipart Content-Type boundary is malformed or invalid"))?;
             if let Some(existing_boundary) = content_type::parameter(existing, "boundary") {
                 if !content_type::is_valid_multipart_boundary(&existing_boundary) {
                     return Err(HttpError::other(
@@ -411,17 +394,14 @@ impl HttpRequestBuilder {
     {
         let mut payload = String::new();
         for record in records {
-            let line = serde_json::to_string(record).map_err(|error| {
-                HttpError::decode(format!("Failed to encode NDJSON record: {error}"))
-            })?;
+            let line = serde_json::to_string(record)
+                .map_err(|error| HttpError::decode(format!("Failed to encode NDJSON record: {error}")))?;
             payload.push_str(&line);
             payload.push('\n');
         }
         if !self.headers.contains_key(CONTENT_TYPE) {
-            self.headers.insert(
-                CONTENT_TYPE,
-                HeaderValue::from_static("application/x-ndjson"),
-            );
+            self.headers
+                .insert(CONTENT_TYPE, HeaderValue::from_static("application/x-ndjson"));
         }
         self.body = HttpRequestBody::Ndjson(Bytes::from(payload));
         self.streaming_body = None;

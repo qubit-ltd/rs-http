@@ -79,9 +79,7 @@ impl<'a> HttpLogger<'a> {
         let url = self.request_log_url(request);
         tracing::trace!("--> {} {}", request.method(), url);
 
-        let headers = request
-            .effective_headers_cached()
-            .unwrap_or_else(|| request.headers());
+        let headers = request.effective_headers_cached().unwrap_or_else(|| request.headers());
 
         if self.options.log_request_header {
             for (name, value) in headers {
@@ -96,8 +94,7 @@ impl<'a> HttpLogger<'a> {
                     let content_type = Self::content_type(headers);
                     tracing::trace!(
                         "Request body: {}",
-                        self.sanitized_logger
-                            .body(bytes, BodyLogContext::Request, content_type)
+                        self.sanitized_logger.body(bytes, BodyLogContext::Request, content_type)
                     );
                 }
                 RequestBodyLogPreview::Empty => tracing::trace!("Request body: <empty>"),
@@ -139,21 +136,15 @@ impl<'a> HttpLogger<'a> {
             if let Some(body) = response.buffered_body_for_logging() {
                 tracing::trace!(
                     "Response body: {}",
-                    self.sanitized_logger.body(
-                        body.as_ref(),
-                        BodyLogContext::Response,
-                        content_type.as_deref()
-                    )
+                    self.sanitized_logger
+                        .body(body.as_ref(), BodyLogContext::Response, content_type.as_deref())
                 );
             } else if response.can_buffer_body_for_logging(self.options.body_size_limit) {
                 let body = response.bytes().await?;
                 tracing::trace!(
                     "Response body: {}",
-                    self.sanitized_logger.body(
-                        body.as_ref(),
-                        BodyLogContext::Response,
-                        content_type.as_deref()
-                    )
+                    self.sanitized_logger
+                        .body(body.as_ref(), BodyLogContext::Response, content_type.as_deref())
                 );
             } else {
                 tracing::trace!("Response body: <skipped: streaming or unknown-size body>");
@@ -229,9 +220,7 @@ impl<'a> HttpLogger<'a> {
             | HttpRequestBody::Multipart(bytes)
             | HttpRequestBody::Ndjson(bytes) => RequestBodyLogPreview::Bytes(bytes.as_ref()),
             HttpRequestBody::Text(text) => RequestBodyLogPreview::Bytes(text.as_bytes()),
-            HttpRequestBody::Stream(_) => {
-                RequestBodyLogPreview::Skipped(STREAMING_REQUEST_BODY_SKIPPED)
-            }
+            HttpRequestBody::Stream(_) => RequestBodyLogPreview::Skipped(STREAMING_REQUEST_BODY_SKIPPED),
             HttpRequestBody::Empty => RequestBodyLogPreview::Empty,
         }
     }
@@ -244,8 +233,6 @@ impl<'a> HttpLogger<'a> {
     /// # Returns
     /// `Some` with UTF-8 Content-Type, otherwise `None`.
     fn content_type(headers: &http::HeaderMap) -> Option<&str> {
-        headers
-            .get(CONTENT_TYPE)
-            .and_then(|value| value.to_str().ok())
+        headers.get(CONTENT_TYPE).and_then(|value| value.to_str().ok())
     }
 }
