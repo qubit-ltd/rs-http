@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 
 use std::time::Duration;
 
@@ -39,7 +37,8 @@ impl Default for HttpTimeoutOptions {
     /// Connect / read / write durations use
     /// [`crate::constants::DEFAULT_CONNECT_TIMEOUT_SECS`],
     /// [`crate::constants::DEFAULT_READ_TIMEOUT_SECS`], and
-    /// [`crate::constants::DEFAULT_WRITE_TIMEOUT_SECS`]; no global request timeout.
+    /// [`crate::constants::DEFAULT_WRITE_TIMEOUT_SECS`]; no global request
+    /// timeout.
     ///
     /// # Returns
     /// Default [`HttpTimeoutOptions`].
@@ -100,8 +99,8 @@ impl HttpTimeoutOptions {
     /// - `request_timeout`
     ///
     /// # Returns
-    /// Populated [`HttpTimeoutOptions`] or [`HttpConfigError`] on type conversion
-    /// failure.
+    /// Populated [`HttpTimeoutOptions`] or [`HttpConfigError`] on type
+    /// conversion failure.
     pub fn from_config<R>(config: &R) -> Result<Self, HttpConfigError>
     where
         R: ConfigReader + ?Sized,
@@ -124,7 +123,10 @@ impl HttpTimeoutOptions {
     }
 }
 
-fn validate_positive_duration(path: &str, value: Duration) -> Result<(), HttpConfigError> {
+fn validate_positive_duration(
+    path: &str,
+    value: Duration,
+) -> Result<(), HttpConfigError> {
     if value.is_zero() {
         return Err(HttpConfigError::invalid_value(
             path,

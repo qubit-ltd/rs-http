@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 
 use qubit_http::ProxyType;
 
@@ -21,7 +19,10 @@ fn test_proxy_type_scheme() {
 
 #[test]
 fn test_proxy_type_from_str_is_case_insensitive() {
-    assert_eq!(ProxyType::from_str("HTTP").expect("parse http"), ProxyType::Http);
+    assert_eq!(
+        ProxyType::from_str("HTTP").expect("parse http"),
+        ProxyType::Http
+    );
     assert_eq!(
         ProxyType::from_str("socks5h").expect("parse socks5h"),
         ProxyType::Socks5

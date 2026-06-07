@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 
 use std::sync::{
     Arc,
@@ -35,7 +33,8 @@ use crate::common::{
 };
 
 #[tokio::test]
-async fn test_async_header_injector_runs_after_sync_injector_with_stable_order() {
+async fn test_async_header_injector_runs_after_sync_injector_with_stable_order()
+{
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
         headers: vec![],
@@ -54,17 +53,25 @@ async fn test_async_header_injector_runs_after_sync_injector_with_stable_order()
         .expect("client should be created");
     client.add_header_injector(HttpHeaderInjector::new(move |headers| {
         sync_order.lock().unwrap().push("sync".to_string());
-        headers.insert(HeaderName::from_static("x-flow"), HeaderValue::from_static("sync"));
+        headers.insert(
+            HeaderName::from_static("x-flow"),
+            HeaderValue::from_static("sync"),
+        );
         Ok(())
     }));
-    client.add_async_header_injector(AsyncHttpHeaderInjector::new(move |headers| {
-        let async_order = async_order.clone();
-        Box::pin(async move {
-            async_order.lock().unwrap().push("async".to_string());
-            headers.insert(HeaderName::from_static("x-flow"), HeaderValue::from_static("async"));
-            Ok(())
-        })
-    }));
+    client.add_async_header_injector(AsyncHttpHeaderInjector::new(
+        move |headers| {
+            let async_order = async_order.clone();
+            Box::pin(async move {
+                async_order.lock().unwrap().push("async".to_string());
+                headers.insert(
+                    HeaderName::from_static("x-flow"),
+                    HeaderValue::from_static("async"),
+                );
+                Ok(())
+            })
+        },
+    ));
 
     let request = client.request(Method::GET, "/async-injector").build();
     let response = timeout(Duration::from_secs(3), client.execute(request))
@@ -92,9 +99,13 @@ async fn test_async_header_injector_failure_short_circuits_request() {
     let mut client = HttpClientFactory::new()
         .create(options)
         .expect("client should be created");
-    client.add_async_header_injector(AsyncHttpHeaderInjector::new(|_headers| {
-        Box::pin(async move { Err(qubit_http::HttpError::other("async injector failed")) })
-    }));
+    client.add_async_header_injector(AsyncHttpHeaderInjector::new(
+        |_headers| {
+            Box::pin(async move {
+                Err(qubit_http::HttpError::other("async injector failed"))
+            })
+        },
+    ));
 
     let request = client.request(Method::GET, "/async-fail").build();
     let error = timeout(Duration::from_secs(3), client.execute(request))

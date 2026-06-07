@@ -1,16 +1,13 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! # SSE message record
 //!
 //! One EventSource-style message dispatch after frame reassembly.
-//!
 
 use serde::de::DeserializeOwned;
 
@@ -23,11 +20,13 @@ use crate::{
 /// One EventSource-style message dispatch after `data:` line reassembly.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SseMessage {
-    /// `event:` field if present; callers may treat `None` as the default `message` type.
+    /// `event:` field if present; callers may treat `None` as the default
+    /// `message` type.
     pub event: Option<String>,
     /// Concatenated `data:` payload.
     pub data: String,
-    /// Last event id after applying this frame and any prior control-only `id:` frames.
+    /// Last event id after applying this frame and any prior control-only
+    /// `id:` frames.
     pub last_event_id: Option<String>,
 }
 
@@ -54,7 +53,8 @@ impl SseMessage {
         })
     }
 
-    /// Decodes the current message's `data` payload as JSON with configurable strictness.
+    /// Decodes the current message's `data` payload as JSON with configurable
+    /// strictness.
     ///
     /// # Parameters
     /// - `mode`: JSON decoding strictness.
@@ -67,14 +67,19 @@ impl SseMessage {
     /// - `Ok(None)` in lenient mode when JSON parsing fails.
     ///
     /// # Errors
-    /// Returns [`HttpError::sse_decode`] in strict mode when JSON parsing fails.
-    pub fn decode_json_with_mode<T>(&self, mode: SseJsonMode) -> HttpResult<Option<T>>
+    /// Returns [`HttpError::sse_decode`] in strict mode when JSON parsing
+    /// fails.
+    pub fn decode_json_with_mode<T>(
+        &self,
+        mode: SseJsonMode,
+    ) -> HttpResult<Option<T>>
     where
         T: DeserializeOwned,
     {
         match mode {
             SseJsonMode::Strict => self.decode_json::<T>().map(Some),
-            SseJsonMode::Lenient => match serde_json::from_str::<T>(&self.data) {
+            SseJsonMode::Lenient => match serde_json::from_str::<T>(&self.data)
+            {
                 Ok(value) => Ok(Some(value)),
                 Err(error) => {
                     tracing::debug!(

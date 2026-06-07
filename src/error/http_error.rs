@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! Unified [`HttpError`] type.
 
 use std::error::Error;
@@ -57,7 +55,8 @@ impl fmt::Debug for HttpError {
         let debugger = SanitizedDebugger::new(&self.log_sanitize_policy);
         let url = debugger.optional_url(self.url.as_ref());
         let message = debugger.diagnostic_text(&self.message);
-        let response_body_preview_len = self.response_body_preview.as_ref().map(String::len);
+        let response_body_preview_len =
+            self.response_body_preview.as_ref().map(String::len);
         formatter
             .debug_struct("HttpError")
             .field("kind", &self.kind)
@@ -73,7 +72,8 @@ impl fmt::Debug for HttpError {
 }
 
 impl HttpError {
-    /// Creates an error with kind and message; other fields are unset until chained.
+    /// Creates an error with kind and message; other fields are unset until
+    /// chained.
     ///
     /// # Parameters
     /// - `kind`: Classification for retry logic and handling.
@@ -153,7 +153,10 @@ impl HttpError {
     ///
     /// # Returns
     /// `self` for chaining.
-    pub fn with_response_body_preview(mut self, preview: impl Into<String>) -> Self {
+    pub fn with_response_body_preview(
+        mut self,
+        preview: impl Into<String>,
+    ) -> Self {
         self.response_body_preview = Some(preview.into());
         self
     }
@@ -177,7 +180,10 @@ impl HttpError {
     ///
     /// # Returns
     /// `self` for chaining.
-    pub fn with_log_sanitize_policy(mut self, policy: LogSanitizePolicy) -> Self {
+    pub fn with_log_sanitize_policy(
+        mut self,
+        policy: LogSanitizePolicy,
+    ) -> Self {
         self.log_sanitize_policy = Box::new(policy);
         self
     }
@@ -373,7 +379,8 @@ impl HttpError {
     /// Classifies this error for retry policies ([`RetryHint`]).
     ///
     /// # Returns
-    /// [`RetryHint::Retryable`] for timeouts, transport errors, and some HTTP statuses; otherwise non-retryable.
+    /// [`RetryHint::Retryable`] for timeouts, transport errors, and some HTTP
+    /// statuses; otherwise non-retryable.
     pub fn retry_hint(&self) -> RetryHint {
         match self.kind {
             HttpErrorKind::ConnectTimeout
@@ -383,7 +390,9 @@ impl HttpError {
             | HttpErrorKind::Transport => RetryHint::Retryable,
             HttpErrorKind::Status => {
                 if let Some(status) = self.status {
-                    if status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error() {
+                    if status == StatusCode::TOO_MANY_REQUESTS
+                        || status.is_server_error()
+                    {
                         RetryHint::Retryable
                     } else {
                         RetryHint::NonRetryable
@@ -398,7 +407,8 @@ impl HttpError {
 }
 
 impl From<std::io::Error> for HttpError {
-    /// Maps [`std::io::Error`] to [`HttpError::transport`] with the I/O error as source.
+    /// Maps [`std::io::Error`] to [`HttpError::transport`] with the I/O error
+    /// as source.
     ///
     /// # Parameters
     /// - `error`: Underlying I/O error.
@@ -411,7 +421,8 @@ impl From<std::io::Error> for HttpError {
 }
 
 impl From<reqwest::Error> for HttpError {
-    /// Maps [`reqwest::Error`] to [`HttpErrorKind::BuildClient`] with chained source.
+    /// Maps [`reqwest::Error`] to [`HttpErrorKind::BuildClient`] with chained
+    /// source.
     ///
     /// # Parameters
     /// - `error`: Reqwest error to wrap.
@@ -420,6 +431,7 @@ impl From<reqwest::Error> for HttpError {
     /// Wrapped [`HttpError`].
     fn from(error: reqwest::Error) -> Self {
         let error = error.without_url();
-        Self::build_client(format!("Failed to build reqwest client: {}", error)).with_source(error)
+        Self::build_client(format!("Failed to build reqwest client: {}", error))
+            .with_source(error)
     }
 }

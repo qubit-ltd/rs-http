@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! Tests for `src/sse/sse_message.rs`.
 
 use qubit_http::sse::{
@@ -28,7 +26,8 @@ fn test_sse_message_decode_json_success() {
         last_event_id: Some("evt-1".to_string()),
     };
 
-    let payload: TestPayload = message.decode_json().expect("JSON decoding should succeed");
+    let payload: TestPayload =
+        message.decode_json().expect("JSON decoding should succeed");
     assert_eq!(
         payload,
         TestPayload {
@@ -49,7 +48,9 @@ fn test_sse_message_decode_json_error_is_sse_decode_with_context() {
         .decode_json::<TestPayload>()
         .expect_err("invalid JSON should fail");
     assert_eq!(error.kind, HttpErrorKind::SseDecode);
-    assert!(error.message.contains("event=Some(\"response.output_text.delta\")"));
+    assert!(error
+        .message
+        .contains("event=Some(\"response.output_text.delta\")"));
     assert!(error.message.contains("last_event_id=Some(\"evt-2\")"));
 }
 

@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! Deferred streaming request body wrapper.
 
 use std::future::Future;
@@ -15,9 +13,11 @@ use std::sync::Arc;
 
 use super::http_request_body_byte_stream::HttpRequestBodyByteStream;
 
-type HttpRequestBodyStreamFactoryFuture = Pin<Box<dyn Future<Output = HttpRequestBodyByteStream> + Send + 'static>>;
+type HttpRequestBodyStreamFactoryFuture =
+    Pin<Box<dyn Future<Output = HttpRequestBodyByteStream> + Send + 'static>>;
 
-type HttpRequestBodyStreamFactoryFn = dyn Fn() -> HttpRequestBodyStreamFactoryFuture + Send + Sync + 'static;
+type HttpRequestBodyStreamFactoryFn =
+    dyn Fn() -> HttpRequestBodyStreamFactoryFuture + Send + Sync + 'static;
 
 /// Deferred streaming upload body source.
 ///
@@ -38,7 +38,8 @@ impl std::fmt::Debug for HttpRequestStreamingBody {
     /// # Returns
     /// Formatting result.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("HttpRequestStreamingBody").finish_non_exhaustive()
+        f.debug_struct("HttpRequestStreamingBody")
+            .finish_non_exhaustive()
     }
 }
 

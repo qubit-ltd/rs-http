@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! Response interceptor context with controlled metadata mutation.
 
 use std::fmt;
@@ -50,11 +48,17 @@ impl HttpResponseInterceptorContext {
     /// - `status`: Response status code. It is immutable after construction.
     /// - `headers`: Response headers that interceptors may mutate.
     /// - `url`: Final response URL that interceptors may replace.
-    /// - `method`: Originating request method. It is immutable after construction.
+    /// - `method`: Originating request method. It is immutable after
+    ///   construction.
     ///
     /// # Returns
     /// New interceptor context.
-    pub fn new(status: StatusCode, headers: HeaderMap, url: Url, method: Method) -> Self {
+    pub fn new(
+        status: StatusCode,
+        headers: HeaderMap,
+        url: Url,
+        method: Method,
+    ) -> Self {
         Self {
             status,
             headers,
@@ -71,7 +75,10 @@ impl HttpResponseInterceptorContext {
     ///
     /// # Returns
     /// Updated context.
-    pub fn with_log_sanitize_policy(mut self, policy: LogSanitizePolicy) -> Self {
+    pub fn with_log_sanitize_policy(
+        mut self,
+        policy: LogSanitizePolicy,
+    ) -> Self {
         self.log_sanitize_policy = policy;
         self
     }
@@ -159,7 +166,10 @@ impl HttpResponseInterceptorContext {
     /// otherwise `None`.
     #[inline]
     pub fn retry_after_hint(&self) -> Option<Duration> {
-        HttpResponseMeta::retry_after_hint_from_parts(self.status, &self.headers)
+        HttpResponseMeta::retry_after_hint_from_parts(
+            self.status,
+            &self.headers,
+        )
     }
 
     /// Applies mutable context fields back into response metadata.

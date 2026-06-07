@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 
 use std::time::Duration;
 
@@ -69,7 +67,9 @@ async fn test_ipv4_only_rejects_ipv6_literal_request_url() {
     options.timeouts.read_timeout = Duration::from_secs(1);
 
     let client = HttpClientFactory::new().create(options).unwrap();
-    let request = client.request(Method::GET, "http://[::1]:18080/ipv6").build();
+    let request = client
+        .request(Method::GET, "http://[::1]:18080/ipv6")
+        .build();
     let error = client.execute(request).await.unwrap_err();
 
     assert_eq!(error.kind, HttpErrorKind::InvalidUrl);

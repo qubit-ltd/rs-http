@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 
 use std::time::Duration;
 
@@ -52,7 +50,10 @@ async fn test_backend_error_mapper_classifies_body_read_timeout() {
 
     assert_eq!(error.kind, HttpErrorKind::ReadTimeout);
     assert_eq!(error.method, Some(Method::GET));
-    assert_eq!(error.url, Some(server.base_url().join("/read-timeout").unwrap()));
+    assert_eq!(
+        error.url,
+        Some(server.base_url().join("/read-timeout").unwrap())
+    );
 
     timeout(Duration::from_secs(3), server.finish())
         .await

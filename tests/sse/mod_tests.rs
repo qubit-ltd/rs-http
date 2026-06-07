@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! Integration tests for `src/sse/mod.rs` (`decode_messages`).
 //! File layout: `tests/sse/mod_tests.rs` mirrors `src/sse/mod.rs`.
 
@@ -26,7 +24,9 @@ use qubit_http::{
     RetryJitter,
 };
 
-async fn collect_results<T>(stream: impl futures_util::Stream<Item = HttpResult<T>>) -> Vec<T> {
+async fn collect_results<T>(
+    stream: impl futures_util::Stream<Item = HttpResult<T>>,
+) -> Vec<T> {
     stream
         .map(|item| item.expect("unexpected stream error in test"))
         .collect::<Vec<_>>()
@@ -59,7 +59,11 @@ async fn test_decode_messages_parses_fields_and_multiline_data() {
 
 #[tokio::test]
 async fn test_decode_messages_ignores_comment_lines() {
-    let response = stream_response_from_chunks(vec![": keep-alive\n", "data: {\"value\": 7}\n", "\n"]);
+    let response = stream_response_from_chunks(vec![
+        ": keep-alive\n",
+        "data: {\"value\": 7}\n",
+        "\n",
+    ]);
     let events = collect_results(response.sse_messages()).await;
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].data, "{\"value\": 7}");
@@ -76,7 +80,11 @@ fn test_sse_reconnect_options_default_backoff_parameters() {
     assert_eq!(options.retry.max_attempts(), 4);
     assert_eq!(
         options.retry.delay(),
-        &RetryDelay::exponential(Duration::from_secs(1), Duration::from_secs(30), 2.0,)
+        &RetryDelay::exponential(
+            Duration::from_secs(1),
+            Duration::from_secs(30),
+            2.0,
+        )
     );
     assert_eq!(options.retry.jitter(), RetryJitter::None);
 }
@@ -98,6 +106,9 @@ fn test_sse_reconnect_options_can_override_server_retry_controls() {
         ..SseReconnectOptions::default()
     };
     assert!(!options.honor_server_retry);
-    assert_eq!(options.server_retry_max_delay, Some(Duration::from_millis(250)));
+    assert_eq!(
+        options.server_retry_max_delay,
+        Some(Duration::from_millis(250))
+    );
     assert!(!options.apply_jitter_to_server_retry);
 }

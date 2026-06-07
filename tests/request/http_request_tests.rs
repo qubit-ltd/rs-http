@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 
 use std::time::Duration;
 
@@ -47,7 +45,9 @@ fn test_http_request_setters_update_method_path_query_and_body() {
     assert_eq!(request.method(), &Method::POST);
     assert_eq!(request.path(), "/v2/orders");
 
-    request.add_query_param("page", "1").add_query_param("limit", "10");
+    request
+        .add_query_param("page", "1")
+        .add_query_param("limit", "10");
     assert_eq!(
         request.query(),
         vec![
@@ -60,7 +60,9 @@ fn test_http_request_setters_update_method_path_query_and_body() {
 
     request.set_body(HttpRequestBody::Bytes(Bytes::from_static(b"payload")));
     match request.body() {
-        HttpRequestBody::Bytes(bytes) => assert_eq!(bytes, &Bytes::from_static(b"payload")),
+        HttpRequestBody::Bytes(bytes) => {
+            assert_eq!(bytes, &Bytes::from_static(b"payload"))
+        }
         _ => panic!("expected bytes body"),
     }
 }
@@ -122,7 +124,9 @@ fn test_http_request_resolved_url_is_public() {
         .query_param("added", "two words")
         .build();
 
-    let url = request.resolved_url().expect("resolved request URL should be public");
+    let url = request
+        .resolved_url()
+        .expect("resolved request URL should be public");
 
     assert_eq!(
         url.as_str(),
@@ -137,7 +141,10 @@ fn test_http_request_setters_update_headers_timeout_retry_and_cancellation() {
     request
         .set_header("x-trace-id", "trace-1")
         .expect("valid header should be accepted");
-    request.set_typed_header(HeaderName::from_static("x-role"), HeaderValue::from_static("tester"));
+    request.set_typed_header(
+        HeaderName::from_static("x-role"),
+        HeaderValue::from_static("tester"),
+    );
     assert_eq!(
         request
             .headers()
@@ -146,7 +153,10 @@ fn test_http_request_setters_update_headers_timeout_retry_and_cancellation() {
         "trace-1"
     );
     assert_eq!(
-        request.headers().get("x-role").expect("x-role header should exist"),
+        request
+            .headers()
+            .get("x-role")
+            .expect("x-role header should exist"),
         "tester"
     );
 
@@ -241,7 +251,10 @@ fn test_http_request_setters_update_resolved_url_for_base_url_and_ipv4_only() {
     let mut request = client.request(Method::GET, "users").build();
 
     assert_eq!(
-        request.resolved_url().expect("request URL should resolve").as_str(),
+        request
+            .resolved_url()
+            .expect("request URL should resolve")
+            .as_str(),
         "https://api.example.com/v1/users"
     );
 
@@ -280,9 +293,11 @@ fn test_http_request_setters_update_resolved_url_for_base_url_and_ipv4_only() {
 }
 
 #[test]
-fn test_http_request_set_streaming_body_replaces_existing_body_and_has_safe_debug() {
+fn test_http_request_set_streaming_body_replaces_existing_body_and_has_safe_debug(
+) {
     let mut request = new_request(Method::POST, "/streaming-upload");
-    request.set_body(HttpRequestBody::Bytes(Bytes::from_static(b"legacy-body")));
+    request
+        .set_body(HttpRequestBody::Bytes(Bytes::from_static(b"legacy-body")));
 
     let streaming_body = HttpRequestStreamingBody::new(|| {
         Box::pin(async move {

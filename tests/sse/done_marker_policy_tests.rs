@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! Tests for `src/sse/done_marker_policy.rs`.
 
 use qubit_http::sse::DoneMarkerPolicy;
@@ -45,5 +43,8 @@ fn test_done_marker_policy_from_str_parses_aliases_and_custom() {
 fn test_done_marker_policy_display_formats_variants() {
     assert_eq!(DoneMarkerPolicy::Disabled.to_string(), "disable");
     assert_eq!(DoneMarkerPolicy::DefaultDone.to_string(), "default");
-    assert_eq!(DoneMarkerPolicy::Custom("[FIN]".to_string()).to_string(), "[FIN]");
+    assert_eq!(
+        DoneMarkerPolicy::Custom("[FIN]".to_string()).to_string(),
+        "[FIN]"
+    );
 }

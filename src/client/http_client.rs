@@ -1,19 +1,16 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! HTTP client: builds requests, applies defaults and interceptors, executes
 //! them with optional retry, and exposes SSE helpers with reconnect.
 //!
-//! Single-shot execution is [`HttpClient::execute`] / [`HttpClient::execute_once`];
-//! retry policy comes from [`crate::HttpClientOptions::retry`] unless overridden
-//! per request.
-//!
+//! Single-shot execution is [`HttpClient::execute`] /
+//! [`HttpClient::execute_once`]; retry policy comes from
+//! [`crate::HttpClientOptions::retry`] unless overridden per request.
 
 use std::time::{
     Duration,
@@ -57,19 +54,21 @@ use crate::{
 /// High-level HTTP client: default headers, injectors, interceptors, logging,
 /// timeouts, and optional per-request retry.
 ///
-/// [`Clone`] is shallow and cheap enough for typical use (including passing into
-/// retry closures); cloning does not duplicate the underlying connection pool
-/// beyond what [`reqwest::Client`] already shares.
+/// [`Clone`] is shallow and cheap enough for typical use (including passing
+/// into retry closures); cloning does not duplicate the underlying connection
+/// pool beyond what [`reqwest::Client`] already shares.
 #[derive(Clone)]
 pub struct HttpClient {
-    /// Pluggable low-level HTTP stack used to send requests (currently reqwest).
+    /// Pluggable low-level HTTP stack used to send requests (currently
+    /// reqwest).
     pub(super) backend: reqwest::Client,
     /// Timeouts, proxy, logging, default headers, and related settings.
     pub(super) options: HttpClientOptions,
     /// Header injectors applied to every outgoing request after default
     /// headers.
     pub(super) injectors: Vec<HttpHeaderInjector>,
-    /// Async header injectors applied after sync injectors and before request-level headers.
+    /// Async header injectors applied after sync injectors and before
+    /// request-level headers.
     pub(super) async_injectors: Vec<AsyncHttpHeaderInjector>,
     /// Request interceptors applied before request send for each attempt.
     request_interceptors: HttpRequestInterceptors,
@@ -88,7 +87,10 @@ impl HttpClient {
     /// # Returns
     /// A new [`HttpClient`] with no injectors until
     /// [`HttpClient::add_header_injector`] is called.
-    pub(crate) fn new(backend: reqwest::Client, options: HttpClientOptions) -> Self {
+    pub(crate) fn new(
+        backend: reqwest::Client,
+        options: HttpClientOptions,
+    ) -> Self {
         Self {
             backend,
             options,
@@ -99,8 +101,8 @@ impl HttpClient {
         }
     }
 
-    /// Returns a reference to the client-wide options (timeouts, proxy, logging,
-    /// default headers, retry defaults, etc.).
+    /// Returns a reference to the client-wide options (timeouts, proxy,
+    /// logging, default headers, retry defaults, etc.).
     ///
     /// # Returns
     /// Immutable borrow of [`HttpClientOptions`]. Never `None`; always the
@@ -118,12 +120,15 @@ impl HttpClient {
         self.injectors.push(injector);
     }
 
-    /// Appends an async header injector whose mutation runs after sync injectors.
-    /// Mutates `self` in place.
+    /// Appends an async header injector whose mutation runs after sync
+    /// injectors. Mutates `self` in place.
     ///
     /// # Parameters
     /// - `injector`: Async injector to append (order is preserved).
-    pub fn add_async_header_injector(&mut self, injector: AsyncHttpHeaderInjector) {
+    pub fn add_async_header_injector(
+        &mut self,
+        injector: AsyncHttpHeaderInjector,
+    ) {
         self.async_injectors.push(injector);
     }
 
@@ -132,17 +137,23 @@ impl HttpClient {
     ///
     /// # Parameters
     /// - `interceptor`: Request interceptor to append (order is preserved).
-    pub fn add_request_interceptor(&mut self, interceptor: HttpRequestInterceptor) {
+    pub fn add_request_interceptor(
+        &mut self,
+        interceptor: HttpRequestInterceptor,
+    ) {
         self.request_interceptors.push(interceptor);
     }
 
     /// Appends a response interceptor run only after a successful HTTP status
-    /// (after the internal `execute_once` step) and before response body logging.
-    /// Mutates `self` in place.
+    /// (after the internal `execute_once` step) and before response body
+    /// logging. Mutates `self` in place.
     ///
     /// # Parameters
     /// - `interceptor`: Response interceptor to append (order is preserved).
-    pub fn add_response_interceptor(&mut self, interceptor: HttpResponseInterceptor) {
+    pub fn add_response_interceptor(
+        &mut self,
+        interceptor: HttpResponseInterceptor,
+    ) {
         self.response_interceptors.push(interceptor);
     }
 
@@ -160,7 +171,11 @@ impl HttpClient {
     ///
     /// # Errors
     /// Returns [`HttpError`] when the header name or value is invalid.
-    pub fn add_header(&mut self, name: &str, value: &str) -> HttpResult<&mut Self> {
+    pub fn add_header(
+        &mut self,
+        name: &str,
+        value: &str,
+    ) -> HttpResult<&mut Self> {
         self.options.add_header(name, value)?;
         Ok(self)
     }
@@ -178,7 +193,10 @@ impl HttpClient {
     /// # Errors
     /// Returns [`HttpError`] when any name/value pair is invalid (nothing from
     /// this call is applied).
-    pub fn add_headers(&mut self, headers: &[(&str, &str)]) -> HttpResult<&mut Self> {
+    pub fn add_headers(
+        &mut self,
+        headers: &[(&str, &str)],
+    ) -> HttpResult<&mut Self> {
         self.options.add_headers(headers)?;
         Ok(self)
     }
@@ -215,7 +233,11 @@ impl HttpClient {
     /// A new [`HttpRequestBuilder`] borrowing this client for defaults; it is
     /// not sent until built and passed to [`HttpClient::execute`] (or related
     /// APIs).
-    pub fn request(&self, method: http::Method, path: &str) -> HttpRequestBuilder {
+    pub fn request(
+        &self,
+        method: http::Method,
+        path: &str,
+    ) -> HttpRequestBuilder {
         HttpRequestBuilder::new(method, path, self)
     }
 
@@ -242,7 +264,9 @@ impl HttpClient {
     ///
     /// # Returns
     /// New [`Vec`] with the same injectors and order as on this client.
-    pub(crate) fn async_injectors_snapshot(&self) -> Vec<AsyncHttpHeaderInjector> {
+    pub(crate) fn async_injectors_snapshot(
+        &self,
+    ) -> Vec<AsyncHttpHeaderInjector> {
         self.async_injectors.clone()
     }
 
@@ -263,7 +287,10 @@ impl HttpClient {
     /// - `Err(HttpError)` when any attempt fails for URL/header validation,
     ///   cancellation, interceptor failure, transport/timeout, non-success
     ///   status, or when the retry executor aborts or exceeds limits.
-    pub async fn execute(&self, request: HttpRequest) -> HttpResult<HttpResponse> {
+    pub async fn execute(
+        &self,
+        request: HttpRequest,
+    ) -> HttpResult<HttpResponse> {
         let retry_options = self.options.retry.resolve(&request);
         if retry_options.should_retry(&request) {
             self.execute_with_retry(request, retry_options).await
@@ -291,16 +318,23 @@ impl HttpClient {
     ///
     /// # Side effects
     /// Network I/O, optional logging, and user-provided interceptor callbacks.
-    pub(crate) async fn execute_once(&self, request: HttpRequest) -> HttpResult<HttpResponse> {
+    pub(crate) async fn execute_once(
+        &self,
+        request: HttpRequest,
+    ) -> HttpResult<HttpResponse> {
         let mut request = request;
-        if let Some(error) = request.cancelled_error_if_needed("Request cancelled before sending") {
+        if let Some(error) = request
+            .cancelled_error_if_needed("Request cancelled before sending")
+        {
             return Err(error);
         }
         self.request_interceptors.apply(&mut request)?;
         let response = self
             .prepare_and_send_once(request, "Request cancelled before sending")
             .await?;
-        let mut response = response.into_success_or_status_error("HTTP request failed").await?;
+        let mut response = response
+            .into_success_or_status_error("HTTP request failed")
+            .await?;
         self.response_interceptors.apply(&mut response.meta)?;
         let logger = HttpLogger::new(&self.options);
         logger.log_response(&mut response).await?;
@@ -331,12 +365,15 @@ impl HttpClient {
         cancellation_message: &str,
     ) -> HttpResult<HttpResponse> {
         let mut request = request;
-        if let Some(error) = request.cancelled_error_if_needed(cancellation_message) {
+        if let Some(error) =
+            request.cancelled_error_if_needed(cancellation_message)
+        {
             return Err(error);
         }
         let logger = HttpLogger::new(&self.options);
         let request_url = request.resolved_url()?;
-        let backend_response = request.send_impl(&self.backend, &logger).await?;
+        let backend_response =
+            request.send_impl(&self.backend, &logger).await?;
         let meta = HttpResponseMeta::new(
             backend_response.status(),
             backend_response.headers().clone(),
@@ -381,8 +418,13 @@ impl HttpClient {
     ///
     /// # Side effects
     /// Multiple async HTTP attempts and optional sleeps.
-    async fn execute_with_retry(&self, request: HttpRequest, options: HttpRetryOptions) -> HttpResult<HttpResponse> {
-        let honor_retry_after = request.retry_override().should_honor_retry_after();
+    async fn execute_with_retry(
+        &self,
+        request: HttpRequest,
+        options: HttpRetryOptions,
+    ) -> HttpResult<HttpResponse> {
+        let honor_retry_after =
+            request.retry_override().should_honor_retry_after();
         let retry_options = options.to_executor_options();
         let started_at = Instant::now();
 
@@ -390,10 +432,20 @@ impl HttpClient {
         let retry_delay_options = retry_options.clone();
         let retry_policy = Retry::<HttpError>::builder()
             .options(retry_options)
-            .retry_after_from_error(move |error| honor_retry_after.then_some(error.retry_after).flatten())
-            .on_failure(move |failure: &AttemptFailure<HttpError>, context: &RetryContext| {
-                Self::retry_failure_decision(failure, context, &retry_policy_options, &retry_delay_options)
+            .retry_after_from_error(move |error| {
+                honor_retry_after.then_some(error.retry_after).flatten()
             })
+            .on_failure(
+                move |failure: &AttemptFailure<HttpError>,
+                      context: &RetryContext| {
+                    Self::retry_failure_decision(
+                        failure,
+                        context,
+                        &retry_policy_options,
+                        &retry_delay_options,
+                    )
+                },
+            )
             .build()
             .expect("validated HTTP retry options should build retry policy");
 
@@ -440,9 +492,14 @@ impl HttpClient {
     ///
     /// # Returns
     /// `true` if another attempt may be scheduled.
-    fn is_retryable_error(error: &HttpError, options: &HttpRetryOptions) -> bool {
+    fn is_retryable_error(
+        error: &HttpError,
+        options: &HttpRetryOptions,
+    ) -> bool {
         if error.kind == crate::HttpErrorKind::Status {
-            error.status.is_some_and(|status| options.is_retryable_status(status))
+            error
+                .status
+                .is_some_and(|status| options.is_retryable_status(status))
         } else {
             options.is_retryable_error_kind(error.kind)
         }
@@ -456,7 +513,10 @@ impl HttpClient {
     ///
     /// # Returns
     /// `base_delay`, or the larger `Retry-After` value when present.
-    fn retry_sleep_delay(base_delay: Duration, retry_after_hint: Option<Duration>) -> Duration {
+    fn retry_sleep_delay(
+        base_delay: Duration,
+        retry_after_hint: Option<Duration>,
+    ) -> Duration {
         retry_after_hint
             .map(|retry_after| retry_after.max(base_delay))
             .unwrap_or(base_delay)
@@ -480,15 +540,16 @@ impl HttpClient {
         policy_options: &HttpRetryOptions,
         delay_options: &qubit_retry::RetryOptions,
     ) -> AttemptFailureDecision {
-        let error = failure
-            .as_error()
-            .expect("HTTP retry attempts do not configure non-HTTP attempt failures");
+        let error = failure.as_error().expect(
+            "HTTP retry attempts do not configure non-HTTP attempt failures",
+        );
         if !Self::is_retryable_error(error, policy_options) {
             return AttemptFailureDecision::Abort;
         }
 
         let base_delay = delay_options.delay_for_attempt(context.attempt());
-        let sleep_delay = Self::retry_sleep_delay(base_delay, context.retry_after_hint());
+        let sleep_delay =
+            Self::retry_sleep_delay(base_delay, context.retry_after_hint());
         AttemptFailureDecision::RetryAfter(sleep_delay)
     }
 
@@ -501,7 +562,11 @@ impl HttpClient {
     ///
     /// # Returns
     /// The same error with retry exhaustion details appended to its message.
-    fn map_retry_attempts_exhausted(mut error: HttpError, attempts: u32, max_attempts: u32) -> HttpError {
+    fn map_retry_attempts_exhausted(
+        mut error: HttpError,
+        attempts: u32,
+        max_attempts: u32,
+    ) -> HttpError {
         error.message = format!(
             "{} (retry attempts exhausted: {attempts}/{max_attempts})",
             error.message
@@ -519,7 +584,11 @@ impl HttpClient {
     /// # Returns
     /// [`HttpError::retry_aborted`] with the original [`HttpError`] chained as
     /// source for callers that need the underlying status or transport error.
-    fn map_retry_aborted(error: HttpError, attempts: u32, started_at: Instant) -> HttpError {
+    fn map_retry_aborted(
+        error: HttpError,
+        attempts: u32,
+        started_at: Instant,
+    ) -> HttpError {
         let elapsed = started_at.elapsed();
         let summary = error.message.clone();
         HttpError::retry_aborted(format!(
@@ -611,9 +680,13 @@ impl HttpClient {
     /// - `url`: Optional resolved request URL to attach.
     ///
     /// # Returns
-    /// [`HttpErrorKind::Cancelled`](crate::HttpErrorKind::Cancelled) with request
-    /// context.
-    fn retry_cancelled_error(message: &str, method: &http::Method, url: Option<&url::Url>) -> HttpError {
+    /// [`HttpErrorKind::Cancelled`](crate::HttpErrorKind::Cancelled) with
+    /// request context.
+    fn retry_cancelled_error(
+        message: &str,
+        method: &http::Method,
+        url: Option<&url::Url>,
+    ) -> HttpError {
         let mut error = HttpError::cancelled(message).with_method(method);
         if let Some(url) = url {
             error = error.with_url(url);
@@ -635,18 +708,24 @@ impl HttpClient {
     /// - `options`: Reconnect limits and delay policy.
     ///
     /// # Returns
-    /// SSE message stream yielding messages from one or more reconnect sessions.
+    /// SSE message stream yielding messages from one or more reconnect
+    /// sessions.
     ///
     /// # Errors
     /// Stream items are `Result`; `Err` covers per-item failures such as:
-    /// - initial stream-open failures when not reconnectable or retries exhausted;
+    /// - initial stream-open failures when not reconnectable or retries
+    ///   exhausted;
     /// - SSE protocol errors (non-reconnectable by default);
     /// - transport/read errors after reconnect budget is exhausted.
     ///
     /// # Side effects
-    /// Performs repeated HTTP requests and reads on reconnect; may sleep between
-    /// attempts according to reconnect options.
-    pub fn execute_sse_with_reconnect(&self, request: HttpRequest, options: SseReconnectOptions) -> SseMessageStream {
+    /// Performs repeated HTTP requests and reads on reconnect; may sleep
+    /// between attempts according to reconnect options.
+    pub fn execute_sse_with_reconnect(
+        &self,
+        request: HttpRequest,
+        options: SseReconnectOptions,
+    ) -> SseMessageStream {
         SseReconnectRunner::new(self.clone(), request, options).run()
     }
 }

@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! Immutable HTTP request object.
 
 use std::fmt;
@@ -53,7 +51,8 @@ use super::validate_positive_timeout;
 /// Request execution options (timeouts, cancellation, and retry override).
 #[derive(Debug, Clone)]
 struct HttpRequestExecutionOptions {
-    /// Overrides client-wide request timeout when set; otherwise client default applies.
+    /// Overrides client-wide request timeout when set; otherwise client
+    /// default applies.
     request_timeout: Option<Duration>,
     /// Per-request write timeout used during request sending.
     write_timeout: Duration,
@@ -61,7 +60,8 @@ struct HttpRequestExecutionOptions {
     read_timeout: Duration,
     /// Optional cancellation token checked before send and during I/O phases.
     cancellation_token: Option<CancellationToken>,
-    /// Per-request retry override (enable/disable/method-policy/Retry-After behavior).
+    /// Per-request retry override (enable/disable/method-policy/Retry-After
+    /// behavior).
     retry_override: HttpRequestRetryOverride,
 }
 
@@ -72,13 +72,17 @@ struct HttpRequestContext {
     base_url: Option<Url>,
     /// Whether resolved URLs must avoid IPv6 literal hosts.
     ipv4_only: bool,
-    /// Client default headers snapshot captured when this request builder was created.
+    /// Client default headers snapshot captured when this request builder was
+    /// created.
     default_headers: HeaderMap,
-    /// Client sync header injectors snapshot captured when this request builder was created.
+    /// Client sync header injectors snapshot captured when this request
+    /// builder was created.
     injectors: Vec<HttpHeaderInjector>,
-    /// Client async header injectors snapshot captured when this request builder was created.
+    /// Client async header injectors snapshot captured when this request
+    /// builder was created.
     async_injectors: Vec<AsyncHttpHeaderInjector>,
-    /// Log sanitization policy snapshot captured when this request builder was created.
+    /// Log sanitization policy snapshot captured when this request builder was
+    /// created.
     log_sanitize_policy: LogSanitizePolicy,
 }
 
@@ -111,16 +115,21 @@ pub struct HttpRequest {
 
 impl fmt::Debug for HttpRequest {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let debugger = SanitizedDebugger::new(&self.context.log_sanitize_policy);
+        let debugger =
+            SanitizedDebugger::new(&self.context.log_sanitize_policy);
         let url = self.resolved_url().ok().map(|url| debugger.url(&url));
-        let base_url = self.context.base_url.as_ref().map(|url| debugger.url(url));
+        let base_url =
+            self.context.base_url.as_ref().map(|url| debugger.url(url));
         formatter
             .debug_struct("HttpRequest")
             .field("method", &self.method)
             .field("url", &url)
             .field("headers", &debugger.headers(&self.headers))
             .field("body", &self.body)
-            .field("streaming_body", &self.streaming_body.as_ref().map(|_| "present"))
+            .field(
+                "streaming_body",
+                &self.streaming_body.as_ref().map(|_| "present"),
+            )
             .field("request_timeout", &self.execution_options.request_timeout)
             .field("write_timeout", &self.execution_options.write_timeout)
             .field("read_timeout", &self.execution_options.read_timeout)
@@ -271,7 +280,11 @@ impl HttpRequest {
     /// # Errors
     /// Returns [`HttpError`] when name or value cannot be converted into valid
     /// HTTP tokens.
-    pub fn set_header(&mut self, name: &str, value: &str) -> Result<&mut Self, HttpError> {
+    pub fn set_header(
+        &mut self,
+        name: &str,
+        value: &str,
+    ) -> Result<&mut Self, HttpError> {
         let (header_name, header_value) = parse_header(name, value)?;
         self.headers.insert(header_name, header_value);
         self.invalidate_effective_headers_cache();
@@ -287,7 +300,11 @@ impl HttpRequest {
     ///
     /// # Returns
     /// `self` for method chaining.
-    pub fn set_typed_header(&mut self, name: HeaderName, value: HeaderValue) -> &mut Self {
+    pub fn set_typed_header(
+        &mut self,
+        name: HeaderName,
+        value: HeaderValue,
+    ) -> &mut Self {
         self.headers.insert(name, value);
         self.invalidate_effective_headers_cache();
         self
@@ -354,7 +371,10 @@ impl HttpRequest {
     ///
     /// # Returns
     /// `self` for method chaining.
-    pub fn set_streaming_body(&mut self, streaming_body: HttpRequestStreamingBody) -> &mut Self {
+    pub fn set_streaming_body(
+        &mut self,
+        streaming_body: HttpRequestStreamingBody,
+    ) -> &mut Self {
         self.streaming_body = Some(streaming_body);
         self.body = HttpRequestBody::Empty;
         self
@@ -381,7 +401,10 @@ impl HttpRequest {
     ///
     /// # Errors
     /// Returns [`HttpError`] when `timeout` is zero.
-    pub fn set_request_timeout(&mut self, timeout: Duration) -> HttpResult<&mut Self> {
+    pub fn set_request_timeout(
+        &mut self,
+        timeout: Duration,
+    ) -> HttpResult<&mut Self> {
         validate_positive_timeout("request_timeout", timeout)?;
         self.execution_options.request_timeout = Some(timeout);
         Ok(self)
@@ -405,7 +428,10 @@ impl HttpRequest {
     ///
     /// # Errors
     /// Returns [`HttpError`] when `timeout` is zero.
-    pub fn set_write_timeout(&mut self, timeout: Duration) -> HttpResult<&mut Self> {
+    pub fn set_write_timeout(
+        &mut self,
+        timeout: Duration,
+    ) -> HttpResult<&mut Self> {
         validate_positive_timeout("write_timeout", timeout)?;
         self.execution_options.write_timeout = timeout;
         Ok(self)
@@ -420,7 +446,10 @@ impl HttpRequest {
     ///
     /// # Errors
     /// Returns [`HttpError`] when `timeout` is zero.
-    pub fn set_read_timeout(&mut self, timeout: Duration) -> HttpResult<&mut Self> {
+    pub fn set_read_timeout(
+        &mut self,
+        timeout: Duration,
+    ) -> HttpResult<&mut Self> {
         validate_positive_timeout("read_timeout", timeout)?;
         self.execution_options.read_timeout = timeout;
         Ok(self)
@@ -501,7 +530,10 @@ impl HttpRequest {
     ///
     /// # Returns
     /// `self` for method chaining.
-    pub fn set_cancellation_token(&mut self, token: CancellationToken) -> &mut Self {
+    pub fn set_cancellation_token(
+        &mut self,
+        token: CancellationToken,
+    ) -> &mut Self {
         self.execution_options.cancellation_token = Some(token);
         self
     }
@@ -530,7 +562,10 @@ impl HttpRequest {
     ///
     /// # Returns
     /// `self` for method chaining.
-    pub fn set_retry_override(&mut self, retry_override: HttpRequestRetryOverride) -> &mut Self {
+    pub fn set_retry_override(
+        &mut self,
+        retry_override: HttpRequestRetryOverride,
+    ) -> &mut Self {
         self.execution_options.retry_override = retry_override;
         self
     }
@@ -574,13 +609,15 @@ impl HttpRequest {
         logger: &HttpLogger<'_>,
     ) -> HttpResult<Response> {
         // Effective headers are cached on the request. Each send attempt must
-        // invalidate and recompute them so injector output and request mutations
-        // are refreshed instead of reusing stale headers from prior attempts.
+        // invalidate and recompute them so injector output and request
+        // mutations are refreshed instead of reusing stale headers from
+        // prior attempts.
         self.invalidate_effective_headers_cache();
         let method = self.method().clone();
         let request_url_context = self.resolved_url().ok();
         let write_timeout = self.execution_options.write_timeout;
-        let cancellation_token = self.execution_options.cancellation_token.clone();
+        let cancellation_token =
+            self.execution_options.cancellation_token.clone();
         let headers = Self::await_pre_send_future(
             self.effective_headers(),
             write_timeout,
@@ -588,7 +625,10 @@ impl HttpRequest {
             &method,
             request_url_context.as_ref(),
             "Request cancelled while preparing request",
-            format!("Write timeout after {:?} while preparing request", write_timeout),
+            format!(
+                "Write timeout after {:?} while preparing request",
+                write_timeout
+            ),
         )
         .await?
         .clone();
@@ -624,8 +664,13 @@ impl HttpRequest {
             builder = Self::apply_request_body(builder, self.take_body());
         }
 
-        let send_future = tokio::time::timeout(self.execution_options.write_timeout, builder.send());
-        let next = if let Some(token) = self.execution_options.cancellation_token.as_ref() {
+        let send_future = tokio::time::timeout(
+            self.execution_options.write_timeout,
+            builder.send(),
+        );
+        let next = if let Some(token) =
+            self.execution_options.cancellation_token.as_ref()
+        {
             tokio::select! {
                 _ = token.cancelled() => {
                     return Err(HttpError::cancelled("Request cancelled while sending")
@@ -656,12 +701,12 @@ impl HttpRequest {
         }
     }
 
-    /// Waits for one asynchronous pre-send preparation step with cancellation and
-    /// write-timeout handling.
+    /// Waits for one asynchronous pre-send preparation step with cancellation
+    /// and write-timeout handling.
     ///
     /// # Parameters
-    /// - `future`: Preparation future, such as async header injection or streaming
-    ///   body factory execution.
+    /// - `future`: Preparation future, such as async header injection or
+    ///   streaming body factory execution.
     /// - `write_timeout`: Timeout budget reused for send preparation.
     /// - `cancellation_token`: Optional request cancellation token.
     /// - `method`: Request method for error context.
@@ -674,8 +719,8 @@ impl HttpRequest {
     ///
     /// # Errors
     /// Returns [`HttpErrorKind::Cancelled`] on cancellation,
-    /// [`HttpErrorKind::WriteTimeout`] on timeout, or propagates the future's own
-    /// error.
+    /// [`HttpErrorKind::WriteTimeout`] on timeout, or propagates the future's
+    /// own error.
     async fn await_pre_send_future<T, F>(
         future: F,
         write_timeout: Duration,
@@ -706,7 +751,11 @@ impl HttpRequest {
 
         match next {
             Ok(result) => result,
-            Err(_) => Err(Self::pre_send_write_timeout_error(timeout_message, method, request_url)),
+            Err(_) => Err(Self::pre_send_write_timeout_error(
+                timeout_message,
+                method,
+                request_url,
+            )),
         }
     }
 
@@ -719,7 +768,11 @@ impl HttpRequest {
     ///
     /// # Returns
     /// Cancellation [`HttpError`] with request context attached.
-    fn pre_send_cancelled_error(message: &str, method: &Method, request_url: Option<&Url>) -> HttpError {
+    fn pre_send_cancelled_error(
+        message: &str,
+        method: &Method,
+        request_url: Option<&Url>,
+    ) -> HttpError {
         let mut error = HttpError::cancelled(message).with_method(method);
         if let Some(request_url) = request_url {
             error = error.with_url(request_url);
@@ -736,7 +789,11 @@ impl HttpRequest {
     ///
     /// # Returns
     /// Write-timeout [`HttpError`] with request context attached.
-    fn pre_send_write_timeout_error(message: String, method: &Method, request_url: Option<&Url>) -> HttpError {
+    fn pre_send_write_timeout_error(
+        message: String,
+        method: &Method,
+        request_url: Option<&Url>,
+    ) -> HttpError {
         let mut error = HttpError::write_timeout(message).with_method(method);
         if let Some(request_url) = request_url {
             error = error.with_url(request_url);
@@ -758,7 +815,11 @@ impl HttpRequest {
     fn resolved_base_url(&self) -> Result<Url, HttpError> {
         let cached = match self.resolved_url.read() {
             Ok(guard) => guard.clone(),
-            Err(_) => return Err(HttpError::other("Resolved URL cache read lock poisoned")),
+            Err(_) => {
+                return Err(HttpError::other(
+                    "Resolved URL cache read lock poisoned",
+                ))
+            }
         };
         if let Some(url) = cached.as_ref() {
             return Ok(url.clone());
@@ -766,15 +827,19 @@ impl HttpRequest {
         let resolved = self.compute_resolved_url()?;
         match self.resolved_url.write() {
             Ok(mut guard) => *guard = Some(resolved.clone()),
-            Err(_) => return Err(HttpError::other("Resolved URL cache write lock poisoned")),
+            Err(_) => {
+                return Err(HttpError::other(
+                    "Resolved URL cache write lock poisoned",
+                ))
+            }
         }
         Ok(resolved)
     }
 
     /// Returns the resolved URL plus request-builder query parameters.
     ///
-    /// This mirrors the URL sent by the request execution path: query pairs already
-    /// present in [`Self::path`] are preserved, and pairs from
+    /// This mirrors the URL sent by the request execution path: query pairs
+    /// already present in [`Self::path`] are preserved, and pairs from
     /// [`Self::query`] are appended in insertion order.
     ///
     /// # Returns
@@ -798,10 +863,13 @@ impl HttpRequest {
     /// Returns the cached resolved base URL when available.
     ///
     /// # Returns
-    /// Cached URL without builder query pairs, or `None` when URL resolution has
-    /// not succeeded for the current request fields.
+    /// Cached URL without builder query pairs, or `None` when URL resolution
+    /// has not succeeded for the current request fields.
     fn resolved_base_url_cached(&self) -> Option<Url> {
-        self.resolved_url.read().map(|guard| guard.clone()).unwrap_or_default()
+        self.resolved_url
+            .read()
+            .map(|guard| guard.clone())
+            .unwrap_or_default()
     }
 
     /// Recomputes and stores the current resolved URL.
@@ -819,7 +887,10 @@ impl HttpRequest {
         }
 
         let base = self.context.base_url.as_ref().ok_or_else(|| {
-            HttpError::invalid_url(format!("Cannot resolve relative path '{}' without base_url", self.path))
+            HttpError::invalid_url(format!(
+                "Cannot resolve relative path '{}' without base_url",
+                self.path
+            ))
         })?;
 
         let url = base.join(&self.path).map_err(|error| {
@@ -879,12 +950,12 @@ impl HttpRequest {
     /// Propagates failures returned by any injector's `apply` implementation.
     pub(crate) async fn effective_headers(&mut self) -> HttpResult<&HeaderMap> {
         if self.effective_headers.is_none() {
-            self.effective_headers = Some(self.compute_effective_headers().await?);
+            self.effective_headers =
+                Some(self.compute_effective_headers().await?);
         }
-        Ok(self
-            .effective_headers
-            .as_ref()
-            .expect("effective headers cache must be populated after computation"))
+        Ok(self.effective_headers.as_ref().expect(
+            "effective headers cache must be populated after computation",
+        ))
     }
 
     /// Returns cached merged outbound headers when available.
@@ -899,7 +970,8 @@ impl HttpRequest {
     /// defaults and header injectors.
     ///
     /// Why this is needed:
-    /// - request-local headers may have been mutated (`set_header`, `clear_headers`, etc.);
+    /// - request-local headers may have been mutated (`set_header`,
+    ///   `clear_headers`, etc.);
     /// - injector output may be time-sensitive (for example rotating auth token
     ///   or timestamp-based signatures), so each send attempt should recompute
     ///   merged headers instead of reusing stale values from prior attempts.
@@ -936,14 +1008,18 @@ impl HttpRequest {
     /// `Some` [`HttpError`] (including method context and cached URL when
     /// available) when a token exists and is already cancelled; otherwise
     /// `None`.
-    pub(crate) fn cancelled_error_if_needed(&self, message: &str) -> Option<HttpError> {
+    pub(crate) fn cancelled_error_if_needed(
+        &self,
+        message: &str,
+    ) -> Option<HttpError> {
         if self
             .execution_options
             .cancellation_token
             .as_ref()
             .is_some_and(CancellationToken::is_cancelled)
         {
-            let mut error = HttpError::cancelled(message.to_string()).with_method(&self.method);
+            let mut error = HttpError::cancelled(message.to_string())
+                .with_method(&self.method);
             if let Ok(url) = self.resolved_url() {
                 error = error.with_url(&url);
             }
@@ -964,7 +1040,10 @@ impl HttpRequest {
     /// # Returns
     /// The same builder with an appropriate `.body(...)` applied (or unchanged
     /// for [`HttpRequestBody::Empty`]).
-    fn apply_request_body(builder: reqwest::RequestBuilder, body: HttpRequestBody) -> reqwest::RequestBuilder {
+    fn apply_request_body(
+        builder: reqwest::RequestBuilder,
+        body: HttpRequestBody,
+    ) -> reqwest::RequestBuilder {
         match body {
             HttpRequestBody::Empty => builder,
             HttpRequestBody::Bytes(bytes)
@@ -973,7 +1052,9 @@ impl HttpRequest {
             | HttpRequestBody::Multipart(bytes)
             | HttpRequestBody::Ndjson(bytes) => builder.body(bytes),
             HttpRequestBody::Stream(chunks) => {
-                let body_stream = futures_stream::iter(chunks.into_iter().map(Result::<Bytes, std::io::Error>::Ok));
+                let body_stream = futures_stream::iter(
+                    chunks.into_iter().map(Result::<Bytes, std::io::Error>::Ok),
+                );
                 builder.body(reqwest::Body::wrap_stream(body_stream))
             }
             HttpRequestBody::Text(text) => builder.body(text),

@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! Sanitized helpers for `Debug` and diagnostic formatting.
 
 use std::collections::BTreeMap;
@@ -69,7 +67,10 @@ impl SanitizedDebugger {
     ///
     /// # Returns
     /// Deterministic lowercase header map with sensitive values masked.
-    pub(crate) fn headers(&self, headers: &HeaderMap) -> BTreeMap<String, Vec<String>> {
+    pub(crate) fn headers(
+        &self,
+        headers: &HeaderMap,
+    ) -> BTreeMap<String, Vec<String>> {
         self.sanitizer.sanitize_header_map(headers)
     }
 

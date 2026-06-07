@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! Content-Type and header-parameter parsing helpers.
 
 const MAX_MULTIPART_BOUNDARY_LEN: usize = 70;
@@ -20,7 +18,11 @@ const MAX_MULTIPART_BOUNDARY_LEN: usize = 70;
 /// Trimmed text before the first `;`, or an empty string when the header value
 /// has no media type.
 pub(crate) fn media_type(content_type: &str) -> &str {
-    content_type.split(';').next().map(str::trim).unwrap_or_default()
+    content_type
+        .split(';')
+        .next()
+        .map(str::trim)
+        .unwrap_or_default()
 }
 
 /// Returns whether `content_type` has the expected media type.
@@ -55,7 +57,9 @@ pub(crate) fn is_sse(content_type: &str) -> bool {
 /// # Returns
 /// `true` for any `multipart/*` media type.
 pub(crate) fn is_multipart(content_type: &str) -> bool {
-    media_type(content_type).to_ascii_lowercase().starts_with("multipart/")
+    media_type(content_type)
+        .to_ascii_lowercase()
+        .starts_with("multipart/")
 }
 
 /// Returns whether `boundary` is safe for unquoted multipart Content-Type use.
@@ -67,7 +71,8 @@ pub(crate) fn is_multipart(content_type: &str) -> bool {
 /// `true` when the boundary is 1 to 70 ASCII token-safe characters.
 pub(crate) fn is_valid_multipart_boundary(boundary: &str) -> bool {
     let len = boundary.len();
-    (1..=MAX_MULTIPART_BOUNDARY_LEN).contains(&len) && boundary.bytes().all(is_valid_multipart_boundary_byte)
+    (1..=MAX_MULTIPART_BOUNDARY_LEN).contains(&len)
+        && boundary.bytes().all(is_valid_multipart_boundary_byte)
 }
 
 /// Extracts one semicolon-separated header parameter.
@@ -101,7 +106,10 @@ pub(crate) fn parameter(value: &str, parameter_name: &str) -> Option<String> {
 /// `Some(true)` when a `name=value` segment uses `parameter_name`,
 /// `Some(false)` when no such parameter exists, or `None` when parameter
 /// quoting is malformed.
-pub(crate) fn has_parameter_name(value: &str, parameter_name: &str) -> Option<bool> {
+pub(crate) fn has_parameter_name(
+    value: &str,
+    parameter_name: &str,
+) -> Option<bool> {
     for parameter in header_parameter_segments(value)?.into_iter().skip(1) {
         let Some((name, _)) = parameter.split_once('=') else {
             if parameter.trim().eq_ignore_ascii_case(parameter_name) {

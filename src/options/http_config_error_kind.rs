@@ -1,16 +1,13 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! # HTTP configuration error kind
 //!
 //! Category enum for [`crate::HttpConfigError`].
-//!
 
 use parse_display::{
     Display,
@@ -22,7 +19,17 @@ use serde::{
 };
 
 /// Category of HTTP configuration errors.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Display, DeriveFromStr)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    Display,
+    DeriveFromStr,
+)]
 #[serde(rename_all = "snake_case")]
 #[display(style = "snake_case")]
 pub enum HttpConfigErrorKind {

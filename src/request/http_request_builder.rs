@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! Builder for [`super::http_request::HttpRequest`].
 
 use std::time::Duration;
@@ -55,7 +53,8 @@ pub struct HttpRequestBuilder {
     pub(super) method: Method,
     /// Request path without the query string.
     pub(super) path: String,
-    /// Query parameters as `(key, value)` pairs, appended to the URL when built.
+    /// Query parameters as `(key, value)` pairs, appended to the URL when
+    /// built.
     pub(super) query: Vec<(String, String)>,
     /// Request headers.
     pub(super) headers: HeaderMap,
@@ -69,7 +68,8 @@ pub struct HttpRequestBuilder {
     pub(super) write_timeout: Duration,
     /// Per-request read timeout used by buffered/stream response reading.
     pub(super) read_timeout: Duration,
-    /// Base URL copied from client options and used by [`HttpRequest::resolved_url`].
+    /// Base URL copied from client options and used by
+    /// [`HttpRequest::resolved_url`].
     pub(super) base_url: Option<Url>,
     /// Whether IPv6 literal hosts are rejected during URL resolution.
     pub(super) ipv4_only: bool,
@@ -98,13 +98,19 @@ impl fmt::Debug for HttpRequestBuilder {
             .field("url", &url)
             .field("headers", &debugger.headers(&self.headers))
             .field("body", &self.body)
-            .field("streaming_body", &self.streaming_body.as_ref().map(|_| "present"))
+            .field(
+                "streaming_body",
+                &self.streaming_body.as_ref().map(|_| "present"),
+            )
             .field("request_timeout", &self.request_timeout)
             .field("write_timeout", &self.write_timeout)
             .field("read_timeout", &self.read_timeout)
             .field("base_url", &base_url)
             .field("ipv4_only", &self.ipv4_only)
-            .field("cancellation_token_present", &self.cancellation_token.is_some())
+            .field(
+                "cancellation_token_present",
+                &self.cancellation_token.is_some(),
+            )
             .field("retry_override", &self.retry_override)
             .field("default_headers", &debugger.headers(&self.default_headers))
             .field("injector_count", &self.injectors.len())
@@ -114,12 +120,14 @@ impl fmt::Debug for HttpRequestBuilder {
 }
 
 impl HttpRequestBuilder {
-    /// Starts a builder with method/path and copies supported defaults from client options.
+    /// Starts a builder with method/path and copies supported defaults from
+    /// client options.
     ///
     /// # Parameters
     /// - `method`: HTTP verb.
     /// - `path`: URL or relative path string.
-    /// - `client`: Source client whose relevant defaults are copied into this builder.
+    /// - `client`: Source client whose relevant defaults are copied into this
+    ///   builder.
     ///
     /// # Returns
     /// New [`HttpRequestBuilder`].
@@ -179,7 +187,8 @@ impl HttpRequestBuilder {
     /// Validates and inserts one header.
     ///
     /// # Parameters
-    /// - `name`: Header name (must be valid [`http::header::HeaderName`] bytes).
+    /// - `name`: Header name (must be valid [`http::header::HeaderName`]
+    ///   bytes).
     /// - `value`: Header value (must be valid [`http::header::HeaderValue`]).
     ///
     /// # Returns
@@ -190,7 +199,8 @@ impl HttpRequestBuilder {
         Ok(self)
     }
 
-    /// Merges all entries from `headers` into this builder (existing names may get extra values).
+    /// Merges all entries from `headers` into this builder (existing names may
+    /// get extra values).
     ///
     /// # Parameters
     /// - `headers`: Map to append.
@@ -202,7 +212,8 @@ impl HttpRequestBuilder {
         self
     }
 
-    /// Sets the body to raw bytes without changing `Content-Type` unless already set elsewhere.
+    /// Sets the body to raw bytes without changing `Content-Type` unless
+    /// already set elsewhere.
     ///
     /// # Parameters
     /// - `body`: Payload.
@@ -227,7 +238,9 @@ impl HttpRequestBuilder {
         I: IntoIterator<Item = B>,
         B: Into<Bytes>,
     {
-        self.body = HttpRequestBody::Stream(chunks.into_iter().map(Into::into).collect());
+        self.body = HttpRequestBody::Stream(
+            chunks.into_iter().map(Into::into).collect(),
+        );
         self.streaming_body = None;
         self
     }
@@ -244,14 +257,23 @@ impl HttpRequestBuilder {
     /// `self` for chaining.
     pub fn streaming_body<F>(mut self, factory: F) -> Self
     where
-        F: Fn() -> Pin<Box<dyn Future<Output = HttpRequestBodyByteStream> + Send + 'static>> + Send + Sync + 'static,
+        F: Fn() -> Pin<
+                Box<
+                    dyn Future<Output = HttpRequestBodyByteStream>
+                        + Send
+                        + 'static,
+                >,
+            > + Send
+            + Sync
+            + 'static,
     {
         self.streaming_body = Some(HttpRequestStreamingBody::new(factory));
         self.body = HttpRequestBody::Empty;
         self
     }
 
-    /// Sets a UTF-8 text body and adds `text/plain; charset=utf-8` if `Content-Type` is absent.
+    /// Sets a UTF-8 text body and adds `text/plain; charset=utf-8` if
+    /// `Content-Type` is absent.
     ///
     /// # Parameters
     /// - `body`: Text payload.
@@ -260,15 +282,18 @@ impl HttpRequestBuilder {
     /// `self` for chaining.
     pub fn text_body(mut self, body: impl Into<String>) -> Self {
         if !self.headers.contains_key(CONTENT_TYPE) {
-            self.headers
-                .insert(CONTENT_TYPE, HeaderValue::from_static("text/plain; charset=utf-8"));
+            self.headers.insert(
+                CONTENT_TYPE,
+                HeaderValue::from_static("text/plain; charset=utf-8"),
+            );
         }
         self.body = HttpRequestBody::Text(body.into());
         self.streaming_body = None;
         self
     }
 
-    /// Serializes `value` to JSON, sets body to those bytes, and adds `application/json` if needed.
+    /// Serializes `value` to JSON, sets body to those bytes, and adds
+    /// `application/json` if needed.
     ///
     /// # Parameters
     /// - `value`: Serializable value.
@@ -279,11 +304,14 @@ impl HttpRequestBuilder {
     where
         T: Serialize,
     {
-        let bytes = serde_json::to_vec(value)
-            .map_err(|error| HttpError::decode(format!("Failed to encode JSON body: {}", error)))?;
+        let bytes = serde_json::to_vec(value).map_err(|error| {
+            HttpError::decode(format!("Failed to encode JSON body: {}", error))
+        })?;
         if !self.headers.contains_key(CONTENT_TYPE) {
-            self.headers
-                .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+            self.headers.insert(
+                CONTENT_TYPE,
+                HeaderValue::from_static("application/json"),
+            );
         }
         self.body = HttpRequestBody::Json(Bytes::from(bytes));
         self.streaming_body = None;
@@ -330,7 +358,11 @@ impl HttpRequestBuilder {
     /// Returns [`HttpError`] when `boundary` is not a 1 to 70 character
     /// ASCII token-safe multipart boundary, or when an existing `Content-Type`
     /// is not UTF-8 multipart content with a valid matching boundary.
-    pub fn multipart_body(mut self, body: impl Into<Bytes>, boundary: &str) -> HttpResult<Self> {
+    pub fn multipart_body(
+        mut self,
+        body: impl Into<Bytes>,
+        boundary: &str,
+    ) -> HttpResult<Self> {
         if !content_type::is_valid_multipart_boundary(boundary) {
             return Err(HttpError::other(
                 "Invalid multipart boundary for multipart_body: expected 1 to 70 token-safe ASCII characters",
@@ -347,8 +379,12 @@ impl HttpRequestBuilder {
             }
             let declares_boundary = content_type::has_parameter_name(existing, "boundary")
                 .ok_or_else(|| HttpError::other("Existing multipart Content-Type boundary is malformed or invalid"))?;
-            if let Some(existing_boundary) = content_type::parameter(existing, "boundary") {
-                if !content_type::is_valid_multipart_boundary(&existing_boundary) {
+            if let Some(existing_boundary) =
+                content_type::parameter(existing, "boundary")
+            {
+                if !content_type::is_valid_multipart_boundary(
+                    &existing_boundary,
+                ) {
                     return Err(HttpError::other(
                         "Existing multipart Content-Type boundary is malformed or invalid",
                     ));
@@ -394,14 +430,19 @@ impl HttpRequestBuilder {
     {
         let mut payload = String::new();
         for record in records {
-            let line = serde_json::to_string(record)
-                .map_err(|error| HttpError::decode(format!("Failed to encode NDJSON record: {error}")))?;
+            let line = serde_json::to_string(record).map_err(|error| {
+                HttpError::decode(format!(
+                    "Failed to encode NDJSON record: {error}"
+                ))
+            })?;
             payload.push_str(&line);
             payload.push('\n');
         }
         if !self.headers.contains_key(CONTENT_TYPE) {
-            self.headers
-                .insert(CONTENT_TYPE, HeaderValue::from_static("application/x-ndjson"));
+            self.headers.insert(
+                CONTENT_TYPE,
+                HeaderValue::from_static("application/x-ndjson"),
+            );
         }
         self.body = HttpRequestBody::Ndjson(Bytes::from(payload));
         self.streaming_body = None;
@@ -410,8 +451,9 @@ impl HttpRequestBuilder {
 
     /// Overrides the client-wide request timeout for this request only.
     ///
-    /// This sets reqwest's per-request [`reqwest::RequestBuilder::timeout`], i.e. a
-    /// whole-request deadline for that HTTP call (see reqwest docs for exact semantics).
+    /// This sets reqwest's per-request [`reqwest::RequestBuilder::timeout`],
+    /// i.e. a whole-request deadline for that HTTP call (see reqwest docs
+    /// for exact semantics).
     ///
     /// # Parameters
     /// - `timeout`: Maximum time for the whole request (reqwest `timeout`).
@@ -480,7 +522,8 @@ impl HttpRequestBuilder {
         self
     }
 
-    /// Overrides whether this request enforces IPv4-only literal-host validation.
+    /// Overrides whether this request enforces IPv4-only literal-host
+    /// validation.
     ///
     /// # Parameters
     /// - `enabled`: `true` to reject IPv6 literal hosts, `false` to allow them.
@@ -495,7 +538,8 @@ impl HttpRequestBuilder {
     /// Binds a [`CancellationToken`] to this request.
     ///
     /// # Parameters
-    /// - `token`: Cancellation token checked before send and during request/stream I/O.
+    /// - `token`: Cancellation token checked before send and during
+    ///   request/stream I/O.
     ///
     /// # Returns
     /// `self` for chaining.
@@ -504,7 +548,8 @@ impl HttpRequestBuilder {
         self
     }
 
-    /// Forces retry enabled for this request even if client-level retry is disabled.
+    /// Forces retry enabled for this request even if client-level retry is
+    /// disabled.
     ///
     /// # Returns
     /// `self` for chaining.
@@ -529,7 +574,10 @@ impl HttpRequestBuilder {
     ///
     /// # Returns
     /// `self` for chaining.
-    pub fn retry_method_policy(mut self, policy: HttpRetryMethodPolicy) -> Self {
+    pub fn retry_method_policy(
+        mut self,
+        policy: HttpRetryMethodPolicy,
+    ) -> Self {
         self.retry_override = self.retry_override.with_method_policy(policy);
         self
     }
@@ -537,13 +585,14 @@ impl HttpRequestBuilder {
     /// Enables or disables honoring `Retry-After` for this request.
     ///
     /// # Parameters
-    /// - `enabled`: `true` to honor `Retry-After` on retryable status
-    ///   responses (`429` and `5xx`).
+    /// - `enabled`: `true` to honor `Retry-After` on retryable status responses
+    ///   (`429` and `5xx`).
     ///
     /// # Returns
     /// `self` for chaining.
     pub fn honor_retry_after(mut self, enabled: bool) -> Self {
-        self.retry_override = self.retry_override.with_honor_retry_after(enabled);
+        self.retry_override =
+            self.retry_override.with_honor_retry_after(enabled);
         self
     }
 

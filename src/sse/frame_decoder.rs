@@ -1,16 +1,13 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! # SSE Frame Decoder
 //!
 //! Builds structured SSE records from line stream.
-//!
 
 use async_stream::stream;
 use futures_util::StreamExt;
@@ -26,12 +23,16 @@ use super::{
 /// Groups newline-delimited SSE fields into internal [`SseRecord`] values.
 ///
 /// # Parameters
-/// - `lines`: Stream of SSE text lines from [`super::line_decoder::decode_lines`].
+/// - `lines`: Stream of SSE text lines from
+///   [`super::line_decoder::decode_lines`].
 /// - `max_frame_bytes`: Maximum allowed bytes for one SSE frame.
 ///
 /// # Returns
 /// Stream of records or forwarded transport/protocol errors.
-pub(crate) fn decode_records(mut lines: SseLineStream, max_frame_bytes: usize) -> SseRecordStream {
+pub(crate) fn decode_records(
+    mut lines: SseLineStream,
+    max_frame_bytes: usize,
+) -> SseRecordStream {
     let output = stream! {
         let max_frame_bytes = max_frame_bytes.max(1);
         let mut current_event: Option<String> = None;
@@ -142,13 +143,15 @@ pub(crate) fn decode_records(mut lines: SseLineStream, max_frame_bytes: usize) -
     Box::pin(output)
 }
 
-/// Splits `line` into field name and value at the first colon (SSE `field: value` syntax).
+/// Splits `line` into field name and value at the first colon (SSE `field:
+/// value` syntax).
 ///
 /// # Parameters
 /// - `line`: One non-empty SSE line (comments already filtered).
 ///
 /// # Returns
-/// `(field, value)`; value has a single leading space stripped if present; if no colon, `(line, "")`.
+/// `(field, value)`; value has a single leading space stripped if present; if
+/// no colon, `(line, "")`.
 fn split_field_value(line: &str) -> (&str, &str) {
     if let Some(index) = line.find(':') {
         let field = &line[..index];

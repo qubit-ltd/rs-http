@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! Decode and error-preview options bound to one response instance.
 
 use crate::constants::{
@@ -31,7 +29,8 @@ pub(crate) struct HttpResponseOptions {
     pub sse_max_line_bytes: usize,
     /// Default maximum bytes allowed for one SSE frame.
     pub sse_max_frame_bytes: usize,
-    /// How [`crate::HttpResponse::sse_chunks`] recognizes end-of-stream `data:` markers.
+    /// How [`crate::HttpResponse::sse_chunks`] recognizes end-of-stream
+    /// `data:` markers.
     pub sse_done_marker_policy: DoneMarkerPolicy,
     /// Sanitizer used for status-error body previews.
     pub log_sanitizer: LogSanitizer,
@@ -40,7 +39,8 @@ pub(crate) struct HttpResponseOptions {
 impl Default for HttpResponseOptions {
     fn default() -> Self {
         Self {
-            error_response_preview_limit: DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES,
+            error_response_preview_limit:
+                DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES,
             sse_json_mode: SseJsonMode::Lenient,
             sse_max_line_bytes: DEFAULT_SSE_MAX_LINE_BYTES,
             sse_max_frame_bytes: DEFAULT_SSE_MAX_FRAME_BYTES,

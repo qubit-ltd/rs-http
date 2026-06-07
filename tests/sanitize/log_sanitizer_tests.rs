@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 
 use bytes::Bytes;
 use http::header::{
@@ -60,12 +58,17 @@ trait TestLogSanitizerExt {
 impl TestLogSanitizerExt for LogSanitizer {
     fn sanitize_body_preview(&self, preview: &BodyPreview<'_>) -> String {
         match preview.context {
-            BodyLogContext::Request => {
-                self.sanitize_request_body_preview(preview.bytes, preview.limit, preview.content_type)
-            }
-            BodyLogContext::ErrorResponse => {
-                self.sanitize_error_response_body_preview(preview.bytes, preview.limit, preview.content_type)
-            }
+            BodyLogContext::Request => self.sanitize_request_body_preview(
+                preview.bytes,
+                preview.limit,
+                preview.content_type,
+            ),
+            BodyLogContext::ErrorResponse => self
+                .sanitize_error_response_body_preview(
+                    preview.bytes,
+                    preview.limit,
+                    preview.content_type,
+                ),
         }
     }
 }
@@ -73,11 +76,17 @@ impl TestLogSanitizerExt for LogSanitizer {
 #[test]
 fn test_log_sanitizer_sanitize_url_masks_sensitive_query_params() {
     let sanitizer = LogSanitizer::default();
-    let url = Url::parse("https://example.com/search?q=rust&access_token=secret-token").expect("test URL should parse");
+    let url = Url::parse(
+        "https://example.com/search?q=rust&access_token=secret-token",
+    )
+    .expect("test URL should parse");
 
     let sanitized = sanitizer.sanitize_url(&url);
 
-    assert_eq!(sanitized, "https://example.com/search?q=rust&access_token=****");
+    assert_eq!(
+        sanitized,
+        "https://example.com/search?q=rust&access_token=****"
+    );
 }
 
 #[test]
@@ -97,7 +106,8 @@ fn test_log_sanitizer_sanitize_url_masks_camel_case_sensitive_query_params() {
 }
 
 #[test]
-fn test_log_sanitizer_sanitize_url_uses_shared_secret_level_for_password_query() {
+fn test_log_sanitizer_sanitize_url_uses_shared_secret_level_for_password_query()
+{
     let sanitizer = LogSanitizer::default();
     let url = Url::parse("https://example.com/login?password=secret&access_token=raw-access-secret")
         .expect("test URL should parse");
@@ -115,13 +125,18 @@ fn test_log_sanitizer_sanitize_url_uses_shared_secret_level_for_password_query()
 fn test_log_sanitizer_policy_returns_underlying_policy() {
     let sanitizer = LogSanitizer::default();
 
-    assert!(sanitizer.policy().sensitive_headers.contains("authorization"));
+    assert!(sanitizer
+        .policy()
+        .sensitive_headers
+        .contains("authorization"));
 }
 
 #[test]
 fn test_log_sanitizer_sanitize_url_masks_password() {
     let sanitizer = LogSanitizer::default();
-    let url = Url::parse("https://alice:secret-password@example.com/search?q=rust").expect("test URL should parse");
+    let url =
+        Url::parse("https://alice:secret-password@example.com/search?q=rust")
+            .expect("test URL should parse");
 
     let sanitized = sanitizer.sanitize_url(&url);
 
@@ -154,8 +169,10 @@ fn test_log_sanitizer_sanitize_url_masks_userinfo_and_fragment() {
 fn test_log_sanitizer_sanitize_header_masks_configured_header_names() {
     let sanitizer = LogSanitizer::default();
 
-    let sanitized =
-        sanitizer.sanitize_header_value(&AUTHORIZATION, &HeaderValue::from_static("Bearer very-secret-token"));
+    let sanitized = sanitizer.sanitize_header_value(
+        &AUTHORIZATION,
+        &HeaderValue::from_static("Bearer very-secret-token"),
+    );
 
     assert_eq!(sanitized, "****");
 }
@@ -165,7 +182,10 @@ fn test_log_sanitizer_sanitize_header_keeps_non_sensitive_header_values() {
     let sanitizer = LogSanitizer::default();
     let header_name = HeaderName::from_static("content-type");
 
-    let sanitized = sanitizer.sanitize_header_value(&header_name, &HeaderValue::from_static("application/json"));
+    let sanitized = sanitizer.sanitize_header_value(
+        &header_name,
+        &HeaderValue::from_static("application/json"),
+    );
 
     assert_eq!(sanitized, "application/json");
 }
@@ -173,8 +193,11 @@ fn test_log_sanitizer_sanitize_header_keeps_non_sensitive_header_values() {
 #[test]
 fn test_log_sanitizer_sanitize_body_preview_redacts_json_fields() {
     let sanitizer = LogSanitizer::default();
-    let body = Bytes::from_static(br#"{"user":"alice","password":"secret","nested":{"token":"abc"}}"#);
-    let preview = BodyPreview::new(&body, body.len(), BodyLogContext::Request).with_content_type("application/json");
+    let body = Bytes::from_static(
+        br#"{"user":"alice","password":"secret","nested":{"token":"abc"}}"#,
+    );
+    let preview = BodyPreview::new(&body, body.len(), BodyLogContext::Request)
+        .with_content_type("application/json");
 
     let sanitized = sanitizer.sanitize_body_preview(&preview);
 
@@ -188,7 +211,8 @@ fn test_log_sanitizer_sanitize_body_preview_redacts_json_fields() {
 fn test_log_sanitizer_sanitize_body_preview_redacts_camel_case_json_fields() {
     let sanitizer = LogSanitizer::default();
     let body = Bytes::from_static(br#"{"accessToken":"secret-access","clientSecret":"secret-client","user":"alice"}"#);
-    let preview = BodyPreview::new(body.as_ref(), 1024, BodyLogContext::Request);
+    let preview =
+        BodyPreview::new(body.as_ref(), 1024, BodyLogContext::Request);
 
     let sanitized = sanitizer.sanitize_body_preview(&preview);
 
@@ -203,8 +227,11 @@ fn test_log_sanitizer_sanitize_body_preview_redacts_camel_case_json_fields() {
 #[test]
 fn test_log_sanitizer_sanitize_body_preview_does_not_leak_truncated_json() {
     let sanitizer = LogSanitizer::default();
-    let body = Bytes::from_static(br#"{"password":"secret","user":"alice","tail":"long"}"#);
-    let preview = BodyPreview::new(&body, 20, BodyLogContext::Request).with_content_type("application/json");
+    let body = Bytes::from_static(
+        br#"{"password":"secret","user":"alice","tail":"long"}"#,
+    );
+    let preview = BodyPreview::new(&body, 20, BodyLogContext::Request)
+        .with_content_type("application/json");
 
     let sanitized = sanitizer.sanitize_body_preview(&preview);
 
@@ -215,36 +242,53 @@ fn test_log_sanitizer_sanitize_body_preview_does_not_leak_truncated_json() {
 #[test]
 fn test_log_sanitizer_error_response_truncated_json_uses_status_error_suffix() {
     let sanitizer = LogSanitizer::default();
-    let body = Bytes::from_static(br#"{"password":"secret","user":"alice","tail":"long"}"#);
-    let preview = BodyPreview::new(&body, 20, BodyLogContext::ErrorResponse).with_content_type("application/json");
+    let body = Bytes::from_static(
+        br#"{"password":"secret","user":"alice","tail":"long"}"#,
+    );
+    let preview = BodyPreview::new(&body, 20, BodyLogContext::ErrorResponse)
+        .with_content_type("application/json");
 
     let sanitized = sanitizer.sanitize_body_preview(&preview);
 
-    assert_eq!(sanitized, "<redacted: invalid or truncated JSON>...<truncated>");
+    assert_eq!(
+        sanitized,
+        "<redacted: invalid or truncated JSON>...<truncated>"
+    );
     assert!(!sanitized.contains("secret"));
 }
 
 #[test]
 fn test_log_sanitizer_error_response_truncation_normalizes_suffix_only() {
     let sanitizer = LogSanitizer::default();
-    let body = Bytes::from_static(b"body marker ...<truncated 2 bytes> staysXX");
+    let body =
+        Bytes::from_static(b"body marker ...<truncated 2 bytes> staysXX");
     let preview =
-        BodyPreview::new(&body, body.len() - 2, BodyLogContext::ErrorResponse).with_content_type("text/plain");
+        BodyPreview::new(&body, body.len() - 2, BodyLogContext::ErrorResponse)
+            .with_content_type("text/plain");
 
     let sanitized = sanitizer.sanitize_body_preview(&preview);
 
-    assert_eq!(sanitized, "body marker ...<truncated 2 bytes> stays...<truncated>");
+    assert_eq!(
+        sanitized,
+        "body marker ...<truncated 2 bytes> stays...<truncated>"
+    );
 }
 
 #[test]
 fn test_log_sanitizer_sanitize_body_preview_redacts_json_arrays() {
     let sanitizer = LogSanitizer::default();
-    let body = Bytes::from_static(br#"[{"token":"abc"},{"nested":{"password":"secret"}}]"#);
-    let preview = BodyPreview::new(&body, body.len(), BodyLogContext::Request).with_content_type("application/json");
+    let body = Bytes::from_static(
+        br#"[{"token":"abc"},{"nested":{"password":"secret"}}]"#,
+    );
+    let preview = BodyPreview::new(&body, body.len(), BodyLogContext::Request)
+        .with_content_type("application/json");
 
     let sanitized = sanitizer.sanitize_body_preview(&preview);
 
-    assert_eq!(sanitized, r#"[{"token":"****"},{"nested":{"password":"<redacted>"}}]"#);
+    assert_eq!(
+        sanitized,
+        r#"[{"token":"****"},{"nested":{"password":"<redacted>"}}]"#
+    );
 }
 
 #[test]
@@ -255,8 +299,8 @@ fn test_log_sanitizer_sanitize_body_preview_redacts_ndjson_fields() {
 
 {"id":2}"#,
     );
-    let preview =
-        BodyPreview::new(&body, body.len(), BodyLogContext::Request).with_content_type("application/x-ndjson");
+    let preview = BodyPreview::new(&body, body.len(), BodyLogContext::Request)
+        .with_content_type("application/x-ndjson");
 
     let sanitized = sanitizer.sanitize_body_preview(&preview);
 
@@ -267,7 +311,8 @@ fn test_log_sanitizer_sanitize_body_preview_redacts_ndjson_fields() {
 fn test_log_sanitizer_sanitize_body_preview_does_not_leak_truncated_ndjson() {
     let sanitizer = LogSanitizer::default();
     let body = Bytes::from_static(br#"{"token":"abc","id":1}"#);
-    let preview = BodyPreview::new(&body, 10, BodyLogContext::Request).with_content_type("application/x-ndjson");
+    let preview = BodyPreview::new(&body, 10, BodyLogContext::Request)
+        .with_content_type("application/x-ndjson");
 
     let sanitized = sanitizer.sanitize_body_preview(&preview);
 
@@ -322,7 +367,8 @@ fn test_log_sanitizer_sanitize_body_preview_redacts_multipart_mixed_fields() {
 }
 
 #[test]
-fn test_log_sanitizer_sanitize_body_preview_redacts_multipart_mixed_without_boundary() {
+fn test_log_sanitizer_sanitize_body_preview_redacts_multipart_mixed_without_boundary(
+) {
     let sanitizer = LogSanitizer::default();
     let body = Bytes::from_static(
         b"--boundary\r\n\
@@ -331,7 +377,8 @@ fn test_log_sanitizer_sanitize_body_preview_redacts_multipart_mixed_without_boun
           secret-password\r\n\
           --boundary--\r\n",
     );
-    let preview = BodyPreview::new(&body, body.len(), BodyLogContext::Request).with_content_type("multipart/mixed");
+    let preview = BodyPreview::new(&body, body.len(), BodyLogContext::Request)
+        .with_content_type("multipart/mixed");
 
     let sanitized = sanitizer.sanitize_body_preview(&preview);
 
@@ -341,7 +388,8 @@ fn test_log_sanitizer_sanitize_body_preview_redacts_multipart_mixed_without_boun
 }
 
 #[test]
-fn test_log_sanitizer_sanitize_body_preview_accepts_multipart_boundary_after_malformed_parameter() {
+fn test_log_sanitizer_sanitize_body_preview_accepts_multipart_boundary_after_malformed_parameter(
+) {
     let sanitizer = LogSanitizer::default();
     let body = Bytes::from_static(
         b"--boundary\r\n\
@@ -401,7 +449,8 @@ fn test_log_sanitizer_sanitize_body_preview_keeps_multipart_text_part() {
 }
 
 #[test]
-fn test_log_sanitizer_sanitize_body_preview_keeps_multipart_text_containing_boundary_text() {
+fn test_log_sanitizer_sanitize_body_preview_keeps_multipart_text_containing_boundary_text(
+) {
     let sanitizer = LogSanitizer::default();
     let body = Bytes::from_static(
         b"--boundary\r\n\
@@ -416,12 +465,15 @@ fn test_log_sanitizer_sanitize_body_preview_keeps_multipart_text_containing_boun
 
     let sanitized = sanitizer.sanitize_body_preview(&preview);
 
-    assert!(sanitized.contains("description=plain text mentions --boundary inside the value"));
+    assert!(sanitized.contains(
+        "description=plain text mentions --boundary inside the value"
+    ));
     assert!(!sanitized.contains("<redacted: multipart body>"));
 }
 
 #[test]
-fn test_log_sanitizer_sanitize_body_preview_redacts_invalid_multipart_json_part() {
+fn test_log_sanitizer_sanitize_body_preview_redacts_invalid_multipart_json_part(
+) {
     let sanitizer = LogSanitizer::default();
     let body = Bytes::from_static(
         b"--boundary\r\n\
@@ -441,7 +493,8 @@ fn test_log_sanitizer_sanitize_body_preview_redacts_invalid_multipart_json_part(
 }
 
 #[test]
-fn test_log_sanitizer_sanitize_body_preview_redacts_invalid_multipart_ndjson_part() {
+fn test_log_sanitizer_sanitize_body_preview_redacts_invalid_multipart_ndjson_part(
+) {
     let sanitizer = LogSanitizer::default();
     let body = Bytes::from_static(
         b"--boundary\r\n\
@@ -476,12 +529,15 @@ fn test_log_sanitizer_sanitize_body_preview_redacts_multipart_form_part() {
 
     let sanitized = sanitizer.sanitize_body_preview(&preview);
 
-    assert!(sanitized.contains("payload=username=alice&password=%3Credacted%3E"));
+    assert!(
+        sanitized.contains("payload=username=alice&password=%3Credacted%3E")
+    );
     assert!(!sanitized.contains("secret-password"));
 }
 
 #[test]
-fn test_log_sanitizer_sanitize_body_preview_redacts_unknown_multipart_part_content_type() {
+fn test_log_sanitizer_sanitize_body_preview_redacts_unknown_multipart_part_content_type(
+) {
     let sanitizer = LogSanitizer::default();
     let body = Bytes::from_static(
         b"--boundary\r\n\
@@ -599,7 +655,9 @@ fn test_log_sanitizer_sanitize_body_preview_redacts_malformed_multipart_body() {
 
     for (label, body, content_type, expected) in cases {
         let bytes = Bytes::from_static(body);
-        let preview = BodyPreview::new(&bytes, bytes.len(), BodyLogContext::Request).with_content_type(content_type);
+        let preview =
+            BodyPreview::new(&bytes, bytes.len(), BodyLogContext::Request)
+                .with_content_type(content_type);
 
         let sanitized = sanitizer.sanitize_body_preview(&preview);
 
@@ -629,12 +687,14 @@ fn test_log_sanitizer_sanitize_body_preview_redacts_truncated_multipart() {
 }
 
 #[test]
-fn test_log_sanitizer_sanitize_body_preview_redacts_multipart_without_boundary() {
+fn test_log_sanitizer_sanitize_body_preview_redacts_multipart_without_boundary()
+{
     let sanitizer = LogSanitizer::default();
     let body = Bytes::from_static(
         b"--boundary\r\nContent-Disposition: form-data; name=\"password\"\r\n\r\nsecret\r\n--boundary--",
     );
-    let preview = BodyPreview::new(&body, body.len(), BodyLogContext::Request).with_content_type("multipart/form-data");
+    let preview = BodyPreview::new(&body, body.len(), BodyLogContext::Request)
+        .with_content_type("multipart/form-data");
 
     let sanitized = sanitizer.sanitize_body_preview(&preview);
 
@@ -644,10 +704,12 @@ fn test_log_sanitizer_sanitize_body_preview_redacts_multipart_without_boundary()
 }
 
 #[test]
-fn test_log_sanitizer_sanitize_body_preview_prefers_multipart_over_json_sniffing() {
+fn test_log_sanitizer_sanitize_body_preview_prefers_multipart_over_json_sniffing(
+) {
     let sanitizer = LogSanitizer::default();
     let body = Bytes::from_static(br#"{"password":"secret"}"#);
-    let preview = BodyPreview::new(&body, body.len(), BodyLogContext::Request).with_content_type("multipart/mixed");
+    let preview = BodyPreview::new(&body, body.len(), BodyLogContext::Request)
+        .with_content_type("multipart/mixed");
 
     let sanitized = sanitizer.sanitize_body_preview(&preview);
 
@@ -658,13 +720,17 @@ fn test_log_sanitizer_sanitize_body_preview_prefers_multipart_over_json_sniffing
 #[test]
 fn test_log_sanitizer_sanitize_body_preview_redacts_form_fields() {
     let sanitizer = LogSanitizer::default();
-    let body = Bytes::from_static(b"username=alice&password=secret&city=Shanghai");
+    let body =
+        Bytes::from_static(b"username=alice&password=secret&city=Shanghai");
     let preview = BodyPreview::new(&body, body.len(), BodyLogContext::Request)
         .with_content_type("application/x-www-form-urlencoded");
 
     let sanitized = sanitizer.sanitize_body_preview(&preview);
 
-    assert_eq!(sanitized, "username=alice&password=%3Credacted%3E&city=Shanghai");
+    assert_eq!(
+        sanitized,
+        "username=alice&password=%3Credacted%3E&city=Shanghai"
+    );
 }
 
 #[test]
@@ -675,8 +741,10 @@ fn test_log_sanitizer_sanitize_body_preview_uses_custom_policy() {
         .sensitive_body_fields
         .insert("customer_id", SensitivityLevel::High);
     let sanitizer = LogSanitizer::new(policy);
-    let body = Bytes::from_static(br#"{"customer_id":"C-001","password":"kept"}"#);
-    let preview = BodyPreview::new(&body, body.len(), BodyLogContext::Request).with_content_type("application/json");
+    let body =
+        Bytes::from_static(br#"{"customer_id":"C-001","password":"kept"}"#);
+    let preview = BodyPreview::new(&body, body.len(), BodyLogContext::Request)
+        .with_content_type("application/json");
 
     let sanitized = sanitizer.sanitize_body_preview(&preview);
 

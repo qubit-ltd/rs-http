@@ -1,16 +1,13 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! # HTTP configuration error
 //!
 //! Error type for configuration-to-options conversion failures.
-//!
 
 use std::fmt;
 
@@ -22,7 +19,8 @@ use super::HttpConfigErrorKind;
 /// callers can report exactly which key caused the problem.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HttpConfigError {
-    /// The configuration path that triggered the error, e.g. `http.proxy.port`.
+    /// The configuration path that triggered the error, e.g.
+    /// `http.proxy.port`.
     pub path: String,
     /// Human-readable description of the problem.
     pub message: String,
@@ -40,7 +38,11 @@ impl HttpConfigError {
     ///
     /// # Returns
     /// New [`HttpConfigError`].
-    pub fn new(kind: HttpConfigErrorKind, path: impl Into<String>, message: impl Into<String>) -> Self {
+    pub fn new(
+        kind: HttpConfigErrorKind,
+        path: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
         Self {
             kind,
             path: path.into(),
@@ -56,7 +58,10 @@ impl HttpConfigError {
     ///
     /// # Returns
     /// New [`HttpConfigError`].
-    pub fn missing(path: impl Into<String>, message: impl Into<String>) -> Self {
+    pub fn missing(
+        path: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
         Self::new(HttpConfigErrorKind::MissingField, path, message)
     }
 
@@ -68,7 +73,10 @@ impl HttpConfigError {
     ///
     /// # Returns
     /// New [`HttpConfigError`].
-    pub fn type_error(path: impl Into<String>, message: impl Into<String>) -> Self {
+    pub fn type_error(
+        path: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
         Self::new(HttpConfigErrorKind::TypeError, path, message)
     }
 
@@ -80,7 +88,10 @@ impl HttpConfigError {
     ///
     /// # Returns
     /// New [`HttpConfigError`].
-    pub fn invalid_value(path: impl Into<String>, message: impl Into<String>) -> Self {
+    pub fn invalid_value(
+        path: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
         Self::new(HttpConfigErrorKind::InvalidValue, path, message)
     }
 
@@ -92,11 +103,15 @@ impl HttpConfigError {
     ///
     /// # Returns
     /// New [`HttpConfigError`].
-    pub fn invalid_header(path: impl Into<String>, message: impl Into<String>) -> Self {
+    pub fn invalid_header(
+        path: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
         Self::new(HttpConfigErrorKind::InvalidHeader, path, message)
     }
 
-    /// Shorthand for [`HttpConfigErrorKind::ConfigError`] (underlying `qubit-config` failure).
+    /// Shorthand for [`HttpConfigErrorKind::ConfigError`] (underlying
+    /// `qubit-config` failure).
     ///
     /// # Parameters
     /// - `path`: Configuration path if known; may be empty when not applicable.
@@ -104,7 +119,10 @@ impl HttpConfigError {
     ///
     /// # Returns
     /// New [`HttpConfigError`].
-    pub fn config_error(path: impl Into<String>, message: impl Into<String>) -> Self {
+    pub fn config_error(
+        path: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
         Self::new(HttpConfigErrorKind::ConfigError, path, message)
     }
 
@@ -138,7 +156,8 @@ impl std::error::Error for HttpConfigError {}
 
 impl From<qubit_config::ConfigError> for HttpConfigError {
     /// Converts a `qubit_config::ConfigError`, mapping typed failures to
-    /// [`HttpConfigErrorKind::TypeError`] when the source carries a property key.
+    /// [`HttpConfigErrorKind::TypeError`] when the source carries a property
+    /// key.
     ///
     /// # Parameters
     /// - `e`: Source configuration error.
@@ -149,11 +168,16 @@ impl From<qubit_config::ConfigError> for HttpConfigError {
         use qubit_config::ConfigError;
         let msg = e.to_string();
         match e {
-            ConfigError::TypeMismatch { key, .. } | ConfigError::ConversionError { key, .. } => {
+            ConfigError::TypeMismatch { key, .. }
+            | ConfigError::ConversionError { key, .. } => {
                 HttpConfigError::type_error(key, msg)
             }
-            ConfigError::PropertyHasNoValue(key) => HttpConfigError::type_error(key, msg),
-            ConfigError::PropertyNotFound(key) => HttpConfigError::config_error(key, msg),
+            ConfigError::PropertyHasNoValue(key) => {
+                HttpConfigError::type_error(key, msg)
+            }
+            ConfigError::PropertyNotFound(key) => {
+                HttpConfigError::config_error(key, msg)
+            }
             other => HttpConfigError::config_error("", other.to_string()),
         }
     }

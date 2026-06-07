@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 
 use std::sync::{
     Arc,
@@ -49,7 +47,10 @@ fn test_response_interceptor_apply_receives_context() {
             context.method().clone(),
             header,
         ));
-        context.set_url(Url::parse("https://example.test/rewritten").expect("valid rewritten URL"));
+        context.set_url(
+            Url::parse("https://example.test/rewritten")
+                .expect("valid rewritten URL"),
+        );
         Ok(())
     });
 
@@ -76,13 +77,17 @@ fn test_response_interceptor_apply_receives_context() {
     assert_eq!(seen.1, Url::parse("https://example.test/path").unwrap());
     assert_eq!(seen.2, Method::GET);
     assert_eq!(seen.3, "ok");
-    assert_eq!(meta.url(), &Url::parse("https://example.test/rewritten").unwrap());
+    assert_eq!(
+        meta.url(),
+        &Url::parse("https://example.test/rewritten").unwrap()
+    );
     assert_eq!(meta.status(), StatusCode::CREATED);
     assert_eq!(meta.method(), &Method::GET);
 }
 
 #[test]
-fn test_response_interceptor_context_allows_header_mutation_without_status_mutation() {
+fn test_response_interceptor_context_allows_header_mutation_without_status_mutation(
+) {
     let interceptor = HttpResponseInterceptor::new(|context| {
         context
             .headers_mut()
@@ -119,7 +124,9 @@ fn test_response_interceptor_context_allows_header_mutation_without_status_mutat
 
 #[test]
 fn test_response_interceptor_apply_propagates_error() {
-    let interceptor = HttpResponseInterceptor::new(|_meta| Err(HttpError::other("response interceptor failure")));
+    let interceptor = HttpResponseInterceptor::new(|_meta| {
+        Err(HttpError::other("response interceptor failure"))
+    });
     let meta = HttpResponseMeta::new(
         StatusCode::OK,
         HeaderMap::new(),
@@ -155,12 +162,16 @@ fn test_response_interceptors_apply_enriches_error_context() {
     assert_eq!(error.kind, HttpErrorKind::Other);
     assert_eq!(error.status, Some(StatusCode::ACCEPTED));
     assert_eq!(error.method, Some(Method::POST));
-    assert_eq!(error.url, Some(Url::parse("https://example.test/list").unwrap()));
+    assert_eq!(
+        error.url,
+        Some(Url::parse("https://example.test/list").unwrap())
+    );
 }
 
 #[test]
 fn test_response_interceptors_apply_preserves_existing_error_context() {
-    let existing_url = Url::parse("https://example.test/existing").expect("valid test URL");
+    let existing_url =
+        Url::parse("https://example.test/existing").expect("valid test URL");
     let mut interceptors = HttpResponseInterceptors::new();
     interceptors.push(HttpResponseInterceptor::new({
         let existing_url = existing_url.clone();

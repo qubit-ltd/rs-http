@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! Sanitized rendering helpers for HTTP TRACE logs.
 
 use http::{
@@ -42,7 +40,10 @@ impl SanitizedLogger {
     ///
     /// # Returns
     /// New sanitized logger helper.
-    pub(crate) fn new(policy: LogSanitizePolicy, body_size_limit: usize) -> Self {
+    pub(crate) fn new(
+        policy: LogSanitizePolicy,
+        body_size_limit: usize,
+    ) -> Self {
         Self {
             sanitizer: LogSanitizer::new(policy),
             body_size_limit,
@@ -57,7 +58,10 @@ impl SanitizedLogger {
     /// # Returns
     /// Sanitized logger configured like [`crate::HttpLogger`].
     pub(crate) fn from_options(options: &HttpClientOptions) -> Self {
-        Self::new(options.log_sanitize_policy.clone(), options.logging.body_size_limit)
+        Self::new(
+            options.log_sanitize_policy.clone(),
+            options.logging.body_size_limit,
+        )
     }
 
     /// Returns a log-safe URL string.
@@ -80,7 +84,11 @@ impl SanitizedLogger {
     /// # Returns
     /// Masked header value when the name is sensitive, otherwise UTF-8 text or
     /// `<non-utf8>`.
-    pub(crate) fn header_value(&self, name: &HeaderName, value: &HeaderValue) -> String {
+    pub(crate) fn header_value(
+        &self,
+        name: &HeaderName,
+        value: &HeaderValue,
+    ) -> String {
         self.sanitizer.sanitize_header_value(name, value)
     }
 
@@ -93,7 +101,12 @@ impl SanitizedLogger {
     ///
     /// # Returns
     /// Human-readable sanitized body preview.
-    pub(crate) fn body(&self, body: &[u8], context: BodyLogContext, content_type: Option<&str>) -> String {
+    pub(crate) fn body(
+        &self,
+        body: &[u8],
+        context: BodyLogContext,
+        content_type: Option<&str>,
+    ) -> String {
         let preview = BodyPreview::new(body, self.body_size_limit, context);
         let preview = if let Some(content_type) = content_type {
             preview.with_content_type(content_type)
