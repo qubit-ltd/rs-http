@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! Response interceptor abstraction for successful HTTP responses.
 
 use qubit_function::{
@@ -25,7 +23,8 @@ use crate::HttpResult;
 /// and request method are immutable and headers/final URL are mutable.
 ///
 /// Returning `Err` short-circuits execution for the current attempt.
-pub type HttpResponseInterceptor = ArcMutatingFunction<HttpResponseInterceptorContext, HttpResult<()>>;
+pub type HttpResponseInterceptor =
+    ArcMutatingFunction<HttpResponseInterceptorContext, HttpResult<()>>;
 
 /// Ordered response interceptor list with unified application behavior.
 #[derive(Debug, Clone, Default)]
@@ -60,8 +59,12 @@ impl HttpResponseInterceptors {
     /// # Errors
     /// Returns the first interceptor error and enriches it with
     /// status/method/URL context when missing.
-    pub fn apply(&self, response_meta: &mut HttpResponseMeta) -> HttpResult<()> {
-        let mut context = HttpResponseInterceptorContext::from_meta(response_meta);
+    pub fn apply(
+        &self,
+        response_meta: &mut HttpResponseMeta,
+    ) -> HttpResult<()> {
+        let mut context =
+            HttpResponseInterceptorContext::from_meta(response_meta);
         for interceptor in &self.interceptors {
             interceptor.apply(&mut context).map_err(|error| {
                 let mut mapped = error;

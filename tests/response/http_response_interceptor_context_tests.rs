@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 
 use std::time::Duration;
 
@@ -25,7 +23,8 @@ use qubit_http::{
 use url::Url;
 
 #[test]
-fn test_http_response_interceptor_context_exposes_immutable_status_and_method() {
+fn test_http_response_interceptor_context_exposes_immutable_status_and_method()
+{
     let context = HttpResponseInterceptorContext::new(
         StatusCode::ACCEPTED,
         HeaderMap::new(),
@@ -53,7 +52,9 @@ fn test_http_response_interceptor_context_mutates_headers_and_url() {
     context
         .headers_mut()
         .insert("x-intercepted", HeaderValue::from_static("yes"));
-    context.set_url(Url::parse("https://example.test/rewritten").expect("valid URL"));
+    context.set_url(
+        Url::parse("https://example.test/rewritten").expect("valid URL"),
+    );
 
     assert_eq!(
         context
@@ -69,7 +70,8 @@ fn test_http_response_interceptor_context_mutates_headers_and_url() {
 }
 
 #[test]
-fn test_http_response_interceptor_context_from_meta_preserves_retry_after_hint() {
+fn test_http_response_interceptor_context_from_meta_preserves_retry_after_hint()
+{
     let mut headers = HeaderMap::new();
     headers.insert(RETRY_AFTER, HeaderValue::from_static("3"));
     let meta = HttpResponseMeta::new(
@@ -87,7 +89,10 @@ fn test_http_response_interceptor_context_from_meta_preserves_retry_after_hint()
 #[test]
 fn test_http_response_interceptor_context_debug_masks_sensitive_values() {
     let mut headers = HeaderMap::new();
-    headers.insert(SET_COOKIE, HeaderValue::from_static("session=debug-cookie-secret"));
+    headers.insert(
+        SET_COOKIE,
+        HeaderValue::from_static("session=debug-cookie-secret"),
+    );
     let context = HttpResponseInterceptorContext::new(
         StatusCode::OK,
         headers,

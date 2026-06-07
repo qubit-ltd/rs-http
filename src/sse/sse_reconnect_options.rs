@@ -1,14 +1,11 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! Options and defaults for SSE reconnect with backoff.
-//!
 
 use std::time::Duration;
 
@@ -19,7 +16,8 @@ use crate::{
 };
 
 /// Default upper bound for SSE reconnect delay backoff.
-pub(crate) const DEFAULT_SSE_MAX_RECONNECT_DELAY: Duration = Duration::from_secs(30);
+pub(crate) const DEFAULT_SSE_MAX_RECONNECT_DELAY: Duration =
+    Duration::from_secs(30);
 
 /// Default exponential backoff multiplier for SSE reconnect delay growth.
 pub(crate) const DEFAULT_SSE_RECONNECT_BACKOFF_MULTIPLIER: f64 = 2.0;
@@ -46,7 +44,8 @@ fn default_sse_retry_options() -> RetryOptions {
     .expect("SSE default retry options must be valid")
 }
 
-/// Reconnect behavior options for [`crate::HttpClient::execute_sse_with_reconnect`].
+/// Reconnect behavior options for
+/// [`crate::HttpClient::execute_sse_with_reconnect`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct SseReconnectOptions {
     /// Retry options used by SSE reconnect delay calculation.
@@ -54,7 +53,8 @@ pub struct SseReconnectOptions {
     /// `max_attempts` includes the initial stream-open attempt, so if callers
     /// want at most `N` reconnects they should pass `max_attempts = N + 1`.
     pub retry: RetryOptions,
-    /// Whether to reconnect when the SSE stream ends without an explicit error.
+    /// Whether to reconnect when the SSE stream ends without an explicit
+    /// error.
     pub reconnect_on_eof: bool,
     /// Whether to honor SSE `retry:` field as the next reconnect delay.
     pub honor_server_retry: bool,
@@ -65,8 +65,8 @@ pub struct SseReconnectOptions {
     /// when it has explicit max (`Random` / `Exponential`), otherwise it uses
     /// internal default bound.
     pub server_retry_max_delay: Option<Duration>,
-    /// Whether jitter should be applied when the reconnect delay comes from SSE
-    /// `retry:` field.
+    /// Whether jitter should be applied when the reconnect delay comes from
+    /// SSE `retry:` field.
     pub apply_jitter_to_server_retry: bool,
 }
 

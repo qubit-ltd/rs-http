@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! Request interceptor abstraction for outgoing HTTP requests.
 
 use qubit_function::{
@@ -22,7 +20,8 @@ use crate::HttpResult;
 /// before URL resolution, header merge, and network I/O.
 ///
 /// Returning `Err` short-circuits execution for the current attempt.
-pub type HttpRequestInterceptor = ArcMutatingFunction<HttpRequest, HttpResult<()>>;
+pub type HttpRequestInterceptor =
+    ArcMutatingFunction<HttpRequest, HttpResult<()>>;
 
 /// Ordered request interceptor list with unified application behavior.
 #[derive(Debug, Clone, Default)]

@@ -1,19 +1,16 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! # HTTP Client Options
 //!
 //! Defines all client-side configuration used by `qubit-http`.
 //!
 //! The configuration key layout for `from_config` is documented in the
 //! `from_config_helpers` module (see `from_config_helpers.rs`).
-//!
 
 mod from_config_helpers;
 mod http_client_options;

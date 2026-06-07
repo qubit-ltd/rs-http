@@ -1,13 +1,12 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
-//! [`SseReconnectRunner`] implementation used by [`HttpClient`](crate::HttpClient).
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
+//! [`SseReconnectRunner`] implementation used by
+//! [`HttpClient`](crate::HttpClient).
 
 use std::error::Error as StdError;
 use std::io::ErrorKind;
@@ -63,7 +62,8 @@ enum ReconnectDecision {
 
 /// Runtime references shared by one reconnect scheduling decision.
 struct ReconnectRuntime<'a> {
-    /// Retry options used to derive count, elapsed, delay, and jitter behavior.
+    /// Retry options used to derive count, elapsed, delay, and jitter
+    /// behavior.
     retry_options: &'a RetryOptions,
     /// SSE reconnect options controlling server retry and EOF behavior.
     options: &'a SseReconnectOptions,
@@ -95,7 +95,8 @@ struct ReconnectState {
     count: u32,
     /// Current local backoff delay before jitter/server override.
     backoff_delay: Duration,
-    /// Optional one-shot server-provided retry delay from an SSE `retry:` record.
+    /// Optional one-shot server-provided retry delay from an SSE `retry:`
+    /// record.
     pending_server_retry_delay: Option<Duration>,
 }
 
@@ -137,7 +138,11 @@ impl ReconnectState {
     ///
     /// # Side effects
     /// Sleeps asynchronously when another reconnect is allowed.
-    async fn after_error(&mut self, error: HttpError, runtime: &ReconnectRuntime<'_>) -> ReconnectAction {
+    async fn after_error(
+        &mut self,
+        error: HttpError,
+        runtime: &ReconnectRuntime<'_>,
+    ) -> ReconnectAction {
         let sleep_delay = self.sleep_delay(runtime);
         match reconnect_decision(
             self.count,
@@ -146,17 +151,24 @@ impl ReconnectState {
             runtime.retry_options,
             sleep_delay,
         ) {
-            ReconnectDecision::Allowed => self.sleep_and_advance(sleep_delay, runtime).await,
-            ReconnectDecision::MaxElapsedExceeded { elapsed, max_elapsed } => {
-                ReconnectAction::Fail(Box::new(max_elapsed_exceeded_error_with_last_error(
+            ReconnectDecision::Allowed => {
+                self.sleep_and_advance(sleep_delay, runtime).await
+            }
+            ReconnectDecision::MaxElapsedExceeded {
+                elapsed,
+                max_elapsed,
+            } => ReconnectAction::Fail(Box::new(
+                max_elapsed_exceeded_error_with_last_error(
                     error,
                     elapsed,
                     max_elapsed,
                     runtime.request_method,
                     runtime.request_url,
-                )))
+                ),
+            )),
+            ReconnectDecision::MaxReconnectsReached => {
+                ReconnectAction::Fail(Box::new(error))
             }
-            ReconnectDecision::MaxReconnectsReached => ReconnectAction::Fail(Box::new(error)),
         }
     }
 
@@ -170,7 +182,10 @@ impl ReconnectState {
     ///
     /// # Side effects
     /// Sleeps asynchronously when another reconnect is allowed.
-    async fn after_eof(&mut self, runtime: &ReconnectRuntime<'_>) -> ReconnectAction {
+    async fn after_eof(
+        &mut self,
+        runtime: &ReconnectRuntime<'_>,
+    ) -> ReconnectAction {
         let sleep_delay = self.sleep_delay(runtime);
         match reconnect_decision(
             self.count,
@@ -179,10 +194,18 @@ impl ReconnectState {
             runtime.retry_options,
             sleep_delay,
         ) {
-            ReconnectDecision::Allowed => self.sleep_and_advance(sleep_delay, runtime).await,
-            ReconnectDecision::MaxElapsedExceeded { elapsed, max_elapsed } => ReconnectAction::Fail(Box::new(
-                max_elapsed_exceeded_error(elapsed, max_elapsed, runtime.request_method, runtime.request_url),
-            )),
+            ReconnectDecision::Allowed => {
+                self.sleep_and_advance(sleep_delay, runtime).await
+            }
+            ReconnectDecision::MaxElapsedExceeded {
+                elapsed,
+                max_elapsed,
+            } => ReconnectAction::Fail(Box::new(max_elapsed_exceeded_error(
+                elapsed,
+                max_elapsed,
+                runtime.request_method,
+                runtime.request_url,
+            ))),
             ReconnectDecision::MaxReconnectsReached => ReconnectAction::Stop,
         }
     }
@@ -215,7 +238,11 @@ impl ReconnectState {
     ///
     /// # Side effects
     /// Sleeps asynchronously and mutates reconnect counters/backoff state.
-    async fn sleep_and_advance(&mut self, sleep_delay: Duration, runtime: &ReconnectRuntime<'_>) -> ReconnectAction {
+    async fn sleep_and_advance(
+        &mut self,
+        sleep_delay: Duration,
+        runtime: &ReconnectRuntime<'_>,
+    ) -> ReconnectAction {
         self.count += 1;
         if let Err(error) = sleep_reconnect_delay(
             sleep_delay,
@@ -227,7 +254,8 @@ impl ReconnectState {
         {
             return ReconnectAction::Fail(Box::new(error));
         }
-        self.backoff_delay = next_reconnect_delay(runtime.retry_options, self.backoff_delay);
+        self.backoff_delay =
+            next_reconnect_delay(runtime.retry_options, self.backoff_delay);
         self.pending_server_retry_delay = None;
         ReconnectAction::Continue
     }
@@ -254,7 +282,11 @@ impl SseReconnectRunner {
     ///
     /// # Returns
     /// New SSE reconnect runner.
-    pub(crate) fn new(client: HttpClient, request: HttpRequest, options: SseReconnectOptions) -> Self {
+    pub(crate) fn new(
+        client: HttpClient,
+        request: HttpRequest,
+        options: SseReconnectOptions,
+    ) -> Self {
         Self {
             client,
             request_template: request,
@@ -265,7 +297,8 @@ impl SseReconnectRunner {
     /// Starts the reconnect loop and returns a merged SSE message stream.
     ///
     /// # Returns
-    /// SSE message stream yielding messages from one or more reconnect sessions.
+    /// SSE message stream yielding messages from one or more reconnect
+    /// sessions.
     pub(crate) fn run(self) -> SseMessageStream {
         let client = self.client;
         let request_template = self.request_template;
@@ -396,14 +429,21 @@ impl SseReconnectRunner {
 /// # Errors
 /// Returns [`HttpError`] when `last_event_id` cannot be represented as an HTTP
 /// header value.
-fn apply_last_event_id_header(request: &mut HttpRequest, last_event_id: &str) -> HttpResult<()> {
-    let header_value = HeaderValue::from_str(last_event_id).map_err(|error| {
-        HttpError::other(format!(
-            "Invalid Last-Event-ID header value ({} bytes): {error}",
-            last_event_id.len()
-        ))
-    })?;
-    request.set_typed_header(HeaderName::from_static(LAST_EVENT_ID_HEADER), header_value);
+fn apply_last_event_id_header(
+    request: &mut HttpRequest,
+    last_event_id: &str,
+) -> HttpResult<()> {
+    let header_value =
+        HeaderValue::from_str(last_event_id).map_err(|error| {
+            HttpError::other(format!(
+                "Invalid Last-Event-ID header value ({} bytes): {error}",
+                last_event_id.len()
+            ))
+        })?;
+    request.set_typed_header(
+        HeaderName::from_static(LAST_EVENT_ID_HEADER),
+        header_value,
+    );
     Ok(())
 }
 
@@ -418,7 +458,8 @@ fn should_reconnect_sse_error(error: &HttpError) -> bool {
     if error.kind == HttpErrorKind::Cancelled {
         return false;
     }
-    matches!(error.retry_hint(), RetryHint::Retryable) || is_unexpected_eof_error(error)
+    matches!(error.retry_hint(), RetryHint::Retryable)
+        || is_unexpected_eof_error(error)
 }
 
 /// Returns the next reconnect delay after one reconnect sleep.
@@ -429,7 +470,10 @@ fn should_reconnect_sse_error(error: &HttpError) -> bool {
 ///
 /// # Returns
 /// Next reconnect base delay.
-fn next_reconnect_delay(retry_options: &RetryOptions, current: Duration) -> Duration {
+fn next_reconnect_delay(
+    retry_options: &RetryOptions,
+    current: Duration,
+) -> Duration {
     retry_options
         .next_base_delay_from_current(current)
         .max(Duration::from_millis(1))
@@ -459,8 +503,13 @@ fn reconnect_decision(
     }
     if let Some(max_elapsed) = retry_options.max_total_elapsed() {
         let elapsed = started_at.elapsed();
-        if (elapsed >= max_elapsed) || will_exceed_elapsed(elapsed, sleep_delay, max_elapsed) {
-            return ReconnectDecision::MaxElapsedExceeded { elapsed, max_elapsed };
+        if (elapsed >= max_elapsed)
+            || will_exceed_elapsed(elapsed, sleep_delay, max_elapsed)
+        {
+            return ReconnectDecision::MaxElapsedExceeded {
+                elapsed,
+                max_elapsed,
+            };
         }
     }
     ReconnectDecision::Allowed
@@ -477,7 +526,11 @@ fn reconnect_decision(
 /// # Returns
 /// `true` when `elapsed + sleep_delay` is greater than or equal to
 /// `max_elapsed`, or when the addition overflows.
-fn will_exceed_elapsed(elapsed: Duration, sleep_delay: Duration, max_elapsed: Duration) -> bool {
+fn will_exceed_elapsed(
+    elapsed: Duration,
+    sleep_delay: Duration,
+    max_elapsed: Duration,
+) -> bool {
     elapsed
         .checked_add(sleep_delay)
         .is_none_or(|next_elapsed| next_elapsed >= max_elapsed)
@@ -491,7 +544,9 @@ fn will_exceed_elapsed(elapsed: Duration, sleep_delay: Duration, max_elapsed: Du
 /// # Returns
 /// Initial reconnect base delay.
 fn initial_reconnect_delay(retry_options: &RetryOptions) -> Duration {
-    retry_options.base_delay_for_attempt(1).max(Duration::from_millis(1))
+    retry_options
+        .base_delay_for_attempt(1)
+        .max(Duration::from_millis(1))
 }
 
 /// Returns one reconnect sleep delay by applying configured jitter rules.
@@ -500,7 +555,8 @@ fn initial_reconnect_delay(retry_options: &RetryOptions) -> Duration {
 /// - `backoff_delay`: Base reconnect delay from local retry strategy.
 /// - `pending_server_retry_delay`: Optional one-shot delay from SSE `retry:`.
 /// - `retry_options`: Retry options containing jitter strategy.
-/// - `options`: SSE reconnect options that control server-retry jitter behavior.
+/// - `options`: SSE reconnect options that control server-retry jitter
+///   behavior.
 ///
 /// # Returns
 /// Effective sleep delay for the next reconnect wait.
@@ -571,7 +627,11 @@ async fn sleep_reconnect_delay(
 ///
 /// # Returns
 /// Capped reconnect delay from server retry value.
-fn server_retry_delay(retry_ms: u64, retry_options: &RetryOptions, options: &SseReconnectOptions) -> Duration {
+fn server_retry_delay(
+    retry_ms: u64,
+    retry_options: &RetryOptions,
+    options: &SseReconnectOptions,
+) -> Duration {
     let raw = Duration::from_millis(retry_ms.max(1));
     let cap = server_retry_max_delay(retry_options, options);
     raw.min(cap).max(Duration::from_millis(1))
@@ -585,7 +645,10 @@ fn server_retry_delay(retry_ms: u64, retry_options: &RetryOptions, options: &Sse
 ///
 /// # Returns
 /// Maximum server retry delay.
-fn server_retry_max_delay(retry_options: &RetryOptions, options: &SseReconnectOptions) -> Duration {
+fn server_retry_max_delay(
+    retry_options: &RetryOptions,
+    options: &SseReconnectOptions,
+) -> Duration {
     options
         .server_retry_max_delay
         .unwrap_or_else(|| default_server_retry_max_delay(retry_options))
@@ -601,8 +664,11 @@ fn server_retry_max_delay(retry_options: &RetryOptions, options: &SseReconnectOp
 /// Fallback cap for server-provided `retry:` delay.
 fn default_server_retry_max_delay(retry_options: &RetryOptions) -> Duration {
     match retry_options.delay() {
-        RetryDelay::None | RetryDelay::Fixed(_) => DEFAULT_SSE_MAX_RECONNECT_DELAY,
-        RetryDelay::Random { max, .. } | RetryDelay::Exponential { max, .. } => *max,
+        RetryDelay::None | RetryDelay::Fixed(_) => {
+            DEFAULT_SSE_MAX_RECONNECT_DELAY
+        }
+        RetryDelay::Random { max, .. }
+        | RetryDelay::Exponential { max, .. } => *max,
     }
     .max(Duration::from_millis(1))
 }
@@ -652,7 +718,12 @@ fn max_elapsed_exceeded_error_with_last_error(
     request_method: &http::Method,
     request_url: Option<&url::Url>,
 ) -> HttpError {
-    let mut error = max_elapsed_exceeded_error(elapsed, max_elapsed, request_method, request_url);
+    let mut error = max_elapsed_exceeded_error(
+        elapsed,
+        max_elapsed,
+        request_method,
+        request_url,
+    );
     if let Some(method) = last_error.method.as_ref() {
         error = error.with_method(method);
     }
@@ -662,7 +733,10 @@ fn max_elapsed_exceeded_error_with_last_error(
     if let Some(status) = last_error.status {
         error = error.with_status(status);
     }
-    let mut message = format!("{}; last retryable error: {}", error.message, last_error.message);
+    let mut message = format!(
+        "{}; last retryable error: {}",
+        error.message, last_error.message
+    );
     if let Some(status) = last_error.status {
         message = format!("{message} (status: {status})");
     }
@@ -682,20 +756,26 @@ fn max_elapsed_exceeded_error_with_last_error(
 /// # Errors
 /// Returns [`HttpErrorKind::SseProtocol`] when `Content-Type` is missing,
 /// non-UTF8, or not SSE media type.
-fn validate_sse_response_content_type(response: &HttpResponse) -> HttpResult<()> {
+fn validate_sse_response_content_type(
+    response: &HttpResponse,
+) -> HttpResult<()> {
     let method = response.meta().method().clone();
     let url = response.request_url().clone();
     let Some(value) = response.headers().get(CONTENT_TYPE) else {
-        return Err(HttpError::sse_protocol("Missing Content-Type header for SSE response")
-            .with_status(response.status())
-            .with_method(&method)
-            .with_url(&url));
+        return Err(HttpError::sse_protocol(
+            "Missing Content-Type header for SSE response",
+        )
+        .with_status(response.status())
+        .with_method(&method)
+        .with_url(&url));
     };
     let content_type = value.to_str().map_err(|_| {
-        HttpError::sse_protocol("Invalid non-UTF8 Content-Type header for SSE response")
-            .with_status(response.status())
-            .with_method(&method)
-            .with_url(&url)
+        HttpError::sse_protocol(
+            "Invalid non-UTF8 Content-Type header for SSE response",
+        )
+        .with_status(response.status())
+        .with_method(&method)
+        .with_url(&url)
     })?;
     if content_type::is_sse(content_type) {
         return Ok(());
@@ -717,7 +797,8 @@ fn validate_sse_response_content_type(response: &HttpResponse) -> HttpResult<()>
 /// # Returns
 /// `true` when message/source indicates unexpected EOF during stream decoding.
 fn is_unexpected_eof_error(error: &HttpError) -> bool {
-    let contains_unexpected_eof = |text: &str| text.to_ascii_lowercase().contains("unexpected eof");
+    let contains_unexpected_eof =
+        |text: &str| text.to_ascii_lowercase().contains("unexpected eof");
     if contains_unexpected_eof(&error.message) {
         return true;
     }

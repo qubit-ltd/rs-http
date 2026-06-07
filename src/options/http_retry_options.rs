@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 
 use std::str::FromStr;
 use std::time::Duration;
@@ -63,7 +61,10 @@ pub struct HttpRetryOptions {
 /// Returns whether `status` is retryable for the given optional allowlist.
 ///
 /// When `retry_status_codes` is `None`, uses [`default_retryable_status`].
-fn is_retryable_status(status: StatusCode, retry_status_codes: Option<&[StatusCode]>) -> bool {
+fn is_retryable_status(
+    status: StatusCode,
+    retry_status_codes: Option<&[StatusCode]>,
+) -> bool {
     if let Some(status_codes) = retry_status_codes {
         status_codes.contains(&status)
     } else {
@@ -74,7 +75,10 @@ fn is_retryable_status(status: StatusCode, retry_status_codes: Option<&[StatusCo
 /// Returns whether `kind` is retryable for the given optional allowlist.
 ///
 /// When `retry_error_kinds` is `None`, uses [`default_retryable_error_kind`].
-fn is_retryable_error_kind(kind: HttpErrorKind, retry_error_kinds: Option<&[HttpErrorKind]>) -> bool {
+fn is_retryable_error_kind(
+    kind: HttpErrorKind,
+    retry_error_kinds: Option<&[HttpErrorKind]>,
+) -> bool {
     if let Some(error_kinds) = retry_error_kinds {
         error_kinds.contains(&kind)
     } else {
@@ -116,17 +120,21 @@ impl HttpRetryOptions {
             opts.jitter_factor = jitter_factor;
         }
         if let Some(method_policy) = raw.method_policy.as_ref() {
-            opts.method_policy = HttpRetryMethodPolicy::from_config_value(method_policy)?;
+            opts.method_policy =
+                HttpRetryMethodPolicy::from_config_value(method_policy)?;
         }
         if let Some(status_codes) = raw.status_codes.as_ref() {
-            opts.retry_status_codes = Some(parse_retry_status_codes(status_codes)?);
+            opts.retry_status_codes =
+                Some(parse_retry_status_codes(status_codes)?);
         }
         if let Some(error_kinds) = raw.error_kinds.as_ref() {
-            opts.retry_error_kinds = Some(parse_retry_error_kinds(error_kinds)?);
+            opts.retry_error_kinds =
+                Some(parse_retry_error_kinds(error_kinds)?);
         }
 
         if let Some(delay_strategy) = raw.delay_strategy.as_ref() {
-            opts.delay_strategy = parse_retry_delay_strategy(delay_strategy, &raw)?;
+            opts.delay_strategy =
+                parse_retry_delay_strategy(delay_strategy, &raw)?;
         }
 
         opts.validate()?;
@@ -153,7 +161,8 @@ impl HttpRetryOptions {
             fixed_delay: config.get_optional("fixed_delay")?,
             random_min_delay: config.get_optional("random_min_delay")?,
             random_max_delay: config.get_optional("random_max_delay")?,
-            backoff_initial_delay: config.get_optional("backoff_initial_delay")?,
+            backoff_initial_delay: config
+                .get_optional("backoff_initial_delay")?,
             backoff_max_delay: config.get_optional("backoff_max_delay")?,
             backoff_multiplier: config.get_optional("backoff_multiplier")?,
             jitter_factor: config.get_optional("jitter_factor")?,
@@ -180,9 +189,9 @@ impl HttpRetryOptions {
                 "Retry jitter_factor must be between 0.0 and 1.0",
             ));
         }
-        self.delay_strategy
-            .validate()
-            .map_err(|message| HttpConfigError::invalid_value("delay_strategy", message))?;
+        self.delay_strategy.validate().map_err(|message| {
+            HttpConfigError::invalid_value("delay_strategy", message)
+        })?;
         Ok(())
     }
 
@@ -218,8 +227,11 @@ impl HttpRetryOptions {
     /// Effective retry options for this request.
     pub fn resolve(&self, request: &HttpRequest) -> Self {
         let mut options = self.clone();
-        options.enabled = request.retry_override().resolve_enabled(options.enabled);
-        options.method_policy = request.retry_override().resolve_method_policy(options.method_policy);
+        options.enabled =
+            request.retry_override().resolve_enabled(options.enabled);
+        options.method_policy = request
+            .retry_override()
+            .resolve_method_policy(options.method_policy);
         options
     }
 
@@ -246,12 +258,14 @@ impl HttpRetryOptions {
         is_retryable_error_kind(kind, self.retry_error_kinds.as_deref())
     }
 
-    /// Converts these options into [`RetryOptions`] for the built-in retry executor.
+    /// Converts these options into [`RetryOptions`] for the built-in retry
+    /// executor.
     ///
-    /// HTTP retry has one externally visible duration budget: [`Self::max_duration`].
-    /// It maps to `qubit-retry`'s `max_total_elapsed`, so the budget includes
-    /// attempt time, retry sleeps, `Retry-After` sleeps, and retry control-path
-    /// listener time measured with monotonic time.
+    /// HTTP retry has one externally visible duration budget:
+    /// [`Self::max_duration`]. It maps to `qubit-retry`'s
+    /// `max_total_elapsed`, so the budget includes attempt time, retry
+    /// sleeps, `Retry-After` sleeps, and retry control-path listener time
+    /// measured with monotonic time.
     ///
     /// # Panics
     /// Panics only if options that already passed [`Self::validate`] cannot be
@@ -304,7 +318,10 @@ struct HttpRetryConfigInput {
     error_kinds: Option<Vec<String>>,
 }
 
-fn parse_retry_delay_strategy(value: &str, raw: &HttpRetryConfigInput) -> Result<RetryDelay, HttpConfigError> {
+fn parse_retry_delay_strategy(
+    value: &str,
+    raw: &HttpRetryConfigInput,
+) -> Result<RetryDelay, HttpConfigError> {
     let normalized = value.trim().to_ascii_lowercase().replace('-', "_");
     match normalized.as_str() {
         "none" => Ok(RetryDelay::None),
@@ -316,9 +333,13 @@ fn parse_retry_delay_strategy(value: &str, raw: &HttpRetryConfigInput) -> Result
             max: raw.random_max_delay.unwrap_or(DEFAULT_RETRY_MAX_DELAY),
         }),
         "exponential_backoff" | "exponential" => Ok(RetryDelay::Exponential {
-            initial: raw.backoff_initial_delay.unwrap_or(DEFAULT_RETRY_INITIAL_DELAY),
+            initial: raw
+                .backoff_initial_delay
+                .unwrap_or(DEFAULT_RETRY_INITIAL_DELAY),
             max: raw.backoff_max_delay.unwrap_or(DEFAULT_RETRY_MAX_DELAY),
-            multiplier: raw.backoff_multiplier.unwrap_or(DEFAULT_RETRY_MULTIPLIER),
+            multiplier: raw
+                .backoff_multiplier
+                .unwrap_or(DEFAULT_RETRY_MULTIPLIER),
         }),
         _ => Err(HttpConfigError::invalid_value(
             "delay_strategy",
@@ -338,7 +359,9 @@ fn parse_retry_delay_strategy(value: &str, raw: &HttpRetryConfigInput) -> Result
 /// # Errors
 /// Returns [`HttpConfigError`] when any entry is blank or not a valid HTTP
 /// status code.
-fn parse_retry_status_codes(values: &[String]) -> Result<Vec<StatusCode>, HttpConfigError> {
+fn parse_retry_status_codes(
+    values: &[String],
+) -> Result<Vec<StatusCode>, HttpConfigError> {
     let mut result = Vec::<StatusCode>::new();
     for value in values {
         let trimmed = value.trim();
@@ -360,7 +383,8 @@ fn parse_retry_status_codes(values: &[String]) -> Result<Vec<StatusCode>, HttpCo
                 format!("Retry status code must be in range 100..=599, got {raw_code}"),
             ));
         }
-        let status = StatusCode::from_u16(raw_code).expect("retry status code range is pre-validated to 100..=599");
+        let status = StatusCode::from_u16(raw_code)
+            .expect("retry status code range is pre-validated to 100..=599");
         if !result.contains(&status) {
             result.push(status);
         }
@@ -379,7 +403,9 @@ fn parse_retry_status_codes(values: &[String]) -> Result<Vec<StatusCode>, HttpCo
 ///
 /// # Errors
 /// Returns [`HttpConfigError`] when any entry is blank or unsupported.
-fn parse_retry_error_kinds(values: &[String]) -> Result<Vec<HttpErrorKind>, HttpConfigError> {
+fn parse_retry_error_kinds(
+    values: &[String],
+) -> Result<Vec<HttpErrorKind>, HttpConfigError> {
     let mut result = Vec::<HttpErrorKind>::new();
     for value in values {
         let trimmed = value.trim();
@@ -391,7 +417,10 @@ fn parse_retry_error_kinds(values: &[String]) -> Result<Vec<HttpErrorKind>, Http
         }
         let normalized = trimmed.replace('-', "_");
         let kind = HttpErrorKind::from_str(&normalized).map_err(|_| {
-            HttpConfigError::invalid_value("error_kinds", format!("Unsupported retry error kind: {trimmed}"))
+            HttpConfigError::invalid_value(
+                "error_kinds",
+                format!("Unsupported retry error kind: {trimmed}"),
+            )
         })?;
         if !result.contains(&kind) {
             result.push(kind);

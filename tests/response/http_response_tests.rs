@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 
 use bytes::Bytes;
 use http::header::RETRY_AFTER;
@@ -34,13 +32,19 @@ async fn test_http_response_text_decode_error_contains_status_and_url() {
     let error = response.text().await.unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::Decode);
     assert_eq!(error.status, Some(StatusCode::OK));
-    assert_eq!(error.url, Some(Url::parse("https://example.com/bin").unwrap()));
+    assert_eq!(
+        error.url,
+        Some(Url::parse("https://example.com/bin").unwrap())
+    );
 }
 
 #[test]
 fn test_http_response_debug_masks_sensitive_values() {
     let mut headers = HeaderMap::new();
-    headers.insert("set-cookie", HeaderValue::from_static("session=debug-cookie-secret"));
+    headers.insert(
+        "set-cookie",
+        HeaderValue::from_static("session=debug-cookie-secret"),
+    );
     let mut url = Url::parse("https://debug-user:debug-url-secret@example.com/data?access_token=debug-query-secret")
         .expect("URL should parse");
     url.set_fragment(Some("debug-fragment-secret"));
@@ -75,7 +79,10 @@ async fn test_http_response_json_decode_error_contains_status_and_url() {
     let error = response.json::<serde_json::Value>().await.unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::Decode);
     assert_eq!(error.status, Some(StatusCode::OK));
-    assert_eq!(error.url, Some(Url::parse("https://example.com/json").unwrap()));
+    assert_eq!(
+        error.url,
+        Some(Url::parse("https://example.com/json").unwrap())
+    );
 }
 
 #[test]
@@ -111,14 +118,21 @@ fn test_http_response_meta_accessor_returns_shared_metadata() {
 
     let meta = response.meta();
     assert_eq!(meta.status(), StatusCode::ACCEPTED);
-    assert_eq!(meta.url(), &Url::parse("https://example.com/jobs/1").unwrap());
+    assert_eq!(
+        meta.url(),
+        &Url::parse("https://example.com/jobs/1").unwrap()
+    );
     assert_eq!(meta.method(), &Method::POST);
 }
 
 #[test]
-fn test_http_response_retry_after_hint_handles_applicable_status_and_past_date() {
+fn test_http_response_retry_after_hint_handles_applicable_status_and_past_date()
+{
     let mut headers = HeaderMap::new();
-    headers.insert(RETRY_AFTER, HeaderValue::from_static("Wed, 21 Oct 2015 07:28:00 GMT"));
+    headers.insert(
+        RETRY_AFTER,
+        HeaderValue::from_static("Wed, 21 Oct 2015 07:28:00 GMT"),
+    );
     let response = HttpResponse::new(
         StatusCode::SERVICE_UNAVAILABLE,
         headers.clone(),

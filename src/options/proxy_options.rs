@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 
 use std::fmt;
 use std::str::FromStr;
@@ -134,8 +132,10 @@ impl ProxyOptions {
     /// Validates proxy options for internal consistency.
     ///
     /// # Returns
-    /// - `Ok(())` when disabled or when enabled with valid host/port and credential pairing.
-    /// - `Err(HttpConfigError)` if proxy is enabled but host/port invalid, or password without username.
+    /// - `Ok(())` when disabled or when enabled with valid host/port and
+    ///   credential pairing.
+    /// - `Err(HttpConfigError)` if proxy is enabled but host/port invalid, or
+    ///   password without username.
     pub fn validate(&self) -> Result<(), HttpConfigError> {
         if self.enabled {
             match self.host.as_deref() {
@@ -191,7 +191,10 @@ fn parse_proxy_type(path: &str, s: &str) -> Result<ProxyType, HttpConfigError> {
     ProxyType::from_str(s.trim()).map_err(|_| {
         HttpConfigError::invalid_value(
             path,
-            format!("Unknown proxy type '{}'; expected http, https, or socks5", s,),
+            format!(
+                "Unknown proxy type '{}'; expected http, https, or socks5",
+                s,
+            ),
         )
     })
 }

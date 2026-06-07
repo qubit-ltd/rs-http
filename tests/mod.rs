@@ -1,16 +1,14 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 #![allow(clippy::field_reassign_with_default)]
 #![allow(clippy::result_large_err)]
-// Integration tests favor readability of scenario setup; partial Default mutation and
-// direct `HttpError` assertions are intentional.
+// Integration tests favor readability of scenario setup; partial Default
+// mutation and direct `HttpError` assertions are intentional.
 
 //! # qubit-http integration tests
 //!

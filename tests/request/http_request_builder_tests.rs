@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 
 use std::time::Duration;
 
@@ -82,7 +80,10 @@ fn test_request_builder_debug_masks_sensitive_values() {
         .request_timeout(Duration::from_secs(1))
         .expect("positive timeout should be accepted")
         .cancellation_token(CancellationToken::new());
-    let absolute = client.request(Method::GET, "https://debug-user:debug-url-secret@example.com/path");
+    let absolute = client.request(
+        Method::GET,
+        "https://debug-user:debug-url-secret@example.com/path",
+    );
 
     let debug = format!("{relative:?}\n{absolute:?}");
 
@@ -122,7 +123,9 @@ fn test_request_builder_copies_write_timeout_default_from_client_options() {
     let client = HttpClientFactory::new()
         .create(options)
         .expect("client should be created");
-    let request = client.request(Method::GET, "/v1/default-write-timeout").build();
+    let request = client
+        .request(Method::GET, "/v1/default-write-timeout")
+        .build();
 
     assert_eq!(request.write_timeout(), Duration::from_millis(321));
 }
@@ -163,7 +166,9 @@ fn test_request_builder_copies_read_timeout_default_from_client_options() {
     let client = HttpClientFactory::new()
         .create(options)
         .expect("client should be created");
-    let request = client.request(Method::GET, "/v1/default-read-timeout").build();
+    let request = client
+        .request(Method::GET, "/v1/default-read-timeout")
+        .build();
 
     assert_eq!(request.read_timeout(), Duration::from_millis(432));
 }
@@ -201,7 +206,8 @@ fn test_request_builder_base_url_method_overrides_default_from_options() {
     let mut options = HttpClientOptions::default();
     options.set_base_url("https://api.example.com/v1/").unwrap();
 
-    let override_base = url::Url::parse("https://override.example.com/root/").unwrap();
+    let override_base =
+        url::Url::parse("https://override.example.com/root/").unwrap();
     let client = HttpClientFactory::new()
         .create(options)
         .expect("client should be created");
@@ -221,7 +227,10 @@ fn test_request_builder_ipv4_only_method_overrides_default_from_options() {
     let client = HttpClientFactory::new()
         .create(options)
         .expect("client should be created");
-    let request = client.request(Method::GET, "users").ipv4_only(false).build();
+    let request = client
+        .request(Method::GET, "users")
+        .ipv4_only(false)
+        .build();
 
     assert!(!request.ipv4_only());
 }
@@ -234,7 +243,10 @@ fn test_request_builder_clear_base_url_method_overrides_default_from_options() {
     let client = HttpClientFactory::new()
         .create(options)
         .expect("client should be created");
-    let request = client.request(Method::GET, "users").clear_base_url().build();
+    let request = client
+        .request(Method::GET, "users")
+        .clear_base_url()
+        .build();
 
     assert_eq!(request.base_url(), None);
 }
@@ -250,19 +262,25 @@ fn test_request_builder_with_query_params() {
     assert_eq!(request.path(), "/v1/test");
     assert_eq!(
         request.query(),
-        vec![("a".to_string(), "1".to_string()), ("b".to_string(), "2".to_string())]
+        vec![
+            ("a".to_string(), "1".to_string()),
+            ("b".to_string(), "2".to_string())
+        ]
     );
 }
 
 #[test]
 fn test_request_builder_header_validation() {
-    let result = new_builder(Method::GET, "/").header("Invalid Header", "value");
+    let result =
+        new_builder(Method::GET, "/").header("Invalid Header", "value");
     assert!(result.is_err());
 }
 
 #[test]
 fn test_request_builder_text_body_sets_content_type() {
-    let request = new_builder(Method::POST, "/v1/text").text_body("hello world").build();
+    let request = new_builder(Method::POST, "/v1/text")
+        .text_body("hello world")
+        .build();
 
     assert_eq!(request.method(), &Method::POST);
     assert_eq!(request.path(), "/v1/text");
@@ -306,7 +324,8 @@ fn test_request_builder_json_body_sets_content_type_and_payload() {
 
     match request.body() {
         HttpRequestBody::Json(bytes) => {
-            let body: serde_json::Value = serde_json::from_slice(bytes).expect("JSON body bytes should decode");
+            let body: serde_json::Value = serde_json::from_slice(bytes)
+                .expect("JSON body bytes should decode");
             assert_eq!(body["name"], "alpha");
             assert_eq!(body["value"], 42);
         }
@@ -364,9 +383,13 @@ fn test_request_builder_stream_body_preserves_chunk_order() {
 }
 
 #[test]
-fn test_request_builder_query_params_headers_and_text_body_preserve_existing_content_type() {
+fn test_request_builder_query_params_headers_and_text_body_preserve_existing_content_type(
+) {
     let mut headers = HeaderMap::new();
-    headers.insert(CONTENT_TYPE, HeaderValue::from_static("text/custom; charset=utf-8"));
+    headers.insert(
+        CONTENT_TYPE,
+        HeaderValue::from_static("text/custom; charset=utf-8"),
+    );
     headers.insert(
         http::header::HeaderName::from_static("x-extra"),
         HeaderValue::from_static("present"),
@@ -380,7 +403,10 @@ fn test_request_builder_query_params_headers_and_text_body_preserve_existing_con
 
     assert_eq!(
         request.query(),
-        vec![("a".to_string(), "1".to_string()), ("b".to_string(), "2".to_string()),]
+        vec![
+            ("a".to_string(), "1".to_string()),
+            ("b".to_string(), "2".to_string()),
+        ]
     );
     assert_eq!(
         request
@@ -420,7 +446,8 @@ fn test_request_builder_json_body_preserves_existing_content_type() {
     );
     match request.body() {
         HttpRequestBody::Json(bytes) => {
-            let body: serde_json::Value = serde_json::from_slice(bytes).expect("JSON body bytes should decode");
+            let body: serde_json::Value = serde_json::from_slice(bytes)
+                .expect("JSON body bytes should decode");
             assert_eq!(body["ok"], true);
         }
         _ => panic!("expected JSON body"),
@@ -495,7 +522,8 @@ fn test_request_builder_form_body_sets_content_type_and_encodes_fields() {
     );
     match request.body() {
         HttpRequestBody::Form(bytes) => {
-            let text = String::from_utf8(bytes.to_vec()).expect("form payload should be utf-8");
+            let text = String::from_utf8(bytes.to_vec())
+                .expect("form payload should be utf-8");
             assert!(text.contains("name=alice+bob"));
             assert!(text.contains("city=shanghai"));
         }
@@ -536,7 +564,10 @@ fn test_request_builder_multipart_body_sets_content_type_with_boundary() {
     );
     match request.body() {
         HttpRequestBody::Multipart(bytes) => {
-            assert_eq!(bytes.as_ref(), Bytes::from_static(b"--abc\r\n...").as_ref())
+            assert_eq!(
+                bytes.as_ref(),
+                Bytes::from_static(b"--abc\r\n...").as_ref()
+            )
         }
         _ => panic!("expected multipart body"),
     }
@@ -583,7 +614,8 @@ fn test_request_builder_multipart_body_rejects_boundary_with_space() {
 }
 
 #[test]
-fn test_request_builder_multipart_body_rejects_boundary_with_unquoted_parameter_chars() {
+fn test_request_builder_multipart_body_rejects_boundary_with_unquoted_parameter_chars(
+) {
     for boundary in [
         "bad/boundary",
         "bad:boundary",
@@ -606,7 +638,8 @@ fn test_request_builder_multipart_body_rejects_boundary_with_unquoted_parameter_
 }
 
 #[test]
-fn test_request_builder_multipart_body_adds_boundary_to_existing_multipart_content_type() {
+fn test_request_builder_multipart_body_adds_boundary_to_existing_multipart_content_type(
+) {
     let request = new_builder(Method::POST, "/v1/multipart")
         .header(CONTENT_TYPE.as_str(), "multipart/mixed")
         .expect("custom content-type header should be valid")
@@ -642,7 +675,8 @@ fn test_request_builder_multipart_body_preserves_matching_existing_boundary() {
 }
 
 #[test]
-fn test_request_builder_multipart_body_preserves_matching_quoted_existing_boundary() {
+fn test_request_builder_multipart_body_preserves_matching_quoted_existing_boundary(
+) {
     let request = new_builder(Method::POST, "/v1/multipart")
         .header(CONTENT_TYPE.as_str(), "multipart/mixed; boundary=\"abc\"")
         .expect("custom content-type header should be valid")
@@ -660,7 +694,8 @@ fn test_request_builder_multipart_body_preserves_matching_quoted_existing_bounda
 }
 
 #[test]
-fn test_request_builder_multipart_body_preserves_matching_escaped_existing_boundary() {
+fn test_request_builder_multipart_body_preserves_matching_escaped_existing_boundary(
+) {
     let request = new_builder(Method::POST, "/v1/multipart")
         .header(CONTENT_TYPE.as_str(), "multipart/mixed; boundary=\"ab\\c\"")
         .expect("custom content-type header should be valid")
@@ -678,9 +713,13 @@ fn test_request_builder_multipart_body_preserves_matching_escaped_existing_bound
 }
 
 #[test]
-fn test_request_builder_multipart_body_ignores_quoted_boundary_text_in_other_parameters() {
+fn test_request_builder_multipart_body_ignores_quoted_boundary_text_in_other_parameters(
+) {
     let request = new_builder(Method::POST, "/v1/multipart")
-        .header(CONTENT_TYPE.as_str(), "multipart/mixed; title=\"not; boundary=real\"")
+        .header(
+            CONTENT_TYPE.as_str(),
+            "multipart/mixed; title=\"not; boundary=real\"",
+        )
         .expect("custom content-type header should be valid")
         .multipart_body(Bytes::from_static(b"payload"), "abc")
         .expect("missing boundary should be repaired")
@@ -696,9 +735,13 @@ fn test_request_builder_multipart_body_ignores_quoted_boundary_text_in_other_par
 }
 
 #[test]
-fn test_request_builder_multipart_body_ignores_escaped_separator_in_other_parameters() {
+fn test_request_builder_multipart_body_ignores_escaped_separator_in_other_parameters(
+) {
     let request = new_builder(Method::POST, "/v1/multipart")
-        .header(CONTENT_TYPE.as_str(), "multipart/mixed; title=\"not\\; boundary=real\"")
+        .header(
+            CONTENT_TYPE.as_str(),
+            "multipart/mixed; title=\"not\\; boundary=real\"",
+        )
         .expect("custom content-type header should be valid")
         .multipart_body(Bytes::from_static(b"payload"), "abc")
         .expect("missing boundary should be repaired")
@@ -714,9 +757,13 @@ fn test_request_builder_multipart_body_ignores_escaped_separator_in_other_parame
 }
 
 #[test]
-fn test_request_builder_multipart_body_skips_parameter_without_value_before_boundary() {
+fn test_request_builder_multipart_body_skips_parameter_without_value_before_boundary(
+) {
     let request = new_builder(Method::POST, "/v1/multipart")
-        .header(CONTENT_TYPE.as_str(), "multipart/mixed; charset; boundary=abc")
+        .header(
+            CONTENT_TYPE.as_str(),
+            "multipart/mixed; charset; boundary=abc",
+        )
         .expect("custom content-type header should be valid")
         .multipart_body(Bytes::from_static(b"payload"), "abc")
         .expect("boundary after value-less parameter should be decoded")
@@ -732,7 +779,8 @@ fn test_request_builder_multipart_body_skips_parameter_without_value_before_boun
 }
 
 #[test]
-fn test_request_builder_multipart_body_rejects_boundary_parameter_without_value() {
+fn test_request_builder_multipart_body_rejects_boundary_parameter_without_value(
+) {
     let error = new_builder(Method::POST, "/v1/multipart")
         .header(CONTENT_TYPE.as_str(), "multipart/mixed; boundary")
         .expect("custom content-type header should be valid")
@@ -771,7 +819,8 @@ fn test_request_builder_multipart_body_rejects_malformed_existing_boundary() {
 }
 
 #[test]
-fn test_request_builder_multipart_body_rejects_boundary_with_trailing_text_after_quote() {
+fn test_request_builder_multipart_body_rejects_boundary_with_trailing_text_after_quote(
+) {
     let error = new_builder(Method::POST, "/v1/multipart")
         .header(CONTENT_TYPE.as_str(), "multipart/mixed; boundary=\"abc\"x")
         .expect("custom content-type header should be valid")
@@ -784,7 +833,8 @@ fn test_request_builder_multipart_body_rejects_boundary_with_trailing_text_after
 }
 
 #[test]
-fn test_request_builder_multipart_body_rejects_existing_non_multipart_content_type() {
+fn test_request_builder_multipart_body_rejects_existing_non_multipart_content_type(
+) {
     let error = new_builder(Method::POST, "/v1/multipart")
         .header(CONTENT_TYPE.as_str(), "application/octet-stream")
         .expect("custom content-type header should be valid")
@@ -797,12 +847,14 @@ fn test_request_builder_multipart_body_rejects_existing_non_multipart_content_ty
 }
 
 #[test]
-fn test_request_builder_multipart_body_rejects_non_utf8_existing_content_type() {
+fn test_request_builder_multipart_body_rejects_non_utf8_existing_content_type()
+{
     let mut headers = HeaderMap::new();
     headers.insert(
         CONTENT_TYPE,
-        HeaderValue::from_bytes(b"multipart/mixed; boundary=\xFF")
-            .expect("non-UTF-8 header value should be accepted as raw header bytes"),
+        HeaderValue::from_bytes(b"multipart/mixed; boundary=\xFF").expect(
+            "non-UTF-8 header value should be accepted as raw header bytes",
+        ),
     );
 
     let error = new_builder(Method::POST, "/v1/multipart")
@@ -836,7 +888,8 @@ fn test_request_builder_ndjson_body_sets_content_type_and_serializes_lines() {
     );
     match request.body() {
         HttpRequestBody::Ndjson(bytes) => {
-            let text = String::from_utf8(bytes.to_vec()).expect("ndjson payload should be utf-8");
+            let text = String::from_utf8(bytes.to_vec())
+                .expect("ndjson payload should be utf-8");
             assert_eq!(text, "{\"id\":1}\n{\"id\":2}\n");
         }
         _ => panic!("expected ndjson body"),
@@ -844,7 +897,8 @@ fn test_request_builder_ndjson_body_sets_content_type_and_serializes_lines() {
 }
 
 #[test]
-fn test_request_builder_ndjson_body_serialization_failure_returns_decode_error() {
+fn test_request_builder_ndjson_body_serialization_failure_returns_decode_error()
+{
     let records = [FailingSerialize];
     let error = new_builder(Method::POST, "/v1/ndjson")
         .ndjson_body(&records)

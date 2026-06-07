@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 
 use std::time::Duration;
 
@@ -30,7 +28,10 @@ use crate::common::{
 async fn test_http_proxy_forwards_request_and_sends_proxy_auth() {
     let backend = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
-        headers: vec![("Content-Type".to_string(), "application/json".to_string())],
+        headers: vec![(
+            "Content-Type".to_string(),
+            "application/json".to_string(),
+        )],
         body: br#"{"ok":true}"#.to_vec(),
     })
     .await;
@@ -96,7 +97,9 @@ async fn test_proxy_disabled_does_not_use_environment_proxy() {
     options.timeouts.read_timeout = Duration::from_secs(2);
 
     let client = HttpClientFactory::new().create(options).unwrap();
-    let result = client.execute(client.request(Method::GET, "/direct").build()).await;
+    let result = client
+        .execute(client.request(Method::GET, "/direct").build())
+        .await;
 
     std::env::remove_var("HTTP_PROXY");
     std::env::remove_var("HTTPS_PROXY");
@@ -125,7 +128,9 @@ async fn test_https_via_http_proxy_uses_connect_tunnel() {
     options.timeouts.request_timeout = Some(Duration::from_secs(2));
 
     let client = HttpClientFactory::new().create(options).unwrap();
-    let request = client.request(Method::GET, "https://example.com/through-proxy").build();
+    let request = client
+        .request(Method::GET, "https://example.com/through-proxy")
+        .build();
     let error = client.execute(request).await.unwrap_err();
     assert!(
         matches!(

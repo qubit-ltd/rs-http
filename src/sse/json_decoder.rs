@@ -1,16 +1,13 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! # SSE JSON Decoder
 //!
 //! Converts SSE events into typed JSON chunks.
-//!
 
 use async_stream::stream;
 use futures_util::StreamExt;
@@ -26,7 +23,8 @@ use super::{
     SseJsonMode,
 };
 
-/// Parses SSE JSON payloads with selectable strictness and explicit line/frame size limits.
+/// Parses SSE JSON payloads with selectable strictness and explicit line/frame
+/// size limits.
 ///
 /// # Parameters
 /// - `stream`: SSE HTTP body byte stream.
@@ -39,7 +37,8 @@ use super::{
 /// - `T`: JSON type to deserialize.
 ///
 /// # Returns
-/// Stream of [`SseChunk::Data`] or [`SseChunk::Done`], or errors from upstream/SSE/JSON.
+/// Stream of [`SseChunk::Data`] or [`SseChunk::Done`], or errors from
+/// upstream/SSE/JSON.
 pub(crate) fn decode_json_chunks_from_stream_with_limits<T>(
     stream: HttpByteStream,
     done_policy: DoneMarkerPolicy,
@@ -50,7 +49,11 @@ pub(crate) fn decode_json_chunks_from_stream_with_limits<T>(
 where
     T: DeserializeOwned + Send + 'static,
 {
-    let mut messages = decode_messages_from_stream_with_limits(stream, max_line_bytes, max_frame_bytes);
+    let mut messages = decode_messages_from_stream_with_limits(
+        stream,
+        max_line_bytes,
+        max_frame_bytes,
+    );
 
     let output = stream! {
         while let Some(item) = messages.next().await {

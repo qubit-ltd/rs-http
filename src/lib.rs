@@ -1,15 +1,13 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 #![allow(clippy::result_large_err)]
-// Keep `HttpError` rich (method/url/status/source) for diagnostics and retry decisions
-// across the crate's public APIs.
+// Keep `HttpError` rich (method/url/status/source) for diagnostics and retry
+// decisions across the crate's public APIs.
 
 //! # Qubit HTTP
 //!
@@ -17,12 +15,12 @@
 //!
 //! This crate provides:
 //! - Unified HTTP client options and factory abstractions
-//! - Loading those options from [`qubit_config::ConfigReader`] (`from_config` / factory `create_from_config`)
+//! - Loading those options from [`qubit_config::ConfigReader`] (`from_config` /
+//!   factory `create_from_config`)
 //! - Consistent request/response/stream APIs
 //! - Secure and configurable logging with URL, header, and body sanitization
 //! - Built-in SSE decoding utilities in [`sse`]
 //! - Unified error model and retry hints
-//!
 
 mod client;
 pub mod constants;

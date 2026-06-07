@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 
 use http::header::{
     HeaderName,
@@ -54,25 +52,37 @@ fn capture_request_header_logs(name: HeaderName, value: HeaderValue) -> String {
 
 #[test]
 fn test_mask_header_value_non_sensitive_header() {
-    let logs = capture_request_header_logs(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    let logs = capture_request_header_logs(
+        CONTENT_TYPE,
+        HeaderValue::from_static("application/json"),
+    );
     assert!(logs.contains("content-type: application/json"));
 }
 
 #[test]
 fn test_mask_header_value_sensitive_short_value() {
-    let logs = capture_request_header_logs(AUTHORIZATION, HeaderValue::from_static("abc"));
+    let logs = capture_request_header_logs(
+        AUTHORIZATION,
+        HeaderValue::from_static("abc"),
+    );
     assert!(logs.contains("authorization: ****"));
 }
 
 #[test]
 fn test_mask_header_value_sensitive_exactly_four_chars() {
-    let logs = capture_request_header_logs(AUTHORIZATION, HeaderValue::from_static("abcd"));
+    let logs = capture_request_header_logs(
+        AUTHORIZATION,
+        HeaderValue::from_static("abcd"),
+    );
     assert!(logs.contains("authorization: ****"));
 }
 
 #[test]
 fn test_mask_header_value_sensitive_long_value() {
-    let logs = capture_request_header_logs(AUTHORIZATION, HeaderValue::from_static("abcdefghijk"));
+    let logs = capture_request_header_logs(
+        AUTHORIZATION,
+        HeaderValue::from_static("abcdefghijk"),
+    );
     assert!(logs.contains("authorization: ****"));
 }
 
@@ -87,6 +97,9 @@ fn test_mask_header_value_sensitive_case_insensitive() {
 
 #[test]
 fn test_mask_header_value_empty_value_kept_empty() {
-    let logs = capture_request_header_logs(AUTHORIZATION, HeaderValue::from_static(""));
+    let logs = capture_request_header_logs(
+        AUTHORIZATION,
+        HeaderValue::from_static(""),
+    );
     assert!(logs.contains("authorization: "));
 }

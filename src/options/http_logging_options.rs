@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 
 use qubit_config::{
     ConfigReader,
@@ -51,7 +49,8 @@ impl Default for HttpLoggingOptions {
     }
 }
 
-/// Raw optional fields read from config before merging into [`HttpLoggingOptions`] defaults.
+/// Raw optional fields read from config before merging into
+/// [`HttpLoggingOptions`] defaults.
 struct LoggingConfigInput {
     enabled: Option<bool>,
     log_request_header: Option<bool>,
@@ -120,12 +119,16 @@ impl HttpLoggingOptions {
         Ok(opts)
     }
 
-    /// Ensures `body_size_limit` is non-zero when any body logging flag is enabled.
+    /// Ensures `body_size_limit` is non-zero when any body logging flag is
+    /// enabled.
     ///
     /// # Returns
-    /// `Ok(())` or [`HttpConfigError::invalid_value`] for `logging.body_size_limit`.
+    /// `Ok(())` or [`HttpConfigError::invalid_value`] for
+    /// `logging.body_size_limit`.
     pub fn validate(&self) -> Result<(), HttpConfigError> {
-        if (self.log_request_body || self.log_response_body) && self.body_size_limit == 0 {
+        if (self.log_request_body || self.log_response_body)
+            && self.body_size_limit == 0
+        {
             return Err(HttpConfigError::invalid_value(
                 "logging.body_size_limit",
                 "body_size_limit must be greater than 0 when body logging is enabled",

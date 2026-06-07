@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 
 use qubit_config::Config;
 use qubit_http::{
@@ -29,7 +27,8 @@ fn test_proxy_options_default_values() {
 #[test]
 fn test_proxy_options_defaults_when_no_keys() {
     let config = Config::new();
-    let opts = ProxyOptions::from_config(&config.prefix_view("http.proxy")).unwrap();
+    let opts =
+        ProxyOptions::from_config(&config.prefix_view("http.proxy")).unwrap();
     assert_eq!(opts, ProxyOptions::default());
 }
 
@@ -115,7 +114,9 @@ fn test_proxy_options_invalid_port_type_is_prefixed() {
 fn test_proxy_options_with_auth() {
     let mut config = Config::new();
     config.set("p.enabled", true).unwrap();
-    config.set("p.host", "proxy.example.com".to_string()).unwrap();
+    config
+        .set("p.host", "proxy.example.com".to_string())
+        .unwrap();
     config.set("p.port", 3128u16).unwrap();
     config.set("p.username", "user".to_string()).unwrap();
     config.set("p.password", "pass".to_string()).unwrap();
@@ -222,7 +223,9 @@ fn test_proxy_validate_full_valid_config() {
 fn test_proxy_options_no_auth() {
     let mut config = Config::new();
     config.set("p.enabled", true).unwrap();
-    config.set("p.host", "proxy.example.com".to_string()).unwrap();
+    config
+        .set("p.host", "proxy.example.com".to_string())
+        .unwrap();
     config.set("p.port", 8080u16).unwrap();
 
     let opts = ProxyOptions::from_config(&config.prefix_view("p")).unwrap();

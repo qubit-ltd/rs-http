@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 
 use super::BodyLogContext;
 
@@ -37,7 +35,11 @@ impl<'a> BodyPreview<'a> {
     ///
     /// # Returns
     /// Preview descriptor borrowing `bytes`.
-    pub(crate) fn new(bytes: &'a [u8], limit: usize, context: BodyLogContext) -> Self {
+    pub(crate) fn new(
+        bytes: &'a [u8],
+        limit: usize,
+        context: BodyLogContext,
+    ) -> Self {
         Self {
             bytes,
             limit: limit.max(1),
@@ -48,7 +50,8 @@ impl<'a> BodyPreview<'a> {
         }
     }
 
-    /// Creates a preview from bytes that have already been limited by the caller.
+    /// Creates a preview from bytes that have already been limited by the
+    /// caller.
     ///
     /// # Parameters
     /// - `bytes`: Preview prefix bytes.
@@ -127,7 +130,8 @@ impl<'a> BodyPreview<'a> {
         match self.context {
             BodyLogContext::ErrorResponse => "...<truncated>".to_string(),
             BodyLogContext::Request | BodyLogContext::Response => {
-                let truncated = self.source_len().saturating_sub(self.prefix().len());
+                let truncated =
+                    self.source_len().saturating_sub(self.prefix().len());
                 format!("...<truncated {truncated} bytes>")
             }
         }

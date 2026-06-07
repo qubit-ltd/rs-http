@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 
 use std::sync::{
     atomic::{
@@ -53,7 +51,8 @@ fn test_cancelled_error_semantics() {
 }
 
 #[tokio::test]
-async fn test_execute_request_with_pre_cancelled_token_returns_cancelled_error() {
+async fn test_execute_request_with_pre_cancelled_token_returns_cancelled_error()
+{
     let server = spawn_multi_shot_server(vec![]).await;
 
     let mut options = HttpClientOptions::default();
@@ -82,7 +81,8 @@ async fn test_execute_request_with_pre_cancelled_token_returns_cancelled_error()
 }
 
 #[tokio::test]
-async fn test_execute_request_with_pre_cancelled_token_skips_request_interceptors() {
+async fn test_execute_request_with_pre_cancelled_token_skips_request_interceptors(
+) {
     let server = spawn_multi_shot_server(vec![]).await;
 
     let mut options = HttpClientOptions::default();
@@ -92,10 +92,12 @@ async fn test_execute_request_with_pre_cancelled_token_skips_request_interceptor
         .expect("client should be created");
     let interceptor_calls = Arc::new(AtomicUsize::new(0));
     let interceptor_calls_clone = Arc::clone(&interceptor_calls);
-    client.add_request_interceptor(qubit_http::HttpRequestInterceptor::new(move |_request| {
-        interceptor_calls_clone.fetch_add(1, Ordering::Relaxed);
-        Ok(())
-    }));
+    client.add_request_interceptor(qubit_http::HttpRequestInterceptor::new(
+        move |_request| {
+            interceptor_calls_clone.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        },
+    ));
 
     let token = CancellationToken::new();
     token.cancel();
@@ -138,10 +140,12 @@ async fn test_execute_request_cancelled_by_interceptor_stops_before_send() {
 
     let token = CancellationToken::new();
     let interceptor_token = token.clone();
-    client.add_request_interceptor(qubit_http::HttpRequestInterceptor::new(move |_request| {
-        interceptor_token.cancel();
-        Ok(())
-    }));
+    client.add_request_interceptor(qubit_http::HttpRequestInterceptor::new(
+        move |_request| {
+            interceptor_token.cancel();
+            Ok(())
+        },
+    ));
 
     let request = client
         .request(Method::GET, "/cancelled-by-interceptor")
@@ -179,12 +183,14 @@ async fn test_execute_request_can_be_cancelled_while_preparing_async_headers() {
     let mut client = HttpClientFactory::new()
         .create(options)
         .expect("client should be created");
-    client.add_async_header_injector(AsyncHttpHeaderInjector::new(|_headers| {
-        Box::pin(async move {
-            tokio::time::sleep(Duration::from_secs(5)).await;
-            Ok(())
-        })
-    }));
+    client.add_async_header_injector(AsyncHttpHeaderInjector::new(
+        |_headers| {
+            Box::pin(async move {
+                tokio::time::sleep(Duration::from_secs(5)).await;
+                Ok(())
+            })
+        },
+    ));
 
     let token = CancellationToken::new();
     let token_for_task = token.clone();
@@ -258,7 +264,8 @@ async fn test_execute_request_can_be_cancelled_while_reading_response_body() {
 }
 
 #[tokio::test]
-async fn test_execute_request_can_be_cancelled_while_reading_status_error_preview() {
+async fn test_execute_request_can_be_cancelled_while_reading_status_error_preview(
+) {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 503,
         headers: vec![],
@@ -445,7 +452,8 @@ async fn test_execute_stream_body_can_be_cancelled_after_first_chunk() {
         .expect("execute timed out")
         .expect("request should start");
 
-    let mut stream = response.stream().expect("stream body should be available");
+    let mut stream =
+        response.stream().expect("stream body should be available");
     let first = stream
         .next()
         .await
@@ -473,7 +481,10 @@ async fn test_execute_stream_body_can_be_cancelled_after_first_chunk() {
 async fn test_sse_messages_reports_pre_cancelled_stream_before_reading_body() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
-        headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+        headers: vec![(
+            "Content-Type".to_string(),
+            "text/event-stream".to_string(),
+        )],
         chunks: vec![],
         finish: false,
     })
@@ -517,7 +528,10 @@ async fn test_sse_messages_reports_pre_cancelled_stream_before_reading_body() {
 async fn test_sse_chunks_reports_pre_cancelled_stream_before_reading_body() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
-        headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+        headers: vec![(
+            "Content-Type".to_string(),
+            "text/event-stream".to_string(),
+        )],
         chunks: vec![],
         finish: false,
     })

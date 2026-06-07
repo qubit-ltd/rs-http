@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! HTTP error category enum.
 
 use parse_display::{
@@ -19,7 +17,17 @@ use serde::{
 };
 
 /// Category of HTTP errors.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Display, DeriveFromStr)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    Display,
+    DeriveFromStr,
+)]
 #[serde(rename_all = "snake_case")]
 #[display(style = "snake_case")]
 pub enum HttpErrorKind {
@@ -51,7 +59,8 @@ pub enum HttpErrorKind {
     Cancelled,
     /// A single HTTP retry attempt exceeded its configured timeout.
     RetryAttemptTimeout,
-    /// Total retry elapsed budget was exceeded before a retryable failure was recorded.
+    /// Total retry elapsed budget was exceeded before a retryable failure was
+    /// recorded.
     RetryMaxElapsedExceeded,
     /// Retry stopped because the retry policy decided not to continue (abort).
     RetryAborted,

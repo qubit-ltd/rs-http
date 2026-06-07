@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 
 use bytes::Bytes;
 use http::Method;
@@ -51,7 +49,10 @@ fn test_http_logger_sanitizes_request_url_query_and_json_body() {
         .create_default()
         .expect("default client should be created");
     let request = client
-        .request(Method::POST, "https://example.com/login?access_token=raw-token")
+        .request(
+            Method::POST,
+            "https://example.com/login?access_token=raw-token",
+        )
         .json_body(&serde_json::json!({
             "user": "alice",
             "password": "secret",
@@ -61,7 +62,9 @@ fn test_http_logger_sanitizes_request_url_query_and_json_body() {
 
     let logs = capture_trace_logs(|| logger.log_request(&request));
 
-    assert!(logs.contains("--> POST https://example.com/login?access_token=****"));
+    assert!(
+        logs.contains("--> POST https://example.com/login?access_token=****")
+    );
     assert!(logs.contains(r#""password":"<redacted>""#));
     assert!(!logs.contains("raw-token"));
     assert!(!logs.contains("secret"));

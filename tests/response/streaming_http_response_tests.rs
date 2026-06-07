@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 
 use std::time::Duration;
 
@@ -59,7 +57,8 @@ async fn test_http_stream_response_into_stream_consumes_body() {
         Method::GET,
     );
 
-    let mut stream = response.stream().expect("stream body should be available");
+    let mut stream =
+        response.stream().expect("stream body should be available");
     let mut chunks = Vec::new();
     while let Some(item) = stream.next().await {
         chunks.push(item.expect("stream item should decode"));
@@ -69,7 +68,8 @@ async fn test_http_stream_response_into_stream_consumes_body() {
 }
 
 #[tokio::test]
-async fn test_http_stream_response_backend_taken_then_stream_and_bytes_are_empty() {
+async fn test_http_stream_response_backend_taken_then_stream_and_bytes_are_empty(
+) {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
         headers: vec![("Content-Type".to_string(), "text/plain".to_string())],
@@ -85,9 +85,14 @@ async fn test_http_stream_response_backend_taken_then_stream_and_bytes_are_empty
         .expect("client should be created");
 
     let request = client.request(Method::GET, "/stream-take-backend").build();
-    let mut response = client.execute(request).await.expect("request should succeed");
+    let mut response = client
+        .execute(request)
+        .await
+        .expect("request should succeed");
 
-    let mut first_stream = response.stream().expect("first stream should take backend response");
+    let mut first_stream = response
+        .stream()
+        .expect("first stream should take backend response");
     let first_chunk = first_stream
         .next()
         .await
@@ -153,7 +158,9 @@ async fn test_http_response_bytes_remembers_read_failure() {
         .expect_err("second read should preserve the prior body read failure");
     assert_eq!(second_error.kind, HttpErrorKind::Transport);
     assert_eq!(second_error.status, Some(StatusCode::OK));
-    assert!(second_error.message.contains("previous response body read failed"));
+    assert!(second_error
+        .message
+        .contains("previous response body read failed"));
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
@@ -184,7 +191,8 @@ async fn test_http_response_stream_remembers_read_failure() {
         .await
         .expect("execute timed out")
         .expect("request should start");
-    let mut stream = response.stream().expect("stream body should be available");
+    let mut stream =
+        response.stream().expect("stream body should be available");
 
     let first = stream
         .next()
@@ -201,13 +209,14 @@ async fn test_http_response_stream_remembers_read_failure() {
     assert_eq!(stream_error.status, Some(StatusCode::OK));
     drop(stream);
 
-    let second_error = response
-        .bytes()
-        .await
-        .expect_err("bytes after stream failure should preserve the read failure");
+    let second_error = response.bytes().await.expect_err(
+        "bytes after stream failure should preserve the read failure",
+    );
     assert_eq!(second_error.kind, HttpErrorKind::Transport);
     assert_eq!(second_error.status, Some(StatusCode::OK));
-    assert!(second_error.message.contains("previous response body read failed"));
+    assert!(second_error
+        .message
+        .contains("previous response body read failed"));
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
@@ -233,7 +242,9 @@ async fn test_http_response_stream_reports_prior_bytes_read_failure() {
         .create(options)
         .expect("client should be created");
 
-    let request = client.request(Method::GET, "/stream-after-bytes-failure").build();
+    let request = client
+        .request(Method::GET, "/stream-after-bytes-failure")
+        .build();
     let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")
@@ -250,7 +261,9 @@ async fn test_http_response_stream_reports_prior_bytes_read_failure() {
     };
     assert_eq!(stream_error.kind, HttpErrorKind::Transport);
     assert_eq!(stream_error.status, Some(StatusCode::OK));
-    assert!(stream_error.message.contains("previous response body read failed"));
+    assert!(stream_error
+        .message
+        .contains("previous response body read failed"));
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await

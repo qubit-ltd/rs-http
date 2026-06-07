@@ -1,16 +1,13 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! # HTTP Logger
 //!
 //! Encapsulates request and response logging behavior.
-//!
 
 use http::header::CONTENT_TYPE;
 
@@ -28,7 +25,8 @@ use crate::{
 };
 
 const UNRESOLVED_REQUEST_URL: &str = "<unresolved request URL>";
-const STREAMING_REQUEST_BODY_SKIPPED: &str = "<skipped: streaming request body>";
+const STREAMING_REQUEST_BODY_SKIPPED: &str =
+    "<skipped: streaming request body>";
 
 /// HTTP logger bound to one pair of logging options and a sanitizer policy.
 #[derive(Debug, Clone)]
@@ -63,7 +61,8 @@ impl<'a> HttpLogger<'a> {
         }
     }
 
-    /// Emits TRACE logs for an outbound request when logging is enabled and TRACE is active.
+    /// Emits TRACE logs for an outbound request when logging is enabled and
+    /// TRACE is active.
     ///
     /// # Parameters
     /// - `request`: Prepared request snapshot; expected to carry resolved URL
@@ -79,7 +78,9 @@ impl<'a> HttpLogger<'a> {
         let url = self.request_log_url(request);
         tracing::trace!("--> {} {}", request.method(), url);
 
-        let headers = request.effective_headers_cached().unwrap_or_else(|| request.headers());
+        let headers = request
+            .effective_headers_cached()
+            .unwrap_or_else(|| request.headers());
 
         if self.options.log_request_header {
             for (name, value) in headers {
@@ -94,16 +95,25 @@ impl<'a> HttpLogger<'a> {
                     let content_type = Self::content_type(headers);
                     tracing::trace!(
                         "Request body: {}",
-                        self.sanitized_logger.body(bytes, BodyLogContext::Request, content_type)
+                        self.sanitized_logger.body(
+                            bytes,
+                            BodyLogContext::Request,
+                            content_type
+                        )
                     );
                 }
-                RequestBodyLogPreview::Empty => tracing::trace!("Request body: <empty>"),
-                RequestBodyLogPreview::Skipped(reason) => tracing::trace!("Request body: {reason}"),
+                RequestBodyLogPreview::Empty => {
+                    tracing::trace!("Request body: <empty>")
+                }
+                RequestBodyLogPreview::Skipped(reason) => {
+                    tracing::trace!("Request body: {reason}")
+                }
             }
         }
     }
 
-    /// Emits TRACE logs for a completed response (headers and optional body preview).
+    /// Emits TRACE logs for a completed response (headers and optional body
+    /// preview).
     ///
     /// # Parameters
     /// - `response`: Response object (status/url/headers/body cache).
@@ -112,8 +122,12 @@ impl<'a> HttpLogger<'a> {
     /// `Ok(())` on success; no-op when disabled or TRACE off.
     ///
     /// # Errors
-    /// Returns [`crate::HttpError`] when reading the response body for logging fails.
-    pub async fn log_response(&self, response: &mut HttpResponse) -> crate::HttpResult<()> {
+    /// Returns [`crate::HttpError`] when reading the response body for logging
+    /// fails.
+    pub async fn log_response(
+        &self,
+        response: &mut HttpResponse,
+    ) -> crate::HttpResult<()> {
         if !self.is_trace_enabled() {
             return Ok(());
         }
@@ -132,35 +146,50 @@ impl<'a> HttpLogger<'a> {
         }
 
         if self.options.log_response_body {
-            let content_type = Self::content_type(response.headers()).map(str::to_string);
+            let content_type =
+                Self::content_type(response.headers()).map(str::to_string);
             if let Some(body) = response.buffered_body_for_logging() {
                 tracing::trace!(
                     "Response body: {}",
-                    self.sanitized_logger
-                        .body(body.as_ref(), BodyLogContext::Response, content_type.as_deref())
+                    self.sanitized_logger.body(
+                        body.as_ref(),
+                        BodyLogContext::Response,
+                        content_type.as_deref()
+                    )
                 );
-            } else if response.can_buffer_body_for_logging(self.options.body_size_limit) {
+            } else if response
+                .can_buffer_body_for_logging(self.options.body_size_limit)
+            {
                 let body = response.bytes().await?;
                 tracing::trace!(
                     "Response body: {}",
-                    self.sanitized_logger
-                        .body(body.as_ref(), BodyLogContext::Response, content_type.as_deref())
+                    self.sanitized_logger.body(
+                        body.as_ref(),
+                        BodyLogContext::Response,
+                        content_type.as_deref()
+                    )
                 );
             } else {
-                tracing::trace!("Response body: <skipped: streaming or unknown-size body>");
+                tracing::trace!(
+                    "Response body: <skipped: streaming or unknown-size body>"
+                );
             }
         }
         Ok(())
     }
 
-    /// Logs response line and headers for a streaming call without reading the body stream.
+    /// Logs response line and headers for a streaming call without reading the
+    /// body stream.
     ///
     /// # Parameters
     /// - `response_meta`: Response metadata (status/url/headers).
     ///
     /// # Returns
     /// Nothing; no-op when disabled or TRACE off.
-    pub fn log_stream_response_headers(&self, response_meta: &HttpResponseMeta) {
+    pub fn log_stream_response_headers(
+        &self,
+        response_meta: &HttpResponseMeta,
+    ) {
         if !self.is_trace_enabled() {
             return;
         }
@@ -179,7 +208,8 @@ impl<'a> HttpLogger<'a> {
         }
     }
 
-    /// Returns whether TRACE logs should be emitted under current options and subscriber state.
+    /// Returns whether TRACE logs should be emitted under current options and
+    /// subscriber state.
     ///
     /// # Returns
     /// `true` when logging is enabled and TRACE is active.
@@ -209,18 +239,28 @@ impl<'a> HttpLogger<'a> {
     ///
     /// # Returns
     /// Body preview category for logger rendering.
-    fn request_body_for_log(request: &HttpRequest) -> RequestBodyLogPreview<'_> {
+    fn request_body_for_log(
+        request: &HttpRequest,
+    ) -> RequestBodyLogPreview<'_> {
         if request.has_streaming_body() {
-            return RequestBodyLogPreview::Skipped(STREAMING_REQUEST_BODY_SKIPPED);
+            return RequestBodyLogPreview::Skipped(
+                STREAMING_REQUEST_BODY_SKIPPED,
+            );
         }
         match request.body() {
             HttpRequestBody::Bytes(bytes)
             | HttpRequestBody::Json(bytes)
             | HttpRequestBody::Form(bytes)
             | HttpRequestBody::Multipart(bytes)
-            | HttpRequestBody::Ndjson(bytes) => RequestBodyLogPreview::Bytes(bytes.as_ref()),
-            HttpRequestBody::Text(text) => RequestBodyLogPreview::Bytes(text.as_bytes()),
-            HttpRequestBody::Stream(_) => RequestBodyLogPreview::Skipped(STREAMING_REQUEST_BODY_SKIPPED),
+            | HttpRequestBody::Ndjson(bytes) => {
+                RequestBodyLogPreview::Bytes(bytes.as_ref())
+            }
+            HttpRequestBody::Text(text) => {
+                RequestBodyLogPreview::Bytes(text.as_bytes())
+            }
+            HttpRequestBody::Stream(_) => {
+                RequestBodyLogPreview::Skipped(STREAMING_REQUEST_BODY_SKIPPED)
+            }
             HttpRequestBody::Empty => RequestBodyLogPreview::Empty,
         }
     }
@@ -233,6 +273,8 @@ impl<'a> HttpLogger<'a> {
     /// # Returns
     /// `Some` with UTF-8 Content-Type, otherwise `None`.
     fn content_type(headers: &http::HeaderMap) -> Option<&str> {
-        headers.get(CONTENT_TYPE).and_then(|value| value.to_str().ok())
+        headers
+            .get(CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
     }
 }

@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! Unified HTTP response type and helpers.
 
 use std::fmt;
@@ -132,10 +130,21 @@ type BodyReadFailureState = Arc<Mutex<Option<BodyReadFailure>>>;
 /// # Returns
 /// [`HttpErrorKind::ReadTimeout`] for timeout errors, otherwise
 /// [`HttpErrorKind::Transport`] for backend body read failures.
-fn map_response_read_error(error: reqwest::Error, method: Method, url: Url, status: StatusCode) -> HttpError {
+fn map_response_read_error(
+    error: reqwest::Error,
+    method: Method,
+    url: Url,
+    status: StatusCode,
+) -> HttpError {
     if error.is_timeout() {
-        return map_reqwest_error(error, HttpErrorKind::Transport, ReqwestErrorPhase::Read, method, url)
-            .with_status(status);
+        return map_reqwest_error(
+            error,
+            HttpErrorKind::Transport,
+            ReqwestErrorPhase::Read,
+            method,
+            url,
+        )
+        .with_status(status);
     }
 
     let error = error.without_url();
@@ -161,7 +170,11 @@ struct HttpResponseRuntime {
 }
 
 impl HttpResponseRuntime {
-    fn new(read_timeout: Duration, cancellation_token: Option<CancellationToken>, request_url: Url) -> Self {
+    fn new(
+        read_timeout: Duration,
+        cancellation_token: Option<CancellationToken>,
+        request_url: Url,
+    ) -> Self {
         Self {
             read_timeout,
             cancellation_token,
@@ -187,7 +200,8 @@ pub struct HttpResponse {
 
 impl fmt::Debug for HttpResponse {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let debugger = SanitizedDebugger::new(self.options.log_sanitizer.policy());
+        let debugger =
+            SanitizedDebugger::new(self.options.log_sanitizer.policy());
         let url = debugger.url(self.meta.url());
         let request_url = debugger.url(&self.runtime.request_url);
         formatter
@@ -198,9 +212,15 @@ impl fmt::Debug for HttpResponse {
             .field("request_url", &request_url)
             .field("method", self.meta.method())
             .field("backend_present", &self.backend.is_some())
-            .field("buffered_body_len", &self.buffered_body.as_ref().map(Bytes::len))
+            .field(
+                "buffered_body_len",
+                &self.buffered_body.as_ref().map(Bytes::len),
+            )
             .field("read_timeout", &self.runtime.read_timeout)
-            .field("cancellation_token_present", &self.runtime.cancellation_token.is_some())
+            .field(
+                "cancellation_token_present",
+                &self.runtime.cancellation_token.is_some(),
+            )
             .field("options", &self.options)
             .finish()
     }
@@ -208,12 +228,22 @@ impl fmt::Debug for HttpResponse {
 
 impl HttpResponse {
     /// Creates a buffered response.
-    pub fn new(status: StatusCode, headers: HeaderMap, body: Bytes, url: Url, method: Method) -> Self {
+    pub fn new(
+        status: StatusCode,
+        headers: HeaderMap,
+        body: Bytes,
+        url: Url,
+        method: Method,
+    ) -> Self {
         Self {
             meta: HttpResponseMeta::new(status, headers, url.clone(), method),
             backend: None,
             buffered_body: Some(body),
-            runtime: HttpResponseRuntime::new(Duration::from_secs(30), None, url),
+            runtime: HttpResponseRuntime::new(
+                Duration::from_secs(30),
+                None,
+                url,
+            ),
             options: HttpResponseOptions::default(),
         }
     }
@@ -231,7 +261,11 @@ impl HttpResponse {
             meta,
             backend: Some(backend),
             buffered_body: None,
-            runtime: HttpResponseRuntime::new(read_timeout, cancellation_token, request_url),
+            runtime: HttpResponseRuntime::new(
+                read_timeout,
+                cancellation_token,
+                request_url,
+            ),
             options,
         }
     }
@@ -292,7 +326,10 @@ impl HttpResponse {
     /// # Parameters
     /// - `error`: Error produced while reading the response body.
     fn remember_body_read_failure(&self, error: &HttpError) {
-        Self::remember_body_read_failure_state(&self.runtime.body_read_failure, error);
+        Self::remember_body_read_failure_state(
+            &self.runtime.body_read_failure,
+            error,
+        );
     }
 
     /// Stores the first body read failure in a shared state holder.
@@ -300,7 +337,10 @@ impl HttpResponse {
     /// # Parameters
     /// - `state`: Shared failure state captured by response streams.
     /// - `error`: Error produced while reading the response body.
-    fn remember_body_read_failure_state(state: &BodyReadFailureState, error: &HttpError) {
+    fn remember_body_read_failure_state(
+        state: &BodyReadFailureState,
+        error: &HttpError,
+    ) {
         if let Ok(mut guard) = state.lock() {
             guard.get_or_insert_with(|| BodyReadFailure::from_error(error));
         }
@@ -308,7 +348,10 @@ impl HttpResponse {
 
     /// Returns `Ok(self)` for success statuses, otherwise maps a status error
     /// with `Retry-After` and response-body preview context.
-    pub(crate) async fn into_success_or_status_error(self, message_prefix: &str) -> HttpResult<Self> {
+    pub(crate) async fn into_success_or_status_error(
+        self,
+        message_prefix: &str,
+    ) -> HttpResult<Self> {
         let status = self.status();
         if status.is_success() {
             return Ok(self);
@@ -317,8 +360,10 @@ impl HttpResponse {
         let method = self.meta.method().clone();
         let url = self.request_url().clone();
         let error_preview_limit = self.options.error_response_preview_limit;
-        let diagnostic_sanitizer = LogSanitizer::for_debug(self.options.log_sanitizer.policy());
-        let body_preview = self.into_error_body_preview(error_preview_limit).await?;
+        let diagnostic_sanitizer =
+            LogSanitizer::for_debug(self.options.log_sanitizer.policy());
+        let body_preview =
+            self.into_error_body_preview(error_preview_limit).await?;
         let log_sanitize_policy = diagnostic_sanitizer.policy().clone();
         let message = format!(
             "{} with status {} for {} {}; response body preview: {}",
@@ -339,19 +384,24 @@ impl HttpResponse {
         Err(mapped)
     }
 
-    /// Consumes this response and returns a bounded body preview for status errors.
+    /// Consumes this response and returns a bounded body preview for status
+    /// errors.
     ///
     /// # Errors
     /// Returns [`HttpErrorKind::Cancelled`](crate::HttpErrorKind::Cancelled)
     /// when the request cancellation token fires while preview bytes are being
     /// read.
-    pub(crate) async fn into_error_body_preview(mut self, max_bytes: usize) -> HttpResult<String> {
+    pub(crate) async fn into_error_body_preview(
+        mut self,
+        max_bytes: usize,
+    ) -> HttpResult<String> {
         let limit = max_bytes.max(1);
         let Some(backend) = self.backend.take() else {
             return Ok("<empty>".to_string());
         };
         let content_type = Self::content_type_value(self.meta.headers());
-        self.read_error_body_preview(backend, limit, content_type).await
+        self.read_error_body_preview(backend, limit, content_type)
+            .await
     }
 
     /// Returns full body bytes, consuming backend stream lazily on first call.
@@ -399,7 +449,8 @@ impl HttpResponse {
                     return Ok(body);
                 }
                 Ok(Err(error)) => {
-                    let error = map_response_read_error(error, method, url, status);
+                    let error =
+                        map_response_read_error(error, method, url, status);
                     self.remember_body_read_failure(&error);
                     return Err(error);
                 }
@@ -418,17 +469,21 @@ impl HttpResponse {
         }
     }
 
-    /// Returns body as stream; if already buffered, returns stream backed by cached bytes.
+    /// Returns body as stream; if already buffered, returns stream backed by
+    /// cached bytes.
     pub fn stream(&mut self) -> HttpResult<HttpByteStream> {
         if let Some(body) = self.buffered_body.as_ref() {
             let bytes = body.clone();
-            return Ok(Box::pin(futures_stream::once(async move { Ok(bytes) })));
+            return Ok(Box::pin(futures_stream::once(
+                async move { Ok(bytes) },
+            )));
         }
         if let Some(error) = self.previous_body_read_error() {
             return Err(error);
         }
-        if let Some(error) = self.cancelled_error_if_needed("Streaming response cancelled before reading response body")
-        {
+        if let Some(error) = self.cancelled_error_if_needed(
+            "Streaming response cancelled before reading response body",
+        ) {
             return Err(error);
         }
         let Some(backend) = self.backend.take() else {
@@ -491,9 +546,12 @@ impl HttpResponse {
     pub async fn text(&mut self) -> HttpResult<String> {
         let body = self.bytes().await?;
         String::from_utf8(body.to_vec()).map_err(|error| {
-            HttpError::decode(format!("Failed to decode response body as UTF-8: {}", error))
-                .with_status(self.meta.status())
-                .with_url(self.meta.url())
+            HttpError::decode(format!(
+                "Failed to decode response body as UTF-8: {}",
+                error
+            ))
+            .with_status(self.meta.status())
+            .with_url(self.meta.url())
         })
     }
 
@@ -504,73 +562,97 @@ impl HttpResponse {
     {
         let body = self.bytes().await?;
         serde_json::from_slice(&body).map_err(|error| {
-            HttpError::decode(format!("Failed to decode response JSON: {}", error))
-                .with_status(self.meta.status())
-                .with_url(self.meta.url())
+            HttpError::decode(format!(
+                "Failed to decode response JSON: {}",
+                error
+            ))
+            .with_status(self.meta.status())
+            .with_url(self.meta.url())
         })
     }
 
-    /// Overrides the maximum allowed size (in bytes) for one SSE line on this response.
+    /// Overrides the maximum allowed size (in bytes) for one SSE line on this
+    /// response.
     ///
-    /// Values below 1 are clamped to 1. Returns `self` so callers can chain configuration
-    /// before consuming the body with [`Self::sse_messages`] or [`Self::sse_chunks`]
-    /// (together with [`Self::sse_json_mode`], [`Self::sse_done_marker_policy`], etc.).
+    /// Values below 1 are clamped to 1. Returns `self` so callers can chain
+    /// configuration before consuming the body with [`Self::sse_messages`]
+    /// or [`Self::sse_chunks`] (together with [`Self::sse_json_mode`],
+    /// [`Self::sse_done_marker_policy`], etc.).
     #[inline]
     pub fn sse_max_line_bytes(mut self, max_line_bytes: usize) -> Self {
         self.options.sse_max_line_bytes = max_line_bytes.max(1);
         self
     }
 
-    /// Overrides the maximum allowed size (in bytes) for one SSE frame on this response.
+    /// Overrides the maximum allowed size (in bytes) for one SSE frame on this
+    /// response.
     ///
-    /// Values below 1 are clamped to 1. Returns `self` for chained configuration.
+    /// Values below 1 are clamped to 1. Returns `self` for chained
+    /// configuration.
     #[inline]
     pub fn sse_max_frame_bytes(mut self, max_frame_bytes: usize) -> Self {
         self.options.sse_max_frame_bytes = max_frame_bytes.max(1);
         self
     }
 
-    /// Overrides the JSON decoding mode used by [`Self::sse_chunks`] on this response.
+    /// Overrides the JSON decoding mode used by [`Self::sse_chunks`] on this
+    /// response.
     #[inline]
     pub fn sse_json_mode(mut self, mode: SseJsonMode) -> Self {
         self.options.sse_json_mode = mode;
         self
     }
 
-    /// Overrides how [`Self::sse_chunks`] detects end-of-stream from trimmed `data:` payloads.
+    /// Overrides how [`Self::sse_chunks`] detects end-of-stream from trimmed
+    /// `data:` payloads.
     #[inline]
     pub fn sse_done_marker_policy(mut self, policy: DoneMarkerPolicy) -> Self {
         self.options.sse_done_marker_policy = policy;
         self
     }
 
-    /// Decodes body stream as SSE messages using this response's SSE line/frame byte limits (from
-    /// client defaults unless overridden via [`Self::sse_max_line_bytes`] /
-    /// [`Self::sse_max_frame_bytes`]).
+    /// Decodes body stream as SSE messages using this response's SSE line/frame
+    /// byte limits (from client defaults unless overridden via
+    /// [`Self::sse_max_line_bytes`] / [`Self::sse_max_frame_bytes`]).
     pub fn sse_messages(mut self) -> SseMessageStream {
         let max_line_bytes = self.options.sse_max_line_bytes;
         let max_frame_bytes = self.options.sse_max_frame_bytes;
         match self.stream() {
-            Ok(stream) => crate::sse::decode_messages_from_stream_with_limits(stream, max_line_bytes, max_frame_bytes),
-            Err(error) => Box::pin(futures_stream::once(async move { Err(error) })),
+            Ok(stream) => crate::sse::decode_messages_from_stream_with_limits(
+                stream,
+                max_line_bytes,
+                max_frame_bytes,
+            ),
+            Err(error) => {
+                Box::pin(futures_stream::once(async move { Err(error) }))
+            }
         }
     }
 
-    /// Decodes body stream as internal SSE records for reconnect state handling.
+    /// Decodes body stream as internal SSE records for reconnect state
+    /// handling.
     ///
     /// # Returns
-    /// Stream of internal records, or one error item when the body cannot be opened.
+    /// Stream of internal records, or one error item when the body cannot be
+    /// opened.
     pub(crate) fn sse_records(mut self) -> crate::sse::SseRecordStream {
         let max_line_bytes = self.options.sse_max_line_bytes;
         let max_frame_bytes = self.options.sse_max_frame_bytes;
         match self.stream() {
-            Ok(stream) => crate::sse::decode_records_from_stream_with_limits(stream, max_line_bytes, max_frame_bytes),
-            Err(error) => Box::pin(futures_stream::once(async move { Err(error) })),
+            Ok(stream) => crate::sse::decode_records_from_stream_with_limits(
+                stream,
+                max_line_bytes,
+                max_frame_bytes,
+            ),
+            Err(error) => {
+                Box::pin(futures_stream::once(async move { Err(error) }))
+            }
         }
     }
 
-    /// Decodes SSE `data:` lines as JSON chunks using this response's SSE JSON mode, done-marker
-    /// policy, and line/frame limits (see [`Self::sse_json_mode`], [`Self::sse_done_marker_policy`],
+    /// Decodes SSE `data:` lines as JSON chunks using this response's SSE JSON
+    /// mode, done-marker policy, and line/frame limits (see
+    /// [`Self::sse_json_mode`], [`Self::sse_done_marker_policy`],
     /// [`Self::sse_max_line_bytes`], [`Self::sse_max_frame_bytes`]).
     pub fn sse_chunks<T>(mut self) -> SseChunkStream<T>
     where
@@ -581,14 +663,18 @@ impl HttpResponse {
         let max_line_bytes = self.options.sse_max_line_bytes;
         let max_frame_bytes = self.options.sse_max_frame_bytes;
         match self.stream() {
-            Ok(stream) => crate::sse::decode_json_chunks_from_stream_with_limits(
-                stream,
-                done_policy,
-                mode,
-                max_line_bytes,
-                max_frame_bytes,
-            ),
-            Err(error) => Box::pin(futures_stream::once(async move { Err(error) })),
+            Ok(stream) => {
+                crate::sse::decode_json_chunks_from_stream_with_limits(
+                    stream,
+                    done_policy,
+                    mode,
+                    max_line_bytes,
+                    max_frame_bytes,
+                )
+            }
+            Err(error) => {
+                Box::pin(futures_stream::once(async move { Err(error) }))
+            }
         }
     }
 
@@ -606,20 +692,25 @@ impl HttpResponse {
     /// - `body_log_limit`: Configured logging body preview limit in bytes.
     ///
     /// # Returns
-    /// `true` only when this response is not SSE, has an explicit `Content-Length`,
-    /// and declared length is within `body_log_limit`.
-    pub(crate) fn can_buffer_body_for_logging(&self, body_log_limit: usize) -> bool {
+    /// `true` only when this response is not SSE, has an explicit
+    /// `Content-Length`, and declared length is within `body_log_limit`.
+    pub(crate) fn can_buffer_body_for_logging(
+        &self,
+        body_log_limit: usize,
+    ) -> bool {
         if self.backend.is_none() {
             return false;
         }
         if self.is_sse_response() {
             return false;
         }
-        self.content_length_hint()
-            .is_some_and(|content_length| content_length <= body_log_limit as u64)
+        self.content_length_hint().is_some_and(|content_length| {
+            content_length <= body_log_limit as u64
+        })
     }
 
-    /// Reads bounded preview bytes from a response body for status error messages.
+    /// Reads bounded preview bytes from a response body for status error
+    /// messages.
     ///
     /// # Errors
     /// Returns [`HttpErrorKind::Cancelled`](crate::HttpErrorKind::Cancelled)
@@ -726,7 +817,8 @@ impl HttpResponse {
         }
     }
 
-    /// Returns `Content-Length` parsed from response headers when present and valid.
+    /// Returns `Content-Length` parsed from response headers when present and
+    /// valid.
     fn content_length_hint(&self) -> Option<u64> {
         self.meta
             .headers()
@@ -751,7 +843,12 @@ impl HttpResponse {
         content_type: Option<&str>,
         log_sanitizer: &LogSanitizer,
     ) -> String {
-        let preview = BodyPreview::from_limited_bytes(bytes, source_len, truncated, BodyLogContext::ErrorResponse);
+        let preview = BodyPreview::from_limited_bytes(
+            bytes,
+            source_len,
+            truncated,
+            BodyLogContext::ErrorResponse,
+        );
         let preview = if let Some(content_type) = content_type {
             preview.with_content_type(content_type)
         } else {

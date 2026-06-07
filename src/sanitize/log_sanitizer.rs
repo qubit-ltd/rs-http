@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 
 use http::{
     HeaderMap,
@@ -31,7 +29,8 @@ use super::{
     LogSanitizePolicy,
 };
 
-const INVALID_CONTENT_TYPE_BODY_REDACTED: &str = "<redacted: invalid content type body>";
+const INVALID_CONTENT_TYPE_BODY_REDACTED: &str =
+    "<redacted: invalid content type body>";
 const LOG_NAME_MATCH_MODE: NameMatchMode = NameMatchMode::ExactOrSuffix;
 
 /// Applies a [`LogSanitizePolicy`] to URLs, headers, and body previews.
@@ -57,9 +56,15 @@ impl LogSanitizer {
     /// New [`LogSanitizer`].
     pub fn new(policy: LogSanitizePolicy) -> Self {
         Self {
-            url_sanitizer: UrlSanitizer::new(field_sanitizer(&policy.sensitive_query_params)),
-            header_sanitizer: HttpHeaderSanitizer::new(field_sanitizer(&policy.sensitive_headers)),
-            body_sanitizer: HttpBodySanitizer::new(field_sanitizer(&policy.sensitive_body_fields)),
+            url_sanitizer: UrlSanitizer::new(field_sanitizer(
+                &policy.sensitive_query_params,
+            )),
+            header_sanitizer: HttpHeaderSanitizer::new(field_sanitizer(
+                &policy.sensitive_headers,
+            )),
+            body_sanitizer: HttpBodySanitizer::new(field_sanitizer(
+                &policy.sensitive_body_fields,
+            )),
             policy,
         }
     }
@@ -73,9 +78,18 @@ impl LogSanitizer {
     /// Sanitizer that always includes safe built-in defaults plus custom names.
     pub(crate) fn for_debug(policy: &LogSanitizePolicy) -> Self {
         let mut debug_policy = LogSanitizePolicy::default();
-        extend_sensitive_fields(&mut debug_policy.sensitive_headers, &policy.sensitive_headers);
-        extend_sensitive_fields(&mut debug_policy.sensitive_query_params, &policy.sensitive_query_params);
-        extend_sensitive_fields(&mut debug_policy.sensitive_body_fields, &policy.sensitive_body_fields);
+        extend_sensitive_fields(
+            &mut debug_policy.sensitive_headers,
+            &policy.sensitive_headers,
+        );
+        extend_sensitive_fields(
+            &mut debug_policy.sensitive_query_params,
+            &policy.sensitive_query_params,
+        );
+        extend_sensitive_fields(
+            &mut debug_policy.sensitive_body_fields,
+            &policy.sensitive_body_fields,
+        );
         Self::new(debug_policy)
     }
 
@@ -107,8 +121,13 @@ impl LogSanitizer {
     /// # Returns
     /// Masked value for sensitive headers, original value for non-sensitive
     /// UTF-8 values, or `<non-utf8>` when header value is not valid UTF-8.
-    pub fn sanitize_header_value(&self, name: &HeaderName, value: &HeaderValue) -> String {
-        self.header_sanitizer.sanitize_value(name, value, LOG_NAME_MATCH_MODE)
+    pub fn sanitize_header_value(
+        &self,
+        name: &HeaderName,
+        value: &HeaderValue,
+    ) -> String {
+        self.header_sanitizer
+            .sanitize_value(name, value, LOG_NAME_MATCH_MODE)
     }
 
     /// Returns log-safe headers for structured debug output.
@@ -118,8 +137,12 @@ impl LogSanitizer {
     ///
     /// # Returns
     /// Deterministic map of lowercase header names to sanitized values.
-    pub(crate) fn sanitize_header_map(&self, headers: &HeaderMap) -> std::collections::BTreeMap<String, Vec<String>> {
-        self.header_sanitizer.sanitize_headers(headers, LOG_NAME_MATCH_MODE)
+    pub(crate) fn sanitize_header_map(
+        &self,
+        headers: &HeaderMap,
+    ) -> std::collections::BTreeMap<String, Vec<String>> {
+        self.header_sanitizer
+            .sanitize_headers(headers, LOG_NAME_MATCH_MODE)
     }
 
     /// Returns a log-safe request body preview.
@@ -127,12 +150,23 @@ impl LogSanitizer {
     /// # Parameters
     /// - `body`: Source request body bytes.
     /// - `limit`: Maximum preview bytes; values below 1 are clamped to 1.
-    /// - `content_type`: Optional Content-Type header used for structured redaction.
+    /// - `content_type`: Optional Content-Type header used for structured
+    ///   redaction.
     ///
     /// # Returns
     /// Sanitized request body preview with request-style truncation suffix.
-    pub fn sanitize_request_body_preview(&self, body: &[u8], limit: usize, content_type: Option<&str>) -> String {
-        self.sanitize_body_bytes(body, limit, BodyLogContext::Request, content_type)
+    pub fn sanitize_request_body_preview(
+        &self,
+        body: &[u8],
+        limit: usize,
+        content_type: Option<&str>,
+    ) -> String {
+        self.sanitize_body_bytes(
+            body,
+            limit,
+            BodyLogContext::Request,
+            content_type,
+        )
     }
 
     /// Returns a log-safe response body preview.
@@ -140,12 +174,23 @@ impl LogSanitizer {
     /// # Parameters
     /// - `body`: Source response body bytes.
     /// - `limit`: Maximum preview bytes; values below 1 are clamped to 1.
-    /// - `content_type`: Optional Content-Type header used for structured redaction.
+    /// - `content_type`: Optional Content-Type header used for structured
+    ///   redaction.
     ///
     /// # Returns
     /// Sanitized response body preview with response-style truncation suffix.
-    pub fn sanitize_response_body_preview(&self, body: &[u8], limit: usize, content_type: Option<&str>) -> String {
-        self.sanitize_body_bytes(body, limit, BodyLogContext::Response, content_type)
+    pub fn sanitize_response_body_preview(
+        &self,
+        body: &[u8],
+        limit: usize,
+        content_type: Option<&str>,
+    ) -> String {
+        self.sanitize_body_bytes(
+            body,
+            limit,
+            BodyLogContext::Response,
+            content_type,
+        )
     }
 
     /// Returns a log-safe status-error body preview.
@@ -153,7 +198,8 @@ impl LogSanitizer {
     /// # Parameters
     /// - `body`: Source non-success response body bytes.
     /// - `limit`: Maximum preview bytes; values below 1 are clamped to 1.
-    /// - `content_type`: Optional Content-Type header used for structured redaction.
+    /// - `content_type`: Optional Content-Type header used for structured
+    ///   redaction.
     ///
     /// # Returns
     /// Sanitized error body preview with status-error truncation suffix.
@@ -163,7 +209,12 @@ impl LogSanitizer {
         limit: usize,
         content_type: Option<&str>,
     ) -> String {
-        self.sanitize_body_bytes(body, limit, BodyLogContext::ErrorResponse, content_type)
+        self.sanitize_body_bytes(
+            body,
+            limit,
+            BodyLogContext::ErrorResponse,
+            content_type,
+        )
     }
 
     /// Sanitizes URL-looking tokens inside a diagnostic message.
@@ -179,7 +230,9 @@ impl LogSanitizer {
         for (index, ch) in text.char_indices() {
             if ch.is_whitespace() {
                 if let Some(start) = token_start.take() {
-                    sanitized.push_str(&self.sanitize_diagnostic_token(&text[start..index]));
+                    sanitized.push_str(
+                        &self.sanitize_diagnostic_token(&text[start..index]),
+                    );
                 }
                 sanitized.push(ch);
             } else if token_start.is_none() {
@@ -199,7 +252,10 @@ impl LogSanitizer {
     ///
     /// # Returns
     /// Sanitized preview with context-appropriate truncation marker.
-    pub(crate) fn sanitize_body_preview(&self, preview: &BodyPreview<'_>) -> String {
+    pub(crate) fn sanitize_body_preview(
+        &self,
+        preview: &BodyPreview<'_>,
+    ) -> String {
         let content_type = match preview.content_type {
             Some(content_type) => match HeaderValue::from_str(content_type) {
                 Ok(content_type) => Some(content_type),
@@ -222,7 +278,8 @@ impl LogSanitizer {
     /// - `body`: Source body bytes.
     /// - `limit`: Maximum preview bytes.
     /// - `context`: Logging call site that controls truncation wording.
-    /// - `content_type`: Optional Content-Type header used for structured redaction.
+    /// - `content_type`: Optional Content-Type header used for structured
+    ///   redaction.
     ///
     /// # Returns
     /// Sanitized body preview text.
@@ -261,8 +318,8 @@ impl LogSanitizer {
                 let suffix = &token[candidate_end..];
                 return format!("{prefix}{}{suffix}", self.sanitize_url(&url));
             }
-            let (previous, ch) =
-                previous_char_boundary(token, candidate_end).expect("candidate end is always after URL scheme start");
+            let (previous, ch) = previous_char_boundary(token, candidate_end)
+                .expect("candidate end is always after URL scheme start");
             if previous <= scheme_start || !is_trimmable_url_suffix(ch) {
                 return token.to_string();
             }
@@ -278,7 +335,10 @@ impl LogSanitizer {
     /// # Returns
     /// Redaction marker with the rs-http truncation suffix.
     fn invalid_content_type_body(preview: &BodyPreview<'_>) -> String {
-        format!("{INVALID_CONTENT_TYPE_BODY_REDACTED}{}", preview.truncation_suffix())
+        format!(
+            "{INVALID_CONTENT_TYPE_BODY_REDACTED}{}",
+            preview.truncation_suffix()
+        )
     }
 
     /// Converts `qubit-sanitize` counted truncation suffix to rs-http's
@@ -290,8 +350,13 @@ impl LogSanitizer {
     ///
     /// # Returns
     /// Body text with the suffix expected by status-error diagnostics.
-    fn normalize_error_truncation_suffix(rendered: String, preview: &BodyPreview<'_>) -> String {
-        if preview.context != BodyLogContext::ErrorResponse || !preview.is_truncated() {
+    fn normalize_error_truncation_suffix(
+        rendered: String,
+        preview: &BodyPreview<'_>,
+    ) -> String {
+        if preview.context != BodyLogContext::ErrorResponse
+            || !preview.is_truncated()
+        {
             return rendered;
         }
         let counted = format!(
@@ -313,7 +378,10 @@ fn field_sanitizer(fields: &SensitiveFields) -> FieldSanitizer {
     })
 }
 
-fn extend_sensitive_fields(target: &mut SensitiveFields, source: &SensitiveFields) {
+fn extend_sensitive_fields(
+    target: &mut SensitiveFields,
+    source: &SensitiveFields,
+) {
     for (field, level) in source.iter() {
         target.insert(field, level);
     }
@@ -383,5 +451,8 @@ fn previous_char_boundary(text: &str, end: usize) -> Option<(usize, char)> {
 /// # Returns
 /// `true` if the character may be peeled from a failed URL parse attempt.
 fn is_trimmable_url_suffix(ch: char) -> bool {
-    matches!(ch, '.' | ',' | ';' | ':' | '!' | '?' | ')' | ']' | '}' | '"' | '\'')
+    matches!(
+        ch,
+        '.' | ',' | ';' | ':' | '!' | '?' | ')' | ']' | '}' | '"' | '\''
+    )
 }

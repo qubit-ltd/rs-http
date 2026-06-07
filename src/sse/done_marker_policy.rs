@@ -1,16 +1,13 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! # Done Marker Policy
 //!
 //! Defines how stream completion markers are recognized.
-//!
 
 use serde::{
     Deserialize,
@@ -61,7 +58,8 @@ impl FromStr for DoneMarkerPolicy {
 }
 
 impl DoneMarkerPolicy {
-    /// Returns whether `payload` (trimmed) signals end-of-stream per this policy.
+    /// Returns whether `payload` (trimmed) signals end-of-stream per this
+    /// policy.
     ///
     /// # Parameters
     /// - `payload`: Typically trimmed SSE `data:` text.

@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 
 use std::str::FromStr;
 
@@ -20,7 +18,17 @@ use serde::{
 use super::HttpConfigError;
 
 /// HTTP method policy used to decide whether a request can be retried.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, DeriveFromStr)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Default,
+    Serialize,
+    Deserialize,
+    DeriveFromStr,
+)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum HttpRetryMethodPolicy {
     /// Retry only HTTP methods that are safe to replay by default.
@@ -39,9 +47,14 @@ pub enum HttpRetryMethodPolicy {
 }
 
 impl HttpRetryMethodPolicy {
-    pub(super) fn from_config_value(value: &str) -> Result<Self, HttpConfigError> {
+    pub(super) fn from_config_value(
+        value: &str,
+    ) -> Result<Self, HttpConfigError> {
         Self::from_str(value.trim()).map_err(|_| {
-            HttpConfigError::invalid_value("method_policy", format!("Unsupported retry method policy: {value}"))
+            HttpConfigError::invalid_value(
+                "method_policy",
+                format!("Unsupported retry method policy: {value}"),
+            )
         })
     }
 
@@ -56,7 +69,12 @@ impl HttpRetryMethodPolicy {
         match self {
             Self::IdempotentOnly => matches!(
                 *method,
-                Method::GET | Method::HEAD | Method::PUT | Method::DELETE | Method::OPTIONS | Method::TRACE
+                Method::GET
+                    | Method::HEAD
+                    | Method::PUT
+                    | Method::DELETE
+                    | Method::OPTIONS
+                    | Method::TRACE
             ),
             Self::AllMethods => true,
             Self::None => false,

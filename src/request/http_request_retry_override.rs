@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! Request-level retry override options.
 
 use crate::HttpRetryMethodPolicy;
@@ -35,7 +33,8 @@ impl HttpRequestRetryOverride {
     /// Creates an empty override that follows client-level retry settings.
     ///
     /// # Returns
-    /// New [`HttpRequestRetryOverride`] with all per-request overrides disabled.
+    /// New [`HttpRequestRetryOverride`] with all per-request overrides
+    /// disabled.
     pub fn new() -> Self {
         Self::default()
     }
@@ -75,8 +74,8 @@ impl HttpRequestRetryOverride {
     /// Enables or disables honoring `Retry-After` for this request.
     ///
     /// # Parameters
-    /// - `enabled`: `true` to honor `Retry-After` on retryable status
-    ///   responses (`429` and `5xx`).
+    /// - `enabled`: `true` to honor `Retry-After` on retryable status responses
+    ///   (`429` and `5xx`).
     ///
     /// # Returns
     /// Updated override for chaining.
@@ -118,7 +117,8 @@ impl HttpRequestRetryOverride {
         self.honor_retry_after
     }
 
-    /// Resolves request-level force-enable/force-disable against client defaults.
+    /// Resolves request-level force-enable/force-disable against client
+    /// defaults.
     ///
     /// # Parameters
     /// - `client_enabled`: Client-level retry enabled flag.
@@ -135,14 +135,18 @@ impl HttpRequestRetryOverride {
         }
     }
 
-    /// Resolves effective method policy from request-level override + client policy.
+    /// Resolves effective method policy from request-level override + client
+    /// policy.
     ///
     /// # Parameters
     /// - `client_policy`: Client-level method policy.
     ///
     /// # Returns
     /// Effective method policy for this request.
-    pub(crate) fn resolve_method_policy(&self, client_policy: HttpRetryMethodPolicy) -> HttpRetryMethodPolicy {
+    pub(crate) fn resolve_method_policy(
+        &self,
+        client_policy: HttpRetryMethodPolicy,
+    ) -> HttpRetryMethodPolicy {
         self.method_policy.unwrap_or(client_policy)
     }
 }
