@@ -52,9 +52,11 @@ impl Resolve for Ipv4OnlyResolver {
     fn resolve(&self, name: Name) -> Resolving {
         let host = name.as_str().to_string();
         Box::pin(async move {
-            let resolved = tokio::net::lookup_host((host.as_str(), 0))
-                .await
-                .map_err(|error| error.into_box_error())?;
+            let resolved =
+                match tokio::net::lookup_host((host.as_str(), 0)).await {
+                    Ok(resolved) => resolved,
+                    Err(error) => return Err(error.into_box_error()),
+                };
             filter_ipv4_addrs(&host, resolved)
         })
     }
