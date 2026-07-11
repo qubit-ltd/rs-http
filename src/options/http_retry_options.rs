@@ -11,8 +11,8 @@ use std::time::Duration;
 
 use http::StatusCode;
 use qubit_argument::{
+    require_that,
     ArgumentResult,
-    NumericArgument,
 };
 use qubit_config::{
     ConfigReader,
@@ -186,9 +186,20 @@ impl HttpRetryOptions {
 
     /// Validates retry scalar values while retaining argument error structure.
     pub(super) fn validate_arguments(&self) -> ArgumentResult<()> {
-        self.max_attempts.require_positive("max_attempts")?;
-        self.jitter_factor
-            .require_in_range("jitter_factor", 0.0..=1.0)?;
+        require_that(
+            self.max_attempts,
+            "max_attempts",
+            |value| *value > 0,
+            "positive_retry_attempts",
+            "Retry max_attempts must be greater than 0",
+        )?;
+        require_that(
+            self.jitter_factor,
+            "jitter_factor",
+            |value| (0.0..=1.0).contains(value),
+            "retry_jitter_range",
+            "Retry jitter_factor must be between 0.0 and 1.0",
+        )?;
         self.delay_strategy.validate().map_err(|message| {
             qubit_argument::ArgumentError::new(
                 "delay_strategy",

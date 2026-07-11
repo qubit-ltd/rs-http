@@ -15,7 +15,6 @@ use http::HeaderValue;
 use qubit_argument::{
     require_that,
     ArgumentResultExt,
-    NumericArgument,
 };
 use qubit_config::{
     ConfigReader,
@@ -285,7 +284,13 @@ impl HttpClientOptions {
         path: &str,
         value: usize,
     ) -> Result<usize, HttpConfigError> {
-        Ok(value.require_positive(path)?)
+        Ok(require_that(
+            value,
+            path,
+            |limit| *limit > 0,
+            "positive_limit",
+            "Value must be greater than 0",
+        )?)
     }
 
     /// Same as [`HttpClientOptions::default`].

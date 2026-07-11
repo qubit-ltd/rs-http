@@ -6,7 +6,10 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use qubit_argument::NumericArgument;
+use qubit_argument::{
+    NumericArgument,
+    OptionArgument,
+};
 use qubit_config::Config;
 use qubit_datatype::DataType;
 use qubit_http::{
@@ -55,9 +58,27 @@ fn test_http_config_error_from_argument_error() {
 
     assert_eq!(error.kind, HttpConfigErrorKind::InvalidValue);
     assert_eq!(error.path, "body_size_limit");
+    assert_eq!(error.message, "Argument validation failed");
     assert_eq!(
-        error.message,
-        "argument 'body_size_limit' has value 0, expected greater than 0",
+        error.to_string(),
+        "[invalid value] body_size_limit: Argument validation failed",
+    );
+}
+
+#[test]
+fn test_http_config_error_from_missing_argument_error() {
+    let argument_error = None::<usize>
+        .require_some("proxy.port")
+        .expect_err("missing option must fail required validation");
+
+    let error = HttpConfigError::from(argument_error);
+
+    assert_eq!(error.kind, HttpConfigErrorKind::MissingField);
+    assert_eq!(error.path, "proxy.port");
+    assert_eq!(error.message, "Required value is missing");
+    assert_eq!(
+        error.to_string(),
+        "[missing field] proxy.port: Required value is missing",
     );
 }
 

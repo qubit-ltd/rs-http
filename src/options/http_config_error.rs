@@ -148,25 +148,29 @@ impl From<qubit_argument::ArgumentError> for HttpConfigError {
     /// Converts structured argument validation failures into invalid HTTP
     /// configuration values.
     ///
-    /// The argument path and diagnostic are retained so callers can continue
-    /// to inspect the existing [`HttpConfigError`] fields.
+    /// The argument path is retained. Caller-defined validation messages are
+    /// preserved without embedding the path; other structured kinds use a
+    /// pathless fallback diagnostic.
     fn from(error: qubit_argument::ArgumentError) -> Self {
-        let (kind, custom_message) = match error.kind() {
-            ArgumentErrorKind::Missing => {
-                (HttpConfigErrorKind::MissingField, None)
-            }
+        let (kind, message) = match error.kind() {
+            ArgumentErrorKind::Missing => (
+                HttpConfigErrorKind::MissingField,
+                "Required value is missing".to_owned(),
+            ),
             ArgumentErrorKind::Custom { code, message }
                 if code == "http_config_missing" =>
             {
-                (HttpConfigErrorKind::MissingField, Some(message.clone()))
+                (HttpConfigErrorKind::MissingField, message.clone())
             }
             ArgumentErrorKind::Custom { message, .. } => {
-                (HttpConfigErrorKind::InvalidValue, Some(message.clone()))
+                (HttpConfigErrorKind::InvalidValue, message.clone())
             }
-            _ => (HttpConfigErrorKind::InvalidValue, None),
+            _ => (
+                HttpConfigErrorKind::InvalidValue,
+                "Argument validation failed".to_owned(),
+            ),
         };
         let path = error.path().as_str().to_owned();
-        let message = custom_message.unwrap_or_else(|| error.to_string());
         Self::new(kind, path, message)
     }
 }

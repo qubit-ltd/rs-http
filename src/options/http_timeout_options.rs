@@ -9,8 +9,8 @@
 use std::time::Duration;
 
 use qubit_argument::{
+    require_that,
     ArgumentResult,
-    DurationArgument,
 };
 use qubit_config::{
     ConfigReader,
@@ -86,11 +86,11 @@ impl HttpTimeoutOptions {
 
     /// Validates timeout values while retaining structured argument errors.
     pub(super) fn validate_arguments(&self) -> ArgumentResult<()> {
-        self.connect_timeout.require_positive("connect_timeout")?;
-        self.read_timeout.require_positive("read_timeout")?;
-        self.write_timeout.require_positive("write_timeout")?;
+        validate_positive_duration("connect_timeout", self.connect_timeout)?;
+        validate_positive_duration("read_timeout", self.read_timeout)?;
+        validate_positive_duration("write_timeout", self.write_timeout)?;
         if let Some(request_timeout) = self.request_timeout {
-            request_timeout.require_positive("request_timeout")?;
+            validate_positive_duration("request_timeout", request_timeout)?;
         }
         Ok(())
     }
@@ -130,4 +130,19 @@ impl HttpTimeoutOptions {
         opts.validate()?;
         Ok(opts)
     }
+}
+
+/// Requires a nonzero timeout while preserving the public domain diagnostic.
+fn validate_positive_duration(
+    path: &str,
+    value: Duration,
+) -> ArgumentResult<()> {
+    require_that(
+        value,
+        path,
+        |duration| !duration.is_zero(),
+        "positive_timeout",
+        "Timeout value must be greater than 0",
+    )?;
+    Ok(())
 }
