@@ -48,6 +48,7 @@ async-stream = "0.3"
 futures-util = "0.3"
 
 qubit-config = "0.13"
+qubit-argument = "0.4"
 qubit-datatype = "0.2"
 qubit-error = "0.2"
 qubit-function = "0.15"
