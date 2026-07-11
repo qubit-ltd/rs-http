@@ -9,6 +9,10 @@
 use std::fmt;
 use std::str::FromStr;
 
+use qubit_argument::{
+    require_that,
+    ArgumentResult,
+};
 use qubit_config::{
     ConfigReader,
     ConfigResult,
@@ -137,51 +141,58 @@ impl ProxyOptions {
     /// - `Err(HttpConfigError)` if proxy is enabled but host/port invalid, or
     ///   password without username.
     pub fn validate(&self) -> Result<(), HttpConfigError> {
+        self.validate_arguments().map_err(HttpConfigError::from)
+    }
+
+    /// Validates proxy fields while retaining structured argument errors.
+    pub(super) fn validate_arguments(&self) -> ArgumentResult<()> {
         if self.enabled {
-            match self.host.as_deref() {
-                None => {
-                    return Err(HttpConfigError::missing(
-                        "proxy.host",
-                        "Proxy is enabled but host is missing",
-                    ));
-                }
-                Some(host) if host.trim().is_empty() => {
-                    return Err(HttpConfigError::invalid_value(
-                        "proxy.host",
-                        "Proxy host cannot be empty when proxy is enabled",
-                    ));
-                }
-                _ => {}
-            }
-            match self.port {
-                None => {
-                    return Err(HttpConfigError::missing(
-                        "proxy.port",
-                        "Proxy is enabled but port is missing",
-                    ));
-                }
-                Some(0) => {
-                    return Err(HttpConfigError::invalid_value(
-                        "proxy.port",
-                        "Proxy port must be greater than 0",
-                    ));
-                }
-                _ => {}
-            }
+            require_that(
+                self.host.as_deref(),
+                "proxy.host",
+                Option::is_some,
+                "http_config_missing",
+                "Proxy is enabled but host is missing",
+            )?;
+            require_that(
+                self.host.as_deref(),
+                "proxy.host",
+                |host| host.is_none_or(|value| !value.trim().is_empty()),
+                "blank_proxy_host",
+                "Proxy host cannot be empty when proxy is enabled",
+            )?;
+            require_that(
+                self.port,
+                "proxy.port",
+                Option::is_some,
+                "http_config_missing",
+                "Proxy is enabled but port is missing",
+            )?;
+            require_that(
+                self.port,
+                "proxy.port",
+                |port| port.is_none_or(|value| value > 0),
+                "zero_proxy_port",
+                "Proxy port must be greater than 0",
+            )?;
         }
         if let Some(username) = self.username.as_deref() {
-            if username.trim().is_empty() {
-                return Err(HttpConfigError::invalid_value(
-                    "proxy.username",
-                    "Proxy username cannot be empty when provided",
-                ));
-            }
-        }
-        if self.username.is_none() && self.password.is_some() {
-            return Err(HttpConfigError::missing(
+            require_that(
+                username,
                 "proxy.username",
+                |value| !value.trim().is_empty(),
+                "blank_proxy_username",
+                "Proxy username cannot be empty when provided",
+            )?;
+        }
+        if self.password.is_some() {
+            require_that(
+                self.username.as_deref(),
+                "proxy.username",
+                Option::is_some,
+                "http_config_missing",
                 "Proxy password is configured but username is missing",
-            ));
+            )?;
         }
         Ok(())
     }

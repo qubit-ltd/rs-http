@@ -12,6 +12,11 @@ use std::time::Duration;
 
 use http::HeaderMap;
 use http::HeaderValue;
+use qubit_argument::{
+    require_that,
+    ArgumentResultExt,
+    NumericArgument,
+};
 use qubit_config::{
     ConfigReader,
     ConfigResult,
@@ -280,13 +285,7 @@ impl HttpClientOptions {
         path: &str,
         value: usize,
     ) -> Result<usize, HttpConfigError> {
-        if value == 0 {
-            return Err(HttpConfigError::invalid_value(
-                path,
-                "Value must be greater than 0",
-            ));
-        }
-        Ok(value)
+        Ok(value.require_positive(path)?)
     }
 
     /// Same as [`HttpClientOptions::default`].
@@ -630,24 +629,23 @@ impl HttpClientOptions {
     /// `Ok(())` or the first sub-validator error.
     pub fn validate(&self) -> Result<(), HttpConfigError> {
         self.timeouts
-            .validate()
-            .map_err(|e| e.prepend_path_prefix("timeouts"))?;
-        self.proxy.validate()?;
-        self.logging.validate()?;
-        self.retry
-            .validate()
-            .map_err(|e| e.prepend_path_prefix("retry"))?;
+            .validate_arguments()
+            .with_path_prefix("timeouts")?;
+        self.proxy.validate_arguments()?;
+        self.logging.validate_arguments()?;
+        self.retry.validate_arguments().with_path_prefix("retry")?;
         Self::validate_positive_limit(
             "error_response_preview_limit",
             self.error_response_preview_limit,
         )?;
         if let Some(user_agent) = self.user_agent.as_deref() {
-            if user_agent.trim().is_empty() {
-                return Err(HttpConfigError::invalid_value(
-                    "user_agent",
-                    "Value cannot be empty",
-                ));
-            }
+            require_that(
+                user_agent,
+                "user_agent",
+                |value| !value.trim().is_empty(),
+                "blank_user_agent",
+                "Value cannot be empty",
+            )?;
             HeaderValue::from_str(user_agent).map_err(|error| {
                 HttpConfigError::invalid_value(
                     "user_agent",

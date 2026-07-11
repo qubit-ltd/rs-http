@@ -11,6 +11,8 @@
 
 use std::fmt;
 
+use qubit_argument::ArgumentErrorKind;
+
 use super::HttpConfigErrorKind;
 
 /// Error type for HTTP configuration conversion failures.
@@ -125,18 +127,6 @@ impl HttpConfigError {
     ) -> Self {
         Self::new(HttpConfigErrorKind::ConfigError, path, message)
     }
-
-    /// Prepends `prefix` to a concrete nested validation path.
-    ///
-    /// # Parameters
-    /// - `prefix`: Segment such as `timeouts` or `retry`.
-    ///
-    /// # Returns
-    /// Updated error with `path` = `{prefix}.{path}`.
-    pub(crate) fn prepend_path_prefix(mut self, prefix: &str) -> Self {
-        self.path = format!("{prefix}.{}", self.path);
-        self
-    }
 }
 
 impl fmt::Display for HttpConfigError {
@@ -153,6 +143,33 @@ impl fmt::Display for HttpConfigError {
 }
 
 impl std::error::Error for HttpConfigError {}
+
+impl From<qubit_argument::ArgumentError> for HttpConfigError {
+    /// Converts structured argument validation failures into invalid HTTP
+    /// configuration values.
+    ///
+    /// The argument path and diagnostic are retained so callers can continue
+    /// to inspect the existing [`HttpConfigError`] fields.
+    fn from(error: qubit_argument::ArgumentError) -> Self {
+        let (kind, custom_message) = match error.kind() {
+            ArgumentErrorKind::Missing => {
+                (HttpConfigErrorKind::MissingField, None)
+            }
+            ArgumentErrorKind::Custom { code, message }
+                if code == "http_config_missing" =>
+            {
+                (HttpConfigErrorKind::MissingField, Some(message.clone()))
+            }
+            ArgumentErrorKind::Custom { message, .. } => {
+                (HttpConfigErrorKind::InvalidValue, Some(message.clone()))
+            }
+            _ => (HttpConfigErrorKind::InvalidValue, None),
+        };
+        let path = error.path().as_str().to_owned();
+        let message = custom_message.unwrap_or_else(|| error.to_string());
+        Self::new(kind, path, message)
+    }
+}
 
 impl From<qubit_config::ConfigError> for HttpConfigError {
     /// Converts a `qubit_config::ConfigError`, mapping typed failures to

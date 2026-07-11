@@ -10,6 +10,10 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use http::StatusCode;
+use qubit_argument::{
+    ArgumentResult,
+    NumericArgument,
+};
 use qubit_config::{
     ConfigReader,
     ConfigResult,
@@ -177,20 +181,22 @@ impl HttpRetryOptions {
     /// # Returns
     /// `Ok(())` when values are usable, otherwise [`HttpConfigError`].
     pub fn validate(&self) -> Result<(), HttpConfigError> {
-        if self.max_attempts == 0 {
-            return Err(HttpConfigError::invalid_value(
-                "max_attempts",
-                "Retry max_attempts must be greater than 0",
-            ));
-        }
-        if !(0.0..=1.0).contains(&self.jitter_factor) {
-            return Err(HttpConfigError::invalid_value(
-                "jitter_factor",
-                "Retry jitter_factor must be between 0.0 and 1.0",
-            ));
-        }
+        self.validate_arguments().map_err(HttpConfigError::from)
+    }
+
+    /// Validates retry scalar values while retaining argument error structure.
+    pub(super) fn validate_arguments(&self) -> ArgumentResult<()> {
+        self.max_attempts.require_positive("max_attempts")?;
+        self.jitter_factor
+            .require_in_range("jitter_factor", 0.0..=1.0)?;
         self.delay_strategy.validate().map_err(|message| {
-            HttpConfigError::invalid_value("delay_strategy", message)
+            qubit_argument::ArgumentError::new(
+                "delay_strategy",
+                qubit_argument::ArgumentErrorKind::Custom {
+                    code: "invalid_retry_delay".to_owned(),
+                    message,
+                },
+            )
         })?;
         Ok(())
     }

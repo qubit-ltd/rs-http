@@ -6,6 +6,10 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
+use qubit_argument::{
+    require_that,
+    ArgumentResult,
+};
 use qubit_config::{
     ConfigReader,
     ConfigResult,
@@ -126,13 +130,19 @@ impl HttpLoggingOptions {
     /// `Ok(())` or [`HttpConfigError::invalid_value`] for
     /// `logging.body_size_limit`.
     pub fn validate(&self) -> Result<(), HttpConfigError> {
-        if (self.log_request_body || self.log_response_body)
-            && self.body_size_limit == 0
-        {
-            return Err(HttpConfigError::invalid_value(
+        self.validate_arguments().map_err(HttpConfigError::from)
+    }
+
+    /// Validates body logging limits as structured argument failures.
+    pub(super) fn validate_arguments(&self) -> ArgumentResult<()> {
+        if self.log_request_body || self.log_response_body {
+            require_that(
+                self.body_size_limit,
                 "logging.body_size_limit",
+                |value| *value > 0,
+                "body_logging_limit",
                 "body_size_limit must be greater than 0 when body logging is enabled",
-            ));
+            )?;
         }
         Ok(())
     }
