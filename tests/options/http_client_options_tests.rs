@@ -837,18 +837,57 @@ fn test_http_retry_options_validate_rejects_invalid_values() {
     let err = options.validate().unwrap_err();
     assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
     assert_eq!(err.path, "max_attempts");
+    assert_eq!(err.message, "Retry max_attempts must be greater than 0",);
 
     let mut options = HttpRetryOptions::default();
     options.jitter_factor = 1.5;
     let err = options.validate().unwrap_err();
     assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
     assert_eq!(err.path, "jitter_factor");
+    assert_eq!(
+        err.message,
+        "Retry jitter_factor must be between 0.0 and 1.0",
+    );
 
     let mut options = HttpRetryOptions::default();
     options.delay_strategy = RetryDelay::Fixed(Duration::ZERO);
     let err = options.validate().unwrap_err();
     assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
     assert_eq!(err.path, "delay_strategy");
+}
+
+#[test]
+fn test_http_retry_options_validate_rejects_non_finite_jitter() {
+    for jitter_factor in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        let options = HttpRetryOptions {
+            jitter_factor,
+            ..Default::default()
+        };
+
+        let error = options.validate().unwrap_err();
+
+        assert_eq!(error.kind, HttpConfigErrorKind::InvalidValue);
+        assert_eq!(error.path, "jitter_factor");
+        assert_eq!(
+            error.message,
+            "Retry jitter_factor must be between 0.0 and 1.0",
+        );
+    }
+}
+
+#[test]
+fn test_http_retry_options_validate_reports_first_invalid_field() {
+    let options = HttpRetryOptions {
+        max_attempts: 0,
+        jitter_factor: f64::NAN,
+        delay_strategy: RetryDelay::Fixed(Duration::ZERO),
+        ..Default::default()
+    };
+
+    let error = options.validate().unwrap_err();
+
+    assert_eq!(error.path, "max_attempts");
+    assert_eq!(error.message, "Retry max_attempts must be greater than 0",);
 }
 
 #[test]
@@ -899,6 +938,11 @@ fn test_http_client_options_validate_propagates_retry_error() {
     let err = opts.validate().unwrap_err();
     assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
     assert_eq!(err.path, "retry.max_attempts");
+    assert_eq!(err.message, "Retry max_attempts must be greater than 0",);
+    assert_eq!(
+        err.to_string(),
+        "[invalid value] retry.max_attempts: Retry max_attempts must be greater than 0",
+    );
 }
 
 #[test]
@@ -910,6 +954,11 @@ fn test_http_client_options_validate_rejects_zero_error_response_preview_limit()
     let err = opts.validate().unwrap_err();
     assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
     assert_eq!(err.path, "error_response_preview_limit");
+    assert_eq!(err.message, "Value must be greater than 0");
+    assert_eq!(
+        err.to_string(),
+        "[invalid value] error_response_preview_limit: Value must be greater than 0",
+    );
 }
 
 #[test]
@@ -940,6 +989,11 @@ fn test_http_client_options_validate_propagates_timeout_error() {
     let err = opts.validate().unwrap_err();
     assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
     assert_eq!(err.path, "timeouts.connect_timeout");
+    assert_eq!(err.message, "Timeout value must be greater than 0");
+    assert_eq!(
+        err.to_string(),
+        "[invalid value] timeouts.connect_timeout: Timeout value must be greater than 0",
+    );
 }
 
 #[test]

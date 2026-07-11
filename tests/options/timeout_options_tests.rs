@@ -117,6 +117,11 @@ fn test_timeout_options_validate_rejects_zero_values() {
     let err = opts.validate().unwrap_err();
     assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
     assert_eq!(err.path, "connect_timeout");
+    assert_eq!(err.message, "Timeout value must be greater than 0");
+    assert_eq!(
+        err.to_string(),
+        "[invalid value] connect_timeout: Timeout value must be greater than 0",
+    );
 }
 
 #[test]
