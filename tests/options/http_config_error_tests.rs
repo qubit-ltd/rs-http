@@ -6,6 +6,7 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
+use qubit_argument::NumericArgument;
 use qubit_config::Config;
 use qubit_datatype::DataType;
 use qubit_http::{
@@ -42,6 +43,22 @@ fn test_http_config_error_constructors() {
 fn test_http_config_error_is_std_error() {
     let e = HttpConfigError::missing("a.b", "msg");
     let _: &dyn std::error::Error = &e;
+}
+
+#[test]
+fn test_http_config_error_from_argument_error() {
+    let argument_error = 0_usize
+        .require_positive("body_size_limit")
+        .expect_err("zero must fail positive validation");
+
+    let error = HttpConfigError::from(argument_error);
+
+    assert_eq!(error.kind, HttpConfigErrorKind::InvalidValue);
+    assert_eq!(error.path, "body_size_limit");
+    assert_eq!(
+        error.message,
+        "argument 'body_size_limit' has value 0, expected greater than 0",
+    );
 }
 
 #[test]

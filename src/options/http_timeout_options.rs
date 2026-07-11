@@ -8,6 +8,10 @@
 
 use std::time::Duration;
 
+use qubit_argument::{
+    ArgumentResult,
+    DurationArgument,
+};
 use qubit_config::{
     ConfigReader,
     ConfigResult,
@@ -77,11 +81,16 @@ impl HttpTimeoutOptions {
     /// # Returns
     /// `Ok(())` when all configured durations are strictly greater than zero.
     pub fn validate(&self) -> Result<(), HttpConfigError> {
-        validate_positive_duration("connect_timeout", self.connect_timeout)?;
-        validate_positive_duration("read_timeout", self.read_timeout)?;
-        validate_positive_duration("write_timeout", self.write_timeout)?;
+        self.validate_arguments().map_err(HttpConfigError::from)
+    }
+
+    /// Validates timeout values while retaining structured argument errors.
+    pub(super) fn validate_arguments(&self) -> ArgumentResult<()> {
+        self.connect_timeout.require_positive("connect_timeout")?;
+        self.read_timeout.require_positive("read_timeout")?;
+        self.write_timeout.require_positive("write_timeout")?;
         if let Some(request_timeout) = self.request_timeout {
-            validate_positive_duration("request_timeout", request_timeout)?;
+            request_timeout.require_positive("request_timeout")?;
         }
         Ok(())
     }
@@ -121,17 +130,4 @@ impl HttpTimeoutOptions {
         opts.validate()?;
         Ok(opts)
     }
-}
-
-fn validate_positive_duration(
-    path: &str,
-    value: Duration,
-) -> Result<(), HttpConfigError> {
-    if value.is_zero() {
-        return Err(HttpConfigError::invalid_value(
-            path,
-            "Timeout value must be greater than 0",
-        ));
-    }
-    Ok(())
 }
