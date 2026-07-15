@@ -572,32 +572,35 @@ Request headers, request body, response headers, and response body can be toggle
 
 Logs are sanitized through `LogSanitizer` and `LogSanitizePolicy`, backed by `qubit-sanitize` adapters for URLs, headers, and HTTP bodies. URL username, password, fragment, and sensitive query parameters are masked; JSON/form/multipart body fields are masked when their names match the policy. Mask strings follow `qubit-sanitize` sensitivity levels: token/header-like fields usually become `****`, while secret-like fields such as `password` and `client_secret` become `<redacted>`. Multipart sanitization applies to every `multipart/*` media type. Multipart file parts are rendered as `<redacted: file part>`, and malformed, missing-boundary, or truncated multipart bodies are rendered as `<redacted: multipart body>` so raw upload bytes are not leaked.
 
-Default sensitive names and mask levels come from `qubit_sanitize::SensitiveFields`, so `rs-http` does not maintain or export its own sensitive-name lists. Matching trims whitespace, lowercases names, removes common separators such as `_`, `-`, `.`, and spaces, and uses suffix matching, so names like `access_token`, `access-token`, `accessToken`, and `x-openai-api-key` match the same default. Configuration keys under `log_sanitize.*` extend the default name sets. Code can also tune `options.log_sanitize_policy` directly; assign `qubit_sanitize::SensitiveFields::new()` to a policy field first if you intentionally want a custom-only policy.
+Default sensitive names and mask levels come from `qubit_sanitize::SensitiveFields`, so `rs-http` does not maintain or export its own sensitive-name lists. Matching trims whitespace, lowercases names, removes common separators such as `_`, `-`, `.`, and spaces, and uses suffix matching, so names like `access_token`, `access-token`, `accessToken`, and `x-openai-api-key` match the same default. Configuration keys under `log_sanitize.*` extend the default name sets. Code can also tune `options.log_sanitize_policy` through its domain methods; use `LogSanitizePolicy::empty()` if you intentionally want a custom-only policy. The `insert_*` and `extend_*` methods retain the strongest configured level. Use `set_*_level` only for an intentional replacement, including a downgrade.
 
 Example:
 
 ```rust
 use http::Method;
-use qubit_http::{HttpClientFactory, HttpClientOptions};
-use qubit_sanitize::SensitivityLevel;
+use qubit_http::{
+    HttpClientFactory,
+    HttpClientOptions,
+    SensitivityLevel,
+};
 use serde_json::json;
 
 let mut options = HttpClientOptions::new();
 options.logging.enabled = true;
 options.logging.log_request_header = true;
 options.logging.log_request_body = true;
-options
-    .log_sanitize_policy
-    .sensitive_headers
-    .insert("x-api-key", SensitivityLevel::High);
-options
-    .log_sanitize_policy
-    .sensitive_query_params
-    .insert("access_token", SensitivityLevel::High);
-options
-    .log_sanitize_policy
-    .sensitive_body_fields
-    .insert("password", SensitivityLevel::Secret);
+options.log_sanitize_policy.insert_sensitive_header(
+    "x-api-key",
+    SensitivityLevel::High,
+);
+options.log_sanitize_policy.insert_sensitive_query_param(
+    "access_token",
+    SensitivityLevel::High,
+);
+options.log_sanitize_policy.insert_sensitive_body_field(
+    "password",
+    SensitivityLevel::Secret,
+);
 
 let client = HttpClientFactory::new().create(options)?;
 let request = client

@@ -79,27 +79,35 @@ custom secret names. Names are matched case-insensitively across common styles
 such as `access_token`, `access-token`, and `accessToken`:
 
 ```rust
-use qubit_http::{HttpClientFactory, HttpClientOptions};
-use qubit_sanitize::SensitivityLevel;
+use qubit_http::{
+    HttpClientFactory,
+    HttpClientOptions,
+    SensitivityLevel,
+};
 
 let mut options = HttpClientOptions::new();
 options.logging.enabled = true;
 options.logging.log_request_body = true;
-options
-    .log_sanitize_policy
-    .sensitive_headers
-    .insert("x-api-key", SensitivityLevel::High);
-options
-    .log_sanitize_policy
-    .sensitive_query_params
-    .insert("access_token", SensitivityLevel::High);
-options
-    .log_sanitize_policy
-    .sensitive_body_fields
-    .insert("password", SensitivityLevel::Secret);
+options.log_sanitize_policy.insert_sensitive_header(
+    "x-api-key",
+    SensitivityLevel::High,
+);
+options.log_sanitize_policy.insert_sensitive_query_param(
+    "access_token",
+    SensitivityLevel::High,
+);
+options.log_sanitize_policy.insert_sensitive_body_field(
+    "password",
+    SensitivityLevel::Secret,
+);
 
 let client = HttpClientFactory::new().create(options)?;
 ```
+
+The `insert_*` and `extend_*` methods keep the strongest level already
+configured. Use the corresponding `set_*_level` method only for an intentional
+replacement, including a downgrade. Start with `LogSanitizePolicy::empty()`
+when a custom-only policy is required.
 
 ## Common Next Steps
 

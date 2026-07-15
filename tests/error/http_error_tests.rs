@@ -12,8 +12,8 @@ use qubit_http::{
     HttpErrorKind,
     LogSanitizePolicy,
     RetryHint,
+    SensitivityLevel,
 };
-use qubit_sanitize::SensitivityLevel;
 
 #[test]
 fn test_http_error_builder_methods() {
@@ -76,7 +76,7 @@ fn test_http_error_debug_sanitizes_first_url_scheme_inside_token() {
     assert!(!debug.contains("debug-user"));
     assert!(!debug.contains("debug-url-secret"));
     assert!(!debug.contains("debug-query-secret"));
-    assert!(debug.contains("prefixhttps://****:****@example.com"));
+    assert!(debug.contains("prefixhttps://****:%3Credacted%3E@example.com"));
 }
 
 #[test]
@@ -90,15 +90,16 @@ fn test_http_error_debug_sanitizes_uppercase_url_scheme_tokens() {
     assert!(!debug.contains("debug-user"));
     assert!(!debug.contains("debug-url-secret"));
     assert!(!debug.contains("debug-query-secret"));
-    assert!(debug.contains("://****:****@example.com"));
+    assert!(debug.contains("://****:%3Credacted%3E@example.com"));
 }
 
 #[test]
 fn test_http_error_debug_uses_custom_log_sanitize_policy() {
     let mut policy = LogSanitizePolicy::default();
-    policy
-        .sensitive_query_params
-        .insert("customer_secret", SensitivityLevel::High);
+    policy.insert_sensitive_query_param(
+        "customer_secret",
+        SensitivityLevel::High,
+    );
     let url = url::Url::parse("https://example.com/path?customer_secret=debug-custom-secret&visible=ok")
         .expect("URL should parse");
     let error = HttpError::transport(
