@@ -55,8 +55,7 @@ fn test_timeout_options_partial_fields() {
         .set("t.connect_timeout", Duration::from_millis(500))
         .unwrap();
 
-    let opts =
-        HttpTimeoutOptions::from_config(&config.section("t")).unwrap();
+    let opts = HttpTimeoutOptions::from_config(&config.section("t")).unwrap();
     assert_eq!(opts.connect_timeout, Duration::from_millis(500));
     assert_eq!(opts.read_timeout, Duration::from_secs(120));
     assert_eq!(opts.request_timeout, None);
@@ -69,8 +68,7 @@ fn test_timeout_options_no_request_timeout() {
         .set("t.connect_timeout", Duration::from_secs(10))
         .unwrap();
 
-    let opts =
-        HttpTimeoutOptions::from_config(&config.section("t")).unwrap();
+    let opts = HttpTimeoutOptions::from_config(&config.section("t")).unwrap();
     assert_eq!(opts.request_timeout, None);
 }
 

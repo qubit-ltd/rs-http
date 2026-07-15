@@ -93,7 +93,7 @@ async fn test_execute_request_with_pre_cancelled_token_skips_request_interceptor
     let interceptor_calls = Arc::new(AtomicUsize::new(0));
     let interceptor_calls_clone = Arc::clone(&interceptor_calls);
     client.add_request_interceptor(qubit_http::HttpRequestInterceptor::new(
-        move |_request| {
+        move |_request: &mut qubit_http::HttpRequest| {
             interceptor_calls_clone.fetch_add(1, Ordering::Relaxed);
             Ok(())
         },
@@ -141,7 +141,7 @@ async fn test_execute_request_cancelled_by_interceptor_stops_before_send() {
     let token = CancellationToken::new();
     let interceptor_token = token.clone();
     client.add_request_interceptor(qubit_http::HttpRequestInterceptor::new(
-        move |_request| {
+        move |_request: &mut qubit_http::HttpRequest| {
             interceptor_token.cancel();
             Ok(())
         },
@@ -184,7 +184,7 @@ async fn test_execute_request_can_be_cancelled_while_preparing_async_headers() {
         .create(options)
         .expect("client should be created");
     client.add_async_header_injector(AsyncHttpHeaderInjector::new(
-        |_headers| {
+        |_headers: &mut http::HeaderMap| {
             Box::pin(async move {
                 tokio::time::sleep(Duration::from_secs(5)).await;
                 Ok(())

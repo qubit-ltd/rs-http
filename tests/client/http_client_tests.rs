@@ -76,17 +76,19 @@ async fn test_execute_success_with_header_injector_and_request_override() {
 
     let factory = HttpClientFactory::new();
     let mut client = factory.create(options).unwrap();
-    client.add_header_injector(HttpHeaderInjector::new(|headers| {
-        headers.insert(
-            HeaderName::from_static("x-order"),
-            HeaderValue::from_static("injector"),
-        );
-        headers.insert(
-            AUTHORIZATION,
-            HeaderValue::from_static("Bearer secret-token"),
-        );
-        Ok(())
-    }));
+    client.add_header_injector(HttpHeaderInjector::new(
+        |headers: &mut http::HeaderMap| {
+            headers.insert(
+                HeaderName::from_static("x-order"),
+                HeaderValue::from_static("injector"),
+            );
+            headers.insert(
+                AUTHORIZATION,
+                HeaderValue::from_static("Bearer secret-token"),
+            );
+            Ok(())
+        },
+    ));
 
     let request = client
         .request(Method::POST, "/v1/messages")
@@ -726,7 +728,7 @@ async fn test_execute_response_metadata_debug_uses_custom_log_policy() {
         Arc::clone(&captured_context_debug);
     let mut client = HttpClientFactory::new().create(options).unwrap();
     client.add_response_interceptor(HttpResponseInterceptor::new(
-        move |context| {
+        move |context: &mut qubit_http::HttpResponseInterceptorContext| {
             *captured_context_debug_for_interceptor
                 .lock()
                 .expect("lock captured context debug") =
@@ -1066,15 +1068,17 @@ async fn test_execute_retries_retryable_status_until_success() {
     options.retry.max_attempts = 2;
     options.retry.delay_strategy = RetryDelay::None;
     let mut client = HttpClientFactory::new().create(options).unwrap();
-    client.add_header_injector(HttpHeaderInjector::new(move |headers| {
-        let mut count = injector_count_clone.lock().unwrap();
-        *count += 1;
-        headers.insert(
-            HeaderName::from_static("x-attempt"),
-            HeaderValue::from_str(&count.to_string()).unwrap(),
-        );
-        Ok(())
-    }));
+    client.add_header_injector(HttpHeaderInjector::new(
+        move |headers: &mut http::HeaderMap| {
+            let mut count = injector_count_clone.lock().unwrap();
+            *count += 1;
+            headers.insert(
+                HeaderName::from_static("x-attempt"),
+                HeaderValue::from_str(&count.to_string()).unwrap(),
+            );
+            Ok(())
+        },
+    ));
 
     let request = client.request(Method::GET, "/retry-status").build();
     let mut response = timeout(Duration::from_secs(3), client.execute(request))

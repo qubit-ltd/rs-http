@@ -27,9 +27,8 @@ fn test_logging_options_default_values() {
 #[test]
 fn test_logging_options_defaults_when_no_keys() {
     let config = Config::new();
-    let opts =
-        HttpLoggingOptions::from_config(&config.section("http.logging"))
-            .unwrap();
+    let opts = HttpLoggingOptions::from_config(&config.section("http.logging"))
+        .unwrap();
     assert_eq!(opts, HttpLoggingOptions::default());
 }
 
@@ -43,8 +42,7 @@ fn test_logging_options_all_fields() {
     config.set("l.log_response_body", false).unwrap();
     config.set("l.body_size_limit", 4096u64).unwrap();
 
-    let opts =
-        HttpLoggingOptions::from_config(&config.section("l")).unwrap();
+    let opts = HttpLoggingOptions::from_config(&config.section("l")).unwrap();
     assert!(!opts.enabled);
     assert!(!opts.log_request_header);
     assert!(!opts.log_request_body);
