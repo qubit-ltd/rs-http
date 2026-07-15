@@ -32,6 +32,7 @@ use qubit_http::{
     ProxyType,
     RetryDelay,
 };
+use qubit_sanitize::SensitivityLevel;
 
 #[test]
 fn test_http_client_options_defaults() {
@@ -145,6 +146,26 @@ fn test_http_client_options_debug_masks_sensitive_values() {
     assert!(!debug.contains("debug-proxy-secret"));
     assert!(debug.contains("authorization"));
     assert!(debug.contains("****"));
+}
+
+#[test]
+fn test_http_client_options_debug_does_not_downgrade_builtin_sensitivity() {
+    let mut options = HttpClientOptions::new();
+    options
+        .log_sanitize_policy
+        .sensitive_headers
+        .insert("authorization", SensitivityLevel::Low);
+    options
+        .add_header("authorization", "Bearer downgrade-secret")
+        .expect("sensitive default header should be accepted");
+
+    let debug = format!("{options:?}");
+
+    assert!(
+        debug.contains(r#""authorization": ["****"]"#),
+        "unexpected debug output: {debug}",
+    );
+    assert!(!debug.contains("Be****et"));
 }
 
 #[test]

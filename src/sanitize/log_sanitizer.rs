@@ -78,18 +78,15 @@ impl LogSanitizer {
     /// Sanitizer that always includes safe built-in defaults plus custom names.
     pub(crate) fn for_debug(policy: &LogSanitizePolicy) -> Self {
         let mut debug_policy = LogSanitizePolicy::default();
-        extend_sensitive_fields(
-            &mut debug_policy.sensitive_headers,
-            &policy.sensitive_headers,
-        );
-        extend_sensitive_fields(
-            &mut debug_policy.sensitive_query_params,
-            &policy.sensitive_query_params,
-        );
-        extend_sensitive_fields(
-            &mut debug_policy.sensitive_body_fields,
-            &policy.sensitive_body_fields,
-        );
+        debug_policy
+            .sensitive_headers
+            .merge_strongest(&policy.sensitive_headers);
+        debug_policy
+            .sensitive_query_params
+            .merge_strongest(&policy.sensitive_query_params);
+        debug_policy
+            .sensitive_body_fields
+            .merge_strongest(&policy.sensitive_body_fields);
         Self::new(debug_policy)
     }
 
@@ -376,15 +373,6 @@ fn field_sanitizer(fields: &SensitiveFields) -> FieldSanitizer {
         sensitive_fields: fields.clone(),
         mask_policies: MaskPolicies::default(),
     })
-}
-
-fn extend_sensitive_fields(
-    target: &mut SensitiveFields,
-    source: &SensitiveFields,
-) {
-    for (field, level) in source.iter() {
-        target.insert(field, level);
-    }
 }
 
 impl Default for LogSanitizer {
