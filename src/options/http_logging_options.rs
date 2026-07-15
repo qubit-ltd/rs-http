@@ -16,6 +16,7 @@ use qubit_config::{
 };
 
 use super::HttpConfigError;
+use super::from_config_helpers::get_optional_usize;
 use crate::constants::DEFAULT_LOG_BODY_SIZE_LIMIT_BYTES;
 
 /// Controls TRACE-level HTTP request/response logging in [`crate::HttpLogger`].
@@ -74,7 +75,7 @@ where
         log_request_body: config.get_optional("log_request_body")?,
         log_response_header: config.get_optional("log_response_header")?,
         log_response_body: config.get_optional("log_response_body")?,
-        body_size_limit: config.get_optional("body_size_limit")?,
+        body_size_limit: get_optional_usize(config, "body_size_limit")?,
     })
 }
 
@@ -82,7 +83,7 @@ impl HttpLoggingOptions {
     /// Reads logging settings from `config` using **relative** keys.
     ///
     /// # Parameters
-    /// - `config`: Any [`ConfigReader`] (e.g. `config.prefix_view("logging")`).
+    /// - `config`: Any [`ConfigReader`] (e.g. `config.section("logging")`).
     ///
     /// Keys read (all optional; missing keys keep their defaults):
     /// - `enabled`

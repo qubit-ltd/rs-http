@@ -98,7 +98,7 @@ impl ProxyOptions {
     /// Reads proxy settings from `config` using **relative** keys.
     ///
     /// # Parameters
-    /// - `config`: Any [`ConfigReader`] (e.g. `config.prefix_view("proxy")`).
+    /// - `config`: Any [`ConfigReader`] (e.g. `config.section("proxy")`).
     ///
     /// Keys read:
     /// - `enabled`

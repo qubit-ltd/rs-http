@@ -47,7 +47,7 @@ tokio-util = { version = "0.7", features = ["rt"] }
 async-stream = "0.3"
 futures-util = "0.3"
 
-qubit-config = "0.14"
+qubit-config = { path = "../rs-config", version = "0.14", default-features = false }
 qubit-argument = "0.4"
 qubit-error = "0.2"
 qubit-function = { version = "0.16.0", path = "../rs-function" }
@@ -57,7 +57,10 @@ qubit-sanitize = { version = "0.3", path = "../rs-sanitize", default-features = 
 [dev-dependencies]
 tokio = { version = "1.52", features = ["full", "test-util"] }
 tracing-subscriber = { version = "0.3", features = ["fmt"] }
-qubit-datatype = { version = "0.3", features = ["converter"] }
+qubit-datatype = { path = "../rs-datatype", version = "0.6", features = ["converter"] }
+
+[patch.crates-io]
+qubit-datatype = { path = "../rs-datatype" }
 
 [package.metadata.docs.rs]
 all-features = true

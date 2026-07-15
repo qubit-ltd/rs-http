@@ -122,7 +122,7 @@ fn test_factory_proxy_with_auth_is_valid() {
 #[test]
 fn test_factory_create_from_config_minimal() {
     let config = Config::new();
-    let http = config.prefix_view("http");
+    let http = config.section("http");
     let factory = HttpClientFactory::new();
     let client = factory
         .create_from_config(&http)
@@ -138,7 +138,7 @@ fn test_factory_create_from_config_with_base_url() {
         .expect("test config should accept base_url");
 
     let factory = HttpClientFactory::new();
-    let http = config.prefix_view("http");
+    let http = config.section("http");
     let client = factory
         .create_from_config(&http)
         .expect("valid config should create client");
@@ -153,7 +153,7 @@ fn test_factory_create_from_config_scoped_reader() {
         .expect("test config should accept base_url");
 
     let factory = HttpClientFactory::new();
-    let http = config.prefix_view("http");
+    let http = config.section("http");
     let client = factory
         .create_from_config(&http)
         .expect("prefix view as ConfigReader should work");
@@ -186,7 +186,7 @@ fn test_factory_create_from_config_proxy_validation_error() {
         .expect("test config should set proxy.enabled");
 
     let factory = HttpClientFactory::new();
-    let http = config.prefix_view("http");
+    let http = config.section("http");
     let err = factory.create_from_config(&http).unwrap_err();
     assert_eq!(err.kind, HttpConfigErrorKind::MissingField);
     assert_eq!(err.path, "http.proxy.host");
@@ -226,23 +226,23 @@ fn test_factory_create_from_config_full() {
         .set("svc.logging.enabled", true)
         .expect("test config should set logging.enabled");
     config
-        .set("svc.logging.body_size_limit", 4096usize)
+        .set("svc.logging.body_size_limit", 4096u64)
         .expect("test config should set logging.body_size_limit");
     config
         .set("svc.user_agent", "qubit-http-tests/1.0".to_string())
         .expect("test config should set user_agent");
     config
-        .set("svc.max_redirects", 4_usize)
+        .set("svc.max_redirects", 4u64)
         .expect("test config should set max_redirects");
     config
         .set("svc.pool_idle_timeout", Duration::from_secs(10))
         .expect("test config should set pool_idle_timeout");
     config
-        .set("svc.pool_max_idle_per_host", 16_usize)
+        .set("svc.pool_max_idle_per_host", 16u64)
         .expect("test config should set pool_max_idle_per_host");
 
     let factory = HttpClientFactory::new();
-    let svc = config.prefix_view("svc");
+    let svc = config.section("svc");
     let client = factory
         .create_from_config(&svc)
         .expect("full config should create client");
@@ -394,7 +394,7 @@ fn test_factory_create_from_config_type_error_is_prefixed() {
         .expect("test config should set invalid type");
 
     let error = HttpClientFactory::new()
-        .create_from_config(&config.prefix_view("svc"))
+        .create_from_config(&config.section("svc"))
         .expect_err("type mismatch should fail");
 
     assert_eq!(error.kind, HttpConfigErrorKind::TypeError);
@@ -415,7 +415,7 @@ fn test_factory_create_from_config_maps_create_error_to_invalid_value() {
         .expect("test config should set proxy.port");
 
     let error = HttpClientFactory::new()
-        .create_from_config(&config.prefix_view("svc"))
+        .create_from_config(&config.section("svc"))
         .expect_err("invalid proxy URL should map to invalid value");
 
     assert_eq!(error.kind, HttpConfigErrorKind::InvalidValue);

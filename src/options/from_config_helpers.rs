@@ -11,14 +11,14 @@
 //! ## Standard configuration schema
 //!
 //! Keys are **relative** to the [`qubit_config::ConfigReader`] in use (often a
-//! [`qubit_config::ConfigPrefixView`] from
-//! [`qubit_config::ConfigReader::prefix_view`]).
+//! [`qubit_config::ConfigSection`] from
+//! [`qubit_config::ConfigReader::section`]).
 //!
 //! ```text
 //! base_url                   – Url
 //! ipv4_only                  – bool
 //!
-//! timeouts.*                 – nested timeouts (via `prefix_view("timeouts")`)
+//! timeouts.*                 – nested timeouts (via `section("timeouts")`)
 //! proxy.*                    – nested proxy
 //! logging.*                  – nested logging
 //! retry.*                    – nested retry
@@ -39,8 +39,37 @@ use http::{
     HeaderName,
     HeaderValue,
 };
+use qubit_config::{
+    ConfigError,
+    ConfigReader,
+    ConfigResult,
+};
 
 use super::HttpConfigError;
+
+/// Reads an optional fixed-width unsigned value and converts it to `usize`.
+///
+/// Configuration data stays platform-independent as `u64`; conversion to the
+/// platform-sized type happens only at the HTTP API boundary.
+pub(crate) fn get_optional_usize<R>(
+    config: &R,
+    key: &str,
+) -> ConfigResult<Option<usize>>
+where
+    R: ConfigReader + ?Sized,
+{
+    let Some(value) = config.get_optional::<u64>(key)? else {
+        return Ok(None);
+    };
+    usize::try_from(value).map(Some).map_err(|_| {
+        ConfigError::DeserializeError {
+            path: config.resolve_key(key),
+            message: "configuration value exceeds the platform usize range"
+                .to_string(),
+            source: None,
+        }
+    })
+}
 
 /// Converts a map of header names to values into an [`HeaderMap`].
 ///
