@@ -22,8 +22,8 @@ use qubit_http::{
     HttpErrorKind,
     HttpRequestBody,
     HttpRetryMethodPolicy,
+    SensitivityLevel,
 };
-use qubit_sanitize::SensitivityLevel;
 use serde::ser::{
     Error as _,
     Serializer,
@@ -55,12 +55,10 @@ fn test_request_builder_debug_masks_sensitive_values() {
         .expect("base URL should be valid");
     options
         .log_sanitize_policy
-        .sensitive_headers
-        .insert("x-debug-secret", SensitivityLevel::High);
+        .insert_sensitive_header("x-debug-secret", SensitivityLevel::High);
     options
         .log_sanitize_policy
-        .sensitive_query_params
-        .insert("debugToken", SensitivityLevel::High);
+        .insert_sensitive_query_param("debugToken", SensitivityLevel::High);
     let mut default_headers = HeaderMap::new();
     default_headers.insert(
         "x-debug-secret",

@@ -31,8 +31,8 @@ use qubit_http::{
     HttpRetryOptions,
     ProxyType,
     RetryDelay,
+    SensitivityLevel,
 };
-use qubit_sanitize::SensitivityLevel;
 
 #[test]
 fn test_http_client_options_defaults() {
@@ -109,10 +109,7 @@ fn test_http_client_options_new_matches_default() {
     );
     assert_eq!(options.use_env_proxy, defaults.use_env_proxy);
     assert_eq!(options.retry, defaults.retry);
-    assert_eq!(
-        options.log_sanitize_policy.sensitive_headers,
-        defaults.log_sanitize_policy.sensitive_headers
-    );
+    assert_eq!(options.log_sanitize_policy, defaults.log_sanitize_policy);
     assert_eq!(options.ipv4_only, defaults.ipv4_only);
     assert_eq!(options.sse_json_mode, defaults.sse_json_mode);
     assert_eq!(
@@ -153,8 +150,7 @@ fn test_http_client_options_debug_does_not_downgrade_builtin_sensitivity() {
     let mut options = HttpClientOptions::new();
     options
         .log_sanitize_policy
-        .sensitive_headers
-        .insert("authorization", SensitivityLevel::Low);
+        .set_sensitive_header_level("authorization", SensitivityLevel::Low);
     options
         .add_header("authorization", "Bearer downgrade-secret")
         .expect("sensitive default header should be accepted");
@@ -434,32 +430,32 @@ fn test_http_client_options_log_sanitize_section() {
     let opts = HttpClientOptions::from_config(&config.section("http")).unwrap();
     assert!(opts
         .log_sanitize_policy
-        .sensitive_headers
-        .contains("x-custom-secret"));
+        .sensitivity_for_header("x-custom-secret")
+        .is_some());
     assert!(opts
         .log_sanitize_policy
-        .sensitive_headers
-        .contains("x-api-token"));
+        .sensitivity_for_header("x-api-token")
+        .is_some());
     assert!(opts
         .log_sanitize_policy
-        .sensitive_headers
-        .contains("authorization"));
+        .sensitivity_for_header("authorization")
+        .is_some());
     assert!(opts
         .log_sanitize_policy
-        .sensitive_query_params
-        .contains("session_token"));
+        .sensitivity_for_query_param("session_token")
+        .is_some());
     assert!(opts
         .log_sanitize_policy
-        .sensitive_query_params
-        .contains("access_token"));
+        .sensitivity_for_query_param("access_token")
+        .is_some());
     assert!(opts
         .log_sanitize_policy
-        .sensitive_body_fields
-        .contains("customer_secret"));
+        .sensitivity_for_body_field("customer_secret")
+        .is_some());
     assert!(opts
         .log_sanitize_policy
-        .sensitive_body_fields
-        .contains("client_secret"));
+        .sensitivity_for_body_field("client_secret")
+        .is_some());
 }
 
 #[test]
@@ -474,11 +470,10 @@ fn test_http_client_options_root_sensitive_headers_is_not_supported() {
 
     let opts = HttpClientOptions::from_config(&config.section("http")).unwrap();
 
-    assert!(!opts
+    assert!(opts
         .log_sanitize_policy
-        .sensitive_headers
-        .iter()
-        .any(|(header, _)| header == "xlegacysecret"));
+        .sensitivity_for_header("xlegacysecret")
+        .is_none());
 }
 
 #[test]
@@ -1161,16 +1156,16 @@ fn test_http_client_options_from_root_config_all_sections() {
     assert!(opts.default_headers.contains_key("x-root"));
     assert!(opts
         .log_sanitize_policy
-        .sensitive_headers
-        .contains("x-root-secret"));
+        .sensitivity_for_header("x-root-secret")
+        .is_some());
     assert!(opts
         .log_sanitize_policy
-        .sensitive_query_params
-        .contains("root_token"));
+        .sensitivity_for_query_param("root_token")
+        .is_some());
     assert!(opts
         .log_sanitize_policy
-        .sensitive_body_fields
-        .contains("root_password"));
+        .sensitivity_for_body_field("root_password")
+        .is_some());
     assert_eq!(opts.timeouts.connect_timeout, Duration::from_secs(3));
     assert_eq!(opts.timeouts.request_timeout, Some(Duration::from_secs(6)));
     assert!(opts.proxy.enabled);
@@ -1205,7 +1200,10 @@ fn test_http_client_options_log_sanitize_header_number_from_config_is_converted(
 
     let opts = HttpClientOptions::from_config(&config.section("http")).unwrap();
 
-    assert!(opts.log_sanitize_policy.sensitive_headers.contains("123"));
+    assert!(opts
+        .log_sanitize_policy
+        .sensitivity_for_header("123")
+        .is_some());
 }
 
 #[test]

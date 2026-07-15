@@ -57,6 +57,7 @@ pub use qubit_retry::{
     RetryJitter,
     RetryOptions,
 };
+pub use qubit_sanitize::SensitivityLevel;
 pub use request::{
     AsyncHttpHeaderInjector,
     HttpHeaderInjector,

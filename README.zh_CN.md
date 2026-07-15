@@ -75,27 +75,34 @@ URL 用户信息、URL fragment、query 参数和 JSON/form/multipart body 字�
 并兼容 `access_token`、`access-token`、`accessToken` 这类常见写法：
 
 ```rust
-use qubit_http::{HttpClientFactory, HttpClientOptions};
-use qubit_sanitize::SensitivityLevel;
+use qubit_http::{
+    HttpClientFactory,
+    HttpClientOptions,
+    SensitivityLevel,
+};
 
 let mut options = HttpClientOptions::new();
 options.logging.enabled = true;
 options.logging.log_request_body = true;
-options
-    .log_sanitize_policy
-    .sensitive_headers
-    .insert("x-api-key", SensitivityLevel::High);
-options
-    .log_sanitize_policy
-    .sensitive_query_params
-    .insert("access_token", SensitivityLevel::High);
-options
-    .log_sanitize_policy
-    .sensitive_body_fields
-    .insert("password", SensitivityLevel::Secret);
+options.log_sanitize_policy.insert_sensitive_header(
+    "x-api-key",
+    SensitivityLevel::High,
+);
+options.log_sanitize_policy.insert_sensitive_query_param(
+    "access_token",
+    SensitivityLevel::High,
+);
+options.log_sanitize_policy.insert_sensitive_body_field(
+    "password",
+    SensitivityLevel::Secret,
+);
 
 let client = HttpClientFactory::new().create(options)?;
 ```
+
+`insert_*` 和 `extend_*` 方法会保留已配置的最强等级。只有明确需要覆盖（包括降级）
+时才使用对应的 `set_*_level` 方法。若要完全自定义策略，请从
+`LogSanitizePolicy::empty()` 开始。
 
 ## 后续阅读
 

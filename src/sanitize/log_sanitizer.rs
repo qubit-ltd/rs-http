@@ -19,6 +19,7 @@ use qubit_sanitize::{
     MaskPolicies,
     NameMatchMode,
     SensitiveFields,
+    TextBodyPolicy,
     UrlSanitizer,
 };
 use url::Url;
@@ -57,14 +58,15 @@ impl LogSanitizer {
     pub fn new(policy: LogSanitizePolicy) -> Self {
         Self {
             url_sanitizer: UrlSanitizer::new(field_sanitizer(
-                &policy.sensitive_query_params,
+                policy.sensitive_query_params(),
             )),
             header_sanitizer: HttpHeaderSanitizer::new(field_sanitizer(
-                &policy.sensitive_headers,
+                policy.sensitive_headers(),
             )),
             body_sanitizer: HttpBodySanitizer::new(field_sanitizer(
-                &policy.sensitive_body_fields,
-            )),
+                policy.sensitive_body_fields(),
+            ))
+            .with_text_body_policy(TextBodyPolicy::PassThrough),
             policy,
         }
     }
@@ -78,15 +80,15 @@ impl LogSanitizer {
     /// Sanitizer that always includes safe built-in defaults plus custom names.
     pub(crate) fn for_debug(policy: &LogSanitizePolicy) -> Self {
         let mut debug_policy = LogSanitizePolicy::default();
-        debug_policy
-            .sensitive_headers
-            .merge_strongest(&policy.sensitive_headers);
-        debug_policy
-            .sensitive_query_params
-            .merge_strongest(&policy.sensitive_query_params);
-        debug_policy
-            .sensitive_body_fields
-            .merge_strongest(&policy.sensitive_body_fields);
+        for (name, level) in policy.sensitive_headers().iter() {
+            debug_policy.insert_sensitive_header(name, level);
+        }
+        for (name, level) in policy.sensitive_query_params().iter() {
+            debug_policy.insert_sensitive_query_param(name, level);
+        }
+        for (name, level) in policy.sensitive_body_fields().iter() {
+            debug_policy.insert_sensitive_body_field(name, level);
+        }
         Self::new(debug_policy)
     }
 
@@ -260,13 +262,19 @@ impl LogSanitizer {
             },
             None => None,
         };
-        let rendered = self.body_sanitizer.sanitize_body_preview(
+        let result = self.body_sanitizer.sanitize_body_preview(
             preview.prefix(),
             preview.source_len(),
             content_type.as_ref(),
             LOG_NAME_MATCH_MODE,
         );
-        Self::normalize_error_truncation_suffix(rendered, preview)
+        if preview.context == BodyLogContext::ErrorResponse
+            && result.is_truncated()
+        {
+            format!("{}{}", result.into_content(), preview.truncation_suffix())
+        } else {
+            result.into_rendered()
+        }
     }
 
     /// Sanitizes body bytes for one logging call site.
@@ -337,42 +345,13 @@ impl LogSanitizer {
             preview.truncation_suffix()
         )
     }
-
-    /// Converts `qubit-sanitize` counted truncation suffix to rs-http's
-    /// historical status-error suffix.
-    ///
-    /// # Parameters
-    /// - `rendered`: Body text returned by `qubit-sanitize`.
-    /// - `preview`: Original preview metadata.
-    ///
-    /// # Returns
-    /// Body text with the suffix expected by status-error diagnostics.
-    fn normalize_error_truncation_suffix(
-        rendered: String,
-        preview: &BodyPreview<'_>,
-    ) -> String {
-        if preview.context != BodyLogContext::ErrorResponse
-            || !preview.is_truncated()
-        {
-            return rendered;
-        }
-        let counted = format!(
-            "...<truncated {} bytes>",
-            preview.source_len().saturating_sub(preview.prefix().len())
-        );
-        if let Some(prefix) = rendered.strip_suffix(&counted) {
-            format!("{prefix}{}", preview.truncation_suffix())
-        } else {
-            format!("{rendered}{}", preview.truncation_suffix())
-        }
-    }
 }
 
 fn field_sanitizer(fields: &SensitiveFields) -> FieldSanitizer {
-    FieldSanitizer::new(FieldSanitizePolicy {
-        sensitive_fields: fields.clone(),
-        mask_policies: MaskPolicies::default(),
-    })
+    FieldSanitizer::new(FieldSanitizePolicy::new(
+        fields.clone(),
+        MaskPolicies::default(),
+    ))
 }
 
 impl Default for LogSanitizer {

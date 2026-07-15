@@ -15,9 +15,6 @@ use http::header::{
 use qubit_http::{
     LogSanitizePolicy,
     LogSanitizer,
-};
-use qubit_sanitize::{
-    SensitiveFields,
     SensitivityLevel,
 };
 use url::Url;
@@ -125,10 +122,10 @@ fn test_log_sanitizer_sanitize_url_uses_shared_secret_level_for_password_query()
 fn test_log_sanitizer_policy_returns_underlying_policy() {
     let sanitizer = LogSanitizer::default();
 
-    assert!(sanitizer
-        .policy()
-        .sensitive_headers
-        .contains("authorization"));
+    assert_eq!(
+        sanitizer.policy().sensitivity_for_header("authorization"),
+        Some(SensitivityLevel::High),
+    );
 }
 
 #[test]
@@ -140,7 +137,10 @@ fn test_log_sanitizer_sanitize_url_masks_password() {
 
     let sanitized = sanitizer.sanitize_url(&url);
 
-    assert_eq!(sanitized, "https://****:****@example.com/search?q=rust");
+    assert_eq!(
+        sanitized,
+        "https://****:%3Credacted%3E@example.com/search?q=rust"
+    );
     assert!(!sanitized.contains("alice"));
     assert!(!sanitized.contains("secret-password"));
 }
@@ -157,7 +157,7 @@ fn test_log_sanitizer_sanitize_url_masks_userinfo_and_fragment() {
 
     assert_eq!(
         sanitized,
-        "https://****:****@example.com/callback?access_token=****#****"
+        "https://****:%3Credacted%3E@example.com/callback?access_token=****#****"
     );
     assert!(!sanitized.contains("api-token"));
     assert!(!sanitized.contains("secret-password"));
@@ -272,6 +272,8 @@ fn test_log_sanitizer_error_response_truncation_normalizes_suffix_only() {
         sanitized,
         "body marker ...<truncated 2 bytes> stays...<truncated>"
     );
+    assert!(sanitized.contains("...<truncated 2 bytes>"));
+    assert_eq!(sanitized.matches("...<truncated>").count(), 1);
 }
 
 #[test]
@@ -735,11 +737,8 @@ fn test_log_sanitizer_sanitize_body_preview_redacts_form_fields() {
 
 #[test]
 fn test_log_sanitizer_sanitize_body_preview_uses_custom_policy() {
-    let mut policy = LogSanitizePolicy::default();
-    policy.sensitive_body_fields = SensitiveFields::new();
-    policy
-        .sensitive_body_fields
-        .insert("customer_id", SensitivityLevel::High);
+    let mut policy = LogSanitizePolicy::empty();
+    policy.insert_sensitive_body_field("customer_id", SensitivityLevel::High);
     let sanitizer = LogSanitizer::new(policy);
     let body =
         Bytes::from_static(br#"{"customer_id":"C-001","password":"kept"}"#);

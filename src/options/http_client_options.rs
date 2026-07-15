@@ -569,18 +569,19 @@ impl HttpClientOptions {
                 };
             if let Some(names) = log_sanitize.sensitive_headers {
                 opts.log_sanitize_policy
-                    .sensitive_headers
-                    .extend(names, SensitivityLevel::High);
+                    .extend_sensitive_headers(names, SensitivityLevel::High);
             }
             if let Some(names) = log_sanitize.sensitive_query_params {
-                opts.log_sanitize_policy
-                    .sensitive_query_params
-                    .extend(names, SensitivityLevel::High);
+                opts.log_sanitize_policy.extend_sensitive_query_params(
+                    names,
+                    SensitivityLevel::High,
+                );
             }
             if let Some(names) = log_sanitize.sensitive_body_fields {
-                opts.log_sanitize_policy
-                    .sensitive_body_fields
-                    .extend(names, SensitivityLevel::High);
+                opts.log_sanitize_policy.extend_sensitive_body_fields(
+                    names,
+                    SensitivityLevel::High,
+                );
             }
         }
 
