@@ -100,7 +100,7 @@ impl HttpTimeoutOptions {
     ///
     /// # Parameters
     /// - `config`: Any [`ConfigReader`] (e.g. root [`qubit_config::Config`] or
-    ///   `config.prefix_view("timeouts")`).
+    ///   `config.section("timeouts")`).
     ///
     /// Keys read (all optional; missing keys keep their defaults):
     /// - `connect_timeout`

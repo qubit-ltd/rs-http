@@ -24,7 +24,10 @@ use qubit_sanitize::SensitivityLevel;
 use std::str::FromStr;
 use url::Url;
 
-use super::from_config_helpers::hashmap_to_headermap;
+use super::from_config_helpers::{
+    get_optional_usize,
+    hashmap_to_headermap,
+};
 use super::http_logging_options::HttpLoggingOptions;
 use super::http_retry_options::HttpRetryOptions;
 use super::http_timeout_options::HttpTimeoutOptions;
@@ -206,13 +209,17 @@ impl HttpClientOptions {
         Ok(HttpClientRootConfigInput {
             base_url: config.get_optional_string("base_url")?,
             ipv4_only: config.get_optional("ipv4_only")?,
-            error_response_preview_limit: config
-                .get_optional("error_response_preview_limit")?,
+            error_response_preview_limit: get_optional_usize(
+                config,
+                "error_response_preview_limit",
+            )?,
             user_agent: config.get_optional_string("user_agent")?,
-            max_redirects: config.get_optional("max_redirects")?,
+            max_redirects: get_optional_usize(config, "max_redirects")?,
             pool_idle_timeout: config.get_optional("pool_idle_timeout")?,
-            pool_max_idle_per_host: config
-                .get_optional("pool_max_idle_per_host")?,
+            pool_max_idle_per_host: get_optional_usize(
+                config,
+                "pool_max_idle_per_host",
+            )?,
             use_env_proxy: config.get_optional("use_env_proxy")?,
         })
     }
@@ -224,8 +231,8 @@ impl HttpClientOptions {
         Ok(HttpClientSseConfigInput {
             json_mode: config.get_optional_string("json_mode")?,
             done_marker: config.get_optional_string("done_marker")?,
-            max_line_bytes: config.get_optional("max_line_bytes")?,
-            max_frame_bytes: config.get_optional("max_frame_bytes")?,
+            max_line_bytes: get_optional_usize(config, "max_line_bytes")?,
+            max_frame_bytes: get_optional_usize(config, "max_frame_bytes")?,
         })
     }
 
@@ -361,8 +368,8 @@ impl HttpClientOptions {
     ///
     /// # Parameters
     /// - `config`: Any [`ConfigReader`] (full [`qubit_config::Config`] or a
-    ///   [`qubit_config::ConfigPrefixView`] from
-    ///   [`ConfigReader::prefix_view`]).
+    ///   [`qubit_config::ConfigSection`] from
+    ///   [`ConfigReader::section`]).
     ///
     /// # Returns
     /// Parsed options or [`HttpConfigError`].
@@ -421,7 +428,7 @@ impl HttpClientOptions {
 
         // timeouts
         if config.contains_prefix("timeouts") {
-            let timeouts_config = config.prefix_view("timeouts");
+            let timeouts_config = config.section("timeouts");
             opts.timeouts =
                 match HttpTimeoutOptions::from_config(&timeouts_config) {
                     Ok(timeouts) => timeouts,
@@ -436,7 +443,7 @@ impl HttpClientOptions {
 
         // proxy
         if config.contains_prefix("proxy") {
-            let proxy_config = config.prefix_view("proxy");
+            let proxy_config = config.section("proxy");
             opts.proxy = match ProxyOptions::from_config(&proxy_config) {
                 Ok(proxy) => proxy,
                 Err(error) => {
@@ -450,7 +457,7 @@ impl HttpClientOptions {
 
         // logging
         if config.contains_prefix("logging") {
-            let logging_config = config.prefix_view("logging");
+            let logging_config = config.section("logging");
             opts.logging =
                 match HttpLoggingOptions::from_config(&logging_config) {
                     Ok(logging) => logging,
@@ -464,7 +471,7 @@ impl HttpClientOptions {
         }
 
         if config.contains_prefix("retry") {
-            let retry_config = config.prefix_view("retry");
+            let retry_config = config.section("retry");
             opts.retry = match HttpRetryOptions::from_config(&retry_config) {
                 Ok(retry) => retry,
                 Err(error) => {
@@ -477,7 +484,7 @@ impl HttpClientOptions {
         }
 
         if config.contains_prefix("sse") {
-            let sse_config = config.prefix_view("sse");
+            let sse_config = config.section("sse");
             let sse = match Self::read_sse_config(&sse_config) {
                 Ok(sse) => sse,
                 Err(error) => {
@@ -541,7 +548,7 @@ impl HttpClientOptions {
         }
 
         if config.contains_prefix("log_sanitize") {
-            let log_sanitize_config = config.prefix_view("log_sanitize");
+            let log_sanitize_config = config.section("log_sanitize");
             let log_sanitize =
                 match Self::read_log_sanitize_config(&log_sanitize_config) {
                     Ok(log_sanitize) => log_sanitize,

@@ -166,8 +166,8 @@ impl HttpClientFactory {
     ///
     /// # Parameters
     /// - `config`: Any [`ConfigReader`] (root [`qubit_config::Config`] or a
-    ///   [`qubit_config::ConfigPrefixView`] from
-    ///   [`ConfigReader::prefix_view`]).
+    ///   [`qubit_config::ConfigSection`] from
+    ///   [`ConfigReader::section`]).
     ///
     /// # Returns
     /// - `Ok(HttpClient)` when parsing, validation, and client build succeed.

@@ -19,7 +19,7 @@ This guide is based on the current source code and tests. It applies to crate `q
 [dependencies]
 qubit-http = "0.8"
 http = "1.4"
-qubit-config = "0.9"
+qubit-config = { path = "../rs-config", version = "0.14", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
@@ -124,7 +124,7 @@ let client = HttpClientFactory::new().create(options)?;
 
 ### Loading From qubit-config
 
-`HttpClientOptions::from_config` and `HttpClientFactory::create_from_config` accept any `qubit_config::ConfigReader`. If you pass `config.prefix_view("http")`, all keys below are read relative to that prefix.
+`HttpClientOptions::from_config` and `HttpClientFactory::create_from_config` accept any `qubit_config::ConfigReader`. If you pass `config.section("http")`, all keys below are read relative to that prefix.
 
 ```rust
 use std::time::Duration;
@@ -139,7 +139,7 @@ config.set("http.retry.delay_strategy", "FIXED".to_string())?;
 config.set("http.retry.fixed_delay", Duration::from_millis(250))?;
 
 let client = HttpClientFactory::new()
-    .create_from_config(&config.prefix_view("http"))?;
+    .create_from_config(&config.section("http"))?;
 ```
 
 Common configuration keys:
@@ -805,7 +805,7 @@ The default reconnect settings are `retry.max_attempts = 4` (that is, at most 3 
 
 ## Configuration Reference
 
-The table below lists every configuration key supported by `HttpClientOptions::from_config`. If you pass `config.prefix_view("http")`, these keys are read relative to that prefix.
+The table below lists every configuration key supported by `HttpClientOptions::from_config`. If you pass `config.section("http")`, these keys are read relative to that prefix.
 
 | Key | Description |
 | --- | --- |
@@ -863,4 +863,4 @@ The table below lists every configuration key supported by `HttpClientOptions::f
 - Set a realistic `read_timeout` for long-lived streams/SSE; too short a value turns a slow but healthy stream into `ReadTimeout`.
 - TRACE response-body logging only pre-reads and caches known-size non-SSE bodies within the log limit; unknown-size streaming responses and SSE are not consumed for logging.
 - Keep `proxy.enabled = false` and `use_env_proxy = false` when you want proxying fully disabled; explicitly enable `use_env_proxy` when environment proxy inheritance is desired.
-- Prefer passing a scoped `prefix_view("http")` to `from_config`/`create_from_config`, so error paths preserve useful context.
+- Prefer passing a scoped `section("http")` to `from_config`/`create_from_config`, so error paths preserve useful context.

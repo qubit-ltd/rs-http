@@ -123,10 +123,10 @@ fn test_http_config_error_from_conversion_error_maps_to_type_error() {
         HttpConfigError::from(qubit_config::ConfigError::ConversionError {
             key: "svc.timeout".to_string(),
             source_index: None,
-            source: qubit_datatype::DataConversionError::Invalid {
+            source: qubit_datatype::DataConversionError::InvalidValue {
                 from: DataType::String,
                 to: DataType::Duration,
-                kind: qubit_datatype::DataConversionErrorKind::InvalidSyntax {
+                reason: qubit_datatype::InvalidValueReason::InvalidSyntax {
                     expected: "a duration",
                 },
             },

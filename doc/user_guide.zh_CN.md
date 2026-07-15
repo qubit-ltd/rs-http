@@ -19,7 +19,7 @@
 [dependencies]
 qubit-http = "0.8"
 http = "1.4"
-qubit-config = "0.9"
+qubit-config = { path = "../rs-config", version = "0.14", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
@@ -124,7 +124,7 @@ let client = HttpClientFactory::new().create(options)?;
 
 ### 从 qubit-config 读取
 
-`HttpClientOptions::from_config` 和 `HttpClientFactory::create_from_config` 接收任意 `qubit_config::ConfigReader`。如果传入 `config.prefix_view("http")`，下面表格中的键都按相对路径读取。
+`HttpClientOptions::from_config` 和 `HttpClientFactory::create_from_config` 接收任意 `qubit_config::ConfigReader`。如果传入 `config.section("http")`，下面表格中的键都按相对路径读取。
 
 ```rust
 use std::time::Duration;
@@ -139,7 +139,7 @@ config.set("http.retry.delay_strategy", "FIXED".to_string())?;
 config.set("http.retry.fixed_delay", Duration::from_millis(250))?;
 
 let client = HttpClientFactory::new()
-    .create_from_config(&config.prefix_view("http"))?;
+    .create_from_config(&config.section("http"))?;
 ```
 
 常用配置键：
@@ -805,7 +805,7 @@ while let Some(item) = events.next().await {
 
 ## 配置参考
 
-下表列出 `HttpClientOptions::from_config` 支持的完整配置键。若传入 `config.prefix_view("http")`，这些键都按相对路径读取。
+下表列出 `HttpClientOptions::from_config` 支持的完整配置键。若传入 `config.section("http")`，这些键都按相对路径读取。
 
 | 键 | 说明 |
 | --- | --- |
@@ -863,4 +863,4 @@ while let Some(item) = events.next().await {
 - 对长连接/SSE 设置合理的 `read_timeout`；过短会把正常的慢流误判为 `ReadTimeout`。
 - TRACE 响应体日志只会预读并缓存已知长度且不超过日志限制的非 SSE body；真正的未知长度流式响应和 SSE 不会为了日志被消费。
 - 需要完全禁用代理时保持默认 `proxy.enabled = false` 且 `use_env_proxy = false`；需要继承环境代理时显式打开 `use_env_proxy`。
-- 如果使用 `from_config`，优先传入 `prefix_view("http")` 一类的作用域视图，这样错误路径会保留完整上下文。
+- 如果使用 `from_config`，优先传入 `section("http")` 一类的作用域视图，这样错误路径会保留完整上下文。
