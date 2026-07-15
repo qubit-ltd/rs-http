@@ -278,7 +278,7 @@ async fn test_execute_sse_with_reconnect_server_retry_overrides_once_and_preserv
     let request_starts = Arc::new(Mutex::new(Vec::new()));
     let request_starts_for_interceptor = Arc::clone(&request_starts);
     client.add_request_interceptor(HttpRequestInterceptor::new(
-        move |_request| {
+        move |_request: &mut qubit_http::HttpRequest| {
             request_starts_for_interceptor
                 .lock()
                 .expect("request_starts mutex should not be poisoned")
@@ -381,7 +381,7 @@ async fn test_execute_sse_with_reconnect_caps_server_retry_delay() {
     let request_starts = Arc::new(Mutex::new(Vec::new()));
     let request_starts_for_interceptor = Arc::clone(&request_starts);
     client.add_request_interceptor(HttpRequestInterceptor::new(
-        move |_request| {
+        move |_request: &mut qubit_http::HttpRequest| {
             request_starts_for_interceptor
                 .lock()
                 .expect("request_starts mutex should not be poisoned")
@@ -470,7 +470,7 @@ async fn test_execute_sse_with_reconnect_derives_server_retry_cap_from_delay_str
     let request_starts = Arc::new(Mutex::new(Vec::new()));
     let request_starts_for_interceptor = Arc::clone(&request_starts);
     client.add_request_interceptor(HttpRequestInterceptor::new(
-        move |_request| {
+        move |_request: &mut qubit_http::HttpRequest| {
             request_starts_for_interceptor
                 .lock()
                 .expect("request_starts mutex should not be poisoned")
@@ -566,7 +566,7 @@ async fn test_execute_sse_with_reconnect_can_disable_server_retry_jitter() {
     let request_starts = Arc::new(Mutex::new(Vec::new()));
     let request_starts_for_interceptor = Arc::clone(&request_starts);
     client.add_request_interceptor(HttpRequestInterceptor::new(
-        move |_request| {
+        move |_request: &mut qubit_http::HttpRequest| {
             request_starts_for_interceptor
                 .lock()
                 .expect("request_starts mutex should not be poisoned")
@@ -838,7 +838,7 @@ async fn test_execute_sse_with_reconnect_disables_inner_http_retry() {
     let attempts = Arc::new(AtomicUsize::new(0));
     let attempts_for_interceptor = Arc::clone(&attempts);
     client.add_request_interceptor(HttpRequestInterceptor::new(
-        move |_request| {
+        move |_request: &mut qubit_http::HttpRequest| {
             attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
             Err(HttpError::transport("injector transient transport failure"))
         },
@@ -1169,7 +1169,7 @@ async fn test_execute_sse_with_reconnect_does_not_retry_non_retryable_protocol_e
     let attempts = Arc::new(AtomicUsize::new(0));
     let attempts_for_interceptor = Arc::clone(&attempts);
     client.add_request_interceptor(HttpRequestInterceptor::new(
-        move |_request| {
+        move |_request: &mut qubit_http::HttpRequest| {
             attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
             Ok(())
         },
@@ -1279,7 +1279,7 @@ async fn test_execute_sse_with_reconnect_retries_on_unexpected_eof_message() {
     let attempts = Arc::new(AtomicUsize::new(0));
     let attempts_for_interceptor = Arc::clone(&attempts);
     client.add_request_interceptor(HttpRequestInterceptor::new(
-        move |_request| {
+        move |_request: &mut qubit_http::HttpRequest| {
             let current =
                 attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
             if current == 0 {
@@ -1344,7 +1344,7 @@ async fn test_execute_sse_with_reconnect_retries_on_unexpected_eof_source_messag
     let attempts = Arc::new(AtomicUsize::new(0));
     let attempts_for_interceptor = Arc::clone(&attempts);
     client.add_request_interceptor(HttpRequestInterceptor::new(
-        move |_request| {
+        move |_request: &mut qubit_http::HttpRequest| {
             let current =
                 attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
             if current == 0 {
@@ -1398,7 +1398,7 @@ async fn test_execute_sse_with_reconnect_does_not_retry_non_eof_source_error() {
     let attempts = Arc::new(AtomicUsize::new(0));
     let attempts_for_interceptor = Arc::clone(&attempts);
     client.add_request_interceptor(HttpRequestInterceptor::new(
-        move |_request| {
+        move |_request: &mut qubit_http::HttpRequest| {
             attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
             Err(HttpError::other("local SSE non-EOF failure")
                 .with_source(IoError::other("ordinary source error")))
@@ -1438,7 +1438,7 @@ async fn test_execute_sse_with_reconnect_does_not_retry_cancelled_error() {
     let attempts = Arc::new(AtomicUsize::new(0));
     let attempts_for_interceptor = Arc::clone(&attempts);
     client.add_request_interceptor(HttpRequestInterceptor::new(
-        move |_request| {
+        move |_request: &mut qubit_http::HttpRequest| {
             attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
             Err(HttpError::cancelled("cancelled before SSE send"))
         },
@@ -1490,7 +1490,7 @@ async fn test_execute_sse_with_reconnect_reports_cancelled_stream_before_reading
     let token = CancellationToken::new();
     let token_for_interceptor = token.clone();
     client.add_response_interceptor(HttpResponseInterceptor::new(
-        move |_meta| {
+        move |_meta: &mut qubit_http::HttpResponseInterceptorContext| {
             token_for_interceptor.cancel();
             Ok(())
         },

@@ -21,12 +21,15 @@ use url::Url;
 #[test]
 fn test_http_response_interceptors_clear_removes_registered_callbacks() {
     let mut interceptors = HttpResponseInterceptors::new();
-    interceptors.push(HttpResponseInterceptor::new(|context| {
-        context
-            .headers_mut()
-            .insert("x-interceptor", http::HeaderValue::from_static("called"));
-        Ok(())
-    }));
+    interceptors.push(HttpResponseInterceptor::new(
+        |context: &mut qubit_http::HttpResponseInterceptorContext| {
+            context.headers_mut().insert(
+                "x-interceptor",
+                http::HeaderValue::from_static("called"),
+            );
+            Ok(())
+        },
+    ));
     interceptors.clear();
     let mut meta = HttpResponseMeta::new(
         StatusCode::OK,
