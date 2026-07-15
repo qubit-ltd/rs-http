@@ -666,7 +666,9 @@ impl HttpClient {
                     Self::map_retry_aborted(error, attempts, started_at)
                 }
             }
-            RetryErrorReason::UnsupportedOperation | RetryErrorReason::WorkerStillRunning => HttpError::other(format!(
+            RetryErrorReason::UnsupportedOperation
+            | RetryErrorReason::SleeperFailed
+            | RetryErrorReason::WorkerStillRunning => HttpError::other(format!(
                 "HTTP retry executor failed after {attempts} attempt(s): {reason:?}"
             )),
         }

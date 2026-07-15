@@ -122,7 +122,14 @@ fn test_http_config_error_from_conversion_error_maps_to_type_error() {
     let error =
         HttpConfigError::from(qubit_config::ConfigError::ConversionError {
             key: "svc.timeout".to_string(),
-            message: "bad duration".to_string(),
+            source_index: None,
+            source: qubit_datatype::DataConversionError::Invalid {
+                from: DataType::String,
+                to: DataType::Duration,
+                kind: qubit_datatype::DataConversionErrorKind::InvalidSyntax {
+                    expected: "a duration",
+                },
+            },
         });
 
     assert_eq!(error.kind, HttpConfigErrorKind::TypeError);
