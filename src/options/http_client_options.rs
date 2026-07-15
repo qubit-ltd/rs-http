@@ -194,8 +194,17 @@ impl HttpClientOptions {
     where
         R: ConfigReader + ?Sized,
     {
+        let section_path = config.resolve_key("");
         error.path = if error.path.is_empty() {
-            config.resolve_key("")
+            section_path
+        } else if section_path.is_empty()
+            || error.path == section_path
+            || error
+                .path
+                .strip_prefix(&section_path)
+                .is_some_and(|suffix| suffix.starts_with('.'))
+        {
+            error.path
         } else {
             config.resolve_key(&error.path)
         };
@@ -368,8 +377,7 @@ impl HttpClientOptions {
     ///
     /// # Parameters
     /// - `config`: Any [`ConfigReader`] (full [`qubit_config::Config`] or a
-    ///   [`qubit_config::ConfigSection`] from
-    ///   [`ConfigReader::section`]).
+    ///   [`qubit_config::ConfigSection`] from [`ConfigReader::section`]).
     ///
     /// # Returns
     /// Parsed options or [`HttpConfigError`].
