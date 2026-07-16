@@ -8,7 +8,12 @@
 
 use super::BodyLogContext;
 
-/// Bounded body bytes plus enough context to render a log-safe preview.
+/// Bounded body bytes plus enough context to render a policy-controlled
+/// preview.
+///
+/// This descriptor does not itself guarantee redaction. Rendering with
+/// [`super::TextBodyPolicy::PassThrough`] may expose opaque text from the
+/// original body verbatim.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct BodyPreview<'a> {
     /// Full body bytes, or an already bounded prefix when `truncated` is set.
