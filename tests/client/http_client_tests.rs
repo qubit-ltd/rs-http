@@ -1279,6 +1279,41 @@ async fn test_execute_retry_max_duration_returns_last_error_after_retry_delay()
 }
 
 #[tokio::test]
+async fn test_execute_retry_in_flight_max_duration_does_not_panic() {
+    let server = spawn_multi_shot_server(vec![ResponsePlan::DelayedStart {
+        delay: Duration::from_millis(100),
+        status: 200,
+        headers: vec![],
+        body: b"late".to_vec(),
+    }])
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.retry.enabled = true;
+    options.retry.max_attempts = 3;
+    options.retry.max_duration = Some(Duration::from_millis(10));
+    options.retry.delay_strategy = RetryDelay::None;
+    let client = HttpClientFactory::new()
+        .create(options)
+        .expect("HTTP client should build");
+
+    let request = client.request(Method::GET, "/in-flight-timeout").build();
+    let error = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .expect_err("max duration should terminate the in-flight request");
+
+    assert_eq!(error.kind, HttpErrorKind::RetryMaxElapsedExceeded);
+    assert!(error.message.contains("retry max duration exceeded"));
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.len(), 1);
+}
+
+#[tokio::test]
 async fn test_execute_retry_max_duration_zero_reports_no_retryable_failure() {
     let server = spawn_multi_shot_server(vec![]).await;
 
