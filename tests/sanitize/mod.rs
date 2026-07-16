@@ -9,3 +9,4 @@
 mod body_preview_tests;
 mod log_sanitize_policy_tests;
 mod log_sanitizer_tests;
+mod url_path_policy_tests;

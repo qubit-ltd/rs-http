@@ -13,10 +13,13 @@ mod log_sanitize_policy;
 mod log_sanitizer;
 mod sanitized_debugger;
 mod sanitized_logger;
+mod url_path_policy;
 
 pub(crate) use body_log_context::BodyLogContext;
 pub(crate) use body_preview::BodyPreview;
 pub use log_sanitize_policy::LogSanitizePolicy;
 pub use log_sanitizer::LogSanitizer;
+pub use qubit_sanitize::TextBodyPolicy;
 pub(crate) use sanitized_debugger::SanitizedDebugger;
 pub(crate) use sanitized_logger::SanitizedLogger;
+pub use url_path_policy::UrlPathPolicy;

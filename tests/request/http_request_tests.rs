@@ -25,6 +25,8 @@ use qubit_http::{
     HttpRequestRetryOverride,
     HttpRequestStreamingBody,
     HttpRetryMethodPolicy,
+    LogSanitizePolicy,
+    UrlPathPolicy,
 };
 use url::Url;
 
@@ -108,6 +110,31 @@ fn test_http_request_debug_masks_sensitive_values() {
     assert!(!debug.contains("debug-header-secret"));
     assert!(!debug.contains("debug-body-secret"));
     assert!(debug.contains("****"));
+}
+
+#[test]
+fn test_http_request_debug_honors_url_path_redaction_policy() {
+    let mut options = HttpClientOptions::new();
+    options.log_sanitize_policy = LogSanitizePolicy::default()
+        .with_url_path_policy(UrlPathPolicy::Redact);
+    let client = HttpClientFactory::new()
+        .create(options)
+        .expect("client should be created");
+    let request = client
+        .request(
+            Method::GET,
+            "https://alice:request-password-secret@example.com/tenant/request-path-secret?access_token=request-query-secret#request-fragment-secret",
+        )
+        .build();
+
+    let debug = format!("{request:?}");
+
+    assert!(!debug.contains("tenant/request-path-secret"));
+    assert!(!debug.contains("alice"));
+    assert!(!debug.contains("request-password-secret"));
+    assert!(!debug.contains("request-query-secret"));
+    assert!(!debug.contains("request-fragment-secret"));
+    assert!(debug.contains("/%3Credacted%3E?"));
 }
 
 #[test]

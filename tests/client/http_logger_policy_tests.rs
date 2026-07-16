@@ -33,6 +33,8 @@ use qubit_http::{
     HttpRequestBodyByteStream,
     HttpResponse,
     HttpResponseMeta,
+    LogSanitizePolicy,
+    TextBodyPolicy,
 };
 use tokio::time::timeout;
 use url::Url;
@@ -281,6 +283,8 @@ fn test_log_request_text_body() {
     let headers = HeaderMap::new();
     let mut client_options = HttpClientOptions::default();
     client_options.logging = options;
+    client_options.log_sanitize_policy = LogSanitizePolicy::default()
+        .with_text_body_policy(TextBodyPolicy::PassThrough);
     let logger = HttpLogger::new(&client_options);
 
     let request = logging_request(
@@ -294,6 +298,56 @@ fn test_log_request_text_body() {
     });
     assert!(logs.contains("--> POST https://example.com/text"));
     assert!(logs.contains("Request body: hello body"));
+}
+
+#[test]
+fn test_log_request_text_body_redacts_by_default() {
+    let mut headers = HeaderMap::new();
+    headers.insert(CONTENT_TYPE, HeaderValue::from_static("text/plain"));
+    let client_options = HttpClientOptions::default();
+    let logger = HttpLogger::new(&client_options);
+    let request = logging_request(
+        Method::POST,
+        "https://example.com/text",
+        headers,
+        HttpRequestBody::Text("trace-request-secret".to_string()),
+    );
+
+    let logs = capture_trace_logs(|| {
+        logger.log_request(&request);
+    });
+
+    assert!(logs.contains("Request body: <redacted: text body>"));
+    assert!(!logs.contains("trace-request-secret"));
+}
+
+#[test]
+fn test_log_response_text_body_redacts_by_default() {
+    let client_options = HttpClientOptions::default();
+    let logger = HttpLogger::new(&client_options);
+    let mut headers = HeaderMap::new();
+    headers.insert(CONTENT_TYPE, HeaderValue::from_static("text/plain"));
+
+    let logs = capture_trace_logs(|| {
+        let mut response = HttpResponse::new(
+            StatusCode::OK,
+            headers,
+            Bytes::from_static(b"trace-response-secret"),
+            Url::parse("https://example.com/text")
+                .expect("response URL should parse"),
+            Method::GET,
+        );
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("failed to build tokio runtime");
+        runtime
+            .block_on(async { logger.log_response(&mut response).await })
+            .expect("response logging should succeed");
+    });
+
+    assert!(logs.contains("Response body: <redacted: text body>"));
+    assert!(!logs.contains("trace-response-secret"));
 }
 
 #[test]
@@ -510,6 +564,8 @@ fn test_execute_logs_response_body_when_content_type_only_has_sse_prefix() {
             let mut options = HttpClientOptions::default();
             options.base_url = Some(server.base_url());
             options.logging.body_size_limit = 128;
+            options.log_sanitize_policy = LogSanitizePolicy::default()
+                .with_text_body_policy(TextBodyPolicy::PassThrough);
             let client = HttpClientFactory::new()
                 .create(options)
                 .expect("client should be created");

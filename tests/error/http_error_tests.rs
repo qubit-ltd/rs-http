@@ -13,6 +13,7 @@ use qubit_http::{
     LogSanitizePolicy,
     RetryHint,
     SensitivityLevel,
+    UrlPathPolicy,
 };
 
 #[test]
@@ -115,6 +116,27 @@ fn test_http_error_debug_uses_custom_log_sanitize_policy() {
 }
 
 #[test]
+fn test_http_error_debug_honors_url_path_redaction_policy() {
+    let raw_url = "https://alice:error-password-secret@example.com/tenant/error-path-secret?access_token=error-query-secret#error-fragment-secret";
+    let url = url::Url::parse(raw_url).expect("URL should parse");
+    let error = HttpError::transport(format!("transport failed for {raw_url}"))
+        .with_url(&url)
+        .with_log_sanitize_policy(
+            LogSanitizePolicy::default()
+                .with_url_path_policy(UrlPathPolicy::Redact),
+        );
+
+    let debug = format!("{error:?}");
+
+    assert!(!debug.contains("tenant/error-path-secret"));
+    assert!(!debug.contains("alice"));
+    assert!(!debug.contains("error-password-secret"));
+    assert!(!debug.contains("error-query-secret"));
+    assert!(!debug.contains("error-fragment-secret"));
+    assert!(debug.contains("/%3Credacted%3E?"));
+}
+
+#[test]
 fn test_http_error_debug_keeps_invalid_url_like_tokens() {
     let error = HttpError::transport("failed near https:// and plain text");
 
@@ -122,6 +144,15 @@ fn test_http_error_debug_keeps_invalid_url_like_tokens() {
 
     assert!(debug.contains("https://"));
     assert!(debug.contains("plain"));
+}
+
+#[test]
+fn test_http_error_debug_keeps_arbitrary_non_url_message_text() {
+    let error = HttpError::transport("opaque diagnostic message");
+
+    let debug = format!("{error:?}");
+
+    assert!(debug.contains("opaque diagnostic message"));
 }
 
 #[test]

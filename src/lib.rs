@@ -81,5 +81,7 @@ pub use response::{
 pub use sanitize::{
     LogSanitizePolicy,
     LogSanitizer,
+    TextBodyPolicy,
+    UrlPathPolicy,
 };
 pub use tokio_util::sync::CancellationToken;

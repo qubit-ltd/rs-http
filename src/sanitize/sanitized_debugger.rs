@@ -20,7 +20,8 @@ use super::{
 /// Sanitized rendering helper for debug and diagnostic fields.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SanitizedDebugger {
-    /// Sanitizer configured with debug-safe defaults plus caller policy.
+    /// Sanitizer configured with built-in sensitive-name defaults plus the
+    /// caller policy.
     sanitizer: LogSanitizer,
 }
 
@@ -32,19 +33,25 @@ impl SanitizedDebugger {
     ///
     /// # Returns
     /// Debug helper that always keeps built-in sensitive names active.
+    #[inline(always)]
     pub(crate) fn new(policy: &LogSanitizePolicy) -> Self {
         Self {
             sanitizer: LogSanitizer::for_debug(policy),
         }
     }
 
-    /// Returns a sanitized URL string.
+    /// Returns a URL string with userinfo, fragment, and recognized sensitive
+    /// query values masked.
     ///
     /// # Parameters
     /// - `url`: URL to render.
     ///
     /// # Returns
-    /// URL with userinfo, fragments, and sensitive query values masked.
+    /// Sanitized URL whose path follows the configured
+    /// [`super::UrlPathPolicy`]. Paths are preserved by default and are
+    /// replaced only when callers explicitly select
+    /// [`super::UrlPathPolicy::Redact`].
+    #[inline(always)]
     pub(crate) fn url(&self, url: &Url) -> String {
         self.sanitizer.sanitize_url(url)
     }
@@ -55,7 +62,9 @@ impl SanitizedDebugger {
     /// - `url`: Optional URL reference.
     ///
     /// # Returns
-    /// `Some` with sanitized URL text when present, otherwise `None`.
+    /// `Some` with sanitized URL text whose path follows the configured
+    /// [`super::UrlPathPolicy`] when present, otherwise `None`.
+    #[inline(always)]
     pub(crate) fn optional_url(&self, url: Option<&Url>) -> Option<String> {
         url.map(|url| self.url(url))
     }
@@ -66,7 +75,10 @@ impl SanitizedDebugger {
     /// - `headers`: Header map to render.
     ///
     /// # Returns
-    /// Deterministic lowercase header map with sensitive values masked.
+    /// Deterministic lowercase header map. Headers whose names match the
+    /// configured sensitive-name policy are masked; other UTF-8 values are
+    /// preserved unchanged.
+    #[inline(always)]
     pub(crate) fn headers(
         &self,
         headers: &HeaderMap,
@@ -80,7 +92,10 @@ impl SanitizedDebugger {
     /// - `text`: Diagnostic text that may contain absolute URLs.
     ///
     /// # Returns
-    /// Text with parseable URL secrets masked.
+    /// Text with parseable URL userinfo, fragments, and recognized sensitive
+    /// query values masked. URL paths follow the configured
+    /// [`super::UrlPathPolicy`] and are preserved by default.
+    #[inline(always)]
     pub(crate) fn diagnostic_text(&self, text: &str) -> String {
         self.sanitizer.sanitize_diagnostic_text(text)
     }

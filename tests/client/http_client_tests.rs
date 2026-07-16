@@ -36,8 +36,10 @@ use qubit_http::{
     HttpHeaderInjector,
     HttpResponseInterceptor,
     HttpRetryMethodPolicy,
+    LogSanitizePolicy,
     RetryDelay,
     SensitivityLevel,
+    TextBodyPolicy,
 };
 use tokio::time::timeout;
 
@@ -783,6 +785,74 @@ async fn test_execute_non_success_error_body_preview_sanitizes_json_fields() {
         Some(r#"{"password":"<redacted>","user":"alice"}"#)
     );
     assert!(!error.message.contains("secret"));
+}
+
+#[tokio::test]
+async fn test_execute_non_success_text_body_preview_redacts_by_default() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 400,
+        headers: vec![("Content-Type".to_string(), "text/plain".to_string())],
+        body: b"status-text-secret".to_vec(),
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+
+    let client = HttpClientFactory::new()
+        .create(options)
+        .expect("client should be created");
+    let error = client
+        .execute(client.request(Method::GET, "/status-text").build())
+        .await
+        .expect_err("non-success response should map to an error");
+
+    assert_eq!(error.kind, HttpErrorKind::Status);
+    assert_eq!(
+        error.response_body_preview.as_deref(),
+        Some("<redacted: text body>")
+    );
+    assert!(!error.message.contains("status-text-secret"));
+}
+
+#[tokio::test]
+async fn test_execute_non_success_text_body_pass_through_preserves_strong_debug_defaults(
+) {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 400,
+        headers: vec![("Content-Type".to_string(), "text/plain".to_string())],
+        body: b"opt-in-status-text".to_vec(),
+    })
+    .await;
+    let mut policy = LogSanitizePolicy::default()
+        .with_text_body_policy(TextBodyPolicy::PassThrough);
+    policy
+        .set_sensitive_query_param_level("accessToken", SensitivityLevel::Low);
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.log_sanitize_policy = policy;
+
+    let client = HttpClientFactory::new()
+        .create(options)
+        .expect("client should be created");
+    let error = client
+        .execute(
+            client
+                .request(
+                    Method::GET,
+                    "/status-text?accessToken=strong-default-secret",
+                )
+                .build(),
+        )
+        .await
+        .expect_err("non-success response should map to an error");
+
+    assert_eq!(
+        error.response_body_preview.as_deref(),
+        Some("opt-in-status-text")
+    );
+    assert!(error.message.contains("opt-in-status-text"));
+    assert!(!error.message.contains("strong-default-secret"));
+    assert!(error.message.contains("accessToken=****"));
 }
 
 #[tokio::test]

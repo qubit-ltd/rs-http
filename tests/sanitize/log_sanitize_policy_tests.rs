@@ -9,7 +9,53 @@
 use qubit_http::{
     LogSanitizePolicy,
     SensitivityLevel,
+    TextBodyPolicy,
+    UrlPathPolicy,
 };
+
+#[test]
+fn test_log_sanitize_policy_url_path_policy_defaults_and_round_trips() {
+    assert_eq!(
+        LogSanitizePolicy::default().url_path_policy(),
+        UrlPathPolicy::Preserve,
+    );
+    assert_eq!(
+        LogSanitizePolicy::empty().url_path_policy(),
+        UrlPathPolicy::Preserve,
+    );
+
+    let mut policy = LogSanitizePolicy::default();
+    policy.set_url_path_policy(UrlPathPolicy::Redact);
+    assert_eq!(policy.url_path_policy(), UrlPathPolicy::Redact);
+    assert_eq!(
+        LogSanitizePolicy::default()
+            .with_url_path_policy(UrlPathPolicy::Redact)
+            .url_path_policy(),
+        UrlPathPolicy::Redact,
+    );
+}
+
+#[test]
+fn test_log_sanitize_policy_text_body_policy_defaults_and_round_trips() {
+    assert_eq!(
+        LogSanitizePolicy::default().text_body_policy(),
+        TextBodyPolicy::Redact,
+    );
+    assert_eq!(
+        LogSanitizePolicy::empty().text_body_policy(),
+        TextBodyPolicy::Redact,
+    );
+
+    let mut policy = LogSanitizePolicy::default();
+    policy.set_text_body_policy(TextBodyPolicy::PassThrough);
+    assert_eq!(policy.text_body_policy(), TextBodyPolicy::PassThrough);
+    assert_eq!(
+        LogSanitizePolicy::default()
+            .with_text_body_policy(TextBodyPolicy::PassThrough)
+            .text_body_policy(),
+        TextBodyPolicy::PassThrough,
+    );
+}
 
 #[test]
 fn test_log_sanitize_policy_default_contains_common_sensitive_names() {
