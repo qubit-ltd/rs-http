@@ -540,9 +540,9 @@ impl HttpClient {
         policy_options: &HttpRetryOptions,
         delay_options: &qubit_retry::RetryOptions,
     ) -> AttemptFailureDecision {
-        let error = failure.as_error().expect(
-            "HTTP retry attempts do not configure non-HTTP attempt failures",
-        );
+        let AttemptFailure::Error(error) = failure else {
+            return AttemptFailureDecision::UseDefault;
+        };
         if !Self::is_retryable_error(error, policy_options) {
             return AttemptFailureDecision::Abort;
         }
