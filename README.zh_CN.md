@@ -105,6 +105,8 @@ options.log_sanitize_policy.insert_sensitive_body_field(
     "password",
     SensitivityLevel::Secret,
 );
+// 确认属于误报后可排除；对应值此后可能出现在日志中。
+options.log_sanitize_policy.remove_sensitive_query_param("sig");
 
 let client = HttpClientFactory::new().create(options)?;
 ```
@@ -112,6 +114,10 @@ let client = HttpClientFactory::new().create(options)?;
 `insert_*` 和 `extend_*` 方法会保留已配置的最强等级。只有明确需要覆盖（包括降级）
 时才使用对应的 `set_*_level` 方法。若要完全自定义策略，请从
 `LogSanitizePolicy::empty()` 开始。
+配置项 `log_sanitize.excluded_sensitive_headers`、
+`log_sanitize.excluded_sensitive_query_params` 和
+`log_sanitize.excluded_sensitive_body_fields` 提供相同的显式排除能力。排除项同样作用于
+`Debug` 输出；再次添加或设置同名字段会取消排除。
 
 ## 后续阅读
 

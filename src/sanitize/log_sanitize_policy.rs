@@ -6,7 +6,10 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
+use std::collections::BTreeSet;
+
 use qubit_sanitize::{
+    canonicalize_field_name,
     SensitiveFields,
     SensitivityLevel,
     TextBodyPolicy,
@@ -24,6 +27,12 @@ pub struct LogSanitizePolicy {
     sensitive_query_params: SensitiveFields,
     /// Sensitive JSON/form/multipart body field names.
     sensitive_body_fields: SensitiveFields,
+    /// Canonical header names explicitly excluded from built-in defaults.
+    excluded_sensitive_headers: BTreeSet<String>,
+    /// Canonical query names explicitly excluded from built-in defaults.
+    excluded_sensitive_query_params: BTreeSet<String>,
+    /// Canonical body names explicitly excluded from built-in defaults.
+    excluded_sensitive_body_fields: BTreeSet<String>,
     /// Rendering policy for opaque HTTP text bodies.
     text_body_policy: TextBodyPolicy,
     /// Rendering policy for complete URL paths.
@@ -35,8 +44,9 @@ impl LogSanitizePolicy {
     /// default opaque-text redaction and complete URL paths.
     ///
     /// This constructor is intended for custom-only trace logging. Debug
-    /// sanitization still merges built-in defaults back into the supplied
-    /// policy before rendering diagnostic values.
+    /// sanitization merges built-in defaults back into the supplied policy
+    /// before rendering diagnostic values, except for names explicitly
+    /// removed from this policy.
     ///
     /// # Returns
     /// An empty log sanitization policy.
@@ -46,6 +56,9 @@ impl LogSanitizePolicy {
             sensitive_headers: SensitiveFields::new(),
             sensitive_query_params: SensitiveFields::new(),
             sensitive_body_fields: SensitiveFields::new(),
+            excluded_sensitive_headers: BTreeSet::new(),
+            excluded_sensitive_query_params: BTreeSet::new(),
+            excluded_sensitive_body_fields: BTreeSet::new(),
             text_body_policy: TextBodyPolicy::Redact,
             url_path_policy: UrlPathPolicy::Preserve,
         }
@@ -159,6 +172,8 @@ impl LogSanitizePolicy {
         name: &str,
         level: SensitivityLevel,
     ) {
+        self.excluded_sensitive_headers
+            .remove(&canonicalize_field_name(name));
         self.sensitive_headers.insert_strongest(name, level);
     }
 
@@ -176,7 +191,9 @@ impl LogSanitizePolicy {
         I: IntoIterator<Item = S>,
         S: AsRef<str>,
     {
-        self.sensitive_headers.extend_strongest(names, level);
+        for name in names {
+            self.insert_sensitive_header(name.as_ref(), level);
+        }
     }
 
     /// Explicitly replaces one sensitive HTTP header level.
@@ -190,21 +207,31 @@ impl LogSanitizePolicy {
         name: &str,
         level: SensitivityLevel,
     ) {
+        self.excluded_sensitive_headers
+            .remove(&canonicalize_field_name(name));
         self.sensitive_headers.insert(name, level);
     }
 
     /// Removes one sensitive HTTP header.
     ///
+    /// Removing a built-in name is an explicit disclosure decision: matching
+    /// header values may appear unchanged in logs and diagnostic output.
+    ///
     /// # Parameters
     /// - `name`: Header name to remove.
     ///
     /// # Returns
-    /// Removed level, or `None` when the name was not configured.
+    /// Removed level, or `None` when the name was not configured. Either case
+    /// records an explicit exclusion for debug sanitization.
     #[inline(always)]
     pub fn remove_sensitive_header(
         &mut self,
         name: &str,
     ) -> Option<SensitivityLevel> {
+        let canonical = canonicalize_field_name(name);
+        if !canonical.is_empty() {
+            self.excluded_sensitive_headers.insert(canonical);
+        }
         self.sensitive_headers.remove(name)
     }
 
@@ -234,6 +261,8 @@ impl LogSanitizePolicy {
         name: &str,
         level: SensitivityLevel,
     ) {
+        self.excluded_sensitive_query_params
+            .remove(&canonicalize_field_name(name));
         self.sensitive_query_params.insert_strongest(name, level);
     }
 
@@ -251,7 +280,9 @@ impl LogSanitizePolicy {
         I: IntoIterator<Item = S>,
         S: AsRef<str>,
     {
-        self.sensitive_query_params.extend_strongest(names, level);
+        for name in names {
+            self.insert_sensitive_query_param(name.as_ref(), level);
+        }
     }
 
     /// Explicitly replaces one sensitive query parameter level.
@@ -265,21 +296,31 @@ impl LogSanitizePolicy {
         name: &str,
         level: SensitivityLevel,
     ) {
+        self.excluded_sensitive_query_params
+            .remove(&canonicalize_field_name(name));
         self.sensitive_query_params.insert(name, level);
     }
 
     /// Removes one sensitive query parameter.
     ///
+    /// Removing a built-in name is an explicit disclosure decision: matching
+    /// query values may appear unchanged in logs and diagnostic output.
+    ///
     /// # Parameters
     /// - `name`: Query parameter name to remove.
     ///
     /// # Returns
-    /// Removed level, or `None` when the name was not configured.
+    /// Removed level, or `None` when the name was not configured. Either case
+    /// records an explicit exclusion for debug sanitization.
     #[inline(always)]
     pub fn remove_sensitive_query_param(
         &mut self,
         name: &str,
     ) -> Option<SensitivityLevel> {
+        let canonical = canonicalize_field_name(name);
+        if !canonical.is_empty() {
+            self.excluded_sensitive_query_params.insert(canonical);
+        }
         self.sensitive_query_params.remove(name)
     }
 
@@ -309,6 +350,8 @@ impl LogSanitizePolicy {
         name: &str,
         level: SensitivityLevel,
     ) {
+        self.excluded_sensitive_body_fields
+            .remove(&canonicalize_field_name(name));
         self.sensitive_body_fields.insert_strongest(name, level);
     }
 
@@ -326,7 +369,9 @@ impl LogSanitizePolicy {
         I: IntoIterator<Item = S>,
         S: AsRef<str>,
     {
-        self.sensitive_body_fields.extend_strongest(names, level);
+        for name in names {
+            self.insert_sensitive_body_field(name.as_ref(), level);
+        }
     }
 
     /// Explicitly replaces one sensitive body field level.
@@ -340,21 +385,31 @@ impl LogSanitizePolicy {
         name: &str,
         level: SensitivityLevel,
     ) {
+        self.excluded_sensitive_body_fields
+            .remove(&canonicalize_field_name(name));
         self.sensitive_body_fields.insert(name, level);
     }
 
     /// Removes one sensitive body field.
     ///
+    /// Removing a built-in name is an explicit disclosure decision: matching
+    /// body values may appear unchanged in logs and diagnostic output.
+    ///
     /// # Parameters
     /// - `name`: Structured body field name to remove.
     ///
     /// # Returns
-    /// Removed level, or `None` when the name was not configured.
+    /// Removed level, or `None` when the name was not configured. Either case
+    /// records an explicit exclusion for debug sanitization.
     #[inline(always)]
     pub fn remove_sensitive_body_field(
         &mut self,
         name: &str,
     ) -> Option<SensitivityLevel> {
+        let canonical = canonicalize_field_name(name);
+        if !canonical.is_empty() {
+            self.excluded_sensitive_body_fields.insert(canonical);
+        }
         self.sensitive_body_fields.remove(name)
     }
 
@@ -384,6 +439,23 @@ impl LogSanitizePolicy {
     pub(crate) const fn sensitive_body_fields(&self) -> &SensitiveFields {
         &self.sensitive_body_fields
     }
+
+    /// Applies explicit exclusions to another policy.
+    ///
+    /// # Parameters
+    ///
+    /// * `policy` - Policy from which explicitly excluded names are removed.
+    pub(crate) fn apply_exclusions_to(&self, policy: &mut Self) {
+        for name in &self.excluded_sensitive_headers {
+            policy.sensitive_headers.remove(name);
+        }
+        for name in &self.excluded_sensitive_query_params {
+            policy.sensitive_query_params.remove(name);
+        }
+        for name in &self.excluded_sensitive_body_fields {
+            policy.sensitive_body_fields.remove(name);
+        }
+    }
 }
 
 impl Default for LogSanitizePolicy {
@@ -399,6 +471,9 @@ impl Default for LogSanitizePolicy {
             sensitive_headers: SensitiveFields::default(),
             sensitive_query_params: SensitiveFields::default(),
             sensitive_body_fields: SensitiveFields::default(),
+            excluded_sensitive_headers: BTreeSet::new(),
+            excluded_sensitive_query_params: BTreeSet::new(),
+            excluded_sensitive_body_fields: BTreeSet::new(),
             text_body_policy: TextBodyPolicy::Redact,
             url_path_policy: UrlPathPolicy::Preserve,
         }
