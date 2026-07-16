@@ -111,6 +111,7 @@ pub enum ResponsePlan {
 #[derive(Debug)]
 pub struct OneShotServer {
     base_url: Url,
+    request_received_rx: oneshot::Receiver<()>,
     request_rx: oneshot::Receiver<CapturedRequest>,
     join_handle: tokio::task::JoinHandle<()>,
 }
@@ -127,6 +128,13 @@ impl OneShotServer {
     /// Returns the server base URL (e.g. `http://127.0.0.1:12345/`).
     pub fn base_url(&self) -> Url {
         self.base_url.clone()
+    }
+
+    /// Waits until the server has received and parsed the request.
+    pub async fn wait_until_request_received(&mut self) {
+        (&mut self.request_received_rx)
+            .await
+            .expect("one-shot test server dropped request-received sender");
     }
 
     /// Waits for server completion and returns the captured request.
@@ -171,6 +179,7 @@ pub async fn spawn_one_shot_server(plan: ResponsePlan) -> OneShotServer {
         .expect("failed to query one-shot server local address");
     let base_url = Url::parse(&format!("http://{addr}/"))
         .expect("failed to build base URL");
+    let (request_received_tx, request_received_rx) = oneshot::channel::<()>();
     let (request_tx, request_rx) = oneshot::channel::<CapturedRequest>();
 
     let join_handle = tokio::spawn(async move {
@@ -185,6 +194,7 @@ pub async fn spawn_one_shot_server(plan: ResponsePlan) -> OneShotServer {
         let request = read_request(&mut stream)
             .await
             .expect("failed to read request in one-shot test server");
+        let _ = request_received_tx.send(());
         let _ = request_tx.send(request);
 
         if let Err(error) = write_response(&mut stream, plan).await {
@@ -199,6 +209,7 @@ pub async fn spawn_one_shot_server(plan: ResponsePlan) -> OneShotServer {
 
     OneShotServer {
         base_url,
+        request_received_rx,
         request_rx,
         join_handle,
     }

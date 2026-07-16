@@ -1280,26 +1280,35 @@ async fn test_execute_retry_max_duration_returns_last_error_after_retry_delay()
 
 #[tokio::test]
 async fn test_execute_retry_in_flight_max_duration_does_not_panic() {
-    let server = spawn_multi_shot_server(vec![ResponsePlan::DelayedStart {
-        delay: Duration::from_millis(100),
+    let mut server = spawn_one_shot_server(ResponsePlan::DelayedStart {
+        delay: Duration::from_millis(1_500),
         status: 200,
         headers: vec![],
         body: b"late".to_vec(),
-    }])
+    })
     .await;
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.retry.enabled = true;
     options.retry.max_attempts = 3;
-    options.retry.max_duration = Some(Duration::from_millis(10));
+    options.retry.max_duration = Some(Duration::from_secs(1));
     options.retry.delay_strategy = RetryDelay::None;
     let client = HttpClientFactory::new()
         .create(options)
         .expect("HTTP client should build");
 
     let request = client.request(Method::GET, "/in-flight-timeout").build();
-    let error = timeout(Duration::from_secs(3), client.execute(request))
+    let execution = client.execute(request);
+    tokio::pin!(execution);
+    tokio::select! {
+        () = server.wait_until_request_received() => {}
+        _ = &mut execution => {
+            panic!("retry flow completed before the server received the request");
+        }
+    }
+
+    let error = timeout(Duration::from_secs(3), &mut execution)
         .await
         .expect("execute timed out")
         .expect_err("max duration should terminate the in-flight request");
@@ -1310,7 +1319,7 @@ async fn test_execute_retry_in_flight_max_duration_does_not_panic() {
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
         .expect("server finish timed out");
-    assert_eq!(captured.len(), 1);
+    assert_eq!(captured.target, "/in-flight-timeout");
 }
 
 #[tokio::test]
