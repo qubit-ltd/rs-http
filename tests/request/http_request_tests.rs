@@ -138,6 +138,53 @@ fn test_http_request_debug_honors_url_path_redaction_policy() {
 }
 
 #[test]
+fn test_http_request_debug_honors_explicit_default_field_exclusion() {
+    let mut options = HttpClientOptions::new();
+    assert!(options
+        .log_sanitize_policy
+        .remove_sensitive_query_param("SIG")
+        .is_some());
+    let client = HttpClientFactory::new()
+        .create(options)
+        .expect("client should be created");
+    let request = client
+        .request(
+            Method::GET,
+            "https://example.com/callback?sig=known-false-positive",
+        )
+        .build();
+
+    let debug = format!("{request:?}");
+
+    assert!(debug.contains("known-false-positive"));
+}
+
+#[test]
+fn test_http_request_debug_reinsertion_cancels_field_exclusion() {
+    let mut options = HttpClientOptions::new();
+    options
+        .log_sanitize_policy
+        .remove_sensitive_query_param("sig");
+    options.log_sanitize_policy.insert_sensitive_query_param(
+        "SIG",
+        qubit_http::SensitivityLevel::Secret,
+    );
+    let client = HttpClientFactory::new()
+        .create(options)
+        .expect("client should be created");
+    let request = client
+        .request(
+            Method::GET,
+            "https://example.com/callback?sig=must-be-redacted",
+        )
+        .build();
+
+    let debug = format!("{request:?}");
+
+    assert!(!debug.contains("must-be-redacted"));
+}
+
+#[test]
 fn test_http_request_resolved_url_is_public() {
     let mut options = HttpClientOptions::new();
     options

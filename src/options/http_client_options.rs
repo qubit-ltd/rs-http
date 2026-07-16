@@ -179,11 +179,14 @@ struct HttpClientSseConfigInput {
     max_frame_bytes: Option<usize>,
 }
 
-/// Log sanitization keys read from `log_sanitize.*` and added to defaults.
+/// Log sanitization additions and exclusions read from `log_sanitize.*`.
 struct HttpClientLogSanitizeConfigInput {
     sensitive_headers: Option<Vec<String>>,
     sensitive_query_params: Option<Vec<String>>,
     sensitive_body_fields: Option<Vec<String>>,
+    excluded_sensitive_headers: Option<Vec<String>>,
+    excluded_sensitive_query_params: Option<Vec<String>>,
+    excluded_sensitive_body_fields: Option<Vec<String>>,
 }
 
 impl HttpClientOptions {
@@ -258,6 +261,12 @@ impl HttpClientOptions {
                 .get_optional_string_list("sensitive_query_params")?,
             sensitive_body_fields: config
                 .get_optional_string_list("sensitive_body_fields")?,
+            excluded_sensitive_headers: config
+                .get_optional_string_list("excluded_sensitive_headers")?,
+            excluded_sensitive_query_params: config
+                .get_optional_string_list("excluded_sensitive_query_params")?,
+            excluded_sensitive_body_fields: config
+                .get_optional_string_list("excluded_sensitive_body_fields")?,
         })
     }
 
@@ -582,6 +591,22 @@ impl HttpClientOptions {
                     names,
                     SensitivityLevel::High,
                 );
+            }
+            if let Some(names) = log_sanitize.excluded_sensitive_headers {
+                for name in names {
+                    opts.log_sanitize_policy.remove_sensitive_header(&name);
+                }
+            }
+            if let Some(names) = log_sanitize.excluded_sensitive_query_params {
+                for name in names {
+                    opts.log_sanitize_policy
+                        .remove_sensitive_query_param(&name);
+                }
+            }
+            if let Some(names) = log_sanitize.excluded_sensitive_body_fields {
+                for name in names {
+                    opts.log_sanitize_policy.remove_sensitive_body_field(&name);
+                }
             }
         }
 

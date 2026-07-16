@@ -426,6 +426,24 @@ fn test_http_client_options_log_sanitize_section() {
             vec!["customer_secret".to_string()],
         )
         .unwrap();
+    config
+        .set(
+            "http.log_sanitize.excluded_sensitive_headers",
+            vec!["Authorization".to_string()],
+        )
+        .unwrap();
+    config
+        .set(
+            "http.log_sanitize.excluded_sensitive_query_params",
+            vec!["sig".to_string()],
+        )
+        .unwrap();
+    config
+        .set(
+            "http.log_sanitize.excluded_sensitive_body_fields",
+            vec!["signature".to_string()],
+        )
+        .unwrap();
 
     let opts = HttpClientOptions::from_config(&config.section("http")).unwrap();
     assert!(opts
@@ -439,7 +457,7 @@ fn test_http_client_options_log_sanitize_section() {
     assert!(opts
         .log_sanitize_policy
         .sensitivity_for_header("authorization")
-        .is_some());
+        .is_none());
     assert!(opts
         .log_sanitize_policy
         .sensitivity_for_query_param("session_token")
@@ -456,6 +474,14 @@ fn test_http_client_options_log_sanitize_section() {
         .log_sanitize_policy
         .sensitivity_for_body_field("client_secret")
         .is_some());
+    assert!(opts
+        .log_sanitize_policy
+        .sensitivity_for_query_param("sig")
+        .is_none());
+    assert!(opts
+        .log_sanitize_policy
+        .sensitivity_for_body_field("signature")
+        .is_none());
 }
 
 #[test]

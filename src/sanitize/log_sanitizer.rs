@@ -75,14 +75,14 @@ impl LogSanitizer {
         }
     }
 
-    /// Creates a debug sanitizer that keeps built-in sensitive names active.
+    /// Creates a debug sanitizer that starts with built-in sensitive names.
     ///
     /// # Parameters
     /// - `policy`: User-visible policy whose custom names should also apply.
     ///
     /// # Returns
-    /// Sanitizer that combines built-in sensitive-name defaults with custom
-    /// names from `policy`.
+    /// Sanitizer that combines built-in defaults with custom names from
+    /// `policy`, then honors its explicit exclusions.
     pub(crate) fn for_debug(policy: &LogSanitizePolicy) -> Self {
         let mut debug_policy = LogSanitizePolicy::default();
         for (name, level) in policy.sensitive_headers().iter() {
@@ -94,6 +94,7 @@ impl LogSanitizer {
         for (name, level) in policy.sensitive_body_fields().iter() {
             debug_policy.insert_sensitive_body_field(name, level);
         }
+        policy.apply_exclusions_to(&mut debug_policy);
         debug_policy.set_text_body_policy(policy.text_body_policy());
         debug_policy.set_url_path_policy(policy.url_path_policy());
         Self::new(debug_policy)

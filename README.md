@@ -108,6 +108,8 @@ options.log_sanitize_policy.insert_sensitive_body_field(
     "password",
     SensitivityLevel::Secret,
 );
+// A verified false positive can be excluded. Its value may then be logged.
+options.log_sanitize_policy.remove_sensitive_query_param("sig");
 
 let client = HttpClientFactory::new().create(options)?;
 ```
@@ -115,7 +117,12 @@ let client = HttpClientFactory::new().create(options)?;
 The `insert_*` and `extend_*` methods keep the strongest level already
 configured. Use the corresponding `set_*_level` method only for an intentional
 replacement, including a downgrade. Start with `LogSanitizePolicy::empty()`
-when a custom-only policy is required.
+when a custom-only policy is required. The configuration keys
+`log_sanitize.excluded_sensitive_headers`,
+`log_sanitize.excluded_sensitive_query_params`, and
+`log_sanitize.excluded_sensitive_body_fields` provide the same deliberate
+escape hatch. Explicit exclusions also apply to `Debug` output; adding or
+setting the name again cancels its exclusion.
 
 ## Common Next Steps
 
