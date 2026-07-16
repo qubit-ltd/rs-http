@@ -89,6 +89,22 @@ fn test_log_sanitizer_sanitize_url_masks_sensitive_query_params() {
 }
 
 #[test]
+fn test_log_sanitizer_sanitize_url_masks_signed_url_credentials() {
+    let sanitizer = LogSanitizer::default();
+    let url = Url::parse(
+        "https://example.com/object?X-Amz-Signature=aws-secret&X-Goog-Signature=google-secret&sig=azure-secret",
+    )
+    .expect("signed URL should parse");
+
+    let sanitized = sanitizer.sanitize_url(&url);
+
+    assert_eq!(
+        sanitized,
+        "https://example.com/object?X-Amz-Signature=%3Credacted%3E&X-Goog-Signature=%3Credacted%3E&sig=%3Credacted%3E",
+    );
+}
+
+#[test]
 fn test_log_sanitizer_default_preserves_url_path() {
     let url = Url::parse(
         "https://example.com/tenant/secret-id?access_token=query-secret",
@@ -830,6 +846,22 @@ fn test_log_sanitizer_sanitize_body_preview_redacts_form_fields() {
         sanitized,
         "username=alice&password=%3Credacted%3E&city=Shanghai"
     );
+}
+
+#[test]
+fn test_log_sanitizer_sanitize_body_preview_redacts_invalid_form() {
+    let sanitizer = LogSanitizer::default();
+    let body = Bytes::from_static(b"%FFpassword=secret");
+    let preview = BodyPreview::new(&body, body.len(), BodyLogContext::Request)
+        .with_content_type("application/x-www-form-urlencoded");
+
+    let sanitized = sanitizer.sanitize_body_preview(&preview);
+
+    assert_eq!(
+        sanitized,
+        "<redacted: invalid or truncated URL-encoded form>"
+    );
+    assert!(!sanitized.contains("secret"));
 }
 
 #[test]
