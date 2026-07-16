@@ -14,7 +14,11 @@ use http::{
     Method,
     StatusCode,
 };
-use qubit_http::HttpResponseMeta;
+use qubit_http::{
+    HttpResponseMeta,
+    LogSanitizePolicy,
+    UrlPathPolicy,
+};
 use url::Url;
 
 #[test]
@@ -62,4 +66,30 @@ fn test_http_response_meta_debug_masks_sensitive_values() {
     assert!(!debug.contains("debug-cookie-secret"));
     assert!(debug.contains("%3Credacted%3E"));
     assert!(debug.contains("****"));
+}
+
+#[test]
+fn test_http_response_meta_debug_honors_url_path_redaction_policy() {
+    let meta = HttpResponseMeta::new(
+        StatusCode::OK,
+        HeaderMap::new(),
+        Url::parse(
+            "https://alice:response-password-secret@example.test/tenant/response-path-secret?access_token=response-query-secret#response-fragment-secret",
+        )
+        .expect("valid URL"),
+        Method::GET,
+    )
+    .with_log_sanitize_policy(
+        LogSanitizePolicy::default()
+            .with_url_path_policy(UrlPathPolicy::Redact),
+    );
+
+    let debug = format!("{meta:?}");
+
+    assert!(!debug.contains("tenant/response-path-secret"));
+    assert!(!debug.contains("alice"));
+    assert!(!debug.contains("response-password-secret"));
+    assert!(!debug.contains("response-query-secret"));
+    assert!(!debug.contains("response-fragment-secret"));
+    assert!(debug.contains("/%3Credacted%3E?"));
 }

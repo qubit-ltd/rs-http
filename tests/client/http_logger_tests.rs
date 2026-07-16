@@ -13,6 +13,8 @@ use qubit_http::{
     HttpClientOptions,
     HttpLogger,
     HttpLoggingOptions,
+    LogSanitizePolicy,
+    TextBodyPolicy,
 };
 
 use crate::common::capture_trace_logs;
@@ -26,6 +28,8 @@ fn test_http_logger_logs_request_body_preview_with_truncation() {
         body_size_limit: 4,
         ..HttpLoggingOptions::default()
     };
+    options.log_sanitize_policy = LogSanitizePolicy::default()
+        .with_text_body_policy(TextBodyPolicy::PassThrough);
     let logger = HttpLogger::new(&options);
     let client = HttpClientFactory::new()
         .create_default()

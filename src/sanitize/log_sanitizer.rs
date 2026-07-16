@@ -19,7 +19,6 @@ use qubit_sanitize::{
     MaskPolicies,
     NameMatchMode,
     SensitiveFields,
-    TextBodyPolicy,
     UrlSanitizer,
 };
 use url::Url;
@@ -28,6 +27,7 @@ use super::{
     BodyLogContext,
     BodyPreview,
     LogSanitizePolicy,
+    UrlPathPolicy,
 };
 
 const INVALID_CONTENT_TYPE_BODY_REDACTED: &str =
@@ -41,6 +41,8 @@ pub struct LogSanitizer {
     policy: LogSanitizePolicy,
     /// URL sanitizer from `qubit-sanitize`.
     url_sanitizer: UrlSanitizer,
+    /// Rendering policy for complete URL paths.
+    url_path_policy: UrlPathPolicy,
     /// Header sanitizer from `qubit-sanitize`.
     header_sanitizer: HttpHeaderSanitizer,
     /// Body sanitizer from `qubit-sanitize`.
@@ -56,6 +58,7 @@ impl LogSanitizer {
     /// # Returns
     /// New [`LogSanitizer`].
     pub fn new(policy: LogSanitizePolicy) -> Self {
+        let url_path_policy = policy.url_path_policy();
         Self {
             url_sanitizer: UrlSanitizer::new(field_sanitizer(
                 policy.sensitive_query_params(),
@@ -66,7 +69,8 @@ impl LogSanitizer {
             body_sanitizer: HttpBodySanitizer::new(field_sanitizer(
                 policy.sensitive_body_fields(),
             ))
-            .with_text_body_policy(TextBodyPolicy::PassThrough),
+            .with_text_body_policy(policy.text_body_policy()),
+            url_path_policy,
             policy,
         }
     }
@@ -77,7 +81,8 @@ impl LogSanitizer {
     /// - `policy`: User-visible policy whose custom names should also apply.
     ///
     /// # Returns
-    /// Sanitizer that always includes safe built-in defaults plus custom names.
+    /// Sanitizer that combines built-in sensitive-name defaults with custom
+    /// names from `policy`.
     pub(crate) fn for_debug(policy: &LogSanitizePolicy) -> Self {
         let mut debug_policy = LogSanitizePolicy::default();
         for (name, level) in policy.sensitive_headers().iter() {
@@ -89,6 +94,8 @@ impl LogSanitizer {
         for (name, level) in policy.sensitive_body_fields().iter() {
             debug_policy.insert_sensitive_body_field(name, level);
         }
+        debug_policy.set_text_body_policy(policy.text_body_policy());
+        debug_policy.set_url_path_policy(policy.url_path_policy());
         Self::new(debug_policy)
     }
 
@@ -96,11 +103,14 @@ impl LogSanitizer {
     ///
     /// # Returns
     /// Borrowed policy.
+    #[inline(always)]
     pub fn policy(&self) -> &LogSanitizePolicy {
         &self.policy
     }
 
-    /// Returns a log-safe URL string with sensitive URL components masked.
+    /// Returns a URL string with userinfo, fragments, and recognized sensitive
+    /// query values masked. The path follows the configured
+    /// [`UrlPathPolicy`].
     ///
     /// # Parameters
     /// - `url`: URL to render.
@@ -108,18 +118,26 @@ impl LogSanitizer {
     /// # Returns
     /// Sanitized URL string.
     pub fn sanitize_url(&self, url: &Url) -> String {
-        self.url_sanitizer.sanitize_url(url, LOG_NAME_MATCH_MODE)
+        let mut sanitized_url = url.clone();
+        if self.url_path_policy == UrlPathPolicy::Redact {
+            sanitized_url.set_path("/<redacted>");
+        }
+        self.url_sanitizer
+            .sanitize_url(&sanitized_url, LOG_NAME_MATCH_MODE)
     }
 
-    /// Returns a log-safe header value.
+    /// Renders a header value according to the configured sensitive-name
+    /// policy.
     ///
     /// # Parameters
     /// - `name`: Header name.
     /// - `value`: Header value.
     ///
     /// # Returns
-    /// Masked value for sensitive headers, original value for non-sensitive
-    /// UTF-8 values, or `<non-utf8>` when header value is not valid UTF-8.
+    /// Masked value when the header name matches the configured sensitive-name
+    /// policy, original value for other UTF-8 headers, or `<non-utf8>` when
+    /// the header value is not valid UTF-8.
+    #[inline(always)]
     pub fn sanitize_header_value(
         &self,
         name: &HeaderName,
@@ -129,22 +147,13 @@ impl LogSanitizer {
             .sanitize_value(name, value, LOG_NAME_MATCH_MODE)
     }
 
-    /// Returns log-safe headers for structured debug output.
+    /// Returns a request body preview rendered according to the configured
+    /// body sanitization policy.
     ///
-    /// # Parameters
-    /// - `headers`: Header map to render.
-    ///
-    /// # Returns
-    /// Deterministic map of lowercase header names to sanitized values.
-    pub(crate) fn sanitize_header_map(
-        &self,
-        headers: &HeaderMap,
-    ) -> std::collections::BTreeMap<String, Vec<String>> {
-        self.header_sanitizer
-            .sanitize_headers(headers, LOG_NAME_MATCH_MODE)
-    }
-
-    /// Returns a log-safe request body preview.
+    /// Selecting
+    /// [`TextBodyPolicy::PassThrough`](qubit_sanitize::TextBodyPolicy::PassThrough)
+    /// may return opaque text verbatim and expose secrets from the original
+    /// body.
     ///
     /// # Parameters
     /// - `body`: Source request body bytes.
@@ -153,7 +162,9 @@ impl LogSanitizer {
     ///   redaction.
     ///
     /// # Returns
-    /// Sanitized request body preview with request-style truncation suffix.
+    /// Policy-rendered request body preview with request-style truncation
+    /// suffix.
+    #[inline(always)]
     pub fn sanitize_request_body_preview(
         &self,
         body: &[u8],
@@ -168,7 +179,13 @@ impl LogSanitizer {
         )
     }
 
-    /// Returns a log-safe response body preview.
+    /// Returns a response body preview rendered according to the configured
+    /// body sanitization policy.
+    ///
+    /// Selecting
+    /// [`TextBodyPolicy::PassThrough`](qubit_sanitize::TextBodyPolicy::PassThrough)
+    /// may return opaque text verbatim and expose secrets from the original
+    /// body.
     ///
     /// # Parameters
     /// - `body`: Source response body bytes.
@@ -177,7 +194,9 @@ impl LogSanitizer {
     ///   redaction.
     ///
     /// # Returns
-    /// Sanitized response body preview with response-style truncation suffix.
+    /// Policy-rendered response body preview with response-style truncation
+    /// suffix.
+    #[inline(always)]
     pub fn sanitize_response_body_preview(
         &self,
         body: &[u8],
@@ -192,7 +211,13 @@ impl LogSanitizer {
         )
     }
 
-    /// Returns a log-safe status-error body preview.
+    /// Returns a status-error body preview rendered according to the
+    /// configured body sanitization policy.
+    ///
+    /// Selecting
+    /// [`TextBodyPolicy::PassThrough`](qubit_sanitize::TextBodyPolicy::PassThrough)
+    /// may return opaque text verbatim and expose secrets from the original
+    /// body.
     ///
     /// # Parameters
     /// - `body`: Source non-success response body bytes.
@@ -201,7 +226,8 @@ impl LogSanitizer {
     ///   redaction.
     ///
     /// # Returns
-    /// Sanitized error body preview with status-error truncation suffix.
+    /// Policy-rendered error body preview with status-error truncation suffix.
+    #[inline(always)]
     pub fn sanitize_error_response_body_preview(
         &self,
         body: &[u8],
@@ -216,13 +242,34 @@ impl LogSanitizer {
         )
     }
 
+    /// Renders headers for structured debug output according to the configured
+    /// sensitive-name policy.
+    ///
+    /// # Parameters
+    /// - `headers`: Header map to render.
+    ///
+    /// # Returns
+    /// Deterministic map of lowercase header names to values. Headers whose
+    /// names match the configured sensitive-name policy are masked; other
+    /// UTF-8 header values are preserved unchanged.
+    #[inline(always)]
+    pub(crate) fn sanitize_header_map(
+        &self,
+        headers: &HeaderMap,
+    ) -> std::collections::BTreeMap<String, Vec<String>> {
+        self.header_sanitizer
+            .sanitize_headers(headers, LOG_NAME_MATCH_MODE)
+    }
+
     /// Sanitizes URL-looking tokens inside a diagnostic message.
     ///
     /// # Parameters
     /// - `text`: Message that may contain one or more absolute URLs.
     ///
     /// # Returns
-    /// Message with parseable URLs sanitized.
+    /// Message with parseable URL userinfo, fragments, and recognized
+    /// sensitive query values masked. URL paths follow the configured
+    /// [`UrlPathPolicy`] and are preserved by default.
     pub(crate) fn sanitize_diagnostic_text(&self, text: &str) -> String {
         let mut sanitized = String::with_capacity(text.len());
         let mut token_start = None;
@@ -244,13 +291,19 @@ impl LogSanitizer {
         sanitized
     }
 
-    /// Returns a log-safe preview string for body bytes.
+    /// Renders body bytes according to the configured body sanitization
+    /// policy.
+    ///
+    /// Selecting
+    /// [`TextBodyPolicy::PassThrough`](qubit_sanitize::TextBodyPolicy::PassThrough)
+    /// may return opaque text verbatim and expose secrets from the original
+    /// body.
     ///
     /// # Parameters
     /// - `preview`: Bounded body bytes and content metadata.
     ///
     /// # Returns
-    /// Sanitized preview with context-appropriate truncation marker.
+    /// Policy-rendered preview with a context-appropriate truncation marker.
     pub(crate) fn sanitize_body_preview(
         &self,
         preview: &BodyPreview<'_>,
@@ -287,7 +340,10 @@ impl LogSanitizer {
     ///   redaction.
     ///
     /// # Returns
-    /// Sanitized body preview text.
+    /// Policy-rendered body preview text. With
+    /// [`TextBodyPolicy::PassThrough`](qubit_sanitize::TextBodyPolicy::PassThrough),
+    /// opaque text may be returned verbatim.
+    #[inline]
     fn sanitize_body_bytes(
         &self,
         body: &[u8],
@@ -310,7 +366,9 @@ impl LogSanitizer {
     /// - `token`: One token from a diagnostic message.
     ///
     /// # Returns
-    /// Token with embedded URL credentials and query secrets masked.
+    /// Token with embedded URL userinfo, fragment, and recognized sensitive
+    /// query values masked. Its URL path follows the configured
+    /// [`UrlPathPolicy`] and is preserved by default.
     fn sanitize_diagnostic_token(&self, token: &str) -> String {
         let Some(scheme_start) = find_url_scheme_start(token) else {
             return token.to_string();
@@ -339,6 +397,7 @@ impl LogSanitizer {
     ///
     /// # Returns
     /// Redaction marker with the rs-http truncation suffix.
+    #[inline]
     fn invalid_content_type_body(preview: &BodyPreview<'_>) -> String {
         format!(
             "{INVALID_CONTENT_TYPE_BODY_REDACTED}{}",
@@ -347,6 +406,14 @@ impl LogSanitizer {
     }
 }
 
+/// Builds the core field sanitizer used by one HTTP logging domain.
+///
+/// # Parameters
+/// - `fields`: Sensitive names configured for the domain.
+///
+/// # Returns
+/// A field sanitizer using the crate's default masking policies.
+#[inline]
 fn field_sanitizer(fields: &SensitiveFields) -> FieldSanitizer {
     FieldSanitizer::new(FieldSanitizePolicy::new(
         fields.clone(),
@@ -356,6 +423,10 @@ fn field_sanitizer(fields: &SensitiveFields) -> FieldSanitizer {
 
 impl Default for LogSanitizer {
     /// Creates a sanitizer using [`LogSanitizePolicy::default`].
+    ///
+    /// # Returns
+    /// A sanitizer configured with the default log sanitization policy.
+    #[inline(always)]
     fn default() -> Self {
         Self::new(LogSanitizePolicy::default())
     }
@@ -406,6 +477,11 @@ fn find_ascii_case_insensitive(text: &str, needle: &str) -> Option<usize> {
 ///
 /// # Returns
 /// Previous byte offset and character, or `None` at the start.
+///
+/// # Panics
+/// Panics when `end` exceeds `text.len()` or is not a UTF-8 character
+/// boundary.
+#[inline(always)]
 fn previous_char_boundary(text: &str, end: usize) -> Option<(usize, char)> {
     text[..end].char_indices().next_back()
 }
@@ -417,6 +493,7 @@ fn previous_char_boundary(text: &str, end: usize) -> Option<(usize, char)> {
 ///
 /// # Returns
 /// `true` if the character may be peeled from a failed URL parse attempt.
+#[inline]
 fn is_trimmable_url_suffix(ch: char) -> bool {
     matches!(
         ch,

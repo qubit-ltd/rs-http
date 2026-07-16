@@ -9,7 +9,10 @@
 use qubit_sanitize::{
     SensitiveFields,
     SensitivityLevel,
+    TextBodyPolicy,
 };
+
+use super::UrlPathPolicy;
 
 /// Policy used by [`LogSanitizer`](super::LogSanitizer) to mask sensitive log
 /// data.
@@ -21,10 +24,15 @@ pub struct LogSanitizePolicy {
     sensitive_query_params: SensitiveFields,
     /// Sensitive JSON/form/multipart body field names.
     sensitive_body_fields: SensitiveFields,
+    /// Rendering policy for opaque HTTP text bodies.
+    text_body_policy: TextBodyPolicy,
+    /// Rendering policy for complete URL paths.
+    url_path_policy: UrlPathPolicy,
 }
 
 impl LogSanitizePolicy {
-    /// Creates a policy without built-in sensitive names.
+    /// Creates a policy without built-in sensitive names while retaining
+    /// default opaque-text redaction and complete URL paths.
     ///
     /// This constructor is intended for custom-only trace logging. Debug
     /// sanitization still merges built-in defaults back into the supplied
@@ -38,7 +46,91 @@ impl LogSanitizePolicy {
             sensitive_headers: SensitiveFields::new(),
             sensitive_query_params: SensitiveFields::new(),
             sensitive_body_fields: SensitiveFields::new(),
+            text_body_policy: TextBodyPolicy::Redact,
+            url_path_policy: UrlPathPolicy::Preserve,
         }
+    }
+
+    /// Returns this policy with a replacement URL path policy.
+    ///
+    /// Preserving paths maintains backward compatibility but can expose secret
+    /// path segments; select [`UrlPathPolicy::Redact`] at that boundary.
+    ///
+    /// # Parameters
+    ///
+    /// * `policy` - New rendering policy for complete URL paths.
+    ///
+    /// # Returns
+    ///
+    /// The updated log sanitization policy.
+    #[must_use]
+    #[inline]
+    pub fn with_url_path_policy(mut self, policy: UrlPathPolicy) -> Self {
+        self.url_path_policy = policy;
+        self
+    }
+
+    /// Returns this policy with a replacement opaque-text body policy.
+    ///
+    /// Passing opaque text through can expose secrets that have no field name
+    /// for structured matching; callers must opt into that boundary.
+    ///
+    /// # Parameters
+    ///
+    /// * `policy` - New policy for declared `text/*` bodies and non-sensitive
+    ///   multipart text parts.
+    ///
+    /// # Returns
+    ///
+    /// The updated log sanitization policy.
+    #[must_use]
+    #[inline]
+    pub fn with_text_body_policy(mut self, policy: TextBodyPolicy) -> Self {
+        self.text_body_policy = policy;
+        self
+    }
+
+    /// Returns the policy used for complete URL paths.
+    ///
+    /// # Returns
+    ///
+    /// The current URL path policy. Both [`Self::empty`] and
+    /// [`Self::default`] use [`UrlPathPolicy::Preserve`].
+    #[inline(always)]
+    pub const fn url_path_policy(&self) -> UrlPathPolicy {
+        self.url_path_policy
+    }
+
+    /// Replaces the policy used for complete URL paths.
+    ///
+    /// # Parameters
+    ///
+    /// * `policy` - New rendering policy for complete URL paths.
+    #[inline(always)]
+    pub fn set_url_path_policy(&mut self, policy: UrlPathPolicy) {
+        self.url_path_policy = policy;
+    }
+
+    /// Returns the policy used for opaque HTTP text bodies.
+    ///
+    /// # Returns
+    ///
+    /// The current text body policy. Both [`Self::empty`] and
+    /// [`Self::default`] use [`TextBodyPolicy::Redact`].
+    #[inline(always)]
+    pub const fn text_body_policy(&self) -> TextBodyPolicy {
+        self.text_body_policy
+    }
+
+    /// Replaces the policy used for opaque HTTP text bodies.
+    ///
+    /// # Parameters
+    ///
+    /// * `policy` - New policy for declared `text/*` bodies and non-sensitive
+    ///   multipart text parts.
+    #[inline(always)]
+    pub fn set_text_body_policy(&mut self, policy: TextBodyPolicy) {
+        self.text_body_policy = policy;
     }
 
     /// Returns the sensitivity level configured for an HTTP header.
@@ -295,12 +387,20 @@ impl LogSanitizePolicy {
 }
 
 impl Default for LogSanitizePolicy {
-    /// Creates a policy with built-in sensitive header, query, and body names.
+    /// Creates a policy with built-in sensitive names and opaque-text
+    /// redaction. URL paths remain visible by default for backward
+    /// compatibility; callers whose path segments may contain secrets must
+    /// select [`UrlPathPolicy::Redact`].
+    ///
+    /// # Returns
+    /// A default policy that redacts opaque text and preserves URL paths.
     fn default() -> Self {
         Self {
             sensitive_headers: SensitiveFields::default(),
             sensitive_query_params: SensitiveFields::default(),
             sensitive_body_fields: SensitiveFields::default(),
+            text_body_policy: TextBodyPolicy::Redact,
+            url_path_policy: UrlPathPolicy::Preserve,
         }
     }
 }

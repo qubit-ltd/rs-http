@@ -22,7 +22,12 @@ use super::{
     LogSanitizer,
 };
 
-/// Renders URL, header, and body values for safe HTTP logs.
+/// Applies configured sanitization rules to URL, header, and body log values.
+///
+/// URL userinfo, fragments, and recognized sensitive query values are masked.
+/// URL paths follow [`super::UrlPathPolicy`] and use
+/// [`super::UrlPathPolicy::Preserve`] by default. Header and body rendering
+/// retain the boundaries documented by their respective methods.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SanitizedLogger {
     /// Sanitizer configured from client logging policy.
@@ -40,6 +45,7 @@ impl SanitizedLogger {
     ///
     /// # Returns
     /// New sanitized logger helper.
+    #[inline(always)]
     pub(crate) fn new(
         policy: LogSanitizePolicy,
         body_size_limit: usize,
@@ -57,6 +63,7 @@ impl SanitizedLogger {
     ///
     /// # Returns
     /// Sanitized logger configured like [`crate::HttpLogger`].
+    #[inline]
     pub(crate) fn from_options(options: &HttpClientOptions) -> Self {
         Self::new(
             options.log_sanitize_policy.clone(),
@@ -64,26 +71,33 @@ impl SanitizedLogger {
         )
     }
 
-    /// Returns a log-safe URL string.
+    /// Returns a URL string with userinfo, fragment, and recognized sensitive
+    /// query values masked.
     ///
     /// # Parameters
     /// - `url`: URL to render.
     ///
     /// # Returns
-    /// URL with userinfo, fragment, and sensitive query values masked.
+    /// Sanitized URL whose path follows the configured
+    /// [`super::UrlPathPolicy`]. Paths are preserved by default and are
+    /// replaced only when callers explicitly select
+    /// [`super::UrlPathPolicy::Redact`].
+    #[inline(always)]
     pub(crate) fn url(&self, url: &Url) -> String {
         self.sanitizer.sanitize_url(url)
     }
 
-    /// Returns a log-safe header value.
+    /// Renders a header value according to the configured sensitive-name
+    /// policy.
     ///
     /// # Parameters
     /// - `name`: Header name.
     /// - `value`: Header value.
     ///
     /// # Returns
-    /// Masked header value when the name is sensitive, otherwise UTF-8 text or
-    /// `<non-utf8>`.
+    /// Masked value when the header name matches the configured sensitive-name
+    /// policy, otherwise the original UTF-8 text or `<non-utf8>`.
+    #[inline(always)]
     pub(crate) fn header_value(
         &self,
         name: &HeaderName,
@@ -92,7 +106,11 @@ impl SanitizedLogger {
         self.sanitizer.sanitize_header_value(name, value)
     }
 
-    /// Returns a log-safe body preview.
+    /// Returns a body preview rendered according to the configured body
+    /// sanitization policy.
+    ///
+    /// Selecting [`super::TextBodyPolicy::PassThrough`] may return opaque text
+    /// verbatim and expose secrets from the original body.
     ///
     /// # Parameters
     /// - `body`: Raw body bytes.
@@ -100,7 +118,8 @@ impl SanitizedLogger {
     /// - `content_type`: Optional `Content-Type` header value.
     ///
     /// # Returns
-    /// Human-readable sanitized body preview.
+    /// Human-readable, policy-rendered body preview.
+    #[inline]
     pub(crate) fn body(
         &self,
         body: &[u8],

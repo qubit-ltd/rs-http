@@ -16,6 +16,8 @@ use qubit_http::{
     LogSanitizePolicy,
     LogSanitizer,
     SensitivityLevel,
+    TextBodyPolicy,
+    UrlPathPolicy,
 };
 use url::Url;
 
@@ -84,6 +86,40 @@ fn test_log_sanitizer_sanitize_url_masks_sensitive_query_params() {
         sanitized,
         "https://example.com/search?q=rust&access_token=****"
     );
+}
+
+#[test]
+fn test_log_sanitizer_default_preserves_url_path() {
+    let url = Url::parse(
+        "https://example.com/tenant/secret-id?access_token=query-secret",
+    )
+    .expect("test URL should parse");
+
+    let sanitized = LogSanitizer::default().sanitize_url(&url);
+
+    assert!(sanitized.contains("/tenant/secret-id?"));
+    assert!(!sanitized.contains("query-secret"));
+}
+
+#[test]
+fn test_log_sanitizer_redacts_url_path_and_masks_other_sensitive_components() {
+    let url = Url::parse(
+        "https://alice:sanitizer-password-secret@example.com/tenant/secret-id?access_token=query-secret#fragment-secret",
+    )
+    .expect("test URL should parse");
+
+    let sanitized = LogSanitizer::new(
+        LogSanitizePolicy::default()
+            .with_url_path_policy(UrlPathPolicy::Redact),
+    )
+    .sanitize_url(&url);
+
+    assert!(!sanitized.contains("tenant/secret-id"));
+    assert!(!sanitized.contains("query-secret"));
+    assert!(!sanitized.contains("alice"));
+    assert!(!sanitized.contains("sanitizer-password-secret"));
+    assert!(!sanitized.contains("fragment-secret"));
+    assert!(sanitized.contains("/%3Credacted%3E?"));
 }
 
 #[test]
@@ -191,6 +227,31 @@ fn test_log_sanitizer_sanitize_header_keeps_non_sensitive_header_values() {
 }
 
 #[test]
+fn test_log_sanitizer_text_body_default_redacts_and_pass_through_restores_text()
+{
+    let secret = b"opaque-text-secret";
+
+    let redacted = LogSanitizer::default().sanitize_request_body_preview(
+        secret,
+        secret.len(),
+        Some("text/plain"),
+    );
+    assert_eq!(redacted, "<redacted: text body>");
+    assert!(!redacted.contains("opaque-text-secret"));
+
+    let pass_through = LogSanitizer::new(
+        LogSanitizePolicy::default()
+            .with_text_body_policy(TextBodyPolicy::PassThrough),
+    )
+    .sanitize_response_body_preview(
+        secret,
+        secret.len(),
+        Some("text/plain"),
+    );
+    assert_eq!(pass_through, "opaque-text-secret");
+}
+
+#[test]
 fn test_log_sanitizer_sanitize_body_preview_redacts_json_fields() {
     let sanitizer = LogSanitizer::default();
     let body = Bytes::from_static(
@@ -259,7 +320,10 @@ fn test_log_sanitizer_error_response_truncated_json_uses_status_error_suffix() {
 
 #[test]
 fn test_log_sanitizer_error_response_truncation_normalizes_suffix_only() {
-    let sanitizer = LogSanitizer::default();
+    let sanitizer = LogSanitizer::new(
+        LogSanitizePolicy::default()
+            .with_text_body_policy(TextBodyPolicy::PassThrough),
+    );
     let body =
         Bytes::from_static(b"body marker ...<truncated 2 bytes> staysXX");
     let preview =
@@ -324,7 +388,10 @@ fn test_log_sanitizer_sanitize_body_preview_does_not_leak_truncated_ndjson() {
 
 #[test]
 fn test_log_sanitizer_sanitize_body_preview_redacts_multipart_form_fields() {
-    let sanitizer = LogSanitizer::default();
+    let sanitizer = LogSanitizer::new(
+        LogSanitizePolicy::default()
+            .with_text_body_policy(TextBodyPolicy::PassThrough),
+    );
     let body = Bytes::from_static(
         b"--boundary\r\n\
           Content-Disposition: form-data; name=\"username\"\r\n\
@@ -392,7 +459,10 @@ fn test_log_sanitizer_sanitize_body_preview_redacts_multipart_mixed_without_boun
 #[test]
 fn test_log_sanitizer_sanitize_body_preview_accepts_multipart_boundary_after_malformed_parameter(
 ) {
-    let sanitizer = LogSanitizer::default();
+    let sanitizer = LogSanitizer::new(
+        LogSanitizePolicy::default()
+            .with_text_body_policy(TextBodyPolicy::PassThrough),
+    );
     let body = Bytes::from_static(
         b"--boundary\r\n\
           Content-Disposition: form-data; name=\"username\"\r\n\
@@ -432,7 +502,10 @@ Content-Type: application/json
 
 #[test]
 fn test_log_sanitizer_sanitize_body_preview_keeps_multipart_text_part() {
-    let sanitizer = LogSanitizer::default();
+    let sanitizer = LogSanitizer::new(
+        LogSanitizePolicy::default()
+            .with_text_body_policy(TextBodyPolicy::PassThrough),
+    );
     let body = Bytes::from_static(
         b"--boundary\r\n\
           Content-Disposition: form-data; name=\"description\"\r\n\
@@ -451,9 +524,33 @@ fn test_log_sanitizer_sanitize_body_preview_keeps_multipart_text_part() {
 }
 
 #[test]
-fn test_log_sanitizer_sanitize_body_preview_keeps_multipart_text_containing_boundary_text(
+fn test_log_sanitizer_sanitize_body_preview_redacts_multipart_text_part_by_default(
 ) {
     let sanitizer = LogSanitizer::default();
+    let body = Bytes::from_static(
+        b"--boundary\r\n\
+          Content-Disposition: form-data; name=\"description\"\r\n\
+          Content-Type: text/plain\r\n\
+          \r\n\
+          multipart-text-secret\r\n\
+          --boundary--\r\n",
+    );
+    let preview = BodyPreview::new(&body, body.len(), BodyLogContext::Request)
+        .with_content_type("multipart/form-data; boundary=boundary");
+
+    let sanitized = sanitizer.sanitize_body_preview(&preview);
+
+    assert!(sanitized.contains("description=<redacted: multipart text part>"));
+    assert!(!sanitized.contains("multipart-text-secret"));
+}
+
+#[test]
+fn test_log_sanitizer_sanitize_body_preview_keeps_multipart_text_containing_boundary_text(
+) {
+    let sanitizer = LogSanitizer::new(
+        LogSanitizePolicy::default()
+            .with_text_body_policy(TextBodyPolicy::PassThrough),
+    );
     let body = Bytes::from_static(
         b"--boundary\r\n\
           Content-Disposition: form-data; name=\"description\"\r\n\
