@@ -57,7 +57,7 @@ qubit-sanitize = { version = "0.3", path = "../rs-sanitize", default-features = 
 [dev-dependencies]
 tokio = { version = "1.52", features = ["full", "test-util"] }
 tracing-subscriber = { version = "0.3", features = ["fmt"] }
-qubit-datatype = { path = "../rs-datatype", version = "0.6", features = ["converter"] }
+qubit-datatype = { path = "../rs-datatype", version = "0.7", features = ["converter"] }
 
 [patch.crates-io]
 qubit-datatype = { path = "../rs-datatype" }
