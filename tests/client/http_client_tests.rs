@@ -675,6 +675,33 @@ async fn test_execute_non_success_error_body_preview_is_truncated_by_limit() {
 }
 
 #[tokio::test]
+async fn test_execute_truncated_binary_error_preview_has_unknown_total_length()
+{
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 500,
+        headers: vec![],
+        body: vec![0_u8, 159, 146, 150, 1, 2, 3, 4, 5, 6],
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.error_response_preview_limit = 4;
+
+    let client = HttpClientFactory::new().create(options).unwrap();
+    let request = client
+        .request(Method::GET, "/status-truncated-binary")
+        .build();
+    let error = client.execute(request).await.unwrap_err();
+
+    assert_eq!(error.kind, HttpErrorKind::Status);
+    assert_eq!(
+        error.response_body_preview.as_deref(),
+        Some("<binary more than 4 bytes>...<truncated>"),
+    );
+}
+
+#[tokio::test]
 async fn test_execute_non_success_error_body_preview_is_not_truncated_at_exact_limit(
 ) {
     let body = "abcdefgh";

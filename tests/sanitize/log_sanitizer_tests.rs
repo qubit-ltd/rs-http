@@ -317,6 +317,19 @@ fn test_log_sanitizer_sanitize_body_preview_does_not_leak_truncated_json() {
 }
 
 #[test]
+fn test_log_sanitizer_untruncated_invalid_json_uses_invalid_json_marker() {
+    let sanitizer = LogSanitizer::default();
+    let body = Bytes::from_static(br#"{"password":"secret""#);
+    let preview = BodyPreview::new(&body, 1024, BodyLogContext::Request)
+        .with_content_type("application/json");
+
+    assert_eq!(
+        sanitizer.sanitize_body_preview(&preview),
+        "<redacted: invalid JSON>",
+    );
+}
+
+#[test]
 fn test_log_sanitizer_error_response_truncated_json_uses_status_error_suffix() {
     let sanitizer = LogSanitizer::default();
     let body = Bytes::from_static(
@@ -857,10 +870,7 @@ fn test_log_sanitizer_sanitize_body_preview_redacts_invalid_form() {
 
     let sanitized = sanitizer.sanitize_body_preview(&preview);
 
-    assert_eq!(
-        sanitized,
-        "<redacted: invalid or truncated URL-encoded form>"
-    );
+    assert_eq!(sanitized, "<redacted: invalid URL-encoded form>");
     assert!(!sanitized.contains("secret"));
 }
 
