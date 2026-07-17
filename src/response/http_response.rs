@@ -567,11 +567,12 @@ impl HttpResponse {
         let body = self.bytes().await?;
         LenientJsonDecoder::new(JsonDecodeOptions::strict())
             .decode_slice(&body)
-            .map_err(|_| {
+            .map_err(|error| {
                 HttpError::decode("Failed to decode response JSON")
                     .with_status(self.meta.status())
                     .with_url(self.meta.url())
             })
+                    .with_source(error)
     }
 
     /// Overrides the maximum allowed size (in bytes) for one SSE line on this
