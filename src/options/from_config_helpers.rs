@@ -42,8 +42,9 @@ use http::{
     HeaderName,
     HeaderValue,
 };
+#[cfg(not(target_pointer_width = "64"))]
+use qubit_config::ConfigError;
 use qubit_config::{
-    ConfigError,
     ConfigReader,
     ConfigResult,
 };
@@ -64,6 +65,11 @@ where
     let Some(value) = config.get_optional::<u64>(key)? else {
         return Ok(None);
     };
+    #[cfg(target_pointer_width = "64")]
+    {
+        Ok(Some(value as usize))
+    }
+    #[cfg(not(target_pointer_width = "64"))]
     usize::try_from(value).map(Some).map_err(|_| {
         ConfigError::DeserializeError {
             path: config.resolve_key(key),
