@@ -20,6 +20,8 @@ use qubit_http::{
 };
 use url::Url;
 
+use crate::common::SensitiveChoice;
+
 #[tokio::test]
 async fn test_http_response_text_decode_error_contains_status_and_url() {
     let mut response = HttpResponse::new(
@@ -181,4 +183,30 @@ async fn test_http_response_json_success_decodes_value() {
         .await
         .expect("json payload should decode");
     assert_eq!(value["n"], 42);
+}
+
+#[tokio::test]
+async fn test_http_response_json_redacts_deserializer_value() {
+    const SECRET: &str = "HTTP_TOP_SECRET";
+    let mut response = HttpResponse::new(
+        StatusCode::OK,
+        HeaderMap::new(),
+        Bytes::from(format!("\"{SECRET}\"")),
+        Url::parse("https://example.com/secure-json")
+            .expect("test URL must parse"),
+        Method::GET,
+    );
+    let error = response
+        .json::<SensitiveChoice>()
+        .await
+        .expect_err("unknown enum variant must fail");
+    assert!(!error.message.contains(SECRET));
+    assert_eq!(error.status, Some(StatusCode::OK));
+    assert_eq!(
+        error.url,
+        Some(
+            Url::parse("https://example.com/secure-json")
+                .expect("test URL must parse")
+        )
+    );
 }

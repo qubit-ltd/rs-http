@@ -13,6 +13,8 @@ use qubit_http::sse::{
 };
 use qubit_http::HttpErrorKind;
 
+use crate::common::SensitiveChoice;
+
 #[derive(Debug, serde::Deserialize, PartialEq, Eq)]
 struct TestPayload {
     delta: String,
@@ -66,4 +68,20 @@ fn test_sse_message_decode_json_with_mode_lenient_returns_none_for_bad_json() {
         .decode_json_with_mode::<TestPayload>(SseJsonMode::Lenient)
         .expect("lenient mode should not fail");
     assert!(payload.is_none());
+}
+
+#[test]
+fn test_sse_message_decode_json_redacts_deserializer_value() {
+    const SECRET: &str = "SSE_TOP_SECRET";
+    let message = SseMessage {
+        event: Some("secure.event".to_string()),
+        data: format!("\"{SECRET}\""),
+        last_event_id: Some("evt-secret".to_string()),
+    };
+    let error = message
+        .decode_json::<SensitiveChoice>()
+        .expect_err("unknown enum variant must fail");
+    assert!(!error.message.contains(SECRET));
+    assert!(error.message.contains("secure.event"));
+    assert!(error.message.contains("evt-secret"));
 }
