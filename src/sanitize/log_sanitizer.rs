@@ -318,7 +318,7 @@ impl LogSanitizer {
         };
         let result = self.body_sanitizer.sanitize_body_preview(
             preview.prefix(),
-            preview.source_len(),
+            preview.source_length(),
             content_type.as_ref(),
             LOG_NAME_MATCH_MODE,
         );

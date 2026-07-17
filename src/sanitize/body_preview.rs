@@ -6,6 +6,8 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
+use qubit_sanitize::BodySourceLength;
+
 use super::BodyLogContext;
 
 /// Bounded body bytes plus enough context to render a policy-controlled
@@ -20,7 +22,7 @@ pub(crate) struct BodyPreview<'a> {
     pub(crate) bytes: &'a [u8],
     /// Maximum bytes allowed in the rendered preview.
     pub(crate) limit: usize,
-    /// Total source body length when known.
+    /// Exact source length, or observed lower bound when `truncated` is set.
     pub(crate) source_len: usize,
     /// Whether `bytes` is already a truncated prefix.
     pub(crate) truncated: bool,
@@ -60,7 +62,8 @@ impl<'a> BodyPreview<'a> {
     ///
     /// # Parameters
     /// - `bytes`: Preview prefix bytes.
-    /// - `source_len`: Total source body length when known.
+    /// - `source_len`: Exact source length, or an observed lower bound when
+    ///   `truncated` is set.
     /// - `truncated`: Whether the source had more bytes after `bytes`.
     /// - `context`: Logging call site for truncation marker selection.
     ///
@@ -122,6 +125,19 @@ impl<'a> BodyPreview<'a> {
     /// Source body length in bytes.
     pub(crate) fn source_len(&self) -> usize {
         self.source_len.max(self.bytes.len())
+    }
+
+    /// Returns source-length metadata for the core body sanitizer.
+    ///
+    /// # Returns
+    /// Exact length for complete source bytes, or unknown truncation for an
+    /// already limited stream prefix.
+    pub(crate) fn source_length(&self) -> BodySourceLength {
+        if self.truncated {
+            BodySourceLength::UnknownTruncated
+        } else {
+            BodySourceLength::Known(self.source_len())
+        }
     }
 
     /// Returns the truncation suffix for this preview.
