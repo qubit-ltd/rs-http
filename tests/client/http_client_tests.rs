@@ -675,6 +675,37 @@ async fn test_execute_non_success_error_body_preview_is_truncated_by_limit() {
 }
 
 #[tokio::test]
+async fn test_execute_non_utf8_content_type_redacts_error_body_preview() {
+    let server = spawn_one_shot_server(ResponsePlan::ImmediateRawHeaders {
+        status: 500,
+        headers: vec![(
+            "Content-Type".to_string(),
+            b"application/json; charset=\xFF".to_vec(),
+        )],
+        body: br#"{"note":"unclassified-response-secret"}"#.to_vec(),
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    let client = HttpClientFactory::new()
+        .create(options)
+        .expect("client should be created");
+    let request = client
+        .request(Method::GET, "/status-non-utf8-content-type")
+        .build();
+
+    let error = client.execute(request).await.unwrap_err();
+
+    assert_eq!(error.kind, HttpErrorKind::Status);
+    assert_eq!(
+        error.response_body_preview.as_deref(),
+        Some("<redacted: invalid content type body>")
+    );
+    assert!(!error.message.contains("unclassified-response-secret"));
+}
+
+#[tokio::test]
 async fn test_execute_truncated_binary_error_preview_has_unknown_total_length()
 {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {

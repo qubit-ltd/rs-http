@@ -26,6 +26,7 @@ use http::header::{
 };
 use http::{
     HeaderMap,
+    HeaderValue,
     Method,
     StatusCode,
 };
@@ -403,7 +404,7 @@ impl HttpResponse {
         let Some(backend) = self.backend.take() else {
             return Ok("<empty>".to_string());
         };
-        let content_type = Self::content_type_value(self.meta.headers());
+        let content_type = Self::content_type_header(self.meta.headers());
         self.read_error_body_preview(backend, limit, content_type)
             .await
     }
@@ -571,8 +572,8 @@ impl HttpResponse {
                 HttpError::decode("Failed to decode response JSON")
                     .with_status(self.meta.status())
                     .with_url(self.meta.url())
-            })
                     .with_source(error)
+            })
     }
 
     /// Overrides the maximum allowed size (in bytes) for one SSE line on this
@@ -724,7 +725,7 @@ impl HttpResponse {
         &self,
         mut response: reqwest::Response,
         max_bytes: usize,
-        content_type: Option<String>,
+        content_type: Option<HeaderValue>,
     ) -> HttpResult<String> {
         let limit = max_bytes.max(1);
         let read_timeout = self.runtime.read_timeout;
@@ -791,7 +792,7 @@ impl HttpResponse {
             &preview,
             source_len,
             truncated,
-            content_type.as_deref(),
+            content_type.as_ref(),
             &self.options.log_sanitizer,
         ))
     }
@@ -844,7 +845,7 @@ impl HttpResponse {
         bytes: &[u8],
         source_len: usize,
         truncated: bool,
-        content_type: Option<&str>,
+        content_type: Option<&HeaderValue>,
         log_sanitizer: &LogSanitizer,
     ) -> String {
         let preview = BodyPreview::from_limited_bytes(
@@ -861,17 +862,14 @@ impl HttpResponse {
         log_sanitizer.sanitize_body_preview(&preview)
     }
 
-    /// Extracts a UTF-8 Content-Type header value.
+    /// Extracts a Content-Type header value.
     ///
     /// # Parameters
     /// - `headers`: Headers to inspect.
     ///
     /// # Returns
-    /// Owned Content-Type value when present and UTF-8.
-    fn content_type_value(headers: &HeaderMap) -> Option<String> {
-        headers
-            .get(CONTENT_TYPE)
-            .and_then(|value| value.to_str().ok())
-            .map(str::to_string)
+    /// Owned Content-Type value when present, including non-UTF-8 values.
+    fn content_type_header(headers: &HeaderMap) -> Option<HeaderValue> {
+        headers.get(CONTENT_TYPE).cloned()
     }
 }

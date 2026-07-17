@@ -322,6 +322,35 @@ fn test_log_request_text_body_redacts_by_default() {
 }
 
 #[test]
+fn test_log_request_non_utf8_content_type_redacts_body() {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        CONTENT_TYPE,
+        HeaderValue::from_bytes(b"application/json; charset=\xFF")
+            .expect("non-UTF-8 header value should be accepted"),
+    );
+    let client_options = HttpClientOptions::default();
+    let logger = HttpLogger::new(&client_options);
+    let request = logging_request(
+        Method::POST,
+        "https://example.com/non-utf8-content-type",
+        headers,
+        HttpRequestBody::Json(Bytes::from_static(
+            br#"{"note":"unclassified-request-secret"}"#,
+        )),
+    );
+
+    let logs = capture_trace_logs(|| {
+        logger.log_request(&request);
+    });
+
+    assert!(
+        logs.contains("Request body: <redacted: invalid content type body>")
+    );
+    assert!(!logs.contains("unclassified-request-secret"));
+}
+
+#[test]
 fn test_log_response_text_body_redacts_by_default() {
     let client_options = HttpClientOptions::default();
     let logger = HttpLogger::new(&client_options);
