@@ -6,6 +6,7 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
+use http::HeaderValue;
 use qubit_sanitize::BodySourceLength;
 
 use super::BodyLogContext;
@@ -27,7 +28,7 @@ pub(crate) struct BodyPreview<'a> {
     /// Whether `bytes` is already a truncated prefix.
     pub(crate) truncated: bool,
     /// Optional content type used to choose structured redaction rules.
-    pub(crate) content_type: Option<&'a str>,
+    pub(crate) content_type: Option<&'a HeaderValue>,
     /// Logging context that controls truncation marker text.
     pub(crate) context: BodyLogContext,
 }
@@ -92,7 +93,10 @@ impl<'a> BodyPreview<'a> {
     ///
     /// # Returns
     /// Updated preview descriptor.
-    pub(crate) fn with_content_type(mut self, content_type: &'a str) -> Self {
+    pub(crate) fn with_content_type(
+        mut self,
+        content_type: &'a HeaderValue,
+    ) -> Self {
         self.content_type = Some(content_type);
         self
     }

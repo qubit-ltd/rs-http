@@ -124,7 +124,7 @@ impl SanitizedLogger {
         &self,
         body: &[u8],
         context: BodyLogContext,
-        content_type: Option<&str>,
+        content_type: Option<&HeaderValue>,
     ) -> String {
         let preview = BodyPreview::new(body, self.body_size_limit, context);
         let preview = if let Some(content_type) = content_type {

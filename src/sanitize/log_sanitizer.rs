@@ -27,7 +27,6 @@ use super::{
     BodyLogContext,
     BodyPreview,
     LogSanitizePolicy,
-    UrlPathPolicy,
 };
 
 const INVALID_CONTENT_TYPE_BODY_REDACTED: &str =
@@ -41,8 +40,6 @@ pub struct LogSanitizer {
     policy: LogSanitizePolicy,
     /// URL sanitizer from `qubit-sanitize`.
     url_sanitizer: UrlSanitizer,
-    /// Rendering policy for complete URL paths.
-    url_path_policy: UrlPathPolicy,
     /// Header sanitizer from `qubit-sanitize`.
     header_sanitizer: HttpHeaderSanitizer,
     /// Body sanitizer from `qubit-sanitize`.
@@ -58,11 +55,11 @@ impl LogSanitizer {
     /// # Returns
     /// New [`LogSanitizer`].
     pub fn new(policy: LogSanitizePolicy) -> Self {
-        let url_path_policy = policy.url_path_policy();
         Self {
             url_sanitizer: UrlSanitizer::new(field_sanitizer(
                 policy.sensitive_query_params(),
-            )),
+            ))
+            .with_url_path_policy(policy.url_path_policy()),
             header_sanitizer: HttpHeaderSanitizer::new(field_sanitizer(
                 policy.sensitive_headers(),
             )),
@@ -70,7 +67,6 @@ impl LogSanitizer {
                 policy.sensitive_body_fields(),
             ))
             .with_text_body_policy(policy.text_body_policy()),
-            url_path_policy,
             policy,
         }
     }
@@ -111,7 +107,7 @@ impl LogSanitizer {
 
     /// Returns a URL string with userinfo, fragments, and recognized sensitive
     /// query values masked. The path follows the configured
-    /// [`UrlPathPolicy`].
+    /// [`super::UrlPathPolicy`].
     ///
     /// # Parameters
     /// - `url`: URL to render.
@@ -119,12 +115,7 @@ impl LogSanitizer {
     /// # Returns
     /// Sanitized URL string.
     pub fn sanitize_url(&self, url: &Url) -> String {
-        let mut sanitized_url = url.clone();
-        if self.url_path_policy == UrlPathPolicy::Redact {
-            sanitized_url.set_path("/<redacted>");
-        }
-        self.url_sanitizer
-            .sanitize_url(&sanitized_url, LOG_NAME_MATCH_MODE)
+        self.url_sanitizer.sanitize_url(url, LOG_NAME_MATCH_MODE)
     }
 
     /// Renders a header value according to the configured sensitive-name
@@ -270,7 +261,7 @@ impl LogSanitizer {
     /// # Returns
     /// Message with parseable URL userinfo, fragments, and recognized
     /// sensitive query values masked. URL paths follow the configured
-    /// [`UrlPathPolicy`] and are preserved by default.
+    /// [`super::UrlPathPolicy`] and are preserved by default.
     pub(crate) fn sanitize_diagnostic_text(&self, text: &str) -> String {
         let mut sanitized = String::with_capacity(text.len());
         let mut token_start = None;
@@ -309,17 +300,10 @@ impl LogSanitizer {
         &self,
         preview: &BodyPreview<'_>,
     ) -> String {
-        let content_type = match preview.content_type {
-            Some(content_type) => match HeaderValue::from_str(content_type) {
-                Ok(content_type) => Some(content_type),
-                Err(_) => return Self::invalid_content_type_body(preview),
-            },
-            None => None,
-        };
         let result = self.body_sanitizer.sanitize_body_preview(
             preview.prefix(),
             preview.source_length(),
-            content_type.as_ref(),
+            preview.content_type,
             LOG_NAME_MATCH_MODE,
         );
         if preview.context == BodyLogContext::ErrorResponse
@@ -353,12 +337,13 @@ impl LogSanitizer {
         content_type: Option<&str>,
     ) -> String {
         let preview = BodyPreview::new(body, limit, context);
-        let preview = if let Some(content_type) = content_type {
-            preview.with_content_type(content_type)
-        } else {
-            preview
+        let Some(content_type) = content_type else {
+            return self.sanitize_body_preview(&preview);
         };
-        self.sanitize_body_preview(&preview)
+        let Ok(content_type) = HeaderValue::from_str(content_type) else {
+            return Self::invalid_content_type_body(&preview);
+        };
+        self.sanitize_body_preview(&preview.with_content_type(&content_type))
     }
 
     /// Sanitizes a single whitespace-delimited diagnostic token.
@@ -369,7 +354,7 @@ impl LogSanitizer {
     /// # Returns
     /// Token with embedded URL userinfo, fragment, and recognized sensitive
     /// query values masked. Its URL path follows the configured
-    /// [`UrlPathPolicy`] and is preserved by default.
+    /// [`super::UrlPathPolicy`] and is preserved by default.
     fn sanitize_diagnostic_token(&self, token: &str) -> String {
         let Some(scheme_start) = find_url_scheme_start(token) else {
             return token.to_string();

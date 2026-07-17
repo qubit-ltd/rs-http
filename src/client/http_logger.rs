@@ -146,15 +146,14 @@ impl<'a> HttpLogger<'a> {
         }
 
         if self.options.log_response_body {
-            let content_type =
-                Self::content_type(response.headers()).map(str::to_string);
+            let content_type = Self::content_type(response.headers()).cloned();
             if let Some(body) = response.buffered_body_for_logging() {
                 tracing::trace!(
                     "Response body: {}",
                     self.sanitized_logger.body(
                         body.as_ref(),
                         BodyLogContext::Response,
-                        content_type.as_deref()
+                        content_type.as_ref()
                     )
                 );
             } else if response
@@ -166,7 +165,7 @@ impl<'a> HttpLogger<'a> {
                     self.sanitized_logger.body(
                         body.as_ref(),
                         BodyLogContext::Response,
-                        content_type.as_deref()
+                        content_type.as_ref()
                     )
                 );
             } else {
@@ -265,16 +264,15 @@ impl<'a> HttpLogger<'a> {
         }
     }
 
-    /// Extracts a UTF-8 Content-Type header value from a header map.
+    /// Extracts a Content-Type header value from a header map.
     ///
     /// # Parameters
     /// - `headers`: Headers to inspect.
     ///
     /// # Returns
-    /// `Some` with UTF-8 Content-Type, otherwise `None`.
-    fn content_type(headers: &http::HeaderMap) -> Option<&str> {
-        headers
-            .get(CONTENT_TYPE)
-            .and_then(|value| value.to_str().ok())
+    /// `Some` when Content-Type is present, including when its value is not
+    /// valid UTF-8; otherwise `None`.
+    fn content_type(headers: &http::HeaderMap) -> Option<&http::HeaderValue> {
+        headers.get(CONTENT_TYPE)
     }
 }
