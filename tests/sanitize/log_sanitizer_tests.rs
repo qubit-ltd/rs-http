@@ -285,6 +285,23 @@ fn test_log_sanitizer_sanitize_body_preview_redacts_json_fields() {
 }
 
 #[test]
+fn test_log_sanitizer_default_redacts_unkeyed_json_scalars() {
+    let sanitizer = LogSanitizer::default();
+    let bodies: &[&[u8]] =
+        &[br#""downstream-secret""#, br#"["downstream-secret"]"#];
+
+    for body in bodies {
+        let sanitized = sanitizer.sanitize_request_body_preview(
+            body,
+            body.len(),
+            Some("application/json"),
+        );
+        assert!(!sanitized.contains("downstream-secret"));
+        assert!(sanitized.contains("<redacted: unkeyed JSON value>"));
+    }
+}
+
+#[test]
 fn test_log_sanitizer_sanitize_body_preview_redacts_camel_case_json_fields() {
     let sanitizer = LogSanitizer::default();
     let body = Bytes::from_static(br#"{"accessToken":"secret-access","clientSecret":"secret-client","user":"alice"}"#);
