@@ -955,6 +955,7 @@ dependencies = [
  "qubit-datatype",
  "qubit-error",
  "qubit-function",
+ "qubit-json",
  "qubit-retry",
  "qubit-sanitize",
  "reqwest",
@@ -967,6 +968,14 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
+]
+
+[[package]]
+name = "qubit-json"
+version = "0.5.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
