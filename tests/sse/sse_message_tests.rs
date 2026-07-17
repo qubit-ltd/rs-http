@@ -84,4 +84,14 @@ fn test_sse_message_decode_json_redacts_deserializer_value() {
     assert!(!error.message.contains(SECRET));
     assert!(error.message.contains("secure.event"));
     assert!(error.message.contains("evt-secret"));
+    let source = std::error::Error::source(&error)
+        .expect("SSE JSON decode errors must retain the redacted decoder source");
+    let decode_error = source
+        .downcast_ref::<qubit_json::JsonDecodeError>()
+        .expect("SSE JSON decode source must be JsonDecodeError");
+    assert_eq!(
+        decode_error.privacy_policy(),
+        qubit_json::ErrorPrivacyPolicy::Redacted,
+    );
+    assert!(!decode_error.to_string().contains(SECRET));
 }

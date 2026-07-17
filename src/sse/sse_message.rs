@@ -51,12 +51,13 @@ impl SseMessage {
     {
         LenientJsonDecoder::new(JsonDecodeOptions::strict())
             .decode::<T>(&self.data)
-            .map_err(|_| {
-            HttpError::sse_decode(format!(
-                "Failed to decode SSE message data as JSON (event={:?}, last_event_id={:?})",
-                self.event, self.last_event_id
-            ))
-        })
+            .map_err(|error| {
+                HttpError::sse_decode(format!(
+                    "Failed to decode SSE message data as JSON (event={:?}, last_event_id={:?})",
+                    self.event, self.last_event_id
+                ))
+                .with_source(error)
+            })
     }
 
     /// Decodes the current message's `data` payload as JSON with configurable
