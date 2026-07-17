@@ -209,8 +209,9 @@ async fn test_http_response_json_redacts_deserializer_value() {
                 .expect("test URL must parse")
         )
     );
-    let source = std::error::Error::source(&error)
-        .expect("HTTP JSON decode errors must retain the redacted decoder source");
+    let source = std::error::Error::source(&error).expect(
+        "HTTP JSON decode errors must retain the redacted decoder source",
+    );
     let decode_error = source
         .downcast_ref::<qubit_json::JsonDecodeError>()
         .expect("HTTP JSON decode source must be JsonDecodeError");
