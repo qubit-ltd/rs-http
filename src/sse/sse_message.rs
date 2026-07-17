@@ -9,6 +9,10 @@
 //!
 //! One EventSource-style message dispatch after frame reassembly.
 
+use qubit_json::{
+    JsonDecodeOptions,
+    LenientJsonDecoder,
+};
 use serde::de::DeserializeOwned;
 
 use super::SseJsonMode;
@@ -45,10 +49,12 @@ impl SseMessage {
     where
         T: DeserializeOwned,
     {
-        serde_json::from_str::<T>(&self.data).map_err(|error| {
+        LenientJsonDecoder::new(JsonDecodeOptions::strict())
+            .decode::<T>(&self.data)
+            .map_err(|_| {
             HttpError::sse_decode(format!(
-                "Failed to decode SSE message data as JSON (event={:?}, last_event_id={:?}): {}",
-                self.event, self.last_event_id, error
+                "Failed to decode SSE message data as JSON (event={:?}, last_event_id={:?})",
+                self.event, self.last_event_id
             ))
         })
     }
@@ -78,15 +84,13 @@ impl SseMessage {
     {
         match mode {
             SseJsonMode::Strict => self.decode_json::<T>().map(Some),
-            SseJsonMode::Lenient => match serde_json::from_str::<T>(&self.data)
-            {
+            SseJsonMode::Lenient => match self.decode_json::<T>() {
                 Ok(value) => Ok(Some(value)),
-                Err(error) => {
+                Err(_) => {
                     tracing::debug!(
-                        "Skipping malformed SSE message JSON in lenient mode (event={:?}, last_event_id={:?}): {}",
+                        "Skipping malformed SSE message JSON in lenient mode (event={:?}, last_event_id={:?})",
                         self.event,
-                        self.last_event_id,
-                        error
+                        self.last_event_id
                     );
                     Ok(None)
                 }

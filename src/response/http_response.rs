@@ -29,6 +29,10 @@ use http::{
     Method,
     StatusCode,
 };
+use qubit_json::{
+    JsonDecodeOptions,
+    LenientJsonDecoder,
+};
 use serde::de::DeserializeOwned;
 use tokio_util::sync::CancellationToken;
 use url::Url;
@@ -561,14 +565,13 @@ impl HttpResponse {
         T: DeserializeOwned,
     {
         let body = self.bytes().await?;
-        serde_json::from_slice(&body).map_err(|error| {
-            HttpError::decode(format!(
-                "Failed to decode response JSON: {}",
-                error
-            ))
-            .with_status(self.meta.status())
-            .with_url(self.meta.url())
-        })
+        LenientJsonDecoder::new(JsonDecodeOptions::strict())
+            .decode_slice(&body)
+            .map_err(|_| {
+                HttpError::decode("Failed to decode response JSON")
+                    .with_status(self.meta.status())
+                    .with_url(self.meta.url())
+            })
     }
 
     /// Overrides the maximum allowed size (in bytes) for one SSE line on this
