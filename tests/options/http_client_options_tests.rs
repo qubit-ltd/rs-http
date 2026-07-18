@@ -874,7 +874,7 @@ fn test_http_client_options_default_headers_map_substitution_error_is_prefixed()
         HttpClientOptions::from_config(&config.section("http")).unwrap_err();
 
     assert_eq!(err.kind, HttpConfigErrorKind::ConfigError);
-    assert_eq!(err.path, "http");
+    assert_eq!(err.path, "http.default_headers");
 }
 
 #[test]
