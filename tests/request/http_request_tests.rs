@@ -26,6 +26,9 @@ use qubit_http::{
     HttpRequestStreamingBody,
     HttpRetryMethodPolicy,
     LogSanitizePolicy,
+};
+use qubit_sanitize::{
+    SensitivityLevel,
     UrlPathPolicy,
 };
 use url::Url;
@@ -187,10 +190,9 @@ fn test_http_request_debug_reinsertion_cancels_field_exclusion() {
     options
         .log_sanitize_policy
         .remove_sensitive_query_param("sig");
-    options.log_sanitize_policy.insert_sensitive_query_param(
-        "SIG",
-        qubit_http::SensitivityLevel::Secret,
-    );
+    options
+        .log_sanitize_policy
+        .insert_sensitive_query_param("SIG", SensitivityLevel::Secret);
     let client = HttpClientFactory::new()
         .create(options)
         .expect("client should be created");

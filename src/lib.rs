@@ -57,7 +57,6 @@ pub use qubit_retry::{
     RetryJitter,
     RetryOptions,
 };
-pub use qubit_sanitize::SensitivityLevel;
 pub use request::{
     AsyncHttpHeaderInjector,
     HttpHeaderInjector,
@@ -81,7 +80,5 @@ pub use response::{
 pub use sanitize::{
     LogSanitizePolicy,
     LogSanitizer,
-    TextBodyPolicy,
-    UrlPathPolicy,
 };
 pub use tokio_util::sync::CancellationToken;

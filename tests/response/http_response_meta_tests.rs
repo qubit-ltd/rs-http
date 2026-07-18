@@ -17,8 +17,8 @@ use http::{
 use qubit_http::{
     HttpResponseMeta,
     LogSanitizePolicy,
-    UrlPathPolicy,
 };
+use qubit_sanitize::UrlPathPolicy;
 use url::Url;
 
 #[test]

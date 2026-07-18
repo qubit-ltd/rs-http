@@ -69,11 +69,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 HTTP TRACE 日志在输出前会统一脱敏。URL 脱敏会掩码用户信息、fragment 和已识别的
 敏感 query 参数。非根 URL path 默认隐藏；只有在确认诊断边界安全后，才应显式选择
-`UrlPathPolicy::Preserve`。配置驱动的客户端可以通过
+`qubit_sanitize::UrlPathPolicy::Preserve`。配置驱动的客户端可以通过
 `log_sanitize.url_path_policy` 选择 `redact` 或 `preserve`。默认策略还会掩码常见凭证类
 header 和 JSON/form/multipart body 字段。
 内置敏感名称和掩码级别来自 `qubit_sanitize::SensitiveFields`。不透明的 `text/*` body
-默认使用 `TextBodyPolicy::Redact` 隐藏。`TextBodyPolicy::PassThrough` 是显式的诊断
+默认使用 `qubit_sanitize::TextBodyPolicy::Redact` 隐藏。
+`qubit_sanitize::TextBodyPolicy::PassThrough` 是显式的诊断
 opt-in，会原样输出这类文本，并可能暴露 secret。unsupported/unstructured body 不会
 原样写入日志：UTF-8 fallback 内容会被隐藏，二进制内容只输出 byte-count marker。
 multipart 字段值使用同一套 body 字段策略；
@@ -85,8 +86,8 @@ multipart 字段值使用同一套 body 字段策略；
 use qubit_http::{
     HttpClientFactory,
     HttpClientOptions,
-    SensitivityLevel,
 };
+use qubit_sanitize::SensitivityLevel;
 
 let mut options = HttpClientOptions::new();
 options.logging.enabled = true;

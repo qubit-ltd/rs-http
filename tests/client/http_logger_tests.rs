@@ -14,8 +14,8 @@ use qubit_http::{
     HttpLogger,
     HttpLoggingOptions,
     LogSanitizePolicy,
-    TextBodyPolicy,
 };
+use qubit_sanitize::TextBodyPolicy;
 
 use crate::common::capture_trace_logs;
 

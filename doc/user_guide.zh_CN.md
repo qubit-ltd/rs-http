@@ -582,8 +582,8 @@ use http::Method;
 use qubit_http::{
     HttpClientFactory,
     HttpClientOptions,
-    SensitivityLevel,
 };
+use qubit_sanitize::SensitivityLevel;
 use serde_json::json;
 
 let mut options = HttpClientOptions::new();

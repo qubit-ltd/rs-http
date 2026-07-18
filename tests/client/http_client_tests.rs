@@ -38,6 +38,8 @@ use qubit_http::{
     HttpRetryMethodPolicy,
     LogSanitizePolicy,
     RetryDelay,
+};
+use qubit_sanitize::{
     SensitivityLevel,
     TextBodyPolicy,
 };

@@ -12,6 +12,8 @@ use qubit_http::{
     HttpErrorKind,
     LogSanitizePolicy,
     RetryHint,
+};
+use qubit_sanitize::{
     SensitivityLevel,
     UrlPathPolicy,
 };
