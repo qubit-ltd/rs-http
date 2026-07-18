@@ -948,6 +948,7 @@ name = "qubit-config"
 version = "0.14.0"
 dependencies = [
  "qubit-datatype",
+ "qubit-sanitize",
  "qubit-value",
  "regex",
  "serde",

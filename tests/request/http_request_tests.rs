@@ -160,6 +160,28 @@ fn test_http_request_debug_honors_explicit_default_field_exclusion() {
 }
 
 #[test]
+fn test_http_request_debug_exclusion_wins_over_sensitive_suffix() {
+    let mut options = HttpClientOptions::new();
+    assert!(options
+        .log_sanitize_policy
+        .remove_sensitive_query_param("access_token")
+        .is_some());
+    let client = HttpClientFactory::new()
+        .create(options)
+        .expect("client should be created");
+    let request = client
+        .request(
+            Method::GET,
+            "https://example.com/callback?openai_access_token=known-false-positive",
+        )
+        .build();
+
+    let debug = format!("{request:?}");
+
+    assert!(debug.contains("known-false-positive"));
+}
+
+#[test]
 fn test_http_request_debug_reinsertion_cancels_field_exclusion() {
     let mut options = HttpClientOptions::new();
     options

@@ -186,20 +186,17 @@ impl From<qubit_config::ConfigError> for HttpConfigError {
     /// # Returns
     /// Equivalent [`HttpConfigError`].
     fn from(e: qubit_config::ConfigError) -> Self {
-        use qubit_config::ConfigError;
+        use qubit_config::ConfigErrorKind;
+        let kind = e.kind();
+        let path = e.path().unwrap_or_default().to_owned();
         let msg = e.to_string();
-        match e {
-            ConfigError::TypeMismatch { key, .. }
-            | ConfigError::ConversionError { key, .. } => {
-                HttpConfigError::type_error(key, msg)
+        match kind {
+            ConfigErrorKind::TypeMismatch
+            | ConfigErrorKind::Conversion
+            | ConfigErrorKind::PropertyHasNoValue => {
+                HttpConfigError::type_error(path, msg)
             }
-            ConfigError::PropertyHasNoValue(key) => {
-                HttpConfigError::type_error(key, msg)
-            }
-            ConfigError::PropertyNotFound(key) => {
-                HttpConfigError::config_error(key, msg)
-            }
-            other => HttpConfigError::config_error("", other.to_string()),
+            _ => HttpConfigError::config_error(path, msg),
         }
     }
 }

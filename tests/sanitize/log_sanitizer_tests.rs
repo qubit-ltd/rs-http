@@ -84,7 +84,7 @@ fn test_log_sanitizer_sanitize_url_masks_sensitive_query_params() {
 
     assert_eq!(
         sanitized,
-        "https://example.com/search?q=rust&access_token=****"
+        "https://example.com/%3Credacted%3E?q=rust&access_token=****"
     );
 }
 
@@ -100,12 +100,12 @@ fn test_log_sanitizer_sanitize_url_masks_signed_url_credentials() {
 
     assert_eq!(
         sanitized,
-        "https://example.com/object?X-Amz-Signature=%3Credacted%3E&X-Goog-Signature=%3Credacted%3E&sig=%3Credacted%3E",
+        "https://example.com/%3Credacted%3E?X-Amz-Signature=%3Credacted%3E&X-Goog-Signature=%3Credacted%3E&sig=%3Credacted%3E",
     );
 }
 
 #[test]
-fn test_log_sanitizer_default_preserves_url_path() {
+fn test_log_sanitizer_default_redacts_url_path() {
     let url = Url::parse(
         "https://example.com/tenant/secret-id?access_token=query-secret",
     )
@@ -113,12 +113,13 @@ fn test_log_sanitizer_default_preserves_url_path() {
 
     let sanitized = LogSanitizer::default().sanitize_url(&url);
 
-    assert!(sanitized.contains("/tenant/secret-id?"));
+    assert!(sanitized.contains("/%3Credacted%3E?"));
+    assert!(!sanitized.contains("tenant/secret-id"));
     assert!(!sanitized.contains("query-secret"));
 }
 
 #[test]
-fn test_log_sanitizer_redacts_url_path_and_masks_other_sensitive_components() {
+fn test_log_sanitizer_explicitly_preserves_url_path() {
     let url = Url::parse(
         "https://alice:sanitizer-password-secret@example.com/tenant/secret-id?access_token=query-secret#fragment-secret",
     )
@@ -126,16 +127,15 @@ fn test_log_sanitizer_redacts_url_path_and_masks_other_sensitive_components() {
 
     let sanitized = LogSanitizer::new(
         LogSanitizePolicy::default()
-            .with_url_path_policy(UrlPathPolicy::Redact),
+            .with_url_path_policy(UrlPathPolicy::Preserve),
     )
     .sanitize_url(&url);
 
-    assert!(!sanitized.contains("tenant/secret-id"));
+    assert!(sanitized.contains("tenant/secret-id"));
     assert!(!sanitized.contains("query-secret"));
     assert!(!sanitized.contains("alice"));
     assert!(!sanitized.contains("sanitizer-password-secret"));
     assert!(!sanitized.contains("fragment-secret"));
-    assert!(sanitized.contains("/%3Credacted%3E?"));
 }
 
 #[test]
@@ -148,7 +148,7 @@ fn test_log_sanitizer_sanitize_url_masks_camel_case_sensitive_query_params() {
 
     assert_eq!(
         sanitized,
-        "https://api.example.com/search?accessToken=****&clientSecret=%3Credacted%3E"
+        "https://api.example.com/%3Credacted%3E?accessToken=****&clientSecret=%3Credacted%3E"
     );
     assert!(!sanitized.contains("secret-access"));
     assert!(!sanitized.contains("secret-client"));
@@ -165,7 +165,7 @@ fn test_log_sanitizer_sanitize_url_uses_shared_secret_level_for_password_query()
 
     assert_eq!(
         sanitized,
-        "https://example.com/login?password=%3Credacted%3E&access_token=****"
+        "https://example.com/%3Credacted%3E?password=%3Credacted%3E&access_token=****"
     );
     assert!(!sanitized.contains("secret"));
 }
@@ -191,7 +191,7 @@ fn test_log_sanitizer_sanitize_url_masks_password() {
 
     assert_eq!(
         sanitized,
-        "https://****:%3Credacted%3E@example.com/search?q=rust"
+        "https://****:%3Credacted%3E@example.com/%3Credacted%3E?q=rust"
     );
     assert!(!sanitized.contains("alice"));
     assert!(!sanitized.contains("secret-password"));
@@ -209,7 +209,7 @@ fn test_log_sanitizer_sanitize_url_masks_userinfo_and_fragment() {
 
     assert_eq!(
         sanitized,
-        "https://****:%3Credacted%3E@example.com/callback?access_token=****#****"
+        "https://****:%3Credacted%3E@example.com/%3Credacted%3E?access_token=****#****"
     );
     assert!(!sanitized.contains("api-token"));
     assert!(!sanitized.contains("secret-password"));

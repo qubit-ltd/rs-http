@@ -28,6 +28,7 @@
 //! log_sanitize.sensitive_headers       – String-compatible values
 //! log_sanitize.sensitive_query_params  – String-compatible values
 //! log_sanitize.sensitive_body_fields   – String-compatible values
+//! log_sanitize.url_path_policy         – `redact` or `preserve`
 //! log_sanitize.excluded_sensitive_headers      – String-compatible values
 //! log_sanitize.excluded_sensitive_query_params – String-compatible values
 //! log_sanitize.excluded_sensitive_body_fields  – String-compatible values

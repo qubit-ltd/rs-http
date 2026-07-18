@@ -32,6 +32,7 @@ use qubit_http::{
     ProxyType,
     RetryDelay,
     SensitivityLevel,
+    UrlPathPolicy,
 };
 
 #[test]
@@ -444,6 +445,9 @@ fn test_http_client_options_log_sanitize_section() {
             vec!["signature".to_string()],
         )
         .unwrap();
+    config
+        .set("http.log_sanitize.url_path_policy", "preserve".to_string())
+        .unwrap();
 
     let opts = HttpClientOptions::from_config(&config.section("http")).unwrap();
     assert!(opts
@@ -482,6 +486,24 @@ fn test_http_client_options_log_sanitize_section() {
         .log_sanitize_policy
         .sensitivity_for_body_field("signature")
         .is_none());
+    assert_eq!(
+        opts.log_sanitize_policy.url_path_policy(),
+        UrlPathPolicy::Preserve,
+    );
+}
+
+#[test]
+fn test_http_client_options_rejects_invalid_url_path_policy() {
+    let mut config = Config::new();
+    config
+        .set("http.log_sanitize.url_path_policy", "visible".to_string())
+        .unwrap();
+
+    let error =
+        HttpClientOptions::from_config(&config.section("http")).unwrap_err();
+
+    assert_eq!(error.kind, HttpConfigErrorKind::InvalidValue);
+    assert_eq!(error.path, "http.log_sanitize.url_path_policy");
 }
 
 #[test]

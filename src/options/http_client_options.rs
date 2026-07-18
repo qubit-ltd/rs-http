@@ -20,7 +20,10 @@ use qubit_config::{
     ConfigReader,
     ConfigResult,
 };
-use qubit_sanitize::SensitivityLevel;
+use qubit_sanitize::{
+    SensitivityLevel,
+    UrlPathPolicy,
+};
 use std::str::FromStr;
 use url::Url;
 
@@ -181,6 +184,7 @@ struct HttpClientSseConfigInput {
 
 /// Log sanitization additions and exclusions read from `log_sanitize.*`.
 struct HttpClientLogSanitizeConfigInput {
+    url_path_policy: Option<String>,
     sensitive_headers: Option<Vec<String>>,
     sensitive_query_params: Option<Vec<String>>,
     sensitive_body_fields: Option<Vec<String>>,
@@ -255,6 +259,7 @@ impl HttpClientOptions {
         R: ConfigReader + ?Sized,
     {
         Ok(HttpClientLogSanitizeConfigInput {
+            url_path_policy: config.get_optional_string("url_path_policy")?,
             sensitive_headers: config
                 .get_optional_string_list("sensitive_headers")?,
             sensitive_query_params: config
@@ -303,6 +308,32 @@ impl HttpClientOptions {
                 format!("Unsupported SSE JSON mode: {value}"),
             )
         })
+    }
+
+    /// Parses the URL path rendering policy from configuration text.
+    ///
+    /// # Parameters
+    ///
+    /// * `value` - Configured `redact` or `preserve` value.
+    ///
+    /// # Returns
+    ///
+    /// Parsed URL path policy.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`HttpConfigError`] when the value is unsupported.
+    fn parse_url_path_policy(
+        value: &str,
+    ) -> Result<UrlPathPolicy, HttpConfigError> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "redact" => Ok(UrlPathPolicy::Redact),
+            "preserve" => Ok(UrlPathPolicy::Preserve),
+            _ => Err(HttpConfigError::invalid_value(
+                "url_path_policy",
+                format!("Unsupported URL path policy: {value}"),
+            )),
+        }
     }
 
     fn validate_positive_limit(
@@ -444,7 +475,7 @@ impl HttpClientOptions {
         }
 
         // timeouts
-        if config.contains_prefix("timeouts") {
+        if config.contains_section("timeouts") {
             let timeouts_config = config.section("timeouts");
             opts.timeouts =
                 match HttpTimeoutOptions::from_config(&timeouts_config) {
@@ -459,7 +490,7 @@ impl HttpClientOptions {
         }
 
         // proxy
-        if config.contains_prefix("proxy") {
+        if config.contains_section("proxy") {
             let proxy_config = config.section("proxy");
             opts.proxy = match ProxyOptions::from_config(&proxy_config) {
                 Ok(proxy) => proxy,
@@ -473,7 +504,7 @@ impl HttpClientOptions {
         }
 
         // logging
-        if config.contains_prefix("logging") {
+        if config.contains_section("logging") {
             let logging_config = config.section("logging");
             opts.logging =
                 match HttpLoggingOptions::from_config(&logging_config) {
@@ -487,7 +518,7 @@ impl HttpClientOptions {
                 };
         }
 
-        if config.contains_prefix("retry") {
+        if config.contains_section("retry") {
             let retry_config = config.section("retry");
             opts.retry = match HttpRetryOptions::from_config(&retry_config) {
                 Ok(retry) => retry,
@@ -500,7 +531,7 @@ impl HttpClientOptions {
             };
         }
 
-        if config.contains_prefix("sse") {
+        if config.contains_section("sse") {
             let sse_config = config.section("sse");
             let sse = match Self::read_sse_config(&sse_config) {
                 Ok(sse) => sse,
@@ -564,7 +595,7 @@ impl HttpClientOptions {
             }
         }
 
-        if config.contains_prefix("log_sanitize") {
+        if config.contains_section("log_sanitize") {
             let log_sanitize_config = config.section("log_sanitize");
             let log_sanitize =
                 match Self::read_log_sanitize_config(&log_sanitize_config) {
@@ -576,6 +607,18 @@ impl HttpClientOptions {
                         ))
                     }
                 };
+            if let Some(value) = log_sanitize.url_path_policy.as_deref() {
+                let policy = match Self::parse_url_path_policy(value) {
+                    Ok(policy) => policy,
+                    Err(error) => {
+                        return Err(Self::resolve_config_error(
+                            &log_sanitize_config,
+                            error,
+                        ))
+                    }
+                };
+                opts.log_sanitize_policy.set_url_path_policy(policy);
+            }
             if let Some(names) = log_sanitize.sensitive_headers {
                 opts.log_sanitize_policy
                     .extend_sensitive_headers(names, SensitivityLevel::High);
