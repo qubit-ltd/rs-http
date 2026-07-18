@@ -15,8 +15,9 @@ use super::BodyLogContext;
 /// preview.
 ///
 /// This descriptor does not itself guarantee redaction. Rendering with
-/// [`super::TextBodyPolicy::PassThrough`] may expose opaque text from the
-/// original body verbatim.
+/// [`qubit_sanitize::TextBodyPolicy::PassThrough`] may expose secrets from the
+/// original opaque body, although the final text rendering escapes log-unsafe
+/// characters.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct BodyPreview<'a> {
     /// Full body bytes, or an already bounded prefix when `truncated` is set.
@@ -37,12 +38,15 @@ impl<'a> BodyPreview<'a> {
     /// Creates a body preview from source bytes and a byte limit.
     ///
     /// # Parameters
-    /// - `bytes`: Source body bytes.
-    /// - `limit`: Maximum preview bytes; values below 1 are clamped to 1.
-    /// - `context`: Logging call site for truncation marker selection.
+    ///
+    /// * `bytes` - Source body bytes.
+    /// * `limit` - Maximum preview bytes; values below 1 are clamped to 1.
+    /// * `context` - Logging call site for truncation marker selection.
     ///
     /// # Returns
+    ///
     /// Preview descriptor borrowing `bytes`.
+    #[inline]
     pub(crate) fn new(
         bytes: &'a [u8],
         limit: usize,
@@ -62,14 +66,17 @@ impl<'a> BodyPreview<'a> {
     /// caller.
     ///
     /// # Parameters
-    /// - `bytes`: Preview prefix bytes.
-    /// - `source_len`: Exact source length, or an observed lower bound when
+    ///
+    /// * `bytes` - Preview prefix bytes.
+    /// * `source_len` - Exact source length, or an observed lower bound when
     ///   `truncated` is set.
-    /// - `truncated`: Whether the source had more bytes after `bytes`.
-    /// - `context`: Logging call site for truncation marker selection.
+    /// * `truncated` - Whether the source had more bytes after `bytes`.
+    /// * `context` - Logging call site for truncation marker selection.
     ///
     /// # Returns
+    ///
     /// Preview descriptor borrowing `bytes`.
+    #[inline]
     pub(crate) fn from_limited_bytes(
         bytes: &'a [u8],
         source_len: usize,
@@ -89,10 +96,13 @@ impl<'a> BodyPreview<'a> {
     /// Adds content type metadata used by structured body sanitizers.
     ///
     /// # Parameters
-    /// - `content_type`: Content-Type header value.
+    ///
+    /// * `content_type` - Content-Type header value.
     ///
     /// # Returns
+    ///
     /// Updated preview descriptor.
+    #[inline(always)]
     pub(crate) fn with_content_type(
         mut self,
         content_type: &'a HeaderValue,
@@ -104,7 +114,9 @@ impl<'a> BodyPreview<'a> {
     /// Returns the byte prefix that should be rendered.
     ///
     /// # Returns
+    ///
     /// Bounded byte slice.
+    #[inline]
     pub(crate) fn prefix(&self) -> &'a [u8] {
         if self.truncated {
             self.bytes
@@ -117,8 +129,10 @@ impl<'a> BodyPreview<'a> {
     /// Returns whether rendered output is truncated.
     ///
     /// # Returns
+    ///
     /// `true` when either the caller marked the prefix as truncated or `limit`
     /// cuts the provided source bytes.
+    #[inline]
     pub(crate) fn is_truncated(&self) -> bool {
         self.truncated || self.bytes.len() > self.limit
     }
@@ -126,7 +140,9 @@ impl<'a> BodyPreview<'a> {
     /// Returns the total source body length used for binary previews.
     ///
     /// # Returns
+    ///
     /// Source body length in bytes.
+    #[inline]
     pub(crate) fn source_len(&self) -> usize {
         self.source_len.max(self.bytes.len())
     }
@@ -134,8 +150,10 @@ impl<'a> BodyPreview<'a> {
     /// Returns source-length metadata for the core body sanitizer.
     ///
     /// # Returns
+    ///
     /// Exact length for complete source bytes, or unknown truncation for an
     /// already limited stream prefix.
+    #[inline]
     pub(crate) fn source_length(&self) -> BodySourceLength {
         if self.truncated {
             BodySourceLength::UnknownTruncated
@@ -147,6 +165,7 @@ impl<'a> BodyPreview<'a> {
     /// Returns the truncation suffix for this preview.
     ///
     /// # Returns
+    ///
     /// Empty string when not truncated.
     pub(crate) fn truncation_suffix(&self) -> String {
         if !self.is_truncated() {
