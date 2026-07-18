@@ -22,8 +22,8 @@ use qubit_http::{
     HttpErrorKind,
     HttpRequestBody,
     HttpRetryMethodPolicy,
-    SensitivityLevel,
 };
+use qubit_sanitize::SensitivityLevel;
 use serde::ser::{
     Error as _,
     Serializer,

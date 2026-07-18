@@ -69,13 +69,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 HTTP TRACE logs are sanitized before they are emitted. URL sanitization masks
 userinfo, fragments, and recognized sensitive query parameters. Non-root URL
-paths are redacted by default; select `UrlPathPolicy::Preserve` only after
+paths are redacted by default; select `qubit_sanitize::UrlPathPolicy::Preserve` only after
 reviewing that diagnostic boundary. Config-driven clients accept `redact` or
 `preserve` at `log_sanitize.url_path_policy`. The default policy also masks
 sensitive headers and JSON/form/multipart body fields with shared field
 matching and mask levels.
 The built-in names and mask levels come from `qubit_sanitize::SensitiveFields`.
-Opaque `text/*` bodies are redacted by default. `TextBodyPolicy::PassThrough`
+Opaque `text/*` bodies are redacted by default. `qubit_sanitize::TextBodyPolicy::PassThrough`
 is an explicit diagnostic opt-in that emits such text unchanged and may expose
 secrets. Unsupported or unstructured bodies are not emitted raw: UTF-8
 fallback content is redacted, while binary content is represented only by a
@@ -89,8 +89,8 @@ such as `access_token`, `access-token`, and `accessToken`:
 use qubit_http::{
     HttpClientFactory,
     HttpClientOptions,
-    SensitivityLevel,
 };
+use qubit_sanitize::SensitivityLevel;
 
 let mut options = HttpClientOptions::new();
 options.logging.enabled = true;

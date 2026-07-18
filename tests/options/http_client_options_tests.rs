@@ -31,6 +31,8 @@ use qubit_http::{
     HttpRetryOptions,
     ProxyType,
     RetryDelay,
+};
+use qubit_sanitize::{
     SensitivityLevel,
     UrlPathPolicy,
 };

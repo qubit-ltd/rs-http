@@ -34,8 +34,8 @@ use qubit_http::{
     HttpResponse,
     HttpResponseMeta,
     LogSanitizePolicy,
-    TextBodyPolicy,
 };
+use qubit_sanitize::TextBodyPolicy;
 use tokio::time::timeout;
 use url::Url;
 

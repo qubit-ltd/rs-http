@@ -18,9 +18,5 @@ pub(crate) use body_log_context::BodyLogContext;
 pub(crate) use body_preview::BodyPreview;
 pub use log_sanitize_policy::LogSanitizePolicy;
 pub use log_sanitizer::LogSanitizer;
-pub use qubit_sanitize::{
-    TextBodyPolicy,
-    UrlPathPolicy,
-};
 pub(crate) use sanitized_debugger::SanitizedDebugger;
 pub(crate) use sanitized_logger::SanitizedLogger;
