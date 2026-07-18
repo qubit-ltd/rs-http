@@ -387,6 +387,22 @@ fn test_log_sanitizer_error_response_truncation_normalizes_suffix_only() {
 }
 
 #[test]
+fn test_log_sanitizer_error_response_truncation_escapes_log_controls() {
+    let sanitizer = LogSanitizer::new(
+        LogSanitizePolicy::default()
+            .with_text_body_policy(TextBodyPolicy::PassThrough),
+    );
+    let body = Bytes::from_static(b"first\nsecond\t\x1b[31m tailXX");
+    let preview =
+        BodyPreview::new(&body, body.len() - 2, BodyLogContext::ErrorResponse)
+            .with_content_type("text/plain");
+
+    let sanitized = sanitizer.sanitize_body_preview(&preview);
+
+    assert_eq!(sanitized, r"first\nsecond\t\u{1b}[31m tail...<truncated>");
+}
+
+#[test]
 fn test_log_sanitizer_sanitize_body_preview_redacts_json_arrays() {
     let sanitizer = LogSanitizer::default();
     let body = Bytes::from_static(
@@ -416,7 +432,7 @@ fn test_log_sanitizer_sanitize_body_preview_redacts_ndjson_fields() {
 
     let sanitized = sanitizer.sanitize_body_preview(&preview);
 
-    assert_eq!(sanitized, "{\"id\":1,\"token\":\"****\"}\n\n{\"id\":2}");
+    assert_eq!(sanitized, r#"{"id":1,"token":"****"}\n\n{"id":2}"#);
 }
 
 #[test]
@@ -732,7 +748,7 @@ fn test_log_sanitizer_sanitize_body_preview_handles_empty_multipart_body() {
 
     let sanitized = sanitizer.sanitize_body_preview(&preview);
 
-    assert_eq!(sanitized, "<multipart>\n</multipart>");
+    assert_eq!(sanitized, r"<multipart>\n</multipart>");
 }
 
 #[test]
