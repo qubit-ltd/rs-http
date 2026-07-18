@@ -13,6 +13,7 @@ use http::{
 };
 use qubit_sanitize::{
     escape_log_control_characters,
+    BodySanitization,
     FieldSanitizer,
     HttpBodySanitizer,
     HttpHeaderSanitizer,
@@ -27,8 +28,6 @@ use super::{
     LogSanitizePolicy,
 };
 
-const INVALID_CONTENT_TYPE_BODY_REDACTED: &str =
-    "<redacted: invalid content type body>";
 const LOG_NAME_MATCH_MODE: NameMatchMode = NameMatchMode::ExactOrSuffix;
 
 /// Applies a [`LogSanitizePolicy`] to URLs, headers, and body previews.
@@ -332,6 +331,23 @@ impl LogSanitizer {
             preview.content_type,
             LOG_NAME_MATCH_MODE,
         );
+        Self::render_body_sanitization(result, preview)
+    }
+
+    /// Renders one structured body sanitization result for an HTTP log context.
+    ///
+    /// # Parameters
+    ///
+    /// * `result` - Structured result returned by `qubit-sanitize`.
+    /// * `preview` - Preview metadata controlling truncation wording.
+    ///
+    /// # Returns
+    ///
+    /// Escaped body text with the context-appropriate truncation suffix.
+    fn render_body_sanitization(
+        result: BodySanitization,
+        preview: &BodyPreview<'_>,
+    ) -> String {
         if preview.context == BodyLogContext::ErrorResponse
             && result.is_truncated()
         {
@@ -370,13 +386,15 @@ impl LogSanitizer {
         content_type: Option<&str>,
     ) -> String {
         let preview = BodyPreview::new(body, limit, context);
-        let Some(content_type) = content_type else {
-            return self.sanitize_body_preview(&preview);
-        };
-        let Ok(content_type) = HeaderValue::from_str(content_type) else {
-            return Self::invalid_content_type_body(&preview);
-        };
-        self.sanitize_body_preview(&preview.with_content_type(&content_type))
+        let result = self
+            .body_sanitizer
+            .sanitize_body_preview_with_content_type_str(
+                preview.prefix(),
+                preview.source_length(),
+                content_type,
+                LOG_NAME_MATCH_MODE,
+            );
+        Self::render_body_sanitization(result, &preview)
     }
 
     /// Sanitizes a single whitespace-delimited diagnostic token.
@@ -416,23 +434,6 @@ impl LogSanitizer {
             }
             candidate_end = previous;
         }
-    }
-
-    /// Renders an invalid content-type body redaction marker.
-    ///
-    /// # Parameters
-    ///
-    /// * `preview` - Preview metadata.
-    ///
-    /// # Returns
-    ///
-    /// Redaction marker with the rs-http truncation suffix.
-    #[inline]
-    fn invalid_content_type_body(preview: &BodyPreview<'_>) -> String {
-        format!(
-            "{INVALID_CONTENT_TYPE_BODY_REDACTED}{}",
-            preview.truncation_suffix()
-        )
     }
 }
 
