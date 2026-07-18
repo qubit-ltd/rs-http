@@ -14,6 +14,7 @@ use http::{
     HeaderValue,
 };
 use qubit_sanitize::{
+    escape_log_control_characters,
     FieldSanitizePolicy,
     FieldSanitizer,
     HttpBodySanitizer,
@@ -149,8 +150,8 @@ impl LogSanitizer {
     ///
     /// Selecting
     /// [`TextBodyPolicy::PassThrough`](qubit_sanitize::TextBodyPolicy::PassThrough)
-    /// may return opaque text verbatim and expose secrets from the original
-    /// body.
+    /// may expose secrets from the original opaque text. Control characters
+    /// are escaped in the returned rendering.
     ///
     /// # Parameters
     /// - `body`: Source request body bytes.
@@ -159,8 +160,8 @@ impl LogSanitizer {
     ///   redaction.
     ///
     /// # Returns
-    /// Policy-rendered request body preview with request-style truncation
-    /// suffix.
+    /// Policy-rendered request body preview with escaped control characters
+    /// and a request-style truncation suffix.
     #[inline(always)]
     pub fn sanitize_request_body_preview(
         &self,
@@ -181,8 +182,8 @@ impl LogSanitizer {
     ///
     /// Selecting
     /// [`TextBodyPolicy::PassThrough`](qubit_sanitize::TextBodyPolicy::PassThrough)
-    /// may return opaque text verbatim and expose secrets from the original
-    /// body.
+    /// may expose secrets from the original opaque text. Control characters
+    /// are escaped in the returned rendering.
     ///
     /// # Parameters
     /// - `body`: Source response body bytes.
@@ -191,8 +192,8 @@ impl LogSanitizer {
     ///   redaction.
     ///
     /// # Returns
-    /// Policy-rendered response body preview with response-style truncation
-    /// suffix.
+    /// Policy-rendered response body preview with escaped control characters
+    /// and a response-style truncation suffix.
     #[inline(always)]
     pub fn sanitize_response_body_preview(
         &self,
@@ -213,8 +214,8 @@ impl LogSanitizer {
     ///
     /// Selecting
     /// [`TextBodyPolicy::PassThrough`](qubit_sanitize::TextBodyPolicy::PassThrough)
-    /// may return opaque text verbatim and expose secrets from the original
-    /// body.
+    /// may expose secrets from the original opaque text. Control characters
+    /// are escaped in the returned rendering.
     ///
     /// # Parameters
     /// - `body`: Source non-success response body bytes.
@@ -223,7 +224,8 @@ impl LogSanitizer {
     ///   redaction.
     ///
     /// # Returns
-    /// Policy-rendered error body preview with status-error truncation suffix.
+    /// Policy-rendered error body preview with escaped control characters and
+    /// a status-error truncation suffix.
     #[inline(always)]
     pub fn sanitize_error_response_body_preview(
         &self,
@@ -293,14 +295,15 @@ impl LogSanitizer {
     ///
     /// Selecting
     /// [`TextBodyPolicy::PassThrough`](qubit_sanitize::TextBodyPolicy::PassThrough)
-    /// may return opaque text verbatim and expose secrets from the original
-    /// body.
+    /// may expose secrets from the original opaque text. Control characters
+    /// are escaped in the returned rendering.
     ///
     /// # Parameters
     /// - `preview`: Bounded body bytes and content metadata.
     ///
     /// # Returns
-    /// Policy-rendered preview with a context-appropriate truncation marker.
+    /// Policy-rendered preview with escaped control characters and a
+    /// context-appropriate truncation marker.
     pub(crate) fn sanitize_body_preview(
         &self,
         preview: &BodyPreview<'_>,
@@ -314,7 +317,12 @@ impl LogSanitizer {
         if preview.context == BodyLogContext::ErrorResponse
             && result.is_truncated()
         {
-            format!("{}{}", result.into_content(), preview.truncation_suffix())
+            let rendered = format!(
+                "{}{}",
+                result.into_content(),
+                preview.truncation_suffix()
+            );
+            escape_log_control_characters(&rendered).into_owned()
         } else {
             result.into_rendered()
         }
@@ -422,7 +430,7 @@ fn field_sanitizer(
         MaskPolicies::default(),
     ));
     for field in excluded_fields {
-        sanitizer.remove_sensitive_field(field);
+        sanitizer.exclude_sensitive_field(field);
     }
     sanitizer
 }
