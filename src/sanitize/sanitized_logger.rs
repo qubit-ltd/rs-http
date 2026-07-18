@@ -25,9 +25,9 @@ use super::{
 /// Applies configured sanitization rules to URL, header, and body log values.
 ///
 /// URL userinfo, fragments, and recognized sensitive query values are masked.
-/// URL paths follow [`super::UrlPathPolicy`] and use
-/// [`super::UrlPathPolicy::Redact`] by default. Header and body rendering
-/// retain the boundaries documented by their respective methods.
+/// URL paths follow [`qubit_sanitize::UrlPathPolicy`] and use
+/// [`qubit_sanitize::UrlPathPolicy::Redact`] by default. Header and body
+/// rendering retain the boundaries documented by their respective methods.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SanitizedLogger {
     /// Sanitizer configured from client logging policy.
@@ -40,12 +40,14 @@ impl SanitizedLogger {
     /// Creates a sanitized logger from an explicit policy and body limit.
     ///
     /// # Parameters
-    /// - `policy`: Sanitization policy used for URL/header/body values.
-    /// - `body_size_limit`: Maximum bytes rendered from body previews.
+    ///
+    /// * `policy` - Sanitization policy used for URL/header/body values.
+    /// * `body_size_limit` - Maximum bytes rendered from body previews.
     ///
     /// # Returns
+    ///
     /// New sanitized logger helper.
-    #[inline(always)]
+    #[inline]
     pub(crate) fn new(
         policy: LogSanitizePolicy,
         body_size_limit: usize,
@@ -59,11 +61,13 @@ impl SanitizedLogger {
     /// Creates a sanitized logger from client options.
     ///
     /// # Parameters
-    /// - `options`: Client options carrying logging and sanitization policy.
+    ///
+    /// * `options` - Client options carrying logging and sanitization policy.
     ///
     /// # Returns
+    ///
     /// Sanitized logger configured like [`crate::HttpLogger`].
-    #[inline]
+    #[inline(always)]
     pub(crate) fn from_options(options: &HttpClientOptions) -> Self {
         Self::new(
             options.log_sanitize_policy.clone(),
@@ -75,13 +79,15 @@ impl SanitizedLogger {
     /// query values masked.
     ///
     /// # Parameters
-    /// - `url`: URL to render.
+    ///
+    /// * `url` - URL to render.
     ///
     /// # Returns
+    ///
     /// Sanitized URL whose path follows the configured
-    /// [`super::UrlPathPolicy`]. Paths are redacted by default and are
+    /// [`qubit_sanitize::UrlPathPolicy`]. Paths are redacted by default and are
     /// preserved only when callers explicitly select
-    /// [`super::UrlPathPolicy::Preserve`].
+    /// [`qubit_sanitize::UrlPathPolicy::Preserve`].
     #[inline(always)]
     pub(crate) fn url(&self, url: &Url) -> String {
         self.sanitizer.sanitize_url(url)
@@ -91,10 +97,12 @@ impl SanitizedLogger {
     /// policy.
     ///
     /// # Parameters
-    /// - `name`: Header name.
-    /// - `value`: Header value.
+    ///
+    /// * `name` - Header name.
+    /// * `value` - Header value.
     ///
     /// # Returns
+    ///
     /// Masked value when the header name matches the configured sensitive-name
     /// policy, otherwise the original UTF-8 text or `<non-utf8>`.
     #[inline(always)]
@@ -109,17 +117,19 @@ impl SanitizedLogger {
     /// Returns a body preview rendered according to the configured body
     /// sanitization policy.
     ///
-    /// Selecting [`super::TextBodyPolicy::PassThrough`] may return opaque text
-    /// verbatim and expose secrets from the original body.
+    /// Selecting [`qubit_sanitize::TextBodyPolicy::PassThrough`] may expose
+    /// secrets from the original opaque body. The returned rendering escapes
+    /// log-unsafe characters.
     ///
     /// # Parameters
-    /// - `body`: Raw body bytes.
-    /// - `context`: Request/response/error body logging context.
-    /// - `content_type`: Optional `Content-Type` header value.
+    ///
+    /// * `body` - Raw body bytes.
+    /// * `context` - Request/response/error body logging context.
+    /// * `content_type` - Optional `Content-Type` header value.
     ///
     /// # Returns
+    ///
     /// Human-readable, policy-rendered body preview.
-    #[inline]
     pub(crate) fn body(
         &self,
         body: &[u8],

@@ -29,9 +29,11 @@ impl SanitizedDebugger {
     /// Creates a debugger from a log sanitization policy.
     ///
     /// # Parameters
-    /// - `policy`: Runtime policy whose custom names should be honored.
+    ///
+    /// * `policy` - Runtime policy whose custom names should be honored.
     ///
     /// # Returns
+    ///
     /// Debug helper that always keeps built-in sensitive names active.
     #[inline(always)]
     pub(crate) fn new(policy: &LogSanitizePolicy) -> Self {
@@ -44,13 +46,15 @@ impl SanitizedDebugger {
     /// query values masked.
     ///
     /// # Parameters
-    /// - `url`: URL to render.
+    ///
+    /// * `url` - URL to render.
     ///
     /// # Returns
+    ///
     /// Sanitized URL whose path follows the configured
-    /// [`super::UrlPathPolicy`]. Paths are redacted by default and are
+    /// [`qubit_sanitize::UrlPathPolicy`]. Paths are redacted by default and are
     /// preserved only when callers explicitly select
-    /// [`super::UrlPathPolicy::Preserve`].
+    /// [`qubit_sanitize::UrlPathPolicy::Preserve`].
     #[inline(always)]
     pub(crate) fn url(&self, url: &Url) -> String {
         self.sanitizer.sanitize_url(url)
@@ -59,11 +63,13 @@ impl SanitizedDebugger {
     /// Returns a sanitized optional URL string.
     ///
     /// # Parameters
-    /// - `url`: Optional URL reference.
+    ///
+    /// * `url` - Optional URL reference.
     ///
     /// # Returns
+    ///
     /// `Some` with sanitized URL text whose path follows the configured
-    /// [`super::UrlPathPolicy`] when present, otherwise `None`.
+    /// [`qubit_sanitize::UrlPathPolicy`] when present, otherwise `None`.
     #[inline(always)]
     pub(crate) fn optional_url(&self, url: Option<&Url>) -> Option<String> {
         url.map(|url| self.url(url))
@@ -72,9 +78,11 @@ impl SanitizedDebugger {
     /// Returns sanitized headers for structured debug output.
     ///
     /// # Parameters
-    /// - `headers`: Header map to render.
+    ///
+    /// * `headers` - Header map to render.
     ///
     /// # Returns
+    ///
     /// Deterministic lowercase header map. Headers whose names match the
     /// configured sensitive-name policy are masked; other UTF-8 values are
     /// preserved unchanged.
@@ -89,12 +97,14 @@ impl SanitizedDebugger {
     /// Sanitizes URL-looking tokens inside diagnostic text.
     ///
     /// # Parameters
-    /// - `text`: Diagnostic text that may contain absolute URLs.
+    ///
+    /// * `text` - Diagnostic text that may contain absolute URLs.
     ///
     /// # Returns
+    ///
     /// Text with parseable URL userinfo, fragments, and recognized sensitive
     /// query values masked. URL paths follow the configured
-    /// [`super::UrlPathPolicy`] and are redacted by default.
+    /// [`qubit_sanitize::UrlPathPolicy`] and are redacted by default.
     #[inline(always)]
     pub(crate) fn diagnostic_text(&self, text: &str) -> String {
         self.sanitizer.sanitize_diagnostic_text(text)

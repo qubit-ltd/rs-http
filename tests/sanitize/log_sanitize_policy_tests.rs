@@ -6,8 +6,8 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use qubit_http::{
-    LogSanitizePolicy,
+use qubit_http::LogSanitizePolicy;
+use qubit_sanitize::{
     SensitivityLevel,
     TextBodyPolicy,
     UrlPathPolicy,

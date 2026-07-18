@@ -15,6 +15,8 @@ use http::header::{
 use qubit_http::{
     LogSanitizePolicy,
     LogSanitizer,
+};
+use qubit_sanitize::{
     SensitivityLevel,
     TextBodyPolicy,
     UrlPathPolicy,
@@ -400,6 +402,23 @@ fn test_log_sanitizer_error_response_truncation_escapes_log_controls() {
     let sanitized = sanitizer.sanitize_body_preview(&preview);
 
     assert_eq!(sanitized, r"first\nsecond\t\u{1b}[31m tail...<truncated>");
+}
+
+#[test]
+fn test_log_sanitizer_error_response_truncation_escapes_unicode_log_controls() {
+    let sanitizer = LogSanitizer::new(
+        LogSanitizePolicy::default()
+            .with_text_body_policy(TextBodyPolicy::PassThrough),
+    );
+    let body =
+        Bytes::from_static("first\u{2028}second\u{202e} tailXX".as_bytes());
+    let preview =
+        BodyPreview::new(&body, body.len() - 2, BodyLogContext::ErrorResponse)
+            .with_content_type("text/plain");
+
+    let sanitized = sanitizer.sanitize_body_preview(&preview);
+
+    assert_eq!(sanitized, r"first\u{2028}second\u{202e} tail...<truncated>");
 }
 
 #[test]
