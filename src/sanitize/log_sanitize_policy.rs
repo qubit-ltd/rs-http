@@ -41,7 +41,7 @@ pub struct LogSanitizePolicy {
 
 impl LogSanitizePolicy {
     /// Creates a policy without built-in sensitive names while retaining
-    /// default opaque-text redaction and complete URL paths.
+    /// default opaque-text and URL-path redaction.
     ///
     /// This constructor is intended for custom-only trace logging. Debug
     /// sanitization merges built-in defaults back into the supplied policy
@@ -60,14 +60,14 @@ impl LogSanitizePolicy {
             excluded_sensitive_query_params: BTreeSet::new(),
             excluded_sensitive_body_fields: BTreeSet::new(),
             text_body_policy: TextBodyPolicy::Redact,
-            url_path_policy: UrlPathPolicy::Preserve,
+            url_path_policy: UrlPathPolicy::Redact,
         }
     }
 
     /// Returns this policy with a replacement URL path policy.
     ///
-    /// Preserving paths maintains backward compatibility but can expose secret
-    /// path segments; select [`UrlPathPolicy::Redact`] at that boundary.
+    /// Selecting [`UrlPathPolicy::Preserve`] can expose secret path segments
+    /// and should be an explicit diagnostic decision.
     ///
     /// # Parameters
     ///
@@ -108,7 +108,7 @@ impl LogSanitizePolicy {
     /// # Returns
     ///
     /// The current URL path policy. Both [`Self::empty`] and
-    /// [`Self::default`] use [`UrlPathPolicy::Preserve`].
+    /// [`Self::default`] use [`UrlPathPolicy::Redact`].
     #[inline(always)]
     pub const fn url_path_policy(&self) -> UrlPathPolicy {
         self.url_path_policy
@@ -440,6 +440,37 @@ impl LogSanitizePolicy {
         &self.sensitive_body_fields
     }
 
+    /// Returns canonical header names explicitly excluded from matching.
+    ///
+    /// # Returns
+    /// Borrowed header exclusion set.
+    #[inline(always)]
+    pub(crate) const fn excluded_sensitive_headers(&self) -> &BTreeSet<String> {
+        &self.excluded_sensitive_headers
+    }
+
+    /// Returns canonical query names explicitly excluded from matching.
+    ///
+    /// # Returns
+    /// Borrowed query exclusion set.
+    #[inline(always)]
+    pub(crate) const fn excluded_sensitive_query_params(
+        &self,
+    ) -> &BTreeSet<String> {
+        &self.excluded_sensitive_query_params
+    }
+
+    /// Returns canonical body names explicitly excluded from matching.
+    ///
+    /// # Returns
+    /// Borrowed body exclusion set.
+    #[inline(always)]
+    pub(crate) const fn excluded_sensitive_body_fields(
+        &self,
+    ) -> &BTreeSet<String> {
+        &self.excluded_sensitive_body_fields
+    }
+
     /// Applies explicit exclusions to another policy.
     ///
     /// # Parameters
@@ -447,25 +478,23 @@ impl LogSanitizePolicy {
     /// * `policy` - Policy from which explicitly excluded names are removed.
     pub(crate) fn apply_exclusions_to(&self, policy: &mut Self) {
         for name in &self.excluded_sensitive_headers {
-            policy.sensitive_headers.remove(name);
+            policy.remove_sensitive_header(name);
         }
         for name in &self.excluded_sensitive_query_params {
-            policy.sensitive_query_params.remove(name);
+            policy.remove_sensitive_query_param(name);
         }
         for name in &self.excluded_sensitive_body_fields {
-            policy.sensitive_body_fields.remove(name);
+            policy.remove_sensitive_body_field(name);
         }
     }
 }
 
 impl Default for LogSanitizePolicy {
-    /// Creates a policy with built-in sensitive names and opaque-text
-    /// redaction. URL paths remain visible by default for backward
-    /// compatibility; callers whose path segments may contain secrets must
-    /// select [`UrlPathPolicy::Redact`].
+    /// Creates a policy with built-in sensitive names, opaque-text redaction,
+    /// and URL-path redaction.
     ///
     /// # Returns
-    /// A default policy that redacts opaque text and preserves URL paths.
+    /// A default policy that redacts opaque text and URL paths.
     fn default() -> Self {
         Self {
             sensitive_headers: SensitiveFields::default(),
@@ -475,7 +504,7 @@ impl Default for LogSanitizePolicy {
             excluded_sensitive_query_params: BTreeSet::new(),
             excluded_sensitive_body_fields: BTreeSet::new(),
             text_body_policy: TextBodyPolicy::Redact,
-            url_path_policy: UrlPathPolicy::Preserve,
+            url_path_policy: UrlPathPolicy::Redact,
         }
     }
 }

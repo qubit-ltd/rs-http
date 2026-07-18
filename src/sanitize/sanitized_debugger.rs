@@ -48,9 +48,9 @@ impl SanitizedDebugger {
     ///
     /// # Returns
     /// Sanitized URL whose path follows the configured
-    /// [`super::UrlPathPolicy`]. Paths are preserved by default and are
-    /// replaced only when callers explicitly select
-    /// [`super::UrlPathPolicy::Redact`].
+    /// [`super::UrlPathPolicy`]. Paths are redacted by default and are
+    /// preserved only when callers explicitly select
+    /// [`super::UrlPathPolicy::Preserve`].
     #[inline(always)]
     pub(crate) fn url(&self, url: &Url) -> String {
         self.sanitizer.sanitize_url(url)
@@ -94,7 +94,7 @@ impl SanitizedDebugger {
     /// # Returns
     /// Text with parseable URL userinfo, fragments, and recognized sensitive
     /// query values masked. URL paths follow the configured
-    /// [`super::UrlPathPolicy`] and are preserved by default.
+    /// [`super::UrlPathPolicy`] and are redacted by default.
     #[inline(always)]
     pub(crate) fn diagnostic_text(&self, text: &str) -> String {
         self.sanitizer.sanitize_diagnostic_text(text)

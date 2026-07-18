@@ -26,7 +26,7 @@ use super::{
 ///
 /// URL userinfo, fragments, and recognized sensitive query values are masked.
 /// URL paths follow [`super::UrlPathPolicy`] and use
-/// [`super::UrlPathPolicy::Preserve`] by default. Header and body rendering
+/// [`super::UrlPathPolicy::Redact`] by default. Header and body rendering
 /// retain the boundaries documented by their respective methods.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SanitizedLogger {
@@ -79,9 +79,9 @@ impl SanitizedLogger {
     ///
     /// # Returns
     /// Sanitized URL whose path follows the configured
-    /// [`super::UrlPathPolicy`]. Paths are preserved by default and are
-    /// replaced only when callers explicitly select
-    /// [`super::UrlPathPolicy::Redact`].
+    /// [`super::UrlPathPolicy`]. Paths are redacted by default and are
+    /// preserved only when callers explicitly select
+    /// [`super::UrlPathPolicy::Preserve`].
     #[inline(always)]
     pub(crate) fn url(&self, url: &Url) -> String {
         self.sanitizer.sanitize_url(url)

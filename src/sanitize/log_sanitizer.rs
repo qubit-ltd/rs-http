@@ -6,6 +6,8 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
+use std::collections::BTreeSet;
+
 use http::{
     HeaderMap,
     HeaderName,
@@ -58,13 +60,16 @@ impl LogSanitizer {
         Self {
             url_sanitizer: UrlSanitizer::new(field_sanitizer(
                 policy.sensitive_query_params(),
+                policy.excluded_sensitive_query_params(),
             ))
             .with_url_path_policy(policy.url_path_policy()),
             header_sanitizer: HttpHeaderSanitizer::new(field_sanitizer(
                 policy.sensitive_headers(),
+                policy.excluded_sensitive_headers(),
             )),
             body_sanitizer: HttpBodySanitizer::new(field_sanitizer(
                 policy.sensitive_body_fields(),
+                policy.excluded_sensitive_body_fields(),
             ))
             .with_text_body_policy(policy.text_body_policy()),
             policy,
@@ -261,7 +266,7 @@ impl LogSanitizer {
     /// # Returns
     /// Message with parseable URL userinfo, fragments, and recognized
     /// sensitive query values masked. URL paths follow the configured
-    /// [`super::UrlPathPolicy`] and are preserved by default.
+    /// [`super::UrlPathPolicy`] and are redacted by default.
     pub(crate) fn sanitize_diagnostic_text(&self, text: &str) -> String {
         let mut sanitized = String::with_capacity(text.len());
         let mut token_start = None;
@@ -354,7 +359,7 @@ impl LogSanitizer {
     /// # Returns
     /// Token with embedded URL userinfo, fragment, and recognized sensitive
     /// query values masked. Its URL path follows the configured
-    /// [`super::UrlPathPolicy`] and is preserved by default.
+    /// [`super::UrlPathPolicy`] and is redacted by default.
     fn sanitize_diagnostic_token(&self, token: &str) -> String {
         let Some(scheme_start) = find_url_scheme_start(token) else {
             return token.to_string();
@@ -370,7 +375,14 @@ impl LogSanitizer {
             let (previous, ch) = previous_char_boundary(token, candidate_end)
                 .expect("candidate end is always after URL scheme start");
             if previous <= scheme_start || !is_trimmable_url_suffix(ch) {
-                return token.to_string();
+                let suffix = &token[candidate_end..];
+                return format!(
+                    "{prefix}{}{suffix}",
+                    self.url_sanitizer.sanitize_url_str_or_redact(
+                        candidate,
+                        LOG_NAME_MATCH_MODE,
+                    ),
+                );
             }
             candidate_end = previous;
         }
@@ -396,15 +408,23 @@ impl LogSanitizer {
 ///
 /// # Parameters
 /// - `fields`: Sensitive names configured for the domain.
+/// - `excluded_fields`: Canonical names that override suffix matches.
 ///
 /// # Returns
 /// A field sanitizer using the crate's default masking policies.
 #[inline]
-fn field_sanitizer(fields: &SensitiveFields) -> FieldSanitizer {
-    FieldSanitizer::new(FieldSanitizePolicy::new(
+fn field_sanitizer(
+    fields: &SensitiveFields,
+    excluded_fields: &BTreeSet<String>,
+) -> FieldSanitizer {
+    let mut sanitizer = FieldSanitizer::new(FieldSanitizePolicy::new(
         fields.clone(),
         MaskPolicies::default(),
-    ))
+    ));
+    for field in excluded_fields {
+        sanitizer.remove_sensitive_field(field);
+    }
+    sanitizer
 }
 
 impl Default for LogSanitizer {

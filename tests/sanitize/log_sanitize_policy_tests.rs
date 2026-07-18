@@ -17,21 +17,21 @@ use qubit_http::{
 fn test_log_sanitize_policy_url_path_policy_defaults_and_round_trips() {
     assert_eq!(
         LogSanitizePolicy::default().url_path_policy(),
-        UrlPathPolicy::Preserve,
+        UrlPathPolicy::Redact,
     );
     assert_eq!(
         LogSanitizePolicy::empty().url_path_policy(),
-        UrlPathPolicy::Preserve,
+        UrlPathPolicy::Redact,
     );
 
     let mut policy = LogSanitizePolicy::default();
-    policy.set_url_path_policy(UrlPathPolicy::Redact);
-    assert_eq!(policy.url_path_policy(), UrlPathPolicy::Redact);
+    policy.set_url_path_policy(UrlPathPolicy::Preserve);
+    assert_eq!(policy.url_path_policy(), UrlPathPolicy::Preserve);
     assert_eq!(
         LogSanitizePolicy::default()
-            .with_url_path_policy(UrlPathPolicy::Redact)
+            .with_url_path_policy(UrlPathPolicy::Preserve)
             .url_path_policy(),
-        UrlPathPolicy::Redact,
+        UrlPathPolicy::Preserve,
     );
 }
 

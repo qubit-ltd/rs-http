@@ -137,12 +137,13 @@ fn test_http_error_debug_honors_url_path_redaction_policy() {
 }
 
 #[test]
-fn test_http_error_debug_keeps_invalid_url_like_tokens() {
+fn test_http_error_debug_redacts_incomplete_url_like_tokens() {
     let error = HttpError::transport("failed near https:// and plain text");
 
     let debug = format!("{error:?}");
 
-    assert!(debug.contains("https://"));
+    assert!(debug.contains("<redacted: invalid URL>"));
+    assert!(!debug.contains("https://"));
     assert!(debug.contains("plain"));
 }
 
@@ -156,12 +157,17 @@ fn test_http_error_debug_keeps_arbitrary_non_url_message_text() {
 }
 
 #[test]
-fn test_http_error_debug_trims_suffix_before_rejecting_invalid_url_token() {
-    let error = HttpError::transport("failed near https://example.com/%zz).");
+fn test_http_error_debug_redacts_invalid_url_token() {
+    let error = HttpError::transport(
+        "failed near https://debug-user:debug-password@example.com:bad-port/path?access_token=query-secret).",
+    );
 
     let debug = format!("{error:?}");
 
-    assert!(debug.contains("https://example.com/%zz)."));
+    assert!(debug.contains("<redacted: invalid URL>)."));
+    assert!(!debug.contains("debug-user"));
+    assert!(!debug.contains("debug-password"));
+    assert!(!debug.contains("query-secret"));
 }
 
 #[test]
