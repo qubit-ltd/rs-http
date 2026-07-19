@@ -675,6 +675,31 @@ fn test_log_stream_response_headers_logs_non_utf8_header_values() {
 }
 
 #[test]
+fn test_log_stream_response_headers_masks_native_sensitive_value() {
+    let mut headers = HeaderMap::new();
+    let mut value = HeaderValue::from_static("native-response-header-secret");
+    value.set_sensitive(true);
+    headers.insert("x-diagnostic-value", value);
+    let mut client_options = HttpClientOptions::default();
+    client_options.logging = HttpLoggingOptions::default();
+    let logger = HttpLogger::new(&client_options);
+    let response_meta = HttpResponseMeta::new(
+        StatusCode::OK,
+        headers,
+        Url::parse("https://example.com/stream-sensitive")
+            .expect("URL should parse"),
+        Method::GET,
+    );
+
+    let logs = capture_trace_logs(|| {
+        logger.log_stream_response_headers(&response_meta);
+    });
+
+    assert!(logs.contains("x-diagnostic-value: <redacted>"));
+    assert!(!logs.contains("native-response-header-secret"));
+}
+
+#[test]
 fn test_log_request_logs_json_form_multipart_ndjson_and_empty_bodies() {
     let mut client_options = HttpClientOptions::default();
     client_options.logging = HttpLoggingOptions::default();

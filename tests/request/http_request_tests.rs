@@ -11,6 +11,7 @@ use std::time::Duration;
 use bytes::Bytes;
 use futures_util::stream;
 use http::{
+    HeaderMap,
     HeaderName,
     HeaderValue,
     Method,
@@ -113,6 +114,26 @@ fn test_http_request_debug_masks_sensitive_values() {
     assert!(!debug.contains("debug-header-secret"));
     assert!(!debug.contains("debug-body-secret"));
     assert!(debug.contains("****"));
+}
+
+#[test]
+fn test_http_request_debug_masks_native_sensitive_header_value() {
+    let client = HttpClientFactory::new()
+        .create_default()
+        .expect("default options should create client");
+    let mut headers = HeaderMap::new();
+    let mut value = HeaderValue::from_static("native-debug-header-secret");
+    value.set_sensitive(true);
+    headers.insert(HeaderName::from_static("x-diagnostic-value"), value);
+    let request = client
+        .request(Method::GET, "https://example.com/")
+        .headers(headers)
+        .build();
+
+    let debug = format!("{request:?}");
+
+    assert!(debug.contains("<redacted>"));
+    assert!(!debug.contains("native-debug-header-secret"));
 }
 
 #[test]

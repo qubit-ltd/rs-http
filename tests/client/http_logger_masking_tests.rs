@@ -103,3 +103,17 @@ fn test_mask_header_value_empty_value_kept_empty() {
     );
     assert!(logs.contains("authorization: "));
 }
+
+#[test]
+fn test_mask_header_value_native_sensitive_uses_secret_mask() {
+    let mut value = HeaderValue::from_static("native-request-header-secret");
+    value.set_sensitive(true);
+
+    let logs = capture_request_header_logs(
+        HeaderName::from_static("x-diagnostic-value"),
+        value,
+    );
+
+    assert!(logs.contains("x-diagnostic-value: <redacted>"));
+    assert!(!logs.contains("native-request-header-secret"));
+}

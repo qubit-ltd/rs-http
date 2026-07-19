@@ -245,6 +245,36 @@ fn test_log_sanitizer_sanitize_header_keeps_non_sensitive_header_values() {
 }
 
 #[test]
+fn test_log_sanitizer_native_sensitive_header_uses_secret_mask() {
+    let sanitizer = LogSanitizer::default();
+    let header_name = HeaderName::from_static("x-diagnostic-value");
+    let mut header_value = HeaderValue::from_static("native-header-secret");
+    header_value.set_sensitive(true);
+
+    let sanitized =
+        sanitizer.sanitize_header_value(&header_name, &header_value);
+
+    assert_eq!(sanitized, "<redacted>");
+    assert!(!sanitized.contains("native-header-secret"));
+}
+
+#[test]
+fn test_log_sanitizer_native_sensitive_header_overrides_name_exclusion() {
+    let mut policy = LogSanitizePolicy::default();
+    assert!(policy.remove_sensitive_header("authorization").is_some());
+    let sanitizer = LogSanitizer::new(policy);
+    let mut header_value =
+        HeaderValue::from_static("excluded-native-header-secret");
+    header_value.set_sensitive(true);
+
+    let sanitized =
+        sanitizer.sanitize_header_value(&AUTHORIZATION, &header_value);
+
+    assert_eq!(sanitized, "<redacted>");
+    assert!(!sanitized.contains("excluded-native-header-secret"));
+}
+
+#[test]
 fn test_log_sanitizer_text_body_default_redacts_and_pass_through_restores_text()
 {
     let secret = b"opaque-text-secret";
