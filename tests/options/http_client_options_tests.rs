@@ -1275,46 +1275,46 @@ fn test_http_client_options_from_root_config_all_sections() {
 fn test_http_client_options_interpolates_string_configuration_values() {
     let mut config = Config::new();
     config
-        .set("shared.base_url", "https://interpolated.example/api/")
+        .set("http.shared.base_url", "https://interpolated.example/api/")
         .expect("test config should set shared base URL");
     config
-        .set("shared.user_agent", "qubit-http-interpolated/1.0")
+        .set("http.shared.user_agent", "qubit-http-interpolated/1.0")
         .expect("test config should set shared user agent");
     config
-        .set("shared.proxy_type", "http")
+        .set("http.shared.proxy_type", "http")
         .expect("test config should set shared proxy type");
     config
-        .set("shared.proxy_host", "proxy.interpolated.example")
+        .set("http.shared.proxy_host", "proxy.interpolated.example")
         .expect("test config should set shared proxy host");
     config
-        .set("shared.proxy_username", "interpolated-user")
+        .set("http.shared.proxy_username", "interpolated-user")
         .expect("test config should set shared proxy username");
     config
-        .set("shared.proxy_password", "interpolated-password")
+        .set("http.shared.proxy_password", "interpolated-password")
         .expect("test config should set shared proxy password");
     config
-        .set("shared.retry_delay_strategy", "fixed")
+        .set("http.shared.retry_delay_strategy", "fixed")
         .expect("test config should set shared retry delay strategy");
     config
-        .set("shared.retry_method_policy", "all_methods")
+        .set("http.shared.retry_method_policy", "all_methods")
         .expect("test config should set shared retry method policy");
     config
-        .set("shared.sse_json_mode", "strict")
+        .set("http.shared.sse_json_mode", "strict")
         .expect("test config should set shared SSE JSON mode");
     config
-        .set("shared.sse_done_marker", "[INTERPOLATED_DONE]")
+        .set("http.shared.sse_done_marker", "[INTERPOLATED_DONE]")
         .expect("test config should set shared SSE done marker");
     config
-        .set("shared.url_path_policy", "preserve")
+        .set("http.shared.url_path_policy", "preserve")
         .expect("test config should set shared URL path policy");
     config
-        .set("shared.sensitive_header", "X-Interpolated-Secret")
+        .set("http.shared.sensitive_header", "X-Interpolated-Secret")
         .expect("test config should set shared sensitive header");
     config
-        .set("shared.retry_status_code", "503")
+        .set("http.shared.retry_status_code", "503")
         .expect("test config should set shared retry status code");
     config
-        .set("shared.retry_error_kind", "transport")
+        .set("http.shared.retry_error_kind", "transport")
         .expect("test config should set shared retry error kind");
     config
         .set("http.base_url", "${shared.base_url}")
