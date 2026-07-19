@@ -9,6 +9,7 @@
 
 use crate::constants::{
     DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES,
+    DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES,
     DEFAULT_SSE_MAX_FRAME_BYTES,
     DEFAULT_SSE_MAX_LINE_BYTES,
 };
@@ -23,6 +24,8 @@ use crate::sse::{
 pub(crate) struct HttpResponseOptions {
     /// Maximum bytes captured for status-error body preview.
     pub error_response_preview_limit: usize,
+    /// Maximum bytes accumulated by whole-body response readers.
+    pub response_body_size_limit: usize,
     /// Default JSON decoding mode used by stream JSON helpers.
     pub sse_json_mode: SseJsonMode,
     /// Default maximum bytes allowed for one SSE line.
@@ -41,6 +44,7 @@ impl Default for HttpResponseOptions {
         Self {
             error_response_preview_limit:
                 DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES,
+            response_body_size_limit: DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES,
             sse_json_mode: SseJsonMode::Lenient,
             sse_max_line_bytes: DEFAULT_SSE_MAX_LINE_BYTES,
             sse_max_frame_bytes: DEFAULT_SSE_MAX_FRAME_BYTES,
@@ -53,6 +57,7 @@ impl Default for HttpResponseOptions {
 impl HttpResponseOptions {
     pub(crate) fn new(
         error_response_preview_limit: usize,
+        response_body_size_limit: usize,
         sse_json_mode: SseJsonMode,
         sse_max_line_bytes: usize,
         sse_max_frame_bytes: usize,
@@ -61,6 +66,7 @@ impl HttpResponseOptions {
     ) -> Self {
         Self {
             error_response_preview_limit: error_response_preview_limit.max(1),
+            response_body_size_limit: response_body_size_limit.max(1),
             sse_json_mode,
             sse_max_line_bytes: sse_max_line_bytes.max(1),
             sse_max_frame_bytes: sse_max_frame_bytes.max(1),

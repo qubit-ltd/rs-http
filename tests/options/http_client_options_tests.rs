@@ -16,6 +16,7 @@ use qubit_http::{
         DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES,
         DEFAULT_LOG_BODY_SIZE_LIMIT_BYTES,
         DEFAULT_READ_TIMEOUT_SECS,
+        DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES,
         DEFAULT_SSE_MAX_FRAME_BYTES,
         DEFAULT_SSE_MAX_LINE_BYTES,
         DEFAULT_WRITE_TIMEOUT_SECS,
@@ -70,6 +71,10 @@ fn test_http_client_options_defaults() {
         options.error_response_preview_limit,
         DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES
     );
+    assert_eq!(
+        options.response_body_size_limit,
+        DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES
+    );
     assert_eq!(options.user_agent, None);
     assert_eq!(options.max_redirects, None);
     assert_eq!(options.pool_idle_timeout, None);
@@ -102,6 +107,10 @@ fn test_http_client_options_new_matches_default() {
     assert_eq!(
         options.error_response_preview_limit,
         defaults.error_response_preview_limit
+    );
+    assert_eq!(
+        options.response_body_size_limit,
+        defaults.response_body_size_limit
     );
     assert_eq!(options.user_agent, defaults.user_agent);
     assert_eq!(options.max_redirects, defaults.max_redirects);
@@ -578,6 +587,17 @@ fn test_http_client_options_error_response_preview_limit_from_config() {
 }
 
 #[test]
+fn test_http_client_options_response_body_size_limit_from_config() {
+    let mut config = Config::new();
+    config
+        .set("http.response_body_size_limit", 512u64)
+        .expect("test config should set response_body_size_limit");
+
+    let opts = HttpClientOptions::from_config(&config.section("http")).unwrap();
+    assert_eq!(opts.response_body_size_limit, 512);
+}
+
+#[test]
 fn test_http_client_options_logging_section_type_error_is_prefixed() {
     let mut config = Config::new();
     config
@@ -1008,6 +1028,17 @@ fn test_http_client_options_validate_rejects_zero_error_response_preview_limit()
         err.to_string(),
         "[invalid value] error_response_preview_limit: Value must be greater than 0",
     );
+}
+
+#[test]
+fn test_http_client_options_validate_rejects_zero_response_body_size_limit() {
+    let mut opts = HttpClientOptions::default();
+    opts.response_body_size_limit = 0;
+
+    let err = opts.validate().unwrap_err();
+    assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
+    assert_eq!(err.path, "response_body_size_limit");
+    assert_eq!(err.message, "Value must be greater than 0");
 }
 
 #[test]

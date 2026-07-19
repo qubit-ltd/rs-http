@@ -39,6 +39,7 @@ use super::HttpConfigError;
 use crate::{
     constants::{
         DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES,
+        DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES,
         DEFAULT_SSE_MAX_FRAME_BYTES,
         DEFAULT_SSE_MAX_LINE_BYTES,
     },
@@ -71,6 +72,9 @@ pub struct HttpClientOptions {
     /// Maximum bytes captured into `HttpError.response_body_preview` for
     /// non-success responses.
     pub error_response_preview_limit: usize,
+    /// Maximum bytes accumulated by [`crate::HttpResponse::bytes`] and its
+    /// text/JSON helpers.
+    pub response_body_size_limit: usize,
     /// Optional default `User-Agent` header sent by reqwest.
     pub user_agent: Option<String>,
     /// Optional redirect limit applied by reqwest.
@@ -101,7 +105,7 @@ pub struct HttpClientOptions {
 impl Default for HttpClientOptions {
     /// Default: no base URL, empty headers, default timeouts/proxy/logging,
     /// default log sanitization, IPv4-only off, lenient SSE JSON mode, default
-    /// SSE done-marker policy, and crate default SSE line/frame limits.
+    /// response-body/SSE limits, and default SSE done-marker policy.
     ///
     /// # Returns
     /// Default [`HttpClientOptions`].
@@ -114,6 +118,7 @@ impl Default for HttpClientOptions {
             logging: HttpLoggingOptions::default(),
             error_response_preview_limit:
                 DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES,
+            response_body_size_limit: DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES,
             user_agent: None,
             max_redirects: None,
             pool_idle_timeout: None,
@@ -145,6 +150,7 @@ impl fmt::Debug for HttpClientOptions {
                 "error_response_preview_limit",
                 &self.error_response_preview_limit,
             )
+            .field("response_body_size_limit", &self.response_body_size_limit)
             .field("user_agent", &self.user_agent)
             .field("max_redirects", &self.max_redirects)
             .field("pool_idle_timeout", &self.pool_idle_timeout)
@@ -167,6 +173,7 @@ struct HttpClientRootConfigInput {
     base_url: Option<String>,
     ipv4_only: Option<bool>,
     error_response_preview_limit: Option<usize>,
+    response_body_size_limit: Option<usize>,
     user_agent: Option<String>,
     max_redirects: Option<usize>,
     pool_idle_timeout: Option<Duration>,
@@ -228,6 +235,10 @@ impl HttpClientOptions {
             error_response_preview_limit: get_optional_usize(
                 config,
                 "error_response_preview_limit",
+            )?,
+            response_body_size_limit: get_optional_usize(
+                config,
+                "response_body_size_limit",
             )?,
             user_agent: config.get_optional::<String>("user_agent")?,
             max_redirects: get_optional_usize(config, "max_redirects")?,
@@ -457,6 +468,17 @@ impl HttpClientOptions {
                         return Err(Self::resolve_config_error(config, error))
                     }
                 };
+        }
+        if let Some(limit) = root.response_body_size_limit {
+            opts.response_body_size_limit = match Self::validate_positive_limit(
+                "response_body_size_limit",
+                limit,
+            ) {
+                Ok(limit) => limit,
+                Err(error) => {
+                    return Err(Self::resolve_config_error(config, error))
+                }
+            };
         }
         if let Some(user_agent) = root.user_agent {
             opts.user_agent = Some(user_agent.trim().to_string());
@@ -726,6 +748,10 @@ impl HttpClientOptions {
         Self::validate_positive_limit(
             "error_response_preview_limit",
             self.error_response_preview_limit,
+        )?;
+        Self::validate_positive_limit(
+            "response_body_size_limit",
+            self.response_body_size_limit,
         )?;
         if let Some(user_agent) = self.user_agent.as_deref() {
             require_that(

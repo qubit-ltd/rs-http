@@ -410,8 +410,18 @@ impl HttpResponse {
     }
 
     /// Returns full body bytes, consuming backend stream lazily on first call.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`HttpErrorKind::Other`](crate::HttpErrorKind::Other) when the
+    /// response body exceeds the configured aggregation limit.
     pub async fn bytes(&mut self) -> HttpResult<Bytes> {
         if let Some(body) = &self.buffered_body {
+            if body.len() > self.options.response_body_size_limit {
+                return Err(
+                    self.response_body_size_limit_error(body.len() as u64)
+                );
+            }
             return Ok(body.clone());
         }
         if let Some(error) = self.previous_body_read_error() {
@@ -427,6 +437,13 @@ impl HttpResponse {
         let status = self.meta.status();
         let read_timeout = self.runtime.read_timeout;
         let cancellation_token = self.runtime.cancellation_token.clone();
+        if let Some(content_length) = self.content_length_hint() {
+            if content_length > self.options.response_body_size_limit as u64 {
+                let error = self.response_body_size_limit_error(content_length);
+                self.remember_body_read_failure(&error);
+                return Err(error);
+            }
+        }
         let mut body = bytes::BytesMut::new();
 
         loop {
@@ -447,7 +464,19 @@ impl HttpResponse {
             };
 
             match next {
-                Ok(Ok(Some(chunk))) => body.extend_from_slice(&chunk),
+                Ok(Ok(Some(chunk))) => {
+                    let observed_size =
+                        (body.len() as u64).saturating_add(chunk.len() as u64);
+                    if observed_size
+                        > self.options.response_body_size_limit as u64
+                    {
+                        let error =
+                            self.response_body_size_limit_error(observed_size);
+                        self.remember_body_read_failure(&error);
+                        return Err(error);
+                    }
+                    body.extend_from_slice(&chunk);
+                }
                 Ok(Ok(None)) => {
                     let body = body.freeze();
                     self.buffered_body = Some(body.clone());
@@ -830,6 +859,17 @@ impl HttpResponse {
             .get(CONTENT_LENGTH)
             .and_then(|value| value.to_str().ok())
             .and_then(|value| value.parse::<u64>().ok())
+    }
+
+    /// Returns a response-body aggregation limit error with request context.
+    fn response_body_size_limit_error(&self, observed_size: u64) -> HttpError {
+        let limit = self.options.response_body_size_limit;
+        HttpError::other(format!(
+            "Response body exceeds configured limit of {limit} bytes (observed {observed_size} bytes)"
+        ))
+        .with_method(self.meta.method())
+        .with_url(&self.runtime.request_url)
+        .with_status(self.meta.status())
     }
 
     /// Returns whether response content-type is SSE (`text/event-stream`).
