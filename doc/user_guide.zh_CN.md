@@ -573,6 +573,8 @@ HTTP 日志使用 `tracing::trace!`。必须同时满足：
 
 日志统一经过 `LogSanitizer` 和 `LogSanitizePolicy` 脱敏，底层复用 `qubit-sanitize` 的 URL、header 和 HTTP body 适配器。URL username、password、fragment 和敏感 query 参数会被掩码，非根 URL path 默认整体隐藏。只有在确认诊断边界安全后，才应把 `log_sanitize.url_path_policy` 设为 `preserve`。JSON/form/multipart body 字段如果命中策略中的敏感名称，也会被掩码。具体 mask 字符串遵循 `qubit-sanitize` 的敏感级别：token/header 类字段通常显示为 `****`，`password`、`client_secret` 这类 secret 字段显示为 `<redacted>`。multipart 脱敏适用于所有 `multipart/*` 媒体类型。multipart 文件 part 会显示为 `<redacted: file part>`；格式异常、缺少 boundary 或已截断的 multipart body 会显示为 `<redacted: multipart body>`，避免原始上传字节泄露到日志。
 
+对于 header，`http::HeaderValue::is_sensitive()` 是值级 `Secret` 声明。请求、响应、流式响应和 `Debug` 渲染都会在 header name 匹配前处理该标记。移除敏感 header name 不能暴露已标记的值，但最终替换文本仍由配置后的 `Secret` mask policy 决定。未标记值继续使用已配置的 name 匹配、等级和排除规则；不需要 wrapper 类型或另一套 Header API。
+
 默认敏感名称和掩码级别来自 `qubit_sanitize::SensitiveFields`，`rs-http` 不再维护或导出自己的敏感名称列表。匹配时会 trim、转小写、移除 `_`、`-`、`.`、空格等常见分隔符，并启用后缀匹配，因此 `access_token`、`access-token`、`accessToken` 和 `x-openai-api-key` 会命中同一类默认项。`log_sanitize.*` 下的配置项会扩展默认集合；代码里也可以通过 domain 方法调整 `options.log_sanitize_policy`。如果确实要使用完全自定义策略，请使用 `LogSanitizePolicy::empty()`。`insert_*` 和 `extend_*` 方法会保留已配置的最强等级；只有明确需要覆盖（包括降级）时，才应使用 `set_*_level`。
 
 示例：

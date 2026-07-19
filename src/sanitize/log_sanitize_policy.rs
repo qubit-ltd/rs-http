@@ -206,7 +206,9 @@ impl LogSanitizePolicy {
     /// Removes one sensitive HTTP header.
     ///
     /// Removing a built-in name is an explicit disclosure decision: matching
-    /// header values may appear unchanged in logs and diagnostic output.
+    /// unmarked header values may appear unchanged in logs and diagnostic
+    /// output. A value marked with [`http::HeaderValue::set_sensitive`]
+    /// remains a value-level `Secret` declaration and is still masked.
     ///
     /// # Parameters
     ///

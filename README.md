@@ -74,6 +74,11 @@ reviewing that diagnostic boundary. Config-driven clients accept `redact` or
 `preserve` at `log_sanitize.url_path_policy`. The default policy also masks
 sensitive headers and JSON/form/multipart body fields with shared field
 matching and mask levels.
+For headers, `http::HeaderValue::is_sensitive()` is a value-level `Secret`
+declaration. It is honored before header-name matching, so a name exclusion
+cannot expose a marked value; the configured `Secret` mask still controls the
+replacement. Unmarked values continue to use the configured header-name
+levels and exclusions, with no wrapper or alternate Header API required.
 The built-in names and mask levels come from `qubit_sanitize::SensitiveFields`.
 Opaque `text/*` bodies are redacted by default. `qubit_sanitize::TextBodyPolicy::PassThrough`
 is an explicit diagnostic opt-in that emits such text unchanged and may expose
@@ -121,7 +126,8 @@ when a custom-only policy is required. The configuration keys
 `log_sanitize.excluded_sensitive_query_params`, and
 `log_sanitize.excluded_sensitive_body_fields` provide the same deliberate
 escape hatch. Explicit exclusions also apply to `Debug` output; adding or
-setting the name again cancels its exclusion.
+setting the name again cancels its exclusion. A header exclusion affects only
+unmarked values and never cancels `HeaderValue::set_sensitive(true)`.
 
 ## Common Next Steps
 
