@@ -173,8 +173,10 @@ impl HttpRetryOptions {
             jitter_factor: config.get_optional("jitter_factor")?,
             method_policy: config
                 .get_optional_interpolated::<String>("method_policy")?,
-            status_codes: config.get_optional::<Vec<String>>("status_codes")?,
-            error_kinds: config.get_optional::<Vec<String>>("error_kinds")?,
+            status_codes: config
+                .get_optional_interpolated::<Vec<String>>("status_codes")?,
+            error_kinds: config
+                .get_optional_interpolated::<Vec<String>>("error_kinds")?,
         })
     }
 

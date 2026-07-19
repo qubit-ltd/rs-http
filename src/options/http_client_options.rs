@@ -277,19 +277,27 @@ impl HttpClientOptions {
             url_path_policy: config
                 .get_optional_interpolated::<String>("url_path_policy")?,
             sensitive_headers: config
-                .get_optional::<Vec<String>>("sensitive_headers")?,
+                .get_optional_interpolated::<Vec<String>>(
+                    "sensitive_headers",
+                )?,
             sensitive_query_params: config
-                .get_optional::<Vec<String>>("sensitive_query_params")?,
+                .get_optional_interpolated::<Vec<String>>(
+                    "sensitive_query_params",
+                )?,
             sensitive_body_fields: config
-                .get_optional::<Vec<String>>("sensitive_body_fields")?,
+                .get_optional_interpolated::<Vec<String>>(
+                    "sensitive_body_fields",
+                )?,
             excluded_sensitive_headers: config
-                .get_optional::<Vec<String>>("excluded_sensitive_headers")?,
+                .get_optional_interpolated::<Vec<String>>(
+                    "excluded_sensitive_headers",
+                )?,
             excluded_sensitive_query_params: config
-                .get_optional::<Vec<String>>(
+                .get_optional_interpolated::<Vec<String>>(
                     "excluded_sensitive_query_params",
                 )?,
             excluded_sensitive_body_fields: config
-                .get_optional::<Vec<String>>(
+                .get_optional_interpolated::<Vec<String>>(
                     "excluded_sensitive_body_fields",
                 )?,
         })
