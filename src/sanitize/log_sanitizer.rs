@@ -131,10 +131,11 @@ impl LogSanitizer {
     /// sensitive-name policy.
     ///
     /// A value marked with [`HeaderValue::set_sensitive`] is treated as a
-    /// value-level [`SensitivityLevel::Secret`] declaration before header-name
-    /// matching. Removing or excluding the header name cannot expose such a
-    /// value. The configured `Secret` mask policy determines its replacement;
-    /// unmarked values continue to use the name-based policy.
+    /// value-level [`qubit_sanitize::SensitivityLevel::Secret`] declaration
+    /// before header-name matching. Removing or excluding the header name
+    /// cannot expose such a value. The configured `Secret` mask policy
+    /// determines its replacement; unmarked values continue to use the
+    /// name-based policy.
     ///
     /// # Parameters
     ///
