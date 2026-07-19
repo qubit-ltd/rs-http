@@ -903,7 +903,7 @@ checksum = "52917ecf4305b3a354fca78aa569dfbfb2e12fe651a539760f3d66bc6034c96e"
 
 [[package]]
 name = "qubit-clock"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "thiserror",
  "tokio",
