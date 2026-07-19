@@ -51,7 +51,7 @@ futures-util = "0.3"
 qubit-config = { path = "../rs-config", version = "0.14", default-features = false }
 qubit-argument = "0.4"
 qubit-error = "0.2"
-qubit-function = { version = "0.16.0", path = "../rs-function" }
+qubit-function = "0.16"
 qubit-retry = { version = "0.16", path = "../rs-retry", features = ["tokio"] }
 qubit-sanitize = { version = "0.3", path = "../rs-sanitize", default-features = false, features = ["web", "http"] }
 
