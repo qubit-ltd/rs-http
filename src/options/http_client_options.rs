@@ -230,8 +230,7 @@ impl HttpClientOptions {
         R: ConfigReader + ?Sized,
     {
         Ok(HttpClientRootConfigInput {
-            base_url: config
-                .get_optional_interpolated::<String>("base_url")?,
+            base_url: config.get_optional_interpolated::<String>("base_url")?,
             ipv4_only: config.get_optional("ipv4_only")?,
             error_response_preview_limit: get_optional_usize(
                 config,

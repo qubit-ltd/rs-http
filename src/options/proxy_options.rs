@@ -86,14 +86,11 @@ where
 {
     Ok(ProxyConfigInput {
         enabled: config.get_optional("enabled")?,
-        proxy_type: config
-            .get_optional_interpolated::<String>("proxy_type")?,
+        proxy_type: config.get_optional_interpolated::<String>("proxy_type")?,
         host: config.get_optional_interpolated::<String>("host")?,
         port: config.get_optional("port")?,
-        username: config
-            .get_optional_interpolated::<String>("username")?,
-        password: config
-            .get_optional_interpolated::<String>("password")?,
+        username: config.get_optional_interpolated::<String>("username")?,
+        password: config.get_optional_interpolated::<String>("password")?,
     })
 }
 
