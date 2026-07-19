@@ -1281,40 +1281,43 @@ fn test_http_client_options_interpolates_string_configuration_values() {
         .set("http.shared.user_agent", "qubit-http-interpolated/1.0")
         .expect("test config should set shared user agent");
     config
-        .set("http.shared.proxy_type", "http")
+        .set("http.proxy.shared.proxy_type", "http")
         .expect("test config should set shared proxy type");
     config
-        .set("http.shared.proxy_host", "proxy.interpolated.example")
+        .set("http.proxy.shared.proxy_host", "proxy.interpolated.example")
         .expect("test config should set shared proxy host");
     config
-        .set("http.shared.proxy_username", "interpolated-user")
+        .set("http.proxy.shared.proxy_username", "interpolated-user")
         .expect("test config should set shared proxy username");
     config
-        .set("http.shared.proxy_password", "interpolated-password")
+        .set("http.proxy.shared.proxy_password", "interpolated-password")
         .expect("test config should set shared proxy password");
     config
-        .set("http.shared.retry_delay_strategy", "fixed")
+        .set("http.retry.shared.retry_delay_strategy", "fixed")
         .expect("test config should set shared retry delay strategy");
     config
-        .set("http.shared.retry_method_policy", "all_methods")
+        .set("http.retry.shared.retry_method_policy", "all_methods")
         .expect("test config should set shared retry method policy");
     config
-        .set("http.shared.sse_json_mode", "strict")
+        .set("http.sse.shared.sse_json_mode", "strict")
         .expect("test config should set shared SSE JSON mode");
     config
-        .set("http.shared.sse_done_marker", "[INTERPOLATED_DONE]")
+        .set("http.sse.shared.sse_done_marker", "[INTERPOLATED_DONE]")
         .expect("test config should set shared SSE done marker");
     config
-        .set("http.shared.url_path_policy", "preserve")
+        .set("http.log_sanitize.shared.url_path_policy", "preserve")
         .expect("test config should set shared URL path policy");
     config
-        .set("http.shared.sensitive_header", "X-Interpolated-Secret")
+        .set(
+            "http.log_sanitize.shared.sensitive_header",
+            "X-Interpolated-Secret",
+        )
         .expect("test config should set shared sensitive header");
     config
-        .set("http.shared.retry_status_code", "503")
+        .set("http.retry.shared.retry_status_code", "503")
         .expect("test config should set shared retry status code");
     config
-        .set("http.shared.retry_error_kind", "transport")
+        .set("http.retry.shared.retry_error_kind", "transport")
         .expect("test config should set shared retry error kind");
     config
         .set("http.base_url", "${shared.base_url}")
@@ -1353,10 +1356,7 @@ fn test_http_client_options_interpolates_string_configuration_values() {
         .set("http.retry.fixed_delay", Duration::from_millis(25))
         .expect("test config should set retry fixed delay");
     config
-        .set(
-            "http.retry.method_policy",
-            "${shared.retry_method_policy}",
-        )
+        .set("http.retry.method_policy", "${shared.retry_method_policy}")
         .expect("test config should set interpolated retry method policy");
     config
         .set("http.sse.json_mode", "${shared.sse_json_mode}")
@@ -1383,17 +1383,17 @@ fn test_http_client_options_interpolates_string_configuration_values() {
         )
         .expect("test config should set interpolated retry status codes");
     config
-        .set(
-            "http.retry.error_kinds",
-            vec!["${shared.retry_error_kind}"],
-        )
+        .set("http.retry.error_kinds", vec!["${shared.retry_error_kind}"])
         .expect("test config should set interpolated retry error kinds");
 
     let options = HttpClientOptions::from_config(&config.section("http"))
         .expect("interpolated HTTP options should be valid");
 
     assert_eq!(
-        options.base_url.expect("base URL should be configured").as_str(),
+        options
+            .base_url
+            .expect("base URL should be configured")
+            .as_str(),
         "https://interpolated.example/api/",
     );
     assert_eq!(
