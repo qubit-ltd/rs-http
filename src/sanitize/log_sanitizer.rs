@@ -12,7 +12,6 @@ use http::{
     HeaderValue,
 };
 use qubit_sanitize::{
-    escape_log_control_characters,
     BodySanitization,
     FieldSanitizer,
     HttpBodySanitizer,
@@ -358,12 +357,11 @@ impl LogSanitizer {
         if preview.context == BodyLogContext::ErrorResponse
             && result.is_truncated()
         {
-            let rendered = format!(
+            format!(
                 "{}{}",
-                result.into_content(),
+                result.into_escaped_content(),
                 preview.truncation_suffix()
-            );
-            escape_log_control_characters(&rendered).into_owned()
+            )
         } else {
             result.into_rendered()
         }
