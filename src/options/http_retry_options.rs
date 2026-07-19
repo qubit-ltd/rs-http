@@ -161,7 +161,8 @@ impl HttpRetryOptions {
             enabled: config.get_optional("enabled")?,
             max_attempts: config.get_optional("max_attempts")?,
             max_duration: config.get_optional("max_duration")?,
-            delay_strategy: config.get_optional::<String>("delay_strategy")?,
+            delay_strategy: config
+                .get_optional_interpolated::<String>("delay_strategy")?,
             fixed_delay: config.get_optional("fixed_delay")?,
             random_min_delay: config.get_optional("random_min_delay")?,
             random_max_delay: config.get_optional("random_max_delay")?,
@@ -170,7 +171,8 @@ impl HttpRetryOptions {
             backoff_max_delay: config.get_optional("backoff_max_delay")?,
             backoff_multiplier: config.get_optional("backoff_multiplier")?,
             jitter_factor: config.get_optional("jitter_factor")?,
-            method_policy: config.get_optional::<String>("method_policy")?,
+            method_policy: config
+                .get_optional_interpolated::<String>("method_policy")?,
             status_codes: config.get_optional::<Vec<String>>("status_codes")?,
             error_kinds: config.get_optional::<Vec<String>>("error_kinds")?,
         })

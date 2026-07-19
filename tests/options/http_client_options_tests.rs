@@ -1272,6 +1272,176 @@ fn test_http_client_options_from_root_config_all_sections() {
 }
 
 #[test]
+fn test_http_client_options_interpolates_string_configuration_values() {
+    let mut config = Config::new();
+    config
+        .set("shared.base_url", "https://interpolated.example/api/")
+        .expect("test config should set shared base URL");
+    config
+        .set("shared.user_agent", "qubit-http-interpolated/1.0")
+        .expect("test config should set shared user agent");
+    config
+        .set("shared.proxy_type", "http")
+        .expect("test config should set shared proxy type");
+    config
+        .set("shared.proxy_host", "proxy.interpolated.example")
+        .expect("test config should set shared proxy host");
+    config
+        .set("shared.proxy_username", "interpolated-user")
+        .expect("test config should set shared proxy username");
+    config
+        .set("shared.proxy_password", "interpolated-password")
+        .expect("test config should set shared proxy password");
+    config
+        .set("shared.retry_delay_strategy", "fixed")
+        .expect("test config should set shared retry delay strategy");
+    config
+        .set("shared.retry_method_policy", "all_methods")
+        .expect("test config should set shared retry method policy");
+    config
+        .set("shared.sse_json_mode", "strict")
+        .expect("test config should set shared SSE JSON mode");
+    config
+        .set("shared.sse_done_marker", "[INTERPOLATED_DONE]")
+        .expect("test config should set shared SSE done marker");
+    config
+        .set("shared.url_path_policy", "preserve")
+        .expect("test config should set shared URL path policy");
+    config
+        .set("shared.sensitive_header", "X-Interpolated-Secret")
+        .expect("test config should set shared sensitive header");
+    config
+        .set("shared.retry_status_code", "503")
+        .expect("test config should set shared retry status code");
+    config
+        .set("shared.retry_error_kind", "transport")
+        .expect("test config should set shared retry error kind");
+    config
+        .set("http.base_url", "${shared.base_url}")
+        .expect("test config should set interpolated base URL");
+    config
+        .set("http.user_agent", "${shared.user_agent}")
+        .expect("test config should set interpolated user agent");
+    config
+        .set("http.proxy.enabled", true)
+        .expect("test config should enable proxy");
+    config
+        .set("http.proxy.proxy_type", "${shared.proxy_type}")
+        .expect("test config should set interpolated proxy type");
+    config
+        .set("http.proxy.host", "${shared.proxy_host}")
+        .expect("test config should set interpolated proxy host");
+    config
+        .set("http.proxy.port", 8080u16)
+        .expect("test config should set proxy port");
+    config
+        .set("http.proxy.username", "${shared.proxy_username}")
+        .expect("test config should set interpolated proxy username");
+    config
+        .set("http.proxy.password", "${shared.proxy_password}")
+        .expect("test config should set interpolated proxy password");
+    config
+        .set("http.retry.enabled", true)
+        .expect("test config should enable retry");
+    config
+        .set(
+            "http.retry.delay_strategy",
+            "${shared.retry_delay_strategy}",
+        )
+        .expect("test config should set interpolated retry delay strategy");
+    config
+        .set("http.retry.fixed_delay", Duration::from_millis(25))
+        .expect("test config should set retry fixed delay");
+    config
+        .set(
+            "http.retry.method_policy",
+            "${shared.retry_method_policy}",
+        )
+        .expect("test config should set interpolated retry method policy");
+    config
+        .set("http.sse.json_mode", "${shared.sse_json_mode}")
+        .expect("test config should set interpolated SSE JSON mode");
+    config
+        .set("http.sse.done_marker", "${shared.sse_done_marker}")
+        .expect("test config should set interpolated SSE done marker");
+    config
+        .set(
+            "http.log_sanitize.url_path_policy",
+            "${shared.url_path_policy}",
+        )
+        .expect("test config should set interpolated URL path policy");
+    config
+        .set(
+            "http.log_sanitize.sensitive_headers",
+            vec!["${shared.sensitive_header}"],
+        )
+        .expect("test config should set interpolated sensitive headers");
+    config
+        .set(
+            "http.retry.status_codes",
+            vec!["${shared.retry_status_code}"],
+        )
+        .expect("test config should set interpolated retry status codes");
+    config
+        .set(
+            "http.retry.error_kinds",
+            vec!["${shared.retry_error_kind}"],
+        )
+        .expect("test config should set interpolated retry error kinds");
+
+    let options = HttpClientOptions::from_config(&config.section("http"))
+        .expect("interpolated HTTP options should be valid");
+
+    assert_eq!(
+        options.base_url.expect("base URL should be configured").as_str(),
+        "https://interpolated.example/api/",
+    );
+    assert_eq!(
+        options.user_agent.as_deref(),
+        Some("qubit-http-interpolated/1.0"),
+    );
+    assert_eq!(options.proxy.proxy_type, ProxyType::Http);
+    assert_eq!(
+        options.proxy.host.as_deref(),
+        Some("proxy.interpolated.example"),
+    );
+    assert_eq!(options.proxy.username.as_deref(), Some("interpolated-user"));
+    assert_eq!(
+        options.proxy.password.as_deref(),
+        Some("interpolated-password"),
+    );
+    assert_eq!(
+        options.retry.delay_strategy,
+        RetryDelay::Fixed(Duration::from_millis(25)),
+    );
+    assert_eq!(
+        options.retry.method_policy,
+        HttpRetryMethodPolicy::AllMethods,
+    );
+    assert_eq!(options.sse_json_mode, SseJsonMode::Strict);
+    assert_eq!(
+        options.sse_done_marker_policy,
+        DoneMarkerPolicy::Custom("[INTERPOLATED_DONE]".to_string()),
+    );
+    assert_eq!(
+        options.log_sanitize_policy.url_path_policy(),
+        UrlPathPolicy::Preserve,
+    );
+    assert!(options
+        .log_sanitize_policy
+        .sensitivity_for_header("x-interpolated-secret")
+        .is_some());
+    assert_eq!(
+        options.retry.retry_status_codes,
+        Some(vec![http::StatusCode::SERVICE_UNAVAILABLE]),
+    );
+    assert_eq!(
+        options.retry.retry_error_kinds,
+        Some(vec![HttpErrorKind::Transport]),
+    );
+}
+
+#[test]
 fn test_http_client_options_log_sanitize_header_number_from_config_is_converted(
 ) {
     let mut config = Config::new();
