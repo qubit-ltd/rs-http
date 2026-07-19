@@ -223,13 +223,13 @@ impl HttpClientOptions {
         R: ConfigReader + ?Sized,
     {
         Ok(HttpClientRootConfigInput {
-            base_url: config.get_optional_string("base_url")?,
+            base_url: config.get_optional::<String>("base_url")?,
             ipv4_only: config.get_optional("ipv4_only")?,
             error_response_preview_limit: get_optional_usize(
                 config,
                 "error_response_preview_limit",
             )?,
-            user_agent: config.get_optional_string("user_agent")?,
+            user_agent: config.get_optional::<String>("user_agent")?,
             max_redirects: get_optional_usize(config, "max_redirects")?,
             pool_idle_timeout: config.get_optional("pool_idle_timeout")?,
             pool_max_idle_per_host: get_optional_usize(
@@ -245,8 +245,8 @@ impl HttpClientOptions {
         R: ConfigReader + ?Sized,
     {
         Ok(HttpClientSseConfigInput {
-            json_mode: config.get_optional_string("json_mode")?,
-            done_marker: config.get_optional_string("done_marker")?,
+            json_mode: config.get_optional::<String>("json_mode")?,
+            done_marker: config.get_optional::<String>("done_marker")?,
             max_line_bytes: get_optional_usize(config, "max_line_bytes")?,
             max_frame_bytes: get_optional_usize(config, "max_frame_bytes")?,
         })
@@ -259,19 +259,19 @@ impl HttpClientOptions {
         R: ConfigReader + ?Sized,
     {
         Ok(HttpClientLogSanitizeConfigInput {
-            url_path_policy: config.get_optional_string("url_path_policy")?,
+            url_path_policy: config.get_optional::<String>("url_path_policy")?,
             sensitive_headers: config
-                .get_optional_string_list("sensitive_headers")?,
+                .get_optional::<Vec<String>>("sensitive_headers")?,
             sensitive_query_params: config
-                .get_optional_string_list("sensitive_query_params")?,
+                .get_optional::<Vec<String>>("sensitive_query_params")?,
             sensitive_body_fields: config
-                .get_optional_string_list("sensitive_body_fields")?,
+                .get_optional::<Vec<String>>("sensitive_body_fields")?,
             excluded_sensitive_headers: config
-                .get_optional_string_list("excluded_sensitive_headers")?,
+                .get_optional::<Vec<String>>("excluded_sensitive_headers")?,
             excluded_sensitive_query_params: config
-                .get_optional_string_list("excluded_sensitive_query_params")?,
+                .get_optional::<Vec<String>>("excluded_sensitive_query_params")?,
             excluded_sensitive_body_fields: config
-                .get_optional_string_list("excluded_sensitive_body_fields")?,
+                .get_optional::<Vec<String>>("excluded_sensitive_body_fields")?,
         })
     }
 
@@ -659,7 +659,7 @@ impl HttpClientOptions {
         let mut header_map: HashMap<String, String> = HashMap::new();
         for (k, _) in config.iter_prefix(full_headers_prefix) {
             let header_name = &k[full_headers_prefix.len()..];
-            let value = match config.get_string(k) {
+            let value = match config.get::<String>(k) {
                 Ok(value) => value,
                 Err(error) => {
                     return Err(HttpConfigError::config_error(
@@ -671,7 +671,7 @@ impl HttpClientOptions {
             header_map.insert(header_name.to_string(), value);
         }
         // Also support JSON map form stored at the exact key `default_headers`.
-        let json_headers = match config.get_optional_string(headers_prefix) {
+        let json_headers = match config.get_optional::<String>(headers_prefix) {
             Ok(json_headers) => json_headers,
             Err(error) => {
                 return Err(Self::resolve_config_error(
