@@ -131,6 +131,44 @@ async fn test_execute_success_with_header_injector_and_request_override() {
 }
 
 #[tokio::test]
+async fn test_execute_bytes_rejects_response_body_larger_than_configured_limit()
+{
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 200,
+        headers: vec![],
+        body: b"1234".to_vec(),
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.response_body_size_limit = 3;
+    let expected_url = server
+        .base_url()
+        .join("/body-limit")
+        .expect("test URL should resolve");
+
+    let client = HttpClientFactory::new()
+        .create(options)
+        .expect("client should be created");
+    let request = client.request(Method::GET, "/body-limit").build();
+    let mut response = client.execute(request).await.expect("request succeeds");
+    let error = response
+        .bytes()
+        .await
+        .expect_err("body exceeding configured limit must fail");
+
+    assert_eq!(error.kind, HttpErrorKind::Other);
+    assert_eq!(error.status, Some(StatusCode::OK));
+    assert_eq!(error.method, Some(Method::GET));
+    assert_eq!(error.url, Some(expected_url));
+    assert!(error.message.contains("3 bytes"));
+
+    let captured = server.finish().await;
+    assert_eq!(captured.target, "/body-limit");
+}
+
+#[tokio::test]
 async fn test_execute_maps_non_success_status_to_http_error() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 503,

@@ -383,6 +383,7 @@ impl HttpClient {
         .with_log_sanitize_policy(self.options.log_sanitize_policy.clone());
         let response_options = HttpResponseOptions::new(
             self.options.error_response_preview_limit,
+            self.options.response_body_size_limit,
             self.options.sse_json_mode,
             self.options.sse_max_line_bytes,
             self.options.sse_max_frame_bytes,

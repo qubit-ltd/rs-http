@@ -33,6 +33,14 @@ pub const DEFAULT_LOG_BODY_SIZE_LIMIT_BYTES: usize = 16 * 1024;
 pub const DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES: usize = 16 * 1024;
 
 // ---------------------------------------------------------------------------
+// Response body aggregation
+// ---------------------------------------------------------------------------
+
+/// Default maximum bytes accumulated by [`crate::HttpResponse::bytes`] and
+/// its text/JSON helpers.
+pub const DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES: usize = 8 * 1024 * 1024;
+
+// ---------------------------------------------------------------------------
 // SSE decode safety limits
 // ---------------------------------------------------------------------------
 
