@@ -924,7 +924,7 @@ dependencies = [
 
 [[package]]
 name = "qubit-datatype"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -1007,12 +1007,10 @@ dependencies = [
 
 [[package]]
 name = "qubit-serde"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96f0064338790690222e4a91641bf259a1438b5602be7c94b473678fba431bf8"
+version = "0.4.0"
 dependencies = [
+ "qubit-datatype",
  "serde",
- "thiserror",
 ]
 
 [[package]]
