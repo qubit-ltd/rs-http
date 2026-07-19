@@ -93,8 +93,13 @@ impl SanitizedLogger {
         self.sanitizer.sanitize_url(url)
     }
 
-    /// Renders a header value according to the configured sensitive-name
-    /// policy.
+    /// Renders a header value according to its native flag and configured
+    /// sensitive-name policy.
+    ///
+    /// [`HeaderValue::set_sensitive`] marks the value as
+    /// [`qubit_sanitize::SensitivityLevel::Secret`] before name matching.
+    /// Header-name exclusions cannot override that value-level declaration;
+    /// unmarked values retain the configured name-policy behavior.
     ///
     /// # Parameters
     ///
@@ -103,8 +108,8 @@ impl SanitizedLogger {
     ///
     /// # Returns
     ///
-    /// Masked value when the header name matches the configured sensitive-name
-    /// policy, otherwise the original UTF-8 text or `<non-utf8>`.
+    /// Secret-masked value for a natively sensitive header; otherwise a value
+    /// rendered by the configured name policy.
     #[inline(always)]
     pub(crate) fn header_value(
         &self,

@@ -72,6 +72,10 @@ HTTP TRACE 日志在输出前会统一脱敏。URL 脱敏会掩码用户信息�
 `qubit_sanitize::UrlPathPolicy::Preserve`。配置驱动的客户端可以通过
 `log_sanitize.url_path_policy` 选择 `redact` 或 `preserve`。默认策略还会掩码常见凭证类
 header 和 JSON/form/multipart body 字段。
+对于 header，`http::HeaderValue::is_sensitive()` 是值级 `Secret` 声明。它会在 header
+name 匹配前生效，因此 name 排除不能暴露已标记的值；最终替换文本仍由配置后的
+`Secret` mask 决定。未标记值继续使用已配置的 header name 等级和排除规则，不需要
+wrapper 或另一套 Header API。
 内置敏感名称和掩码级别来自 `qubit_sanitize::SensitiveFields`。不透明的 `text/*` body
 默认使用 `qubit_sanitize::TextBodyPolicy::Redact` 隐藏。
 `qubit_sanitize::TextBodyPolicy::PassThrough` 是显式的诊断
@@ -116,7 +120,8 @@ let client = HttpClientFactory::new().create(options)?;
 配置项 `log_sanitize.excluded_sensitive_headers`、
 `log_sanitize.excluded_sensitive_query_params` 和
 `log_sanitize.excluded_sensitive_body_fields` 提供相同的显式排除能力。排除项同样作用于
-`Debug` 输出；再次添加或设置同名字段会取消排除。
+`Debug` 输出；再次添加或设置同名字段会取消排除。header 排除只影响未标记值，绝不会
+取消 `HeaderValue::set_sensitive(true)`。
 
 ## 后续阅读
 

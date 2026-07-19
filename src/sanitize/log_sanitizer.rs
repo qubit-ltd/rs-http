@@ -127,8 +127,14 @@ impl LogSanitizer {
         self.url_sanitizer.sanitize_url(url, LOG_NAME_MATCH_MODE)
     }
 
-    /// Renders a header value according to the configured sensitive-name
-    /// policy.
+    /// Renders a header value according to its native flag and configured
+    /// sensitive-name policy.
+    ///
+    /// A value marked with [`HeaderValue::set_sensitive`] is treated as a
+    /// value-level [`SensitivityLevel::Secret`] declaration before header-name
+    /// matching. Removing or excluding the header name cannot expose such a
+    /// value. The configured `Secret` mask policy determines its replacement;
+    /// unmarked values continue to use the name-based policy.
     ///
     /// # Parameters
     ///
@@ -137,9 +143,9 @@ impl LogSanitizer {
     ///
     /// # Returns
     ///
-    /// Masked value when the header name matches the configured sensitive-name
-    /// policy, original value for other UTF-8 headers, or `<non-utf8>` when
-    /// the header value is not valid UTF-8.
+    /// Secret-masked value when the native sensitive flag is set, masked value
+    /// when the name policy matches, original value for other UTF-8 headers,
+    /// or `<non-utf8>` for other non-UTF-8 values.
     #[inline(always)]
     pub fn sanitize_header_value(
         &self,
@@ -252,8 +258,8 @@ impl LogSanitizer {
         )
     }
 
-    /// Renders headers for structured debug output according to the configured
-    /// sensitive-name policy.
+    /// Renders headers for structured debug output according to native value
+    /// flags and the configured sensitive-name policy.
     ///
     /// # Parameters
     ///
@@ -261,9 +267,9 @@ impl LogSanitizer {
     ///
     /// # Returns
     ///
-    /// Deterministic map of lowercase header names to values. Headers whose
-    /// names match the configured sensitive-name policy are masked; other
-    /// UTF-8 header values are preserved unchanged.
+    /// Deterministic map of lowercase header names to values. Natively
+    /// sensitive values use the `Secret` mask regardless of name exclusions;
+    /// unmarked values use the configured name policy.
     #[inline(always)]
     pub(crate) fn sanitize_header_map(
         &self,

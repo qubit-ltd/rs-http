@@ -77,15 +77,20 @@ impl SanitizedDebugger {
 
     /// Returns sanitized headers for structured debug output.
     ///
+    /// Values marked with [`http::HeaderValue::set_sensitive`] use the
+    /// configured [`qubit_sanitize::SensitivityLevel::Secret`] mask before
+    /// header-name matching. Header-name exclusions do not override this
+    /// value-level declaration; unmarked values use the configured name
+    /// policy.
+    ///
     /// # Parameters
     ///
     /// * `headers` - Header map to render.
     ///
     /// # Returns
     ///
-    /// Deterministic lowercase header map. Headers whose names match the
-    /// configured sensitive-name policy are masked; other UTF-8 values are
-    /// preserved unchanged.
+    /// Deterministic lowercase header map with native-sensitive values masked
+    /// at `Secret` and unmarked values rendered by the name policy.
     #[inline(always)]
     pub(crate) fn headers(
         &self,
