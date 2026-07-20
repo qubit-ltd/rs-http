@@ -523,6 +523,23 @@ fn test_http_client_options_log_redaction_section() {
     );
 }
 
+/// Verifies the explicit `redact` URL-path setting survives policy building.
+#[test]
+fn test_http_client_options_parses_redact_url_path_policy() {
+    let mut config = Config::new();
+    config
+        .set("http.log_redaction.url_path_policy", "redact".to_string())
+        .expect("test configuration should accept URL path policy text");
+
+    let options = HttpClientOptions::from_config(&config.section("http"))
+        .expect("redact URL path policy should parse");
+
+    assert_eq!(
+        options.log_redaction_policy.http_policy().url_path_policy(),
+        UrlPathPolicy::Redact,
+    );
+}
+
 #[test]
 fn test_http_client_options_rejects_invalid_url_path_policy() {
     let mut config = Config::new();
