@@ -914,7 +914,7 @@ name = "qubit-config"
 version = "0.14.0"
 dependencies = [
  "qubit-datatype",
- "qubit-sanitize",
+ "qubit-redact",
  "qubit-value",
  "regex",
  "serde",
@@ -960,8 +960,8 @@ dependencies = [
  "qubit-error",
  "qubit-function",
  "qubit-json",
+ "qubit-redact",
  "qubit-retry",
- "qubit-sanitize",
  "reqwest",
  "serde",
  "serde_json",
@@ -983,6 +983,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "qubit-redact"
+version = "0.1.0"
+dependencies = [
+ "form_urlencoded",
+ "http",
+ "serde_json",
+ "url",
+]
+
+[[package]]
 name = "qubit-retry"
 version = "0.16.0"
 dependencies = [
@@ -995,16 +1005,6 @@ dependencies = [
  "rand 0.10.1",
  "serde",
  "tokio",
-]
-
-[[package]]
-name = "qubit-sanitize"
-version = "0.3.0"
-dependencies = [
- "form_urlencoded",
- "http",
- "serde_json",
- "url",
 ]
 
 [[package]]

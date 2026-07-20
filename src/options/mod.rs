@@ -20,6 +20,7 @@ mod http_logging_options;
 mod http_retry_method_policy;
 mod http_retry_options;
 mod http_timeout_options;
+mod internal;
 mod proxy_options;
 mod proxy_type;
 

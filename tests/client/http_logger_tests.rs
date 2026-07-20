@@ -13,9 +13,9 @@ use qubit_http::{
     HttpClientOptions,
     HttpLogger,
     HttpLoggingOptions,
-    LogSanitizePolicy,
+    LogRedactionPolicy,
 };
-use qubit_sanitize::TextBodyPolicy;
+use qubit_redact::http::TextBodyPolicy;
 
 use crate::common::capture_trace_logs;
 
@@ -28,8 +28,10 @@ fn test_http_logger_logs_request_body_preview_with_truncation() {
         body_size_limit: 4,
         ..HttpLoggingOptions::default()
     };
-    options.log_sanitize_policy = LogSanitizePolicy::default()
-        .with_text_body_policy(TextBodyPolicy::PassThrough);
+    options.log_redaction_policy = LogRedactionPolicy::builder()
+        .text_body_policy(TextBodyPolicy::PassThrough)
+        .build()
+        .expect("log redaction policy should be valid");
     let logger = HttpLogger::new(&options);
     let client = HttpClientFactory::new()
         .create_default()
@@ -42,11 +44,11 @@ fn test_http_logger_logs_request_body_preview_with_truncation() {
     let logs = capture_trace_logs(|| logger.log_request(&request));
 
     assert!(logs.contains("--> POST https://example.com/%3Credacted%3E"));
-    assert!(logs.contains("Request body: abcd...<truncated 2 bytes>"));
+    assert!(logs.contains("Request body: abcd<truncated>"));
 }
 
 #[test]
-fn test_http_logger_sanitizes_request_url_query_and_json_body() {
+fn test_http_logger_redacts_request_url_query_and_json_body() {
     let options = HttpClientOptions::default();
     let logger = HttpLogger::new(&options);
     let client = HttpClientFactory::new()

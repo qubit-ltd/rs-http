@@ -33,9 +33,9 @@ use qubit_http::{
     HttpRequestBodyByteStream,
     HttpResponse,
     HttpResponseMeta,
-    LogSanitizePolicy,
+    LogRedactionPolicy,
 };
-use qubit_sanitize::TextBodyPolicy;
+use qubit_redact::http::TextBodyPolicy;
 use tokio::time::timeout;
 use url::Url;
 
@@ -146,8 +146,8 @@ fn test_log_response_masks_sensitive_headers() {
             .block_on(async { logger.log_response(&mut response).await })
             .expect("response logging should succeed");
     });
-    assert!(logs.contains("set-cookie: ****"));
-    assert!(logs.contains("authorization: ****"));
+    assert!(logs.contains("set-cookie: [****]"));
+    assert!(logs.contains("authorization: [****]"));
 }
 
 #[test]
@@ -228,9 +228,7 @@ fn test_log_response_binary_body_and_truncation() {
             .block_on(async { logger.log_response(&mut response).await })
             .expect("response logging should succeed");
     });
-    assert!(
-        logs.contains("Response body: <binary 5 bytes>...<truncated 1 bytes>")
-    );
+    assert!(logs.contains("Response body: <binary 4 bytes><truncated>"));
 }
 
 #[test]
@@ -285,8 +283,10 @@ fn test_log_request_text_body() {
     let headers = HeaderMap::new();
     let mut client_options = HttpClientOptions::default();
     client_options.logging = options;
-    client_options.log_sanitize_policy = LogSanitizePolicy::default()
-        .with_text_body_policy(TextBodyPolicy::PassThrough);
+    client_options.log_redaction_policy = LogRedactionPolicy::builder()
+        .text_body_policy(TextBodyPolicy::PassThrough)
+        .build()
+        .expect("log redaction policy should be valid");
     let logger = HttpLogger::new(&client_options);
 
     let request = logging_request(
@@ -595,8 +595,10 @@ fn test_execute_logs_response_body_when_content_type_only_has_sse_prefix() {
             let mut options = HttpClientOptions::default();
             options.base_url = Some(server.base_url());
             options.logging.body_size_limit = 128;
-            options.log_sanitize_policy = LogSanitizePolicy::default()
-                .with_text_body_policy(TextBodyPolicy::PassThrough);
+            options.log_redaction_policy = LogRedactionPolicy::builder()
+                .text_body_policy(TextBodyPolicy::PassThrough)
+                .build()
+                .expect("log redaction policy should be valid");
             let client = HttpClientFactory::new()
                 .create(options)
                 .expect("client should be created");
@@ -671,7 +673,7 @@ fn test_log_stream_response_headers_logs_non_utf8_header_values() {
     assert!(
         logs.contains("<-- 200 https://example.com/%3Credacted%3E (stream)")
     );
-    assert!(logs.contains("x-bin: <non-utf8>"));
+    assert!(logs.contains("x-bin: [<non-utf8>]"));
 }
 
 #[test]
@@ -695,7 +697,7 @@ fn test_log_stream_response_headers_masks_native_sensitive_value() {
         logger.log_stream_response_headers(&response_meta);
     });
 
-    assert!(logs.contains("x-diagnostic-value: <redacted>"));
+    assert!(logs.contains("x-diagnostic-value: [<redacted>]"));
     assert!(!logs.contains("native-response-header-secret"));
 }
 

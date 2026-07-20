@@ -18,8 +18,8 @@ use http::{
 use url::Url;
 
 use super::HttpResponseMeta;
-use crate::sanitize::SanitizedDebugger;
-use crate::LogSanitizePolicy;
+use crate::redact::RedactedDebugger;
+use crate::LogRedactionPolicy;
 
 /// Metadata view passed to response interceptors.
 ///
@@ -37,8 +37,8 @@ pub struct HttpResponseInterceptorContext {
     url: Url,
     /// Originating request method captured before interceptor execution.
     method: Method,
-    /// Sanitization policy snapshot used by standalone debug output.
-    log_sanitize_policy: LogSanitizePolicy,
+    /// Redaction policy snapshot used by standalone debug output.
+    log_redaction_policy: LogRedactionPolicy,
 }
 
 impl HttpResponseInterceptorContext {
@@ -53,6 +53,7 @@ impl HttpResponseInterceptorContext {
     ///
     /// # Returns
     /// New interceptor context.
+    #[inline]
     pub fn new(
         status: StatusCode,
         headers: HeaderMap,
@@ -64,23 +65,8 @@ impl HttpResponseInterceptorContext {
             headers,
             url,
             method,
-            log_sanitize_policy: LogSanitizePolicy::default(),
+            log_redaction_policy: LogRedactionPolicy::default(),
         }
-    }
-
-    /// Attaches the log sanitization policy used for standalone debug output.
-    ///
-    /// # Parameters
-    /// - `policy`: Policy snapshot to apply when formatting this context.
-    ///
-    /// # Returns
-    /// Updated context.
-    pub fn with_log_sanitize_policy(
-        mut self,
-        policy: LogSanitizePolicy,
-    ) -> Self {
-        self.log_sanitize_policy = policy;
-        self
     }
 
     /// Copies response metadata into a mutable interceptor context.
@@ -89,7 +75,8 @@ impl HttpResponseInterceptorContext {
     /// - `meta`: Source response metadata.
     ///
     /// # Returns
-    /// New context with cloned headers, URL, and method.
+    /// New context with cloned headers, URL, method, and policy snapshot.
+    #[inline(always)]
     pub fn from_meta(meta: &HttpResponseMeta) -> Self {
         Self::new(
             meta.status(),
@@ -97,14 +84,30 @@ impl HttpResponseInterceptorContext {
             meta.url().clone(),
             meta.method().clone(),
         )
-        .with_log_sanitize_policy(meta.log_sanitize_policy().clone())
+        .with_log_redaction_policy(meta.log_redaction_policy().clone())
+    }
+
+    /// Attaches the log redaction policy used for standalone debug output.
+    ///
+    /// # Parameters
+    /// - `policy`: Policy snapshot to apply when formatting this context.
+    ///
+    /// # Returns
+    /// Updated context.
+    #[inline(always)]
+    pub fn with_log_redaction_policy(
+        mut self,
+        policy: LogRedactionPolicy,
+    ) -> Self {
+        self.log_redaction_policy = policy;
+        self
     }
 
     /// Returns response status code.
     ///
     /// # Returns
     /// Immutable status accepted by `HttpClient::execute`.
-    #[inline]
+    #[inline(always)]
     pub fn status(&self) -> StatusCode {
         self.status
     }
@@ -113,7 +116,7 @@ impl HttpResponseInterceptorContext {
     ///
     /// # Returns
     /// Immutable header map view.
-    #[inline]
+    #[inline(always)]
     pub fn headers(&self) -> &HeaderMap {
         &self.headers
     }
@@ -123,7 +126,7 @@ impl HttpResponseInterceptorContext {
     /// # Returns
     /// Mutable header map applied back to [`HttpResponseMeta`] after all
     /// response interceptors succeed.
-    #[inline]
+    #[inline(always)]
     pub fn headers_mut(&mut self) -> &mut HeaderMap {
         &mut self.headers
     }
@@ -132,7 +135,7 @@ impl HttpResponseInterceptorContext {
     ///
     /// # Returns
     /// Immutable response URL view.
-    #[inline]
+    #[inline(always)]
     pub fn url(&self) -> &Url {
         &self.url
     }
@@ -144,7 +147,7 @@ impl HttpResponseInterceptorContext {
     ///
     /// # Returns
     /// `self` for method chaining.
-    #[inline]
+    #[inline(always)]
     pub fn set_url(&mut self, url: Url) -> &mut Self {
         self.url = url;
         self
@@ -154,7 +157,7 @@ impl HttpResponseInterceptorContext {
     ///
     /// # Returns
     /// Immutable request method.
-    #[inline]
+    #[inline(always)]
     pub fn method(&self) -> &Method {
         &self.method
     }
@@ -164,7 +167,7 @@ impl HttpResponseInterceptorContext {
     /// # Returns
     /// `Some(Duration)` for retryable status codes with valid `Retry-After`;
     /// otherwise `None`.
-    #[inline]
+    #[inline(always)]
     pub fn retry_after_hint(&self) -> Option<Duration> {
         HttpResponseMeta::retry_after_hint_from_parts(
             self.status,
@@ -179,16 +182,17 @@ impl HttpResponseInterceptorContext {
     ///
     /// # Returns
     /// Nothing. Status and method are intentionally not copied back.
+    #[inline(always)]
     pub(super) fn apply_to_meta(self, meta: &mut HttpResponseMeta) {
         meta.set_headers(self.headers);
         meta.set_url(self.url);
-        meta.set_log_sanitize_policy(self.log_sanitize_policy);
+        meta.set_log_redaction_policy(self.log_redaction_policy);
     }
 }
 
 impl fmt::Debug for HttpResponseInterceptorContext {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let debugger = SanitizedDebugger::new(&self.log_sanitize_policy);
+        let debugger = RedactedDebugger::new(&self.log_redaction_policy);
         let url = debugger.url(&self.url);
         formatter
             .debug_struct("HttpResponseInterceptorContext")

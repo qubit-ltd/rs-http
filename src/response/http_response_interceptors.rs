@@ -77,7 +77,9 @@ impl HttpResponseInterceptors {
                 if mapped.url.is_none() {
                     mapped = mapped.with_url(context.url());
                 }
-                mapped
+                mapped.with_log_redaction_policy(
+                    response_meta.log_redaction_policy().clone(),
+                )
             })?;
         }
         context.apply_to_meta(response_meta);

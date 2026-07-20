@@ -22,8 +22,8 @@ use http::{
 use httpdate::parse_http_date;
 use url::Url;
 
-use crate::sanitize::SanitizedDebugger;
-use crate::LogSanitizePolicy;
+use crate::redact::RedactedDebugger;
+use crate::LogRedactionPolicy;
 
 /// HTTP response metadata available before body buffering/stream consumption.
 #[derive(Clone)]
@@ -36,12 +36,13 @@ pub struct HttpResponseMeta {
     url: Url,
     /// Originating request method.
     method: Method,
-    /// Sanitization policy snapshot used by standalone debug output.
-    log_sanitize_policy: LogSanitizePolicy,
+    /// Redaction policy snapshot used by standalone debug output.
+    log_redaction_policy: LogRedactionPolicy,
 }
 
 impl HttpResponseMeta {
     /// Creates response metadata from status/headers/url/method parts.
+    #[inline]
     pub fn new(
         status: StatusCode,
         headers: HeaderMap,
@@ -53,22 +54,23 @@ impl HttpResponseMeta {
             headers,
             url,
             method,
-            log_sanitize_policy: LogSanitizePolicy::default(),
+            log_redaction_policy: LogRedactionPolicy::default(),
         }
     }
 
-    /// Attaches the log sanitization policy used for standalone debug output.
+    /// Attaches the log redaction policy used for standalone debug output.
     ///
     /// # Parameters
     /// - `policy`: Policy snapshot to apply when formatting this metadata.
     ///
     /// # Returns
     /// Updated metadata.
-    pub fn with_log_sanitize_policy(
+    #[inline(always)]
+    pub fn with_log_redaction_policy(
         mut self,
-        policy: LogSanitizePolicy,
+        policy: LogRedactionPolicy,
     ) -> Self {
-        self.log_sanitize_policy = policy;
+        self.log_redaction_policy = policy;
         self
     }
 
@@ -76,7 +78,7 @@ impl HttpResponseMeta {
     ///
     /// # Returns
     /// Immutable response status.
-    #[inline]
+    #[inline(always)]
     pub fn status(&self) -> StatusCode {
         self.status
     }
@@ -85,7 +87,7 @@ impl HttpResponseMeta {
     ///
     /// # Returns
     /// Immutable response header map.
-    #[inline]
+    #[inline(always)]
     pub fn headers(&self) -> &HeaderMap {
         &self.headers
     }
@@ -94,7 +96,7 @@ impl HttpResponseMeta {
     ///
     /// # Returns
     /// Immutable final response URL.
-    #[inline]
+    #[inline(always)]
     pub fn url(&self) -> &Url {
         &self.url
     }
@@ -103,7 +105,7 @@ impl HttpResponseMeta {
     ///
     /// # Returns
     /// Immutable request method.
-    #[inline]
+    #[inline(always)]
     pub fn method(&self) -> &Method {
         &self.method
     }
@@ -112,6 +114,7 @@ impl HttpResponseMeta {
     ///
     /// Applicable statuses are `429` and `5xx`, and header value can be
     /// `delta-seconds` or HTTP-date.
+    #[inline(always)]
     pub fn retry_after_hint(&self) -> Option<Duration> {
         Self::retry_after_hint_from_parts(self.status, &self.headers)
     }
@@ -145,6 +148,7 @@ impl HttpResponseMeta {
     ///
     /// # Returns
     /// Nothing.
+    #[inline(always)]
     pub(super) fn set_headers(&mut self, headers: HeaderMap) {
         self.headers = headers;
     }
@@ -156,36 +160,39 @@ impl HttpResponseMeta {
     ///
     /// # Returns
     /// Nothing.
+    #[inline(always)]
     pub(super) fn set_url(&mut self, url: Url) {
         self.url = url;
     }
 
-    /// Returns the log sanitization policy snapshot for response diagnostics.
+    /// Returns the log redaction policy snapshot for response diagnostics.
     ///
     /// # Returns
     /// Borrowed policy snapshot.
-    pub(super) fn log_sanitize_policy(&self) -> &LogSanitizePolicy {
-        &self.log_sanitize_policy
+    #[inline(always)]
+    pub(super) fn log_redaction_policy(&self) -> &LogRedactionPolicy {
+        &self.log_redaction_policy
     }
 
-    /// Replaces the log sanitization policy snapshot.
+    /// Replaces the log redaction policy snapshot.
     ///
     /// # Parameters
     /// - `policy`: New policy snapshot.
     ///
     /// # Returns
     /// Nothing.
-    pub(super) fn set_log_sanitize_policy(
+    #[inline(always)]
+    pub(super) fn set_log_redaction_policy(
         &mut self,
-        policy: LogSanitizePolicy,
+        policy: LogRedactionPolicy,
     ) {
-        self.log_sanitize_policy = policy;
+        self.log_redaction_policy = policy;
     }
 }
 
 impl fmt::Debug for HttpResponseMeta {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let debugger = SanitizedDebugger::new(&self.log_sanitize_policy);
+        let debugger = RedactedDebugger::new(&self.log_redaction_policy);
         let url = debugger.url(&self.url);
         formatter
             .debug_struct("HttpResponseMeta")

@@ -3,7 +3,6 @@
 [![Rust CI](https://github.com/qubit-ltd/rs-http/actions/workflows/ci.yml/badge.svg)](https://github.com/qubit-ltd/rs-http/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/endpoint?url=https://qubit-ltd.github.io/rs-http/coverage-badge.json)](https://qubit-ltd.github.io/rs-http/coverage/)
 [![Crates.io](https://img.shields.io/crates/v/qubit-http.svg?color=blue)](https://crates.io/crates/qubit-http)
-[![Docs.rs](https://docs.rs/qubit-http/badge.svg)](https://docs.rs/qubit-http)
 [![Rust](https://img.shields.io/badge/rust-1.94+-blue.svg?logo=rust)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![中文文档](https://img.shields.io/badge/文档-中文版-blue.svg)](README.zh_CN.md)
@@ -31,6 +30,7 @@ For full examples and advanced options, read the [User Guide](doc/user_guide.en.
 ```toml
 [dependencies]
 qubit-http = "0.10"
+qubit-redact = "0.1"
 http = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
@@ -65,69 +65,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-## Logging Sanitization
+## Logging Redaction
 
-HTTP TRACE logs are sanitized before they are emitted. URL sanitization masks
-userinfo, fragments, and recognized sensitive query parameters. Non-root URL
-paths are redacted by default; select `qubit_sanitize::UrlPathPolicy::Preserve` only after
-reviewing that diagnostic boundary. Config-driven clients accept `redact` or
-`preserve` at `log_sanitize.url_path_policy`. The default policy also masks
-sensitive headers and JSON/form/multipart body fields with shared field
-matching and mask levels.
-For headers, `http::HeaderValue::is_sensitive()` is a value-level `Secret`
-declaration. It is honored before header-name matching, so a name exclusion
-cannot expose a marked value; the configured `Secret` mask still controls the
-replacement. Unmarked values continue to use the configured header-name
-levels and exclusions, with no wrapper or alternate Header API required.
-The built-in names and mask levels come from `qubit_sanitize::SensitiveFields`.
-Opaque `text/*` bodies are redacted by default. `qubit_sanitize::TextBodyPolicy::PassThrough`
-is an explicit diagnostic opt-in that emits such text unchanged and may expose
-secrets. Unsupported or unstructured bodies are not emitted raw: UTF-8
-fallback content is redacted, while binary content is represented only by a
-byte-count marker.
-Multipart file parts and malformed, missing-boundary, or truncated multipart
-bodies are redacted as well. You can extend the policy when a service uses
-custom secret names. Names are matched case-insensitively across common styles
-such as `access_token`, `access-token`, and `accessToken`:
+Every TRACE and `Debug` path uses one immutable `LogRedactionPolicy` snapshot.
+The underlying `qubit-redact` HTTP redactor handles URL userinfo, fragments,
+query fields, native-sensitive headers, structured bodies, and hard body
+budgets. Non-root URL paths, opaque text, and unkeyed JSON values are redacted
+by default.
+
+Build custom policies before installing them on client options:
 
 ```rust
-use qubit_http::{
-    HttpClientFactory,
-    HttpClientOptions,
-};
-use qubit_sanitize::SensitivityLevel;
+use qubit_http::{HttpClientFactory, HttpClientOptions, LogRedactionPolicy};
+use qubit_redact::{Sensitivity, http::UrlPathPolicy};
 
 let mut options = HttpClientOptions::new();
-options.logging.enabled = true;
-options.logging.log_request_body = true;
-options.log_sanitize_policy.insert_sensitive_header(
-    "x-api-key",
-    SensitivityLevel::High,
-);
-options.log_sanitize_policy.insert_sensitive_query_param(
-    "access_token",
-    SensitivityLevel::High,
-);
-options.log_sanitize_policy.insert_sensitive_body_field(
-    "password",
-    SensitivityLevel::Secret,
-);
-// A verified false positive can be excluded. Its value may then be logged.
-options.log_sanitize_policy.remove_sensitive_query_param("sig");
+options.log_redaction_policy = LogRedactionPolicy::builder()
+    .raise_header("x-api-key", Sensitivity::High)
+    .raise_query("access_token", Sensitivity::High)
+    .raise_body("password", Sensitivity::Secret)
+    .allow_query_exact("known_public_token")
+    .url_path_policy(UrlPathPolicy::Preserve)
+    .build()?;
 
 let client = HttpClientFactory::new().create(options)?;
 ```
 
-The `insert_*` and `extend_*` methods keep the strongest level already
-configured. Use the corresponding `set_*_level` method only for an intentional
-replacement, including a downgrade. Start with `LogSanitizePolicy::empty()`
-when a custom-only policy is required. The configuration keys
-`log_sanitize.excluded_sensitive_headers`,
-`log_sanitize.excluded_sensitive_query_params`, and
-`log_sanitize.excluded_sensitive_body_fields` provide the same deliberate
-escape hatch. Explicit exclusions also apply to `Debug` output; adding or
-setting the name again cancels its exclusion. A header exclusion affects only
-unmarked values and never cancels `HeaderValue::set_sensitive(true)`.
+`logging.body_size_limit` is the presentation limit. The policy's
+`BodyBudget` remains a second, non-bypassable input/output bound. Truncated
+bodies use one generic `<truncated>` marker and retain exact source metadata
+when the caller knows it. Configuration uses only the `log_redaction` section;
+there is no compatibility path for the old key.
 
 ## Common Next Steps
 
@@ -138,7 +106,7 @@ unmarked values and never cancels `HeaderValue::set_sensitive(true)`.
 | Add default headers, header injectors, and interceptors | [User Guide](doc/user_guide.en.md) |
 | Configure timeouts, retries, cancellation, and `Retry-After` handling | [User Guide](doc/user_guide.en.md) |
 | Read bytes, text, JSON, streams, or SSE chunks | [User Guide](doc/user_guide.en.md) |
-| Configure logging sanitization, proxy, redirects, and IPv4-only mode | [User Guide](doc/user_guide.en.md) |
+| Configure logging redaction, proxy, redirects, and IPv4-only mode | [User Guide](doc/user_guide.en.md) |
 | Handle status, transport, timeout, cancellation, decode, and retry errors | [User Guide](doc/user_guide.en.md) |
 
 ## Core API At A Glance
@@ -159,20 +127,37 @@ unmarked values and never cancels `HeaderValue::set_sensitive(true)`.
 - Built-in request retry covers failures before `HttpResponse` is returned. Stream body errors after return are surfaced to the caller.
 - SSE reconnect has a dedicated API: `HttpClient::execute_sse_with_reconnect(...)`.
 
-## Contributing
+## Testing
 
-Issues and pull requests are welcome.
+```bash
+# Run tests with the default feature set
+cargo test
 
-Please keep contributions focused and easy to review:
+# Run tests with all declared features
+cargo test --all-features
 
-- open an issue for bug reports, design questions, or larger feature proposals
-- keep pull requests scoped to one behavior change, fix, or documentation update
-- follow the [Rust coding style](RUST_CODING_STYLE.md)
-- include tests when changing runtime behavior
-- update the user guide or README when public API behavior changes
+# Project CI checks
+./ci-check.sh
 
-By contributing to this project, you agree that your contribution will be licensed under the same license as the project.
+# Check code coverage
+./coverage.sh
+```
 
 ## License
 
-Licensed under the [Apache License, Version 2.0](LICENSE).
+Copyright (c) 2025 - 2026. Haixing Hu. All rights reserved.
+
+Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for the
+full license text.
+
+## Contributing
+
+Contributions are welcome. Please follow the Rust API guidelines, keep public
+API documentation and tests current, and run `./align-ci.sh` to format code and
+`./ci-check.sh` to satisfy CI requirements before submitting a pull request.
+
+## Author
+
+**Haixing Hu** - *Qubit Co. Ltd.*
+
+Repository: [https://github.com/qubit-ltd/rs-http](https://github.com/qubit-ltd/rs-http)

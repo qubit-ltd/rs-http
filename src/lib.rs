@@ -18,7 +18,7 @@
 //! - Loading those options from [`qubit_config::ConfigReader`] (`from_config` /
 //!   factory `create_from_config`)
 //! - Consistent request/response/stream APIs
-//! - Secure and configurable logging with URL, header, and body sanitization
+//! - Secure and configurable logging with URL, header, and body redaction
 //! - Built-in SSE decoding utilities in [`sse`]
 //! - Unified error model and retry hints
 
@@ -27,9 +27,9 @@ pub mod constants;
 mod content_type;
 mod error;
 mod options;
+mod redact;
 mod request;
 mod response;
-mod sanitize;
 pub mod sse;
 
 pub use client::http_logger::HttpLogger;
@@ -57,6 +57,11 @@ pub use qubit_retry::{
     RetryJitter,
     RetryOptions,
 };
+pub use redact::{
+    LogRedactionPolicy,
+    LogRedactionPolicyBuilder,
+    LogRedactor,
+};
 pub use request::{
     AsyncHttpHeaderInjector,
     HttpHeaderInjector,
@@ -76,9 +81,5 @@ pub use response::{
     HttpResponseInterceptorContext,
     HttpResponseInterceptors,
     HttpResponseMeta,
-};
-pub use sanitize::{
-    LogSanitizePolicy,
-    LogSanitizer,
 };
 pub use tokio_util::sync::CancellationToken;

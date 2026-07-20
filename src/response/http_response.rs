@@ -43,11 +43,9 @@ use crate::error::{
     backend_error_mapper::map_reqwest_error,
     ReqwestErrorPhase,
 };
-use crate::sanitize::{
-    BodyLogContext,
-    BodyPreview,
-    LogSanitizer,
-    SanitizedDebugger,
+use crate::redact::{
+    LogRedactor,
+    RedactedDebugger,
 };
 use crate::sse::{
     DoneMarkerPolicy,
@@ -60,6 +58,7 @@ use crate::{
     HttpError,
     HttpErrorKind,
     HttpResult,
+    LogRedactionPolicy,
 };
 
 use super::{
@@ -80,6 +79,8 @@ struct BodyReadFailure {
     url: Option<Url>,
     /// Optional HTTP status context.
     status: Option<StatusCode>,
+    /// Exact policy snapshot used by the originating response.
+    log_redaction_policy: LogRedactionPolicy,
 }
 
 impl BodyReadFailure {
@@ -97,6 +98,7 @@ impl BodyReadFailure {
             method: error.method.clone(),
             url: error.url.clone(),
             status: error.status,
+            log_redaction_policy: (*error.log_redaction_policy).clone(),
         }
     }
 
@@ -118,7 +120,7 @@ impl BodyReadFailure {
         if let Some(status) = self.status {
             error = error.with_status(status);
         }
-        error
+        error.with_log_redaction_policy(self.log_redaction_policy.clone())
     }
 }
 
@@ -131,6 +133,8 @@ type BodyReadFailureState = Arc<Mutex<Option<BodyReadFailure>>>;
 /// - `error`: Backend error returned while reading response body bytes.
 /// - `method`: Request method used for diagnostics.
 /// - `url`: Request URL used for diagnostics.
+/// - `status`: Response status attached to the resulting diagnostic error.
+/// - `log_redaction_policy`: Policy snapshot used to render error context.
 ///
 /// # Returns
 /// [`HttpErrorKind::ReadTimeout`] for timeout errors, otherwise
@@ -140,6 +144,7 @@ fn map_response_read_error(
     method: Method,
     url: Url,
     status: StatusCode,
+    log_redaction_policy: &LogRedactionPolicy,
 ) -> HttpError {
     if error.is_timeout() {
         return map_reqwest_error(
@@ -149,7 +154,8 @@ fn map_response_read_error(
             method,
             url,
         )
-        .with_status(status);
+        .with_status(status)
+        .with_log_redaction_policy(log_redaction_policy.clone());
     }
 
     let error = error.without_url();
@@ -158,6 +164,7 @@ fn map_response_read_error(
         .with_url(&url)
         .with_status(status)
         .with_source(error)
+        .with_log_redaction_policy(log_redaction_policy.clone())
 }
 
 /// Runtime state bound to one response instance.
@@ -206,7 +213,7 @@ pub struct HttpResponse {
 impl fmt::Debug for HttpResponse {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let debugger =
-            SanitizedDebugger::new(self.options.log_sanitizer.policy());
+            RedactedDebugger::new(self.options.log_redactor.policy());
         let url = debugger.url(self.meta.url());
         let request_url = debugger.url(&self.runtime.request_url);
         formatter
@@ -276,43 +283,43 @@ impl HttpResponse {
     }
 
     /// Returns shared response metadata.
-    #[inline]
+    #[inline(always)]
     pub fn meta(&self) -> &HttpResponseMeta {
         &self.meta
     }
 
     /// Returns response status code.
-    #[inline]
+    #[inline(always)]
     pub fn status(&self) -> StatusCode {
         self.meta.status()
     }
 
     /// Returns response headers.
-    #[inline]
+    #[inline(always)]
     pub fn headers(&self) -> &HeaderMap {
         self.meta.headers()
     }
 
     /// Returns final response URL.
-    #[inline]
+    #[inline(always)]
     pub fn url(&self) -> &Url {
         self.meta.url()
     }
 
     /// Returns request URL used in response read context.
-    #[inline]
+    #[inline(always)]
     pub fn request_url(&self) -> &Url {
         &self.runtime.request_url
     }
 
     /// Returns whether status is success.
-    #[inline]
+    #[inline(always)]
     pub fn is_success(&self) -> bool {
         self.status().is_success()
     }
 
     /// Returns parsed `Retry-After` hint when status and headers provide one.
-    #[inline]
+    #[inline(always)]
     pub fn retry_after_hint(&self) -> Option<Duration> {
         self.meta.retry_after_hint()
     }
@@ -365,24 +372,24 @@ impl HttpResponse {
         let method = self.meta.method().clone();
         let url = self.request_url().clone();
         let error_preview_limit = self.options.error_response_preview_limit;
-        let diagnostic_sanitizer =
-            LogSanitizer::for_debug(self.options.log_sanitizer.policy());
+        let diagnostic_redactor =
+            LogRedactor::new(self.options.log_redactor.policy().clone());
         let body_preview =
             self.into_error_body_preview(error_preview_limit).await?;
-        let log_sanitize_policy = diagnostic_sanitizer.policy().clone();
+        let log_redaction_policy = diagnostic_redactor.policy().clone();
         let message = format!(
             "{} with status {} for {} {}; response body preview: {}",
             message_prefix,
             status,
             method,
-            diagnostic_sanitizer.sanitize_url(&url),
+            diagnostic_redactor.redact_url(&url),
             body_preview
         );
         let mut mapped = HttpError::status(status, message)
             .with_method(&method)
             .with_url(&url)
             .with_response_body_preview(body_preview)
-            .with_log_sanitize_policy(log_sanitize_policy);
+            .with_log_redaction_policy(log_redaction_policy);
         if let Some(retry_after) = retry_after {
             mapped = mapped.with_retry_after(retry_after);
         }
@@ -453,7 +460,10 @@ impl HttpResponse {
                         let error = HttpError::cancelled("Request cancelled while reading response body")
                             .with_method(&method)
                             .with_url(&url)
-                            .with_status(status);
+                            .with_status(status)
+                            .with_log_redaction_policy(
+                                self.log_redaction_policy().clone(),
+                            );
                         self.remember_body_read_failure(&error);
                         return Err(error);
                     }
@@ -483,8 +493,13 @@ impl HttpResponse {
                     return Ok(body);
                 }
                 Ok(Err(error)) => {
-                    let error =
-                        map_response_read_error(error, method, url, status);
+                    let error = map_response_read_error(
+                        error,
+                        method,
+                        url,
+                        status,
+                        self.log_redaction_policy(),
+                    );
                     self.remember_body_read_failure(&error);
                     return Err(error);
                 }
@@ -495,7 +510,10 @@ impl HttpResponse {
                     ))
                     .with_method(self.meta.method())
                     .with_url(&self.runtime.request_url)
-                    .with_status(status);
+                    .with_status(status)
+                    .with_log_redaction_policy(
+                        self.log_redaction_policy().clone(),
+                    );
                     self.remember_body_read_failure(&error);
                     return Err(error);
                 }
@@ -530,6 +548,7 @@ impl HttpResponse {
         let read_timeout = self.runtime.read_timeout;
         let cancellation_token = self.runtime.cancellation_token.clone();
         let body_read_failure = self.runtime.body_read_failure.clone();
+        let log_redaction_policy = self.log_redaction_policy().clone();
         let mut stream = backend.bytes_stream();
         let wrapped = stream! {
             loop {
@@ -539,7 +558,8 @@ impl HttpResponse {
                             let error = HttpError::cancelled("Streaming response cancelled while reading body")
                                 .with_method(&method)
                                 .with_url(&url)
-                                .with_status(status);
+                                .with_status(status)
+                                .with_log_redaction_policy(log_redaction_policy.clone());
                             Self::remember_body_read_failure_state(&body_read_failure, &error);
                             yield Err(error);
                             break;
@@ -552,7 +572,13 @@ impl HttpResponse {
                 match next {
                     Ok(Some(Ok(bytes))) => yield Ok(bytes),
                     Ok(Some(Err(error))) => {
-                        let mapped = map_response_read_error(error, method.clone(), url.clone(), status);
+                        let mapped = map_response_read_error(
+                            error,
+                            method.clone(),
+                            url.clone(),
+                            status,
+                            &log_redaction_policy,
+                        );
                         Self::remember_body_read_failure_state(&body_read_failure, &mapped);
                         yield Err(mapped);
                         break;
@@ -565,7 +591,8 @@ impl HttpResponse {
                         ))
                         .with_method(&method)
                         .with_url(&url)
-                        .with_status(status);
+                        .with_status(status)
+                        .with_log_redaction_policy(log_redaction_policy.clone());
                         Self::remember_body_read_failure_state(&body_read_failure, &error);
                         yield Err(error);
                         break;
@@ -586,6 +613,7 @@ impl HttpResponse {
             ))
             .with_status(self.meta.status())
             .with_url(self.meta.url())
+            .with_log_redaction_policy(self.log_redaction_policy().clone())
         })
     }
 
@@ -602,6 +630,9 @@ impl HttpResponse {
                     .with_status(self.meta.status())
                     .with_url(self.meta.url())
                     .with_source(error)
+                    .with_log_redaction_policy(
+                        self.log_redaction_policy().clone(),
+                    )
             })
     }
 
@@ -612,7 +643,7 @@ impl HttpResponse {
     /// configuration before consuming the body with [`Self::sse_messages`]
     /// or [`Self::sse_chunks`] (together with [`Self::sse_json_mode`],
     /// [`Self::sse_done_marker_policy`], etc.).
-    #[inline]
+    #[inline(always)]
     pub fn sse_max_line_bytes(mut self, max_line_bytes: usize) -> Self {
         self.options.sse_max_line_bytes = max_line_bytes.max(1);
         self
@@ -623,7 +654,7 @@ impl HttpResponse {
     ///
     /// Values below 1 are clamped to 1. Returns `self` for chained
     /// configuration.
-    #[inline]
+    #[inline(always)]
     pub fn sse_max_frame_bytes(mut self, max_frame_bytes: usize) -> Self {
         self.options.sse_max_frame_bytes = max_frame_bytes.max(1);
         self
@@ -631,7 +662,7 @@ impl HttpResponse {
 
     /// Overrides the JSON decoding mode used by [`Self::sse_chunks`] on this
     /// response.
-    #[inline]
+    #[inline(always)]
     pub fn sse_json_mode(mut self, mode: SseJsonMode) -> Self {
         self.options.sse_json_mode = mode;
         self
@@ -639,7 +670,7 @@ impl HttpResponse {
 
     /// Overrides how [`Self::sse_chunks`] detects end-of-stream from trimmed
     /// `data:` payloads.
-    #[inline]
+    #[inline(always)]
     pub fn sse_done_marker_policy(mut self, policy: DoneMarkerPolicy) -> Self {
         self.options.sse_done_marker_policy = policy;
         self
@@ -712,10 +743,21 @@ impl HttpResponse {
         }
     }
 
+    /// Returns the policy snapshot used for response diagnostics and errors.
+    ///
+    /// # Returns
+    ///
+    /// The immutable policy captured when this response was created.
+    #[inline(always)]
+    pub(crate) fn log_redaction_policy(&self) -> &LogRedactionPolicy {
+        self.options.log_redactor.policy()
+    }
+
     /// Returns a buffered body reference for response logging if available.
     ///
     /// # Returns
     /// `Some(&Bytes)` when response body has already been buffered.
+    #[inline(always)]
     pub(crate) fn buffered_body_for_logging(&self) -> Option<&Bytes> {
         self.buffered_body.as_ref()
     }
@@ -728,6 +770,7 @@ impl HttpResponse {
     /// # Returns
     /// `true` only when this response is not SSE, has an explicit
     /// `Content-Length`, and declared length is within `body_log_limit`.
+    #[inline]
     pub(crate) fn can_buffer_body_for_logging(
         &self,
         body_log_limit: usize,
@@ -762,6 +805,9 @@ impl HttpResponse {
         let method = self.meta.method().clone();
         let url = self.runtime.request_url.clone();
         let status = self.meta.status();
+        let source_len = self
+            .content_length_hint()
+            .and_then(|length| usize::try_from(length).ok());
         let mut preview = Vec::new();
         let mut truncated = false;
         let capture_limit = limit.saturating_add(1);
@@ -775,7 +821,10 @@ impl HttpResponse {
                         )
                         .with_method(&method)
                         .with_url(&url)
-                        .with_status(status));
+                        .with_status(status)
+                        .with_log_redaction_policy(
+                            self.log_redaction_policy().clone(),
+                        ));
                     }
                     item = tokio::time::timeout(read_timeout, response.chunk()) => item,
                 }
@@ -812,7 +861,6 @@ impl HttpResponse {
                 }
             }
         }
-        let source_len = preview.len();
         if preview.len() > limit {
             preview.truncate(limit);
             truncated = true;
@@ -822,7 +870,7 @@ impl HttpResponse {
             source_len,
             truncated,
             content_type.as_ref(),
-            &self.options.log_sanitizer,
+            &self.options.log_redactor,
         ))
     }
 
@@ -844,7 +892,11 @@ impl HttpResponse {
             Some(
                 HttpError::cancelled(message.to_string())
                     .with_method(self.meta.method())
-                    .with_url(&self.runtime.request_url),
+                    .with_url(&self.runtime.request_url)
+                    .with_status(self.meta.status())
+                    .with_log_redaction_policy(
+                        self.log_redaction_policy().clone(),
+                    ),
             )
         } else {
             None
@@ -870,6 +922,7 @@ impl HttpResponse {
         .with_method(self.meta.method())
         .with_url(&self.runtime.request_url)
         .with_status(self.meta.status())
+        .with_log_redaction_policy(self.log_redaction_policy().clone())
     }
 
     /// Returns whether response content-type is SSE (`text/event-stream`).
@@ -881,25 +934,32 @@ impl HttpResponse {
             .is_some_and(content_type::is_sse)
     }
 
+    /// Renders captured status-error bytes through the response redactor.
+    ///
+    /// # Parameters
+    ///
+    /// * `bytes` - Captured body prefix.
+    /// * `source_len` - Exact complete source length when known.
+    /// * `truncated` - Whether source bytes were omitted from the capture.
+    /// * `content_type` - Optional native Content-Type used for parser choice.
+    /// * `log_redactor` - Response-scoped redactor and policy snapshot.
+    ///
+    /// # Returns
+    ///
+    /// `<empty>` for a complete empty body, otherwise bounded log-safe text.
     fn render_error_body_preview(
         bytes: &[u8],
-        source_len: usize,
+        source_len: Option<usize>,
         truncated: bool,
         content_type: Option<&HeaderValue>,
-        log_sanitizer: &LogSanitizer,
+        log_redactor: &LogRedactor,
     ) -> String {
-        let preview = BodyPreview::from_limited_bytes(
-            bytes,
-            source_len,
-            truncated,
-            BodyLogContext::ErrorResponse,
-        );
-        let preview = if let Some(content_type) = content_type {
-            preview.with_content_type(content_type)
-        } else {
-            preview
-        };
-        log_sanitizer.sanitize_body_preview(&preview)
+        if bytes.is_empty() && !truncated {
+            return "<empty>".to_owned();
+        }
+        log_redactor
+            .redact_captured_body(bytes, source_len, truncated, content_type)
+            .to_string()
     }
 
     /// Extracts a Content-Type header value.

@@ -10,12 +10,12 @@ use http::StatusCode;
 use qubit_http::{
     HttpError,
     HttpErrorKind,
-    LogSanitizePolicy,
+    LogRedactionPolicy,
     RetryHint,
 };
-use qubit_sanitize::{
-    SensitivityLevel,
-    UrlPathPolicy,
+use qubit_redact::{
+    http::UrlPathPolicy,
+    Sensitivity,
 };
 
 #[test]
@@ -55,7 +55,7 @@ fn test_http_error_debug_masks_sensitive_url_values() {
 }
 
 #[test]
-fn test_http_error_debug_sanitizes_url_tokens_with_punctuation() {
+fn test_http_error_debug_redacts_url_tokens_with_punctuation() {
     let error = HttpError::transport(
         "failed (https://debug-user:debug-url-secret@example.com/path?accessToken=debug-query-secret). retry http://debug-user:debug-url-secret@example.com/next?clientSecret=debug-query-secret!",
     );
@@ -69,7 +69,7 @@ fn test_http_error_debug_sanitizes_url_tokens_with_punctuation() {
 }
 
 #[test]
-fn test_http_error_debug_sanitizes_first_url_scheme_inside_token() {
+fn test_http_error_debug_redacts_first_url_scheme_inside_token() {
     let error = HttpError::transport(
         "failed prefixhttps://debug-user:debug-url-secret@example.com/path?accessToken=debug-query-secret/http://not-a-second-url",
     );
@@ -83,7 +83,7 @@ fn test_http_error_debug_sanitizes_first_url_scheme_inside_token() {
 }
 
 #[test]
-fn test_http_error_debug_sanitizes_uppercase_url_scheme_tokens() {
+fn test_http_error_debug_redacts_uppercase_url_scheme_tokens() {
     let error = HttpError::transport(
         "failed HTTPS://debug-user:debug-url-secret@example.com/path?accessToken=debug-query-secret.",
     );
@@ -97,19 +97,18 @@ fn test_http_error_debug_sanitizes_uppercase_url_scheme_tokens() {
 }
 
 #[test]
-fn test_http_error_debug_uses_custom_log_sanitize_policy() {
-    let mut policy = LogSanitizePolicy::default();
-    policy.insert_sensitive_query_param(
-        "customer_secret",
-        SensitivityLevel::High,
-    );
+fn test_http_error_debug_uses_custom_log_redaction_policy() {
+    let policy = LogRedactionPolicy::builder()
+        .raise_query("customer_secret", Sensitivity::High)
+        .build()
+        .expect("log redaction policy should be valid");
     let url = url::Url::parse("https://example.com/path?customer_secret=debug-custom-secret&visible=ok")
         .expect("URL should parse");
     let error = HttpError::transport(
         "transport failed for https://example.com/path?customer_secret=debug-custom-secret&visible=ok",
     )
     .with_url(&url)
-    .with_log_sanitize_policy(policy);
+    .with_log_redaction_policy(policy);
 
     let debug = format!("{error:?}");
 
@@ -123,9 +122,11 @@ fn test_http_error_debug_honors_url_path_redaction_policy() {
     let url = url::Url::parse(raw_url).expect("URL should parse");
     let error = HttpError::transport(format!("transport failed for {raw_url}"))
         .with_url(&url)
-        .with_log_sanitize_policy(
-            LogSanitizePolicy::default()
-                .with_url_path_policy(UrlPathPolicy::Redact),
+        .with_log_redaction_policy(
+            LogRedactionPolicy::builder()
+                .url_path_policy(UrlPathPolicy::Redact)
+                .build()
+                .expect("log redaction policy should be valid"),
         );
 
     let debug = format!("{error:?}");

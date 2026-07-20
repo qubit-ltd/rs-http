@@ -6,6 +6,5 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-mod body_preview_tests;
-mod log_sanitize_policy_tests;
-mod log_sanitizer_tests;
+mod log_redaction_policy_tests;
+mod log_redactor_tests;

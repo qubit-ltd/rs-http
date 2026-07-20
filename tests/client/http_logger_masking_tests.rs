@@ -56,7 +56,7 @@ fn test_mask_header_value_non_sensitive_header() {
         CONTENT_TYPE,
         HeaderValue::from_static("application/json"),
     );
-    assert!(logs.contains("content-type: application/json"));
+    assert!(logs.contains("content-type: [application/json]"));
 }
 
 #[test]
@@ -65,7 +65,7 @@ fn test_mask_header_value_sensitive_short_value() {
         AUTHORIZATION,
         HeaderValue::from_static("abc"),
     );
-    assert!(logs.contains("authorization: ****"));
+    assert!(logs.contains("authorization: [****]"));
 }
 
 #[test]
@@ -74,7 +74,7 @@ fn test_mask_header_value_sensitive_exactly_four_chars() {
         AUTHORIZATION,
         HeaderValue::from_static("abcd"),
     );
-    assert!(logs.contains("authorization: ****"));
+    assert!(logs.contains("authorization: [****]"));
 }
 
 #[test]
@@ -83,7 +83,7 @@ fn test_mask_header_value_sensitive_long_value() {
         AUTHORIZATION,
         HeaderValue::from_static("abcdefghijk"),
     );
-    assert!(logs.contains("authorization: ****"));
+    assert!(logs.contains("authorization: [****]"));
 }
 
 #[test]
@@ -92,7 +92,7 @@ fn test_mask_header_value_sensitive_case_insensitive() {
         HeaderName::from_static("x-api-key"),
         HeaderValue::from_static("1234567890"),
     );
-    assert!(logs.contains("x-api-key: ****"));
+    assert!(logs.contains("x-api-key: [****]"));
 }
 
 #[test]
@@ -101,7 +101,7 @@ fn test_mask_header_value_empty_value_kept_empty() {
         AUTHORIZATION,
         HeaderValue::from_static(""),
     );
-    assert!(logs.contains("authorization: "));
+    assert!(logs.contains("authorization: []"));
 }
 
 #[test]
@@ -114,6 +114,6 @@ fn test_mask_header_value_native_sensitive_uses_secret_mask() {
         value,
     );
 
-    assert!(logs.contains("x-diagnostic-value: <redacted>"));
+    assert!(logs.contains("x-diagnostic-value: [<redacted>]"));
     assert!(!logs.contains("native-request-header-secret"));
 }

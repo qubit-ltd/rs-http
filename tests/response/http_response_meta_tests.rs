@@ -16,9 +16,9 @@ use http::{
 };
 use qubit_http::{
     HttpResponseMeta,
-    LogSanitizePolicy,
+    LogRedactionPolicy,
 };
-use qubit_sanitize::UrlPathPolicy;
+use qubit_redact::http::UrlPathPolicy;
 use url::Url;
 
 #[test]
@@ -79,9 +79,11 @@ fn test_http_response_meta_debug_honors_url_path_redaction_policy() {
         .expect("valid URL"),
         Method::GET,
     )
-    .with_log_sanitize_policy(
-        LogSanitizePolicy::default()
-            .with_url_path_policy(UrlPathPolicy::Redact),
+    .with_log_redaction_policy(
+        LogRedactionPolicy::builder()
+            .url_path_policy(UrlPathPolicy::Redact)
+            .build()
+            .expect("log redaction policy should be valid"),
     );
 
     let debug = format!("{meta:?}");
