@@ -26,11 +26,11 @@ use qubit_http::{
     HttpRequestRetryOverride,
     HttpRequestStreamingBody,
     HttpRetryMethodPolicy,
-    LogSanitizePolicy,
+    LogRedactionPolicy,
 };
-use qubit_sanitize::{
-    SensitivityLevel,
-    UrlPathPolicy,
+use qubit_redact::{
+    http::UrlPathPolicy,
+    Sensitivity,
 };
 use url::Url;
 
@@ -139,8 +139,10 @@ fn test_http_request_debug_masks_native_sensitive_header_value() {
 #[test]
 fn test_http_request_debug_honors_url_path_redaction_policy() {
     let mut options = HttpClientOptions::new();
-    options.log_sanitize_policy = LogSanitizePolicy::default()
-        .with_url_path_policy(UrlPathPolicy::Redact);
+    options.log_redaction_policy = LogRedactionPolicy::builder()
+        .url_path_policy(UrlPathPolicy::Redact)
+        .build()
+        .expect("log redaction policy should be valid");
     let client = HttpClientFactory::new()
         .create(options)
         .expect("client should be created");
@@ -164,10 +166,10 @@ fn test_http_request_debug_honors_url_path_redaction_policy() {
 #[test]
 fn test_http_request_debug_honors_explicit_default_field_exclusion() {
     let mut options = HttpClientOptions::new();
-    assert!(options
-        .log_sanitize_policy
-        .remove_sensitive_query_param("SIG")
-        .is_some());
+    options.log_redaction_policy = LogRedactionPolicy::builder()
+        .allow_query_exact("SIG")
+        .build()
+        .expect("log redaction policy should be valid");
     let client = HttpClientFactory::new()
         .create(options)
         .expect("client should be created");
@@ -184,12 +186,12 @@ fn test_http_request_debug_honors_explicit_default_field_exclusion() {
 }
 
 #[test]
-fn test_http_request_debug_exclusion_wins_over_sensitive_suffix() {
+fn test_http_request_debug_suffix_allow_wins_over_sensitive_suffix() {
     let mut options = HttpClientOptions::new();
-    assert!(options
-        .log_sanitize_policy
-        .remove_sensitive_query_param("access_token")
-        .is_some());
+    options.log_redaction_policy = LogRedactionPolicy::builder()
+        .allow_query_suffix("access_token")
+        .build()
+        .expect("log redaction policy should be valid");
     let client = HttpClientFactory::new()
         .create(options)
         .expect("client should be created");
@@ -206,14 +208,13 @@ fn test_http_request_debug_exclusion_wins_over_sensitive_suffix() {
 }
 
 #[test]
-fn test_http_request_debug_reinsertion_cancels_field_exclusion() {
+fn test_http_request_debug_allow_rule_wins_independent_of_builder_order() {
     let mut options = HttpClientOptions::new();
-    options
-        .log_sanitize_policy
-        .remove_sensitive_query_param("sig");
-    options
-        .log_sanitize_policy
-        .insert_sensitive_query_param("SIG", SensitivityLevel::Secret);
+    options.log_redaction_policy = LogRedactionPolicy::builder()
+        .allow_query_exact("sig")
+        .raise_query("SIG", Sensitivity::Secret)
+        .build()
+        .expect("log redaction policy should be valid");
     let client = HttpClientFactory::new()
         .create(options)
         .expect("client should be created");
@@ -226,7 +227,7 @@ fn test_http_request_debug_reinsertion_cancels_field_exclusion() {
 
     let debug = format!("{request:?}");
 
-    assert!(!debug.contains("must-be-redacted"));
+    assert!(debug.contains("must-be-redacted"));
 }
 
 #[test]

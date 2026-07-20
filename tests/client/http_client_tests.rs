@@ -36,12 +36,12 @@ use qubit_http::{
     HttpHeaderInjector,
     HttpResponseInterceptor,
     HttpRetryMethodPolicy,
-    LogSanitizePolicy,
+    LogRedactionPolicy,
     RetryDelay,
 };
-use qubit_sanitize::{
-    SensitivityLevel,
-    TextBodyPolicy,
+use qubit_redact::{
+    http::TextBodyPolicy,
+    Sensitivity,
 };
 use tokio::time::timeout;
 
@@ -52,6 +52,63 @@ use crate::common::{
     ResponsePlan,
 };
 
+/// Query field used to verify custom policy propagation across error paths.
+const CUSTOM_QUERY_FIELD: &str = "tenant_marker";
+
+/// Query value that must never appear in a custom-policy error rendering.
+const CUSTOM_QUERY_SECRET: &str = "task12-custom-query-secret";
+
+/// Builds the custom query policy shared by policy-propagation regressions.
+///
+/// # Returns
+///
+/// A policy that treats [`CUSTOM_QUERY_FIELD`] as highly sensitive.
+fn custom_query_redaction_policy() -> LogRedactionPolicy {
+    LogRedactionPolicy::builder()
+        .raise_query(CUSTOM_QUERY_FIELD, Sensitivity::High)
+        .build()
+        .expect("custom query policy should be valid")
+}
+
+/// Verifies that an error's debug rendering uses the custom query policy.
+///
+/// # Parameters
+///
+/// * `error` - Error carrying a URL with [`CUSTOM_QUERY_SECRET`].
+fn assert_custom_query_is_redacted(error: &HttpError) {
+    let debug = format!("{error:?}");
+    assert!(
+        !debug.contains(CUSTOM_QUERY_SECRET),
+        "custom query secret leaked from error debug: {debug}"
+    );
+}
+
+/// Adds the custom query sentinel to a request path.
+///
+/// # Parameters
+///
+/// * `path` - Request path without a query string.
+///
+/// # Returns
+///
+/// The path containing the custom query sentinel.
+fn path_with_custom_query(path: &str) -> String {
+    format!("{path}?{CUSTOM_QUERY_FIELD}={CUSTOM_QUERY_SECRET}")
+}
+
+/// Extracts the chained HTTP attempt error from a retry-aborted wrapper.
+///
+/// # Parameters
+///
+/// * `error` - Retry-aborted error expected to contain an HTTP source.
+///
+/// # Returns
+///
+/// The chained HTTP attempt error.
+///
+/// # Panics
+///
+/// Panics when the source is missing or is not an [`HttpError`].
 fn retry_abort_inner_http(error: &HttpError) -> &HttpError {
     let boxed = error
         .source
@@ -710,7 +767,7 @@ async fn test_execute_non_success_error_body_preview_is_truncated_by_limit() {
     assert_eq!(error.kind, HttpErrorKind::Status);
     assert_eq!(
         error.response_body_preview.as_deref(),
-        Some("<redacted: unsupported HTTP body>...<truncated>")
+        Some("<redacted: unsupported HTTP body><truncated>")
     );
 }
 
@@ -768,7 +825,7 @@ async fn test_execute_truncated_binary_error_preview_has_unknown_total_length()
     assert_eq!(error.kind, HttpErrorKind::Status);
     assert_eq!(
         error.response_body_preview.as_deref(),
-        Some("<binary more than 4 bytes>...<truncated>"),
+        Some("<binary 4 bytes><truncated>"),
     );
 }
 
@@ -814,12 +871,11 @@ async fn test_execute_response_metadata_debug_uses_custom_log_policy() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    options
-        .log_sanitize_policy
-        .insert_sensitive_header("x-tenant-secret", SensitivityLevel::High);
-    options
-        .log_sanitize_policy
-        .insert_sensitive_query_param("tenant_marker", SensitivityLevel::High);
+    options.log_redaction_policy = LogRedactionPolicy::builder()
+        .raise_header("x-tenant-secret", Sensitivity::High)
+        .raise_query("tenant_marker", Sensitivity::High)
+        .build()
+        .expect("log redaction policy should be valid");
 
     let captured_context_debug = Arc::new(Mutex::new(None));
     let captured_context_debug_for_interceptor =
@@ -857,7 +913,7 @@ async fn test_execute_response_metadata_debug_uses_custom_log_policy() {
 }
 
 #[tokio::test]
-async fn test_execute_non_success_error_body_preview_sanitizes_json_fields() {
+async fn test_execute_non_success_error_body_preview_redacts_json_fields() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 400,
         headers: vec![(
@@ -913,7 +969,7 @@ async fn test_execute_non_success_text_body_preview_redacts_by_default() {
 }
 
 #[tokio::test]
-async fn test_execute_non_success_text_body_pass_through_preserves_strong_debug_defaults(
+async fn test_execute_non_success_text_body_pass_through_uses_same_policy_snapshot(
 ) {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 400,
@@ -921,13 +977,14 @@ async fn test_execute_non_success_text_body_pass_through_preserves_strong_debug_
         body: b"opt-in-status-text".to_vec(),
     })
     .await;
-    let mut policy = LogSanitizePolicy::default()
-        .with_text_body_policy(TextBodyPolicy::PassThrough);
-    policy
-        .set_sensitive_query_param_level("accessToken", SensitivityLevel::Low);
+    let policy = LogRedactionPolicy::builder()
+        .text_body_policy(TextBodyPolicy::PassThrough)
+        .override_query("accessToken", Sensitivity::Low)
+        .build()
+        .expect("log redaction policy should be valid");
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    options.log_sanitize_policy = policy;
+    options.log_redaction_policy = policy;
 
     let client = HttpClientFactory::new()
         .create(options)
@@ -950,11 +1007,11 @@ async fn test_execute_non_success_text_body_pass_through_preserves_strong_debug_
     );
     assert!(error.message.contains("opt-in-status-text"));
     assert!(!error.message.contains("strong-default-secret"));
-    assert!(error.message.contains("accessToken=****"));
+    assert!(error.message.contains("accessToken=st****et"));
 }
 
 #[tokio::test]
-async fn test_execute_status_error_message_sanitizes_sensitive_url_parts() {
+async fn test_execute_status_error_message_redacts_sensitive_url_parts() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 401,
         headers: vec![],
@@ -1022,7 +1079,7 @@ async fn test_execute_non_success_error_body_preview_truncates_when_limit_reache
     assert_eq!(error.kind, HttpErrorKind::Status);
     assert_eq!(
         error.response_body_preview.as_deref(),
-        Some("<redacted: unsupported HTTP body>...<truncated>")
+        Some("<redacted: unsupported HTTP body><truncated>")
     );
 }
 
@@ -1051,7 +1108,7 @@ async fn test_execute_error_body_preview_limit_is_decoupled_from_logging_limit()
     assert_eq!(error.kind, HttpErrorKind::Status);
     assert_eq!(
         error.response_body_preview.as_deref(),
-        Some("<redacted: unsupported HTTP body>...<truncated>")
+        Some("<redacted: unsupported HTTP body><truncated>")
     );
 }
 
@@ -1163,6 +1220,38 @@ async fn test_execute_maps_truncated_response_body_to_transport_error() {
 }
 
 #[tokio::test]
+async fn test_buffered_body_read_error_uses_custom_query_policy() {
+    let server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
+        status: 200,
+        headers: vec![],
+        total_length: 8,
+        prefix: b"abc".to_vec(),
+        delay: Duration::ZERO,
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.log_redaction_policy = custom_query_redaction_policy();
+    let client = HttpClientFactory::new()
+        .create(options)
+        .expect("client should be created");
+    let path = path_with_custom_query("/buffered-read-policy");
+    let request = client.request(Method::GET, &path).build();
+    let mut response = client.execute(request).await.expect("request succeeds");
+
+    let error = response
+        .bytes()
+        .await
+        .expect_err("truncated body should fail while buffering");
+
+    assert_eq!(error.kind, HttpErrorKind::Transport);
+    assert_custom_query_is_redacted(&error);
+    let captured = server.finish().await;
+    assert_eq!(captured.target, path);
+}
+
+#[tokio::test]
 async fn test_execute_maps_truncated_response_stream_to_transport_error() {
     let server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
         status: 200,
@@ -1208,6 +1297,92 @@ async fn test_execute_maps_truncated_response_stream_to_transport_error() {
         .await
         .expect("server finish timed out");
     assert_eq!(captured.target, "/truncated-stream");
+}
+
+#[tokio::test]
+async fn test_stream_read_error_uses_custom_query_policy() {
+    let server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
+        status: 200,
+        headers: vec![],
+        total_length: 8,
+        prefix: b"abc".to_vec(),
+        delay: Duration::ZERO,
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.log_redaction_policy = custom_query_redaction_policy();
+    let client = HttpClientFactory::new()
+        .create(options)
+        .expect("client should be created");
+    let path = path_with_custom_query("/stream-read-policy");
+    let request = client.request(Method::GET, &path).build();
+    let mut response = client.execute(request).await.expect("request succeeds");
+    let mut stream = response.stream().expect("response stream should open");
+    stream
+        .next()
+        .await
+        .expect("first stream item should exist")
+        .expect("first stream item should contain bytes");
+
+    let error = stream
+        .next()
+        .await
+        .expect("second stream item should contain read error")
+        .expect_err("truncated stream should fail");
+
+    assert_eq!(error.kind, HttpErrorKind::Transport);
+    assert_custom_query_is_redacted(&error);
+    let captured = server.finish().await;
+    assert_eq!(captured.target, path);
+}
+
+#[tokio::test]
+async fn test_remembered_body_read_error_restores_custom_query_policy() {
+    let server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
+        status: 200,
+        headers: vec![],
+        total_length: 8,
+        prefix: b"abc".to_vec(),
+        delay: Duration::ZERO,
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.log_redaction_policy = custom_query_redaction_policy();
+    let client = HttpClientFactory::new()
+        .create(options)
+        .expect("client should be created");
+    let path = path_with_custom_query("/remembered-read-policy");
+    let request = client.request(Method::GET, &path).build();
+    let mut response = client.execute(request).await.expect("request succeeds");
+    let mut stream = response.stream().expect("response stream should open");
+    stream
+        .next()
+        .await
+        .expect("first stream item should exist")
+        .expect("first stream item should contain bytes");
+    stream
+        .next()
+        .await
+        .expect("second stream item should contain read error")
+        .expect_err("truncated stream should fail");
+    drop(stream);
+
+    let remembered = response
+        .bytes()
+        .await
+        .expect_err("repeated read should restore the original failure");
+
+    assert_eq!(remembered.kind, HttpErrorKind::Transport);
+    assert!(remembered
+        .message
+        .contains("previous response body read failed"));
+    assert_custom_query_is_redacted(&remembered);
+    let captured = server.finish().await;
+    assert_eq!(captured.target, path);
 }
 
 #[tokio::test]
@@ -1682,4 +1857,31 @@ async fn test_execute_connect_refused_maps_to_transport_error() {
         .expect_err("closed local port should fail with transport error");
 
     assert_eq!(error.kind, HttpErrorKind::Transport);
+}
+
+#[tokio::test]
+async fn test_send_error_uses_custom_query_policy() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0")
+        .expect("ephemeral listener bind should work");
+    let addr = listener
+        .local_addr()
+        .expect("listener should expose a local address");
+    drop(listener);
+
+    let mut options = HttpClientOptions::default();
+    options.log_redaction_policy = custom_query_redaction_policy();
+    let client = HttpClientFactory::new()
+        .create(options)
+        .expect("client should be created");
+    let target = format!(
+        "http://{addr}/send-policy?{CUSTOM_QUERY_FIELD}={CUSTOM_QUERY_SECRET}"
+    );
+    let request = client.request(Method::GET, &target).build();
+    let error = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .expect_err("closed local port should fail with transport error");
+
+    assert_eq!(error.kind, HttpErrorKind::Transport);
+    assert_custom_query_is_redacted(&error);
 }

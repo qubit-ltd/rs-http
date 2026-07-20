@@ -53,7 +53,7 @@ qubit-argument = "0.4"
 qubit-error = "0.2"
 qubit-function = "0.16"
 qubit-retry = { version = "0.16", path = "../rs-retry", features = ["tokio"] }
-qubit-sanitize = { version = "0.3", path = "../rs-sanitize", default-features = false, features = ["web", "http"] }
+qubit-redact = { version = "0.1", path = "../rs-sanitize", default-features = false, features = ["http"] }
 
 [dev-dependencies]
 tokio = { version = "1.52", features = ["full", "test-util"] }

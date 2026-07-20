@@ -26,7 +26,7 @@ use qubit_retry::{
     RetryErrorReason,
 };
 
-use crate::sanitize::LogSanitizer;
+use crate::redact::LogRedactor;
 use crate::sse::SseReconnectRunner;
 use crate::{
     response::HttpResponseOptions,
@@ -291,12 +291,16 @@ impl HttpClient {
         &self,
         request: HttpRequest,
     ) -> HttpResult<HttpResponse> {
+        let log_redaction_policy = request.log_redaction_policy().clone();
         let retry_options = self.options.retry.resolve(&request);
-        if retry_options.should_retry(&request) {
+        let result = if retry_options.should_retry(&request) {
             self.execute_with_retry(request, retry_options).await
         } else {
             self.execute_once(request).await
-        }
+        };
+        result.map_err(|error| {
+            error.with_log_redaction_policy(log_redaction_policy)
+        })
     }
 
     /// Performs one non-retrying execution: pre-send cancellation check,
@@ -322,23 +326,33 @@ impl HttpClient {
         &self,
         request: HttpRequest,
     ) -> HttpResult<HttpResponse> {
-        let mut request = request;
-        if let Some(error) = request
-            .cancelled_error_if_needed("Request cancelled before sending")
-        {
-            return Err(error);
+        let log_redaction_policy = request.log_redaction_policy().clone();
+        let result = async {
+            let mut request = request;
+            if let Some(error) = request
+                .cancelled_error_if_needed("Request cancelled before sending")
+            {
+                return Err(error);
+            }
+            self.request_interceptors.apply(&mut request)?;
+            let response = self
+                .prepare_and_send_once(
+                    request,
+                    "Request cancelled before sending",
+                )
+                .await?;
+            let mut response = response
+                .into_success_or_status_error("HTTP request failed")
+                .await?;
+            self.response_interceptors.apply(&mut response.meta)?;
+            let logger = HttpLogger::new(&self.options);
+            logger.log_response(&mut response).await?;
+            Ok(response)
         }
-        self.request_interceptors.apply(&mut request)?;
-        let response = self
-            .prepare_and_send_once(request, "Request cancelled before sending")
-            .await?;
-        let mut response = response
-            .into_success_or_status_error("HTTP request failed")
-            .await?;
-        self.response_interceptors.apply(&mut response.meta)?;
-        let logger = HttpLogger::new(&self.options);
-        logger.log_response(&mut response).await?;
-        Ok(response)
+        .await;
+        result.map_err(|error| {
+            error.with_log_redaction_policy(log_redaction_policy)
+        })
     }
 
     /// Single low-level send: cancellation check, request logging, one backend
@@ -380,7 +394,7 @@ impl HttpClient {
             backend_response.url().clone(),
             request.method().clone(),
         )
-        .with_log_sanitize_policy(self.options.log_sanitize_policy.clone());
+        .with_log_redaction_policy(self.options.log_redaction_policy.clone());
         let response_options = HttpResponseOptions::new(
             self.options.error_response_preview_limit,
             self.options.response_body_size_limit,
@@ -388,7 +402,7 @@ impl HttpClient {
             self.options.sse_max_line_bytes,
             self.options.sse_max_frame_bytes,
             self.options.sse_done_marker_policy.clone(),
-            LogSanitizer::new(self.options.log_sanitize_policy.clone()),
+            LogRedactor::new(self.options.log_redaction_policy.clone()),
         );
         Ok(HttpResponse::from_backend(
             meta,

@@ -19,8 +19,8 @@ use thiserror::Error;
 use url::Url;
 
 use super::RetryHint;
-use crate::sanitize::SanitizedDebugger;
-use crate::LogSanitizePolicy;
+use crate::redact::RedactedDebugger;
+use crate::LogRedactionPolicy;
 use qubit_error::BoxError;
 
 use super::HttpErrorKind;
@@ -47,12 +47,12 @@ pub struct HttpError {
     #[source]
     pub source: Option<BoxError>,
     /// Policy used when rendering this error with [`Debug`](fmt::Debug).
-    pub log_sanitize_policy: Box<LogSanitizePolicy>,
+    pub log_redaction_policy: Box<LogRedactionPolicy>,
 }
 
 impl fmt::Debug for HttpError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let debugger = SanitizedDebugger::new(&self.log_sanitize_policy);
+        let debugger = RedactedDebugger::new(&self.log_redaction_policy);
         let url = debugger.optional_url(self.url.as_ref());
         let message = debugger.diagnostic_text(&self.message);
         let response_body_preview_len =
@@ -91,7 +91,7 @@ impl HttpError {
             response_body_preview: None,
             retry_after: None,
             source: None,
-            log_sanitize_policy: Box::new(LogSanitizePolicy::default()),
+            log_redaction_policy: Box::new(LogRedactionPolicy::default()),
         }
     }
 
@@ -173,18 +173,19 @@ impl HttpError {
         self
     }
 
-    /// Attaches the log sanitization policy used by [`Debug`](fmt::Debug).
+    /// Attaches the log redaction policy used by [`Debug`](fmt::Debug).
     ///
     /// # Parameters
     /// - `policy`: Policy whose custom sensitive names should be honored.
     ///
     /// # Returns
     /// `self` for chaining.
-    pub fn with_log_sanitize_policy(
+    #[inline(always)]
+    pub fn with_log_redaction_policy(
         mut self,
-        policy: LogSanitizePolicy,
+        policy: LogRedactionPolicy,
     ) -> Self {
-        self.log_sanitize_policy = Box::new(policy);
+        self.log_redaction_policy = Box::new(policy);
         self
     }
 

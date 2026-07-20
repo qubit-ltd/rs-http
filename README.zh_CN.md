@@ -3,7 +3,6 @@
 [![Rust CI](https://github.com/qubit-ltd/rs-http/actions/workflows/ci.yml/badge.svg)](https://github.com/qubit-ltd/rs-http/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/endpoint?url=https://qubit-ltd.github.io/rs-http/coverage-badge.json)](https://qubit-ltd.github.io/rs-http/coverage/)
 [![Crates.io](https://img.shields.io/crates/v/qubit-http.svg?color=blue)](https://crates.io/crates/qubit-http)
-[![Docs.rs](https://docs.rs/qubit-http/badge.svg)](https://docs.rs/qubit-http)
 [![Rust](https://img.shields.io/badge/rust-1.94+-blue.svg?logo=rust)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![English Document](https://img.shields.io/badge/Document-English-blue.svg)](README.md)
@@ -31,6 +30,7 @@
 ```toml
 [dependencies]
 qubit-http = "0.10"
+qubit-redact = "0.1"
 http = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
@@ -67,61 +67,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## 日志脱敏
 
-HTTP TRACE 日志在输出前会统一脱敏。URL 脱敏会掩码用户信息、fragment 和已识别的
-敏感 query 参数。非根 URL path 默认隐藏；只有在确认诊断边界安全后，才应显式选择
-`qubit_sanitize::UrlPathPolicy::Preserve`。配置驱动的客户端可以通过
-`log_sanitize.url_path_policy` 选择 `redact` 或 `preserve`。默认策略还会掩码常见凭证类
-header 和 JSON/form/multipart body 字段。
-对于 header，`http::HeaderValue::is_sensitive()` 是值级 `Secret` 声明。它会在 header
-name 匹配前生效，因此 name 排除不能暴露已标记的值；最终替换文本仍由配置后的
-`Secret` mask 决定。未标记值继续使用已配置的 header name 等级和排除规则，不需要
-wrapper 或另一套 Header API。
-内置敏感名称和掩码级别来自 `qubit_sanitize::SensitiveFields`。不透明的 `text/*` body
-默认使用 `qubit_sanitize::TextBodyPolicy::Redact` 隐藏。
-`qubit_sanitize::TextBodyPolicy::PassThrough` 是显式的诊断
-opt-in，会原样输出这类文本，并可能暴露 secret。unsupported/unstructured body 不会
-原样写入日志：UTF-8 fallback 内容会被隐藏，二进制内容只输出 byte-count marker。
-multipart 字段值使用同一套 body 字段策略；
-文件 part、格式异常、缺少 boundary 或已截断的 multipart body 会整体隐藏，不会原样写入日志。
-若某个服务使用自定义敏感名称，可以在客户端配置中扩展脱敏策略。query 和 body 名称会按大小写不敏感方式匹配，
-并兼容 `access_token`、`access-token`、`accessToken` 这类常见写法：
+所有 TRACE 与 `Debug` 路径共享同一个不可变 `LogRedactionPolicy` 快照。底层
+`qubit-redact` HTTP redactor 统一处理 URL 用户信息、fragment、query 字段、原生敏感
+header、结构化 body 和硬预算。非根 URL path、不透明文本和无键 JSON 值默认隐藏。
+
+自定义策略必须先通过 builder 完整构造，再安装到客户端配置：
 
 ```rust
-use qubit_http::{
-    HttpClientFactory,
-    HttpClientOptions,
-};
-use qubit_sanitize::SensitivityLevel;
+use qubit_http::{HttpClientFactory, HttpClientOptions, LogRedactionPolicy};
+use qubit_redact::{Sensitivity, http::UrlPathPolicy};
 
 let mut options = HttpClientOptions::new();
-options.logging.enabled = true;
-options.logging.log_request_body = true;
-options.log_sanitize_policy.insert_sensitive_header(
-    "x-api-key",
-    SensitivityLevel::High,
-);
-options.log_sanitize_policy.insert_sensitive_query_param(
-    "access_token",
-    SensitivityLevel::High,
-);
-options.log_sanitize_policy.insert_sensitive_body_field(
-    "password",
-    SensitivityLevel::Secret,
-);
-// 确认属于误报后可排除；对应值此后可能出现在日志中。
-options.log_sanitize_policy.remove_sensitive_query_param("sig");
+options.log_redaction_policy = LogRedactionPolicy::builder()
+    .raise_header("x-api-key", Sensitivity::High)
+    .raise_query("access_token", Sensitivity::High)
+    .raise_body("password", Sensitivity::Secret)
+    .allow_query_exact("known_public_token")
+    .url_path_policy(UrlPathPolicy::Preserve)
+    .build()?;
 
 let client = HttpClientFactory::new().create(options)?;
 ```
 
-`insert_*` 和 `extend_*` 方法会保留已配置的最强等级。只有明确需要覆盖（包括降级）
-时才使用对应的 `set_*_level` 方法。若要完全自定义策略，请从
-`LogSanitizePolicy::empty()` 开始。
-配置项 `log_sanitize.excluded_sensitive_headers`、
-`log_sanitize.excluded_sensitive_query_params` 和
-`log_sanitize.excluded_sensitive_body_fields` 提供相同的显式排除能力。排除项同样作用于
-`Debug` 输出；再次添加或设置同名字段会取消排除。header 排除只影响未标记值，绝不会
-取消 `HeaderValue::set_sensitive(true)`。
+`logging.body_size_limit` 是展示限额；policy 中的 `BodyBudget` 是第二层不可绕过的输入与
+输出硬上限。截断 body 统一使用 `<truncated>` 标记；调用方知道源长度时，结果保留精确
+源长度元数据。配置只读取 `log_redaction` section，不兼容旧 key。
 
 ## 后续阅读
 
@@ -153,20 +123,36 @@ let client = HttpClientFactory::new().create(options)?;
 - 内置请求重试只覆盖返回 `HttpResponse` 之前的失败。返回后的流式响应体错误会交给调用方处理。
 - SSE 重连使用独立 API：`HttpClient::execute_sse_with_reconnect(...)`。
 
-## 贡献
+## 测试
 
-欢迎提交 issue 和 pull request。
+```bash
+# 使用默认 feature 集运行测试
+cargo test
 
-为了让维护和评审更顺畅，请尽量遵循以下约定：
+# 使用项目声明的全部 feature 运行测试
+cargo test --all-features
 
-- bug 报告、设计问题或较大的功能建议，先提交 issue 讨论
-- pull request 尽量聚焦一个行为变更、问题修复或文档更新
-- 遵循 [Rust 编码风格指南](RUST_CODING_STYLE.zh_CN.md)
-- 修改运行时行为时，请补充相应测试
-- 公共 API 行为变化时，请同步更新用户指南或 README
+# 运行项目 CI 检查
+./ci-check.sh
 
-向本项目提交贡献，即表示你同意该贡献使用与本项目相同的许可证。
+# 检查代码覆盖率
+./coverage.sh
+```
 
 ## 许可证
 
-本项目使用 [Apache License, Version 2.0](LICENSE) 许可证。
+Copyright (c) 2025 - 2026. Haixing Hu. All rights reserved.
+
+本项目基于 Apache License 2.0 授权。完整许可证文本请参阅
+[LICENSE](LICENSE)。
+
+## 贡献
+
+欢迎贡献。请遵循 Rust API 指南，及时更新公共 API 文档与测试，并在提交
+Pull Request 前运行 `./align-ci.sh`格式化代码，运行`./ci-check.sh`对齐CI要求。
+
+## 作者
+
+**Haixing Hu** - *Qubit Co. Ltd.*
+
+仓库地址：[https://github.com/qubit-ltd/rs-http](https://github.com/qubit-ltd/rs-http)

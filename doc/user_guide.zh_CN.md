@@ -1,6 +1,6 @@
 # qubit-http 用户指南
 
-本文档基于当前源码和测试整理，适用于 crate `qubit-http` 0.8，Rust 代码中通过库名 `qubit_http` 使用。
+本文档基于当前源码和测试整理，适用于 crate `qubit-http` 0.10，Rust 代码中通过库名 `qubit_http` 使用。
 
 `qubit-http` 是一个异步 HTTP 客户端基础设施库。它封装 `reqwest`，提供统一的客户端配置、请求构建、响应读取、错误分类、TRACE 日志脱敏、自动重试、代理、IPv4-only 解析、请求/响应拦截器，以及 Server-Sent Events（SSE）解码和重连能力。
 
@@ -17,7 +17,8 @@
 
 ```toml
 [dependencies]
-qubit-http = "0.8"
+qubit-http = "0.10"
+qubit-redact = "0.1"
 http = "1.4"
 qubit-config = { path = "../rs-config", version = "0.14", default-features = false }
 serde = { version = "1", features = ["derive"] }
@@ -154,10 +155,13 @@ let client = HttpClientFactory::new()
 | `proxy.enabled` | 是否启用代理 |
 | `use_env_proxy` | 显式代理禁用时，是否继承环境变量代理 |
 | `logging.enabled` | 是否允许 TRACE HTTP 日志 |
-| `log_sanitize.url_path_policy` | URL path 策略：默认 `redact`，也可显式设为 `preserve` |
-| `log_sanitize.sensitive_headers` | 追加到默认集合的敏感 header 名称 |
-| `log_sanitize.sensitive_query_params` | 追加到默认集合的敏感 query 参数名称 |
-| `log_sanitize.sensitive_body_fields` | 追加到默认集合的敏感 JSON/form/multipart body 字段名称 |
+| `log_redaction.url_path_policy` | URL path 策略：默认 `redact`，也可显式设为 `preserve` |
+| `log_redaction.sensitive_headers` | 追加到默认集合的敏感 header 名称 |
+| `log_redaction.sensitive_query_params` | 追加到默认集合的敏感 query 参数名称 |
+| `log_redaction.sensitive_body_fields` | 追加到默认集合的敏感 JSON/form/multipart body 字段名称 |
+| `log_redaction.excluded_sensitive_headers` | 显式允许保持可见的精确 header 名称 |
+| `log_redaction.excluded_sensitive_query_params` | 显式允许保持可见的精确 query 参数名称 |
+| `log_redaction.excluded_sensitive_body_fields` | 显式允许保持可见的精确结构化 body 字段名称 |
 | `retry.enabled` | 是否启用内置重试 |
 | `retry.max_attempts` | 最大尝试次数，含第一次请求 |
 | `retry.delay_strategy` | `NONE`、`FIXED`、`RANDOM`、`EXPONENTIAL_BACKOFF` 或 `EXPONENTIAL` |
@@ -571,11 +575,11 @@ HTTP 日志使用 `tracing::trace!`。必须同时满足：
 
 可分别控制请求头、请求体、响应头、响应体。body 只记录前 `logging.body_size_limit` 字节，超出部分显示截断提示；二进制体显示为 `<binary N bytes>`。没有结构化或文本 `Content-Type` 的 unsupported body 会显示为 `<redacted: unsupported HTTP body>`，不会直接打印原始内容。请求体日志只预览已缓冲的 body 变体（`bytes_body`、`text_body`、`json_body`、`form_body`、`multipart_body`、`ndjson_body`）；`stream_body` 和 `streaming_body` 会记录为 `<skipped: streaming request body>`，因为 logger 不会消费上传流。
 
-日志统一经过 `LogSanitizer` 和 `LogSanitizePolicy` 脱敏，底层复用 `qubit-sanitize` 的 URL、header 和 HTTP body 适配器。URL username、password、fragment 和敏感 query 参数会被掩码，非根 URL path 默认整体隐藏。只有在确认诊断边界安全后，才应把 `log_sanitize.url_path_policy` 设为 `preserve`。JSON/form/multipart body 字段如果命中策略中的敏感名称，也会被掩码。具体 mask 字符串遵循 `qubit-sanitize` 的敏感级别：token/header 类字段通常显示为 `****`，`password`、`client_secret` 这类 secret 字段显示为 `<redacted>`。multipart 脱敏适用于所有 `multipart/*` 媒体类型。multipart 文件 part 会显示为 `<redacted: file part>`；格式异常、缺少 boundary 或已截断的 multipart body 会显示为 `<redacted: multipart body>`，避免原始上传字节泄露到日志。
+日志统一经过 `LogRedactor` 和 `LogRedactionPolicy` 脱敏，底层复用 `qubit-redact` 的 URL、header 和 HTTP body 适配器。URL username、password、fragment 和敏感 query 参数会被掩码，非根 URL path 默认整体隐藏。只有在确认诊断边界安全后，才应把 `log_redaction.url_path_policy` 设为 `preserve`。JSON/form/multipart body 字段如果命中策略中的敏感名称，也会被掩码。具体 mask 字符串遵循 `qubit-redact` 的敏感级别：token/header 类字段通常显示为 `****`，`password`、`client_secret` 这类 secret 字段显示为 `<redacted>`。multipart 脱敏适用于所有 `multipart/*` 媒体类型。multipart 文件 part 会显示为 `<redacted: file part>`；格式异常、缺少 boundary 或已截断的 multipart body 会显示为 `<redacted: multipart body>`，避免原始上传字节泄露到日志。
 
-对于 header，`http::HeaderValue::is_sensitive()` 是值级 `Secret` 声明。请求、响应、流式响应和 `Debug` 渲染都会在 header name 匹配前处理该标记。移除敏感 header name 不能暴露已标记的值，但最终替换文本仍由配置后的 `Secret` mask policy 决定。未标记值继续使用已配置的 name 匹配、等级和排除规则；不需要 wrapper 类型或另一套 Header API。
+对于 header，`http::HeaderValue::is_sensitive()` 是值级 `Secret` 声明。请求、响应、流式响应和 `Debug` 渲染都会在 header name 匹配前处理该标记。allow 规则不能暴露已标记值；未标记值继续使用同一个不可变 name policy 快照。
 
-默认敏感名称和掩码级别来自 `qubit_sanitize::SensitiveFields`，`rs-http` 不再维护或导出自己的敏感名称列表。匹配时会 trim、转小写、移除 `_`、`-`、`.`、空格等常见分隔符，并启用后缀匹配，因此 `access_token`、`access-token`、`accessToken` 和 `x-openai-api-key` 会命中同一类默认项。`log_sanitize.*` 下的配置项会扩展默认集合；代码里也可以通过 domain 方法调整 `options.log_sanitize_policy`。如果确实要使用完全自定义策略，请使用 `LogSanitizePolicy::empty()`。`insert_*` 和 `extend_*` 方法会保留已配置的最强等级；只有明确需要覆盖（包括降级）时，才应使用 `set_*_level`。
+默认敏感名称和掩码级别来自 `RedactionPolicy::default()`。匹配会规范化常见分隔符，并使用 token-suffix 边界。所有 header、query 和 body 调整都通过 `LogRedactionPolicy::builder()` 完成，再一次性安装结果。`raise_*` 保留更强等级，`override_*` 显式替换等级，`allow_*_exact` 与 `allow_*_suffix` 表达有意的可见规则。`logging.body_size_limit` 是展示限额，`BodyBudget` 则是不可绕过的 parser 输入和渲染输出硬上限。
 
 示例：
 
@@ -584,26 +588,20 @@ use http::Method;
 use qubit_http::{
     HttpClientFactory,
     HttpClientOptions,
+    LogRedactionPolicy,
 };
-use qubit_sanitize::SensitivityLevel;
+use qubit_redact::Sensitivity;
 use serde_json::json;
 
 let mut options = HttpClientOptions::new();
 options.logging.enabled = true;
 options.logging.log_request_header = true;
 options.logging.log_request_body = true;
-options.log_sanitize_policy.insert_sensitive_header(
-    "x-api-key",
-    SensitivityLevel::High,
-);
-options.log_sanitize_policy.insert_sensitive_query_param(
-    "access_token",
-    SensitivityLevel::High,
-);
-options.log_sanitize_policy.insert_sensitive_body_field(
-    "password",
-    SensitivityLevel::Secret,
-);
+options.log_redaction_policy = LogRedactionPolicy::builder()
+    .raise_header("x-api-key", Sensitivity::High)
+    .raise_query("access_token", Sensitivity::High)
+    .raise_body("password", Sensitivity::Secret)
+    .build()?;
 
 let client = HttpClientFactory::new().create(options)?;
 let request = client
@@ -823,10 +821,13 @@ while let Some(item) = events.next().await {
 | `pool_idle_timeout` | 连接池空闲超时 |
 | `pool_max_idle_per_host` | 每个 host 最大空闲连接数 |
 | `use_env_proxy` | 显式代理禁用时是否继承环境代理；默认 `false` |
-| `log_sanitize.url_path_policy` | URL path 策略：默认 `redact`，也可显式设为 `preserve` |
-| `log_sanitize.sensitive_headers` | 追加到默认敏感 header 集合的字符串列表 |
-| `log_sanitize.sensitive_query_params` | 追加到默认敏感 query 参数集合的字符串列表 |
-| `log_sanitize.sensitive_body_fields` | 追加到默认敏感 body 字段集合的字符串列表 |
+| `log_redaction.url_path_policy` | URL path 策略：默认 `redact`，也可显式设为 `preserve` |
+| `log_redaction.sensitive_headers` | 追加到默认敏感 header 集合的字符串列表 |
+| `log_redaction.sensitive_query_params` | 追加到默认敏感 query 参数集合的字符串列表 |
+| `log_redaction.sensitive_body_fields` | 追加到默认敏感 body 字段集合的字符串列表 |
+| `log_redaction.excluded_sensitive_headers` | 显式允许保持可见的精确 header 名称字符串列表 |
+| `log_redaction.excluded_sensitive_query_params` | 显式允许保持可见的精确 query 参数名称字符串列表 |
+| `log_redaction.excluded_sensitive_body_fields` | 显式允许保持可见的精确结构化 body 字段名称字符串列表 |
 | `default_headers` | 默认请求 header 的 JSON map 字符串；不能与 `default_headers.<name>` 同时使用 |
 | `default_headers.<name>` | 一个默认请求 header 子键；不能与 `default_headers` JSON map 同时使用 |
 | `timeouts.connect_timeout` | 连接超时 |

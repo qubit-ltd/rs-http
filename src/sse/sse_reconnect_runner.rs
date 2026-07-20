@@ -37,6 +37,7 @@ use crate::{
     HttpRequest,
     HttpResponse,
     HttpResult,
+    LogRedactionPolicy,
     RetryDelay,
     RetryHint,
     RetryOptions,
@@ -77,6 +78,8 @@ struct ReconnectRuntime<'a> {
     request_method: &'a http::Method,
     /// Request URL used in reconnect cancellation and max-elapsed errors.
     request_url: Option<&'a url::Url>,
+    /// Exact request policy used by reconnect-generated errors.
+    log_redaction_policy: &'a LogRedactionPolicy,
 }
 
 /// Outcome after trying to schedule one reconnect.
@@ -164,6 +167,7 @@ impl ReconnectState {
                     max_elapsed,
                     runtime.request_method,
                     runtime.request_url,
+                    runtime.log_redaction_policy,
                 ),
             )),
             ReconnectDecision::MaxReconnectsReached => {
@@ -205,6 +209,7 @@ impl ReconnectState {
                 max_elapsed,
                 runtime.request_method,
                 runtime.request_url,
+                runtime.log_redaction_policy,
             ))),
             ReconnectDecision::MaxReconnectsReached => ReconnectAction::Stop,
         }
@@ -249,6 +254,7 @@ impl ReconnectState {
             runtime.cancellation_token,
             runtime.request_method,
             runtime.request_url,
+            runtime.log_redaction_policy,
         )
         .await
         {
@@ -309,6 +315,7 @@ impl SseReconnectRunner {
             let request_url = request_template.resolved_url().ok();
             let request_method = request_template.method().clone();
             let cancellation_token = request_template.cancellation_token().cloned();
+            let log_redaction_policy = request_template.log_redaction_policy().clone();
             let started_at = Instant::now();
             let runtime = ReconnectRuntime {
                 retry_options: &retry_options,
@@ -318,6 +325,7 @@ impl SseReconnectRunner {
                 cancellation_token: cancellation_token.as_ref(),
                 request_method: &request_method,
                 request_url: request_url.as_ref(),
+                log_redaction_policy: &log_redaction_policy,
             };
             let mut reconnect_state = ReconnectState::new(&retry_options);
             let mut last_event_id: Option<String> = None;
@@ -439,6 +447,7 @@ fn apply_last_event_id_header(
                 "Invalid Last-Event-ID header value ({} bytes): {error}",
                 last_event_id.len()
             ))
+            .with_log_redaction_policy(request.log_redaction_policy().clone())
         })?;
     request.set_typed_header(
         HeaderName::from_static(LAST_EVENT_ID_HEADER),
@@ -585,6 +594,7 @@ fn reconnect_sleep_delay(
 /// - `cancellation_token`: Optional cancellation token.
 /// - `request_method`: Request method for cancellation error context.
 /// - `request_url`: Optional request URL for cancellation error context.
+/// - `log_redaction_policy`: Request policy attached to cancellation errors.
 ///
 /// # Returns
 /// `Ok(())` after sleep completes.
@@ -597,6 +607,7 @@ async fn sleep_reconnect_delay(
     cancellation_token: Option<&CancellationToken>,
     request_method: &http::Method,
     request_url: Option<&url::Url>,
+    log_redaction_policy: &LogRedactionPolicy,
 ) -> HttpResult<()> {
     if let Some(token) = cancellation_token {
         tokio::select! {
@@ -608,7 +619,7 @@ async fn sleep_reconnect_delay(
                 if let Some(url) = request_url {
                     error = error.with_url(url);
                 }
-                Err(error)
+                Err(error.with_log_redaction_policy(log_redaction_policy.clone()))
             }
             _ = tokio::time::sleep(delay) => Ok(()),
         }
@@ -680,6 +691,7 @@ fn default_server_retry_max_delay(retry_options: &RetryOptions) -> Duration {
 /// - `max_elapsed`: Configured max elapsed reconnect duration.
 /// - `request_method`: Request method for diagnostics.
 /// - `request_url`: Optional request URL for diagnostics.
+/// - `log_redaction_policy`: Request policy attached to the returned error.
 ///
 /// # Returns
 /// Reconnect max-elapsed error with method/url context when available.
@@ -688,6 +700,7 @@ fn max_elapsed_exceeded_error(
     max_elapsed: Duration,
     request_method: &http::Method,
     request_url: Option<&url::Url>,
+    log_redaction_policy: &LogRedactionPolicy,
 ) -> HttpError {
     let mut error = HttpError::retry_max_elapsed_exceeded(format!(
         "SSE reconnect max duration exceeded: {elapsed:?}/{max_elapsed:?}"
@@ -696,7 +709,7 @@ fn max_elapsed_exceeded_error(
     if let Some(url) = request_url {
         error = error.with_url(url);
     }
-    error
+    error.with_log_redaction_policy(log_redaction_policy.clone())
 }
 
 /// Builds one reconnect max-elapsed error while preserving one original retry
@@ -708,6 +721,7 @@ fn max_elapsed_exceeded_error(
 /// - `max_elapsed`: Configured max elapsed reconnect duration.
 /// - `request_method`: Request method for diagnostics fallback.
 /// - `request_url`: Optional request URL for diagnostics fallback.
+/// - `log_redaction_policy`: Request policy attached to the returned error.
 ///
 /// # Returns
 /// Reconnect max-elapsed error with original error preserved in source chain.
@@ -717,12 +731,14 @@ fn max_elapsed_exceeded_error_with_last_error(
     max_elapsed: Duration,
     request_method: &http::Method,
     request_url: Option<&url::Url>,
+    log_redaction_policy: &LogRedactionPolicy,
 ) -> HttpError {
     let mut error = max_elapsed_exceeded_error(
         elapsed,
         max_elapsed,
         request_method,
         request_url,
+        log_redaction_policy,
     );
     if let Some(method) = last_error.method.as_ref() {
         error = error.with_method(method);
@@ -767,7 +783,8 @@ fn validate_sse_response_content_type(
         )
         .with_status(response.status())
         .with_method(&method)
-        .with_url(&url));
+        .with_url(&url)
+        .with_log_redaction_policy(response.log_redaction_policy().clone()));
     };
     let content_type = value.to_str().map_err(|_| {
         HttpError::sse_protocol(
@@ -776,6 +793,7 @@ fn validate_sse_response_content_type(
         .with_status(response.status())
         .with_method(&method)
         .with_url(&url)
+        .with_log_redaction_policy(response.log_redaction_policy().clone())
     })?;
     if content_type::is_sse(content_type) {
         return Ok(());
@@ -785,7 +803,8 @@ fn validate_sse_response_content_type(
     ))
     .with_status(response.status())
     .with_method(&method)
-    .with_url(&url))
+    .with_url(&url)
+    .with_log_redaction_policy(response.log_redaction_policy().clone()))
 }
 
 /// Returns whether an HTTP error represents an unexpected stream EOF that is

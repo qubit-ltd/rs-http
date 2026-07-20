@@ -30,12 +30,13 @@ use qubit_http::{
     HttpErrorKind,
     HttpRetryMethodPolicy,
     HttpRetryOptions,
+    LogRedactionPolicy,
     ProxyType,
     RetryDelay,
 };
-use qubit_sanitize::{
-    SensitivityLevel,
-    UrlPathPolicy,
+use qubit_redact::{
+    http::UrlPathPolicy,
+    Sensitivity,
 };
 
 #[test]
@@ -121,7 +122,7 @@ fn test_http_client_options_new_matches_default() {
     );
     assert_eq!(options.use_env_proxy, defaults.use_env_proxy);
     assert_eq!(options.retry, defaults.retry);
-    assert_eq!(options.log_sanitize_policy, defaults.log_sanitize_policy);
+    assert_eq!(options.log_redaction_policy, defaults.log_redaction_policy);
     assert_eq!(options.ipv4_only, defaults.ipv4_only);
     assert_eq!(options.sse_json_mode, defaults.sse_json_mode);
     assert_eq!(
@@ -158,11 +159,12 @@ fn test_http_client_options_debug_masks_sensitive_values() {
 }
 
 #[test]
-fn test_http_client_options_debug_does_not_downgrade_builtin_sensitivity() {
+fn test_http_client_options_debug_honors_explicit_sensitivity_override() {
     let mut options = HttpClientOptions::new();
-    options
-        .log_sanitize_policy
-        .set_sensitive_header_level("authorization", SensitivityLevel::Low);
+    options.log_redaction_policy = LogRedactionPolicy::builder()
+        .override_header("authorization", Sensitivity::Low)
+        .build()
+        .expect("log redaction policy should be valid");
     options
         .add_header("authorization", "Bearer downgrade-secret")
         .expect("sensitive default header should be accepted");
@@ -170,10 +172,10 @@ fn test_http_client_options_debug_does_not_downgrade_builtin_sensitivity() {
     let debug = format!("{options:?}");
 
     assert!(
-        debug.contains(r#""authorization": ["****"]"#),
+        debug.contains("authorization: [Be****et]"),
         "unexpected debug output: {debug}",
     );
-    assert!(!debug.contains("Be****et"));
+    assert!(!debug.contains("Bearer downgrade-secret"));
 }
 
 #[test]
@@ -418,87 +420,105 @@ fn test_http_client_options_add_header_invalid_value_does_not_apply() {
 }
 
 #[test]
-fn test_http_client_options_log_sanitize_section() {
+fn test_http_client_options_log_redaction_section() {
     let mut config = Config::new();
     config
         .set(
-            "http.log_sanitize.sensitive_headers",
+            "http.log_redaction.sensitive_headers",
             vec!["X-Custom-Secret".to_string(), "X-Api-Token".to_string()],
         )
         .unwrap();
     config
         .set(
-            "http.log_sanitize.sensitive_query_params",
+            "http.log_redaction.sensitive_query_params",
             vec!["session_token".to_string()],
         )
         .unwrap();
     config
         .set(
-            "http.log_sanitize.sensitive_body_fields",
+            "http.log_redaction.sensitive_body_fields",
             vec!["customer_secret".to_string()],
         )
         .unwrap();
     config
         .set(
-            "http.log_sanitize.excluded_sensitive_headers",
+            "http.log_redaction.excluded_sensitive_headers",
             vec!["Authorization".to_string()],
         )
         .unwrap();
     config
         .set(
-            "http.log_sanitize.excluded_sensitive_query_params",
+            "http.log_redaction.excluded_sensitive_query_params",
             vec!["sig".to_string()],
         )
         .unwrap();
     config
         .set(
-            "http.log_sanitize.excluded_sensitive_body_fields",
+            "http.log_redaction.excluded_sensitive_body_fields",
             vec!["signature".to_string()],
         )
         .unwrap();
     config
-        .set("http.log_sanitize.url_path_policy", "preserve".to_string())
+        .set("http.log_redaction.url_path_policy", "preserve".to_string())
         .unwrap();
 
     let opts = HttpClientOptions::from_config(&config.section("http")).unwrap();
     assert!(opts
-        .log_sanitize_policy
-        .sensitivity_for_header("x-custom-secret")
+        .log_redaction_policy
+        .http_policy()
+        .header_policy()
+        .sensitivity_for("x-custom-secret")
         .is_some());
     assert!(opts
-        .log_sanitize_policy
-        .sensitivity_for_header("x-api-token")
+        .log_redaction_policy
+        .http_policy()
+        .header_policy()
+        .sensitivity_for("x-api-token")
         .is_some());
     assert!(opts
-        .log_sanitize_policy
-        .sensitivity_for_header("authorization")
+        .log_redaction_policy
+        .http_policy()
+        .header_policy()
+        .sensitivity_for("authorization")
         .is_none());
     assert!(opts
-        .log_sanitize_policy
-        .sensitivity_for_query_param("session_token")
+        .log_redaction_policy
+        .http_policy()
+        .query_policy()
+        .sensitivity_for("session_token")
         .is_some());
     assert!(opts
-        .log_sanitize_policy
-        .sensitivity_for_query_param("access_token")
+        .log_redaction_policy
+        .http_policy()
+        .query_policy()
+        .sensitivity_for("access_token")
         .is_some());
     assert!(opts
-        .log_sanitize_policy
-        .sensitivity_for_body_field("customer_secret")
+        .log_redaction_policy
+        .http_policy()
+        .body_policy()
+        .sensitivity_for("customer_secret")
         .is_some());
     assert!(opts
-        .log_sanitize_policy
-        .sensitivity_for_body_field("client_secret")
+        .log_redaction_policy
+        .http_policy()
+        .body_policy()
+        .sensitivity_for("client_secret")
         .is_some());
     assert!(opts
-        .log_sanitize_policy
-        .sensitivity_for_query_param("sig")
+        .log_redaction_policy
+        .http_policy()
+        .query_policy()
+        .sensitivity_for("sig")
         .is_none());
     assert!(opts
-        .log_sanitize_policy
-        .sensitivity_for_body_field("signature")
+        .log_redaction_policy
+        .http_policy()
+        .body_policy()
+        .sensitivity_for("signature")
         .is_none());
     assert_eq!(
-        opts.log_sanitize_policy.url_path_policy(),
+        opts.log_redaction_policy.http_policy().url_path_policy(),
         UrlPathPolicy::Preserve,
     );
 }
@@ -507,14 +527,39 @@ fn test_http_client_options_log_sanitize_section() {
 fn test_http_client_options_rejects_invalid_url_path_policy() {
     let mut config = Config::new();
     config
-        .set("http.log_sanitize.url_path_policy", "visible".to_string())
+        .set("http.log_redaction.url_path_policy", "visible".to_string())
         .unwrap();
 
     let error =
         HttpClientOptions::from_config(&config.section("http")).unwrap_err();
 
     assert_eq!(error.kind, HttpConfigErrorKind::InvalidValue);
-    assert_eq!(error.path, "http.log_sanitize.url_path_policy");
+    assert_eq!(error.path, "http.log_redaction.url_path_policy");
+}
+
+#[test]
+fn test_http_client_options_rejects_invalid_redaction_list_fields_with_resolved_path(
+) {
+    for field in [
+        "sensitive_headers",
+        "sensitive_query_params",
+        "sensitive_body_fields",
+        "excluded_sensitive_headers",
+        "excluded_sensitive_query_params",
+        "excluded_sensitive_body_fields",
+    ] {
+        let path = format!("http.log_redaction.{field}");
+        let mut config = Config::new();
+        config
+            .set(&path, vec!["---".to_owned()])
+            .expect("test configuration should accept a string list");
+
+        let error = HttpClientOptions::from_config(&config.section("http"))
+            .expect_err("separator-only names must be rejected");
+
+        assert_eq!(error.path, path);
+        assert_eq!(error.kind, HttpConfigErrorKind::InvalidValue);
+    }
 }
 
 #[test]
@@ -530,8 +575,10 @@ fn test_http_client_options_root_sensitive_headers_is_not_supported() {
     let opts = HttpClientOptions::from_config(&config.section("http")).unwrap();
 
     assert!(opts
-        .log_sanitize_policy
-        .sensitivity_for_header("xlegacysecret")
+        .log_redaction_policy
+        .http_policy()
+        .header_policy()
+        .sensitivity_for("xlegacysecret")
         .is_none());
 }
 
@@ -1157,19 +1204,19 @@ fn test_http_client_options_from_root_config_all_sections() {
         .unwrap();
     config
         .set(
-            "log_sanitize.sensitive_headers",
+            "log_redaction.sensitive_headers",
             vec!["X-Root-Secret".to_string()],
         )
         .unwrap();
     config
         .set(
-            "log_sanitize.sensitive_query_params",
+            "log_redaction.sensitive_query_params",
             vec!["root_token".to_string()],
         )
         .unwrap();
     config
         .set(
-            "log_sanitize.sensitive_body_fields",
+            "log_redaction.sensitive_body_fields",
             vec!["root_password".to_string()],
         )
         .unwrap();
@@ -1236,16 +1283,22 @@ fn test_http_client_options_from_root_config_all_sections() {
     assert!(opts.use_env_proxy);
     assert!(opts.default_headers.contains_key("x-root"));
     assert!(opts
-        .log_sanitize_policy
-        .sensitivity_for_header("x-root-secret")
+        .log_redaction_policy
+        .http_policy()
+        .header_policy()
+        .sensitivity_for("x-root-secret")
         .is_some());
     assert!(opts
-        .log_sanitize_policy
-        .sensitivity_for_query_param("root_token")
+        .log_redaction_policy
+        .http_policy()
+        .query_policy()
+        .sensitivity_for("root_token")
         .is_some());
     assert!(opts
-        .log_sanitize_policy
-        .sensitivity_for_body_field("root_password")
+        .log_redaction_policy
+        .http_policy()
+        .body_policy()
+        .sensitivity_for("root_password")
         .is_some());
     assert_eq!(opts.timeouts.connect_timeout, Duration::from_secs(3));
     assert_eq!(opts.timeouts.request_timeout, Some(Duration::from_secs(6)));
@@ -1305,11 +1358,11 @@ fn test_http_client_options_interpolates_string_configuration_values() {
         .set("http.sse.shared.sse_done_marker", "[INTERPOLATED_DONE]")
         .expect("test config should set shared SSE done marker");
     config
-        .set("http.log_sanitize.shared.url_path_policy", "preserve")
+        .set("http.log_redaction.shared.url_path_policy", "preserve")
         .expect("test config should set shared URL path policy");
     config
         .set(
-            "http.log_sanitize.shared.sensitive_header",
+            "http.log_redaction.shared.sensitive_header",
             "X-Interpolated-Secret",
         )
         .expect("test config should set shared sensitive header");
@@ -1366,13 +1419,13 @@ fn test_http_client_options_interpolates_string_configuration_values() {
         .expect("test config should set interpolated SSE done marker");
     config
         .set(
-            "http.log_sanitize.url_path_policy",
+            "http.log_redaction.url_path_policy",
             "${shared.url_path_policy}",
         )
         .expect("test config should set interpolated URL path policy");
     config
         .set(
-            "http.log_sanitize.sensitive_headers",
+            "http.log_redaction.sensitive_headers",
             vec!["${shared.sensitive_header}"],
         )
         .expect("test config should set interpolated sensitive headers");
@@ -1424,12 +1477,14 @@ fn test_http_client_options_interpolates_string_configuration_values() {
         DoneMarkerPolicy::Custom("[INTERPOLATED_DONE]".to_string()),
     );
     assert_eq!(
-        options.log_sanitize_policy.url_path_policy(),
+        options.log_redaction_policy.http_policy().url_path_policy(),
         UrlPathPolicy::Preserve,
     );
     assert!(options
-        .log_sanitize_policy
-        .sensitivity_for_header("x-interpolated-secret")
+        .log_redaction_policy
+        .http_policy()
+        .header_policy()
+        .sensitivity_for("x-interpolated-secret")
         .is_some());
     assert_eq!(
         options.retry.retry_status_codes,
@@ -1442,18 +1497,20 @@ fn test_http_client_options_interpolates_string_configuration_values() {
 }
 
 #[test]
-fn test_http_client_options_log_sanitize_header_number_from_config_is_converted(
+fn test_http_client_options_log_redaction_header_number_from_config_is_converted(
 ) {
     let mut config = Config::new();
     config
-        .set("http.log_sanitize.sensitive_headers", 123_i32)
+        .set("http.log_redaction.sensitive_headers", 123_i32)
         .unwrap();
 
     let opts = HttpClientOptions::from_config(&config.section("http")).unwrap();
 
     assert!(opts
-        .log_sanitize_policy
-        .sensitivity_for_header("123")
+        .log_redaction_policy
+        .http_policy()
+        .header_policy()
+        .sensitivity_for("123")
         .is_some());
 }
 

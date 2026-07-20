@@ -30,7 +30,7 @@ use crate::error::{
     backend_error_mapper::map_reqwest_error,
     ReqwestErrorPhase,
 };
-use crate::sanitize::SanitizedDebugger;
+use crate::redact::RedactedDebugger;
 use crate::{
     AsyncHttpHeaderInjector,
     HttpError,
@@ -39,7 +39,7 @@ use crate::{
     HttpLogger,
     HttpRequestStreamingBody,
     HttpResult,
-    LogSanitizePolicy,
+    LogRedactionPolicy,
 };
 
 use super::http_request_body::HttpRequestBody;
@@ -81,9 +81,9 @@ struct HttpRequestContext {
     /// Client async header injectors snapshot captured when this request
     /// builder was created.
     async_injectors: Vec<AsyncHttpHeaderInjector>,
-    /// Log sanitization policy snapshot captured when this request builder was
+    /// Log redaction policy snapshot captured when this request builder was
     /// created.
-    log_sanitize_policy: LogSanitizePolicy,
+    log_redaction_policy: LogRedactionPolicy,
 }
 
 /// Immutable snapshot of a single HTTP call produced by
@@ -116,7 +116,7 @@ pub struct HttpRequest {
 impl fmt::Debug for HttpRequest {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let debugger =
-            SanitizedDebugger::new(&self.context.log_sanitize_policy);
+            RedactedDebugger::new(&self.context.log_redaction_policy);
         let url = self.resolved_url().ok().map(|url| debugger.url(&url));
         let base_url =
             self.context.base_url.as_ref().map(|url| debugger.url(url));
@@ -155,6 +155,7 @@ impl HttpRequest {
     ///
     /// # Returns
     /// Snapshot ready for URL resolution, header assembly, and sending.
+    #[inline]
     pub(super) fn new(builder: HttpRequestBuilder) -> Self {
         let mut request = Self {
             method: builder.method,
@@ -178,7 +179,7 @@ impl HttpRequest {
                 default_headers: builder.default_headers,
                 injectors: builder.injectors,
                 async_injectors: builder.async_injectors,
-                log_sanitize_policy: builder.log_sanitize_policy,
+                log_redaction_policy: builder.log_redaction_policy,
             },
         };
         request.refresh_resolved_url_cache();
@@ -189,6 +190,7 @@ impl HttpRequest {
     ///
     /// # Returns
     /// Borrowed [`Method`] (for example GET or POST).
+    #[inline(always)]
     pub fn method(&self) -> &Method {
         &self.method
     }
@@ -200,6 +202,7 @@ impl HttpRequest {
     ///
     /// # Returns
     /// `self` for method chaining.
+    #[inline(always)]
     pub fn set_method(&mut self, method: Method) -> &mut Self {
         self.method = method;
         self
@@ -210,6 +213,7 @@ impl HttpRequest {
     /// # Returns
     /// The raw path/URL before query string assembly; may be relative if a base
     /// URL is set.
+    #[inline(always)]
     pub fn path(&self) -> &str {
         &self.path
     }
@@ -222,6 +226,7 @@ impl HttpRequest {
     ///
     /// # Returns
     /// `self` for method chaining.
+    #[inline(always)]
     pub fn set_path(&mut self, path: &str) -> &mut Self {
         self.path = path.to_string();
         self.refresh_resolved_url_cache();
@@ -233,6 +238,7 @@ impl HttpRequest {
     ///
     /// # Returns
     /// Slice view of accumulated query parameters.
+    #[inline(always)]
     pub fn query(&self) -> &[(String, String)] {
         &self.query
     }
@@ -245,6 +251,7 @@ impl HttpRequest {
     ///
     /// # Returns
     /// `self` for method chaining.
+    #[inline]
     pub fn add_query_param(&mut self, key: &str, value: &str) -> &mut Self {
         self.query.push((key.to_string(), value.to_string()));
         self
@@ -254,6 +261,7 @@ impl HttpRequest {
     ///
     /// # Returns
     /// `self` for method chaining.
+    #[inline(always)]
     pub fn clear_query_params(&mut self) -> &mut Self {
         self.query.clear();
         self
@@ -264,6 +272,7 @@ impl HttpRequest {
     ///
     /// # Returns
     /// Borrowed [`HeaderMap`] owned by this request only (not merged defaults).
+    #[inline(always)]
     pub fn headers(&self) -> &HeaderMap {
         &self.headers
     }
@@ -280,12 +289,14 @@ impl HttpRequest {
     /// # Errors
     /// Returns [`HttpError`] when name or value cannot be converted into valid
     /// HTTP tokens.
+    #[inline]
     pub fn set_header(
         &mut self,
         name: &str,
         value: &str,
     ) -> Result<&mut Self, HttpError> {
-        let (header_name, header_value) = parse_header(name, value)?;
+        let (header_name, header_value) = parse_header(name, value)
+            .map_err(|error| self.with_log_redaction_policy(error))?;
         self.headers.insert(header_name, header_value);
         self.invalidate_effective_headers_cache();
         Ok(self)
@@ -300,6 +311,7 @@ impl HttpRequest {
     ///
     /// # Returns
     /// `self` for method chaining.
+    #[inline(always)]
     pub fn set_typed_header(
         &mut self,
         name: HeaderName,
@@ -317,6 +329,7 @@ impl HttpRequest {
     ///
     /// # Returns
     /// `self` for method chaining.
+    #[inline(always)]
     pub fn remove_header(&mut self, name: &HeaderName) -> &mut Self {
         self.headers.remove(name);
         self.invalidate_effective_headers_cache();
@@ -328,6 +341,7 @@ impl HttpRequest {
     ///
     /// # Returns
     /// `self` for method chaining.
+    #[inline(always)]
     pub fn clear_headers(&mut self) -> &mut Self {
         self.headers.clear();
         self.invalidate_effective_headers_cache();
@@ -338,6 +352,7 @@ impl HttpRequest {
     ///
     /// # Returns
     /// Borrowed [`HttpRequestBody`].
+    #[inline(always)]
     pub fn body(&self) -> &HttpRequestBody {
         &self.body
     }
@@ -347,6 +362,7 @@ impl HttpRequest {
     /// # Returns
     /// `true` when the builder or [`Self::set_streaming_body`] installed a
     /// per-attempt stream factory.
+    #[inline(always)]
     pub(crate) fn has_streaming_body(&self) -> bool {
         self.streaming_body.is_some()
     }
@@ -358,6 +374,7 @@ impl HttpRequest {
     ///
     /// # Returns
     /// `self` for method chaining.
+    #[inline(always)]
     pub fn set_body(&mut self, body: HttpRequestBody) -> &mut Self {
         self.body = body;
         self.streaming_body = None;
@@ -371,6 +388,7 @@ impl HttpRequest {
     ///
     /// # Returns
     /// `self` for method chaining.
+    #[inline(always)]
     pub fn set_streaming_body(
         &mut self,
         streaming_body: HttpRequestStreamingBody,
@@ -385,6 +403,7 @@ impl HttpRequest {
     /// # Returns
     /// `Some(duration)` when a request-specific timeout overrides the client
     /// default; otherwise `None`.
+    #[inline(always)]
     pub fn request_timeout(&self) -> Option<Duration> {
         self.execution_options.request_timeout
     }
@@ -401,11 +420,13 @@ impl HttpRequest {
     ///
     /// # Errors
     /// Returns [`HttpError`] when `timeout` is zero.
+    #[inline]
     pub fn set_request_timeout(
         &mut self,
         timeout: Duration,
     ) -> HttpResult<&mut Self> {
-        validate_positive_timeout("request_timeout", timeout)?;
+        validate_positive_timeout("request_timeout", timeout)
+            .map_err(|error| self.with_log_redaction_policy(error))?;
         self.execution_options.request_timeout = Some(timeout);
         Ok(self)
     }
@@ -414,12 +435,14 @@ impl HttpRequest {
     ///
     /// # Returns
     /// `self` for method chaining.
+    #[inline(always)]
     pub fn clear_request_timeout(&mut self) -> &mut Self {
         self.execution_options.request_timeout = None;
         self
     }
 
     /// Returns the write-phase timeout used while sending the request.
+    #[inline(always)]
     pub fn write_timeout(&self) -> Duration {
         self.execution_options.write_timeout
     }
@@ -428,16 +451,19 @@ impl HttpRequest {
     ///
     /// # Errors
     /// Returns [`HttpError`] when `timeout` is zero.
+    #[inline]
     pub fn set_write_timeout(
         &mut self,
         timeout: Duration,
     ) -> HttpResult<&mut Self> {
-        validate_positive_timeout("write_timeout", timeout)?;
+        validate_positive_timeout("write_timeout", timeout)
+            .map_err(|error| self.with_log_redaction_policy(error))?;
         self.execution_options.write_timeout = timeout;
         Ok(self)
     }
 
     /// Returns the read-phase timeout used while reading response body bytes.
+    #[inline(always)]
     pub fn read_timeout(&self) -> Duration {
         self.execution_options.read_timeout
     }
@@ -446,11 +472,13 @@ impl HttpRequest {
     ///
     /// # Errors
     /// Returns [`HttpError`] when `timeout` is zero.
+    #[inline]
     pub fn set_read_timeout(
         &mut self,
         timeout: Duration,
     ) -> HttpResult<&mut Self> {
-        validate_positive_timeout("read_timeout", timeout)?;
+        validate_positive_timeout("read_timeout", timeout)
+            .map_err(|error| self.with_log_redaction_policy(error))?;
         self.execution_options.read_timeout = timeout;
         Ok(self)
     }
@@ -461,6 +489,7 @@ impl HttpRequest {
     /// # Returns
     /// `Some` when a base is configured; `None` when only absolute URLs in
     /// `path` are valid.
+    #[inline(always)]
     pub fn base_url(&self) -> Option<&Url> {
         self.context.base_url.as_ref()
     }
@@ -473,6 +502,7 @@ impl HttpRequest {
     ///
     /// # Returns
     /// `self` for method chaining.
+    #[inline(always)]
     pub fn set_base_url(&mut self, base_url: Url) -> &mut Self {
         self.context.base_url = Some(base_url);
         self.refresh_resolved_url_cache();
@@ -484,6 +514,7 @@ impl HttpRequest {
     ///
     /// # Returns
     /// `self` for method chaining.
+    #[inline(always)]
     pub fn clear_base_url(&mut self) -> &mut Self {
         self.context.base_url = None;
         self.refresh_resolved_url_cache();
@@ -495,6 +526,7 @@ impl HttpRequest {
     /// # Returns
     /// `true` when a resolved URL whose host is an IPv6 literal must be
     /// rejected with [`HttpError::invalid_url`].
+    #[inline(always)]
     pub fn ipv4_only(&self) -> bool {
         self.context.ipv4_only
     }
@@ -507,6 +539,7 @@ impl HttpRequest {
     ///
     /// # Returns
     /// `self` for method chaining.
+    #[inline(always)]
     pub fn set_ipv4_only(&mut self, enabled: bool) -> &mut Self {
         self.context.ipv4_only = enabled;
         self.refresh_resolved_url_cache();
@@ -518,6 +551,7 @@ impl HttpRequest {
     /// # Returns
     /// `Some` token checked before send and during I/O; `None` when
     /// cancellation is not wired.
+    #[inline(always)]
     pub fn cancellation_token(&self) -> Option<&CancellationToken> {
         self.execution_options.cancellation_token.as_ref()
     }
@@ -530,6 +564,7 @@ impl HttpRequest {
     ///
     /// # Returns
     /// `self` for method chaining.
+    #[inline(always)]
     pub fn set_cancellation_token(
         &mut self,
         token: CancellationToken,
@@ -542,6 +577,7 @@ impl HttpRequest {
     ///
     /// # Returns
     /// `self` for method chaining.
+    #[inline(always)]
     pub fn clear_cancellation_token(&mut self) -> &mut Self {
         self.execution_options.cancellation_token = None;
         self
@@ -551,6 +587,7 @@ impl HttpRequest {
     ///
     /// # Returns
     /// Borrowed [`HttpRequestRetryOverride`].
+    #[inline(always)]
     pub fn retry_override(&self) -> &HttpRequestRetryOverride {
         &self.execution_options.retry_override
     }
@@ -562,12 +599,23 @@ impl HttpRequest {
     ///
     /// # Returns
     /// `self` for method chaining.
+    #[inline(always)]
     pub fn set_retry_override(
         &mut self,
         retry_override: HttpRequestRetryOverride,
     ) -> &mut Self {
         self.execution_options.retry_override = retry_override;
         self
+    }
+
+    /// Returns the exact log redaction policy captured by this request.
+    ///
+    /// # Returns
+    ///
+    /// The immutable request policy snapshot.
+    #[inline(always)]
+    pub(crate) fn log_redaction_policy(&self) -> &LogRedactionPolicy {
+        &self.context.log_redaction_policy
     }
 
     /// Moves the current body out, leaving [`HttpRequestBody::Empty`] in its
@@ -578,6 +626,7 @@ impl HttpRequest {
     ///
     /// # Returns
     /// Previous [`HttpRequestBody`] value.
+    #[inline(always)]
     pub(crate) fn take_body(&mut self) -> HttpRequestBody {
         std::mem::replace(&mut self.body, HttpRequestBody::Empty)
     }
@@ -613,6 +662,7 @@ impl HttpRequest {
         // mutations are refreshed instead of reusing stale headers from
         // prior attempts.
         self.invalidate_effective_headers_cache();
+        let log_redaction_policy = self.log_redaction_policy().clone();
         let method = self.method().clone();
         let request_url_context = self.resolved_url().ok();
         let write_timeout = self.execution_options.write_timeout;
@@ -630,7 +680,10 @@ impl HttpRequest {
                 write_timeout
             ),
         )
-        .await?
+        .await
+        .map_err(|error| {
+            error.with_log_redaction_policy(log_redaction_policy.clone())
+        })?
         .clone();
         let url = self.resolved_base_url()?;
         let request_url = self.resolved_url()?;
@@ -658,7 +711,10 @@ impl HttpRequest {
                     self.execution_options.write_timeout
                 ),
             )
-            .await?;
+            .await
+            .map_err(|error| {
+                error.with_log_redaction_policy(log_redaction_policy.clone())
+            })?;
             builder = builder.body(body);
         } else {
             builder = Self::apply_request_body(builder, self.take_body());
@@ -675,7 +731,8 @@ impl HttpRequest {
                 _ = token.cancelled() => {
                     return Err(HttpError::cancelled("Request cancelled while sending")
                         .with_method(&method)
-                        .with_url(&request_url));
+                        .with_url(&request_url)
+                        .with_log_redaction_policy(log_redaction_policy.clone()));
                 }
                 send_result = send_future => send_result,
             }
@@ -691,13 +748,15 @@ impl HttpRequest {
                 ReqwestErrorPhase::Send,
                 method.clone(),
                 request_url.clone(),
-            )),
+            )
+            .with_log_redaction_policy(log_redaction_policy.clone())),
             Err(_) => Err(HttpError::write_timeout(format!(
                 "Write timeout after {:?} while sending request",
                 self.execution_options.write_timeout
             ))
             .with_method(&method)
-            .with_url(&request_url)),
+            .with_url(&request_url)
+            .with_log_redaction_policy(log_redaction_policy)),
         }
     }
 
@@ -816,21 +875,23 @@ impl HttpRequest {
         let cached = match self.resolved_url.read() {
             Ok(guard) => guard.clone(),
             Err(_) => {
-                return Err(HttpError::other(
+                return Err(self.with_log_redaction_policy(HttpError::other(
                     "Resolved URL cache read lock poisoned",
-                ))
+                )))
             }
         };
         if let Some(url) = cached.as_ref() {
             return Ok(url.clone());
         }
-        let resolved = self.compute_resolved_url()?;
+        let resolved = self
+            .compute_resolved_url()
+            .map_err(|error| self.with_log_redaction_policy(error))?;
         match self.resolved_url.write() {
             Ok(mut guard) => *guard = Some(resolved.clone()),
             Err(_) => {
-                return Err(HttpError::other(
+                return Err(self.with_log_redaction_policy(HttpError::other(
                     "Resolved URL cache write lock poisoned",
-                ))
+                )))
             }
         }
         Ok(resolved)
@@ -950,8 +1011,11 @@ impl HttpRequest {
     /// Propagates failures returned by any injector's `apply` implementation.
     pub(crate) async fn effective_headers(&mut self) -> HttpResult<&HeaderMap> {
         if self.effective_headers.is_none() {
-            self.effective_headers =
-                Some(self.compute_effective_headers().await?);
+            let headers = self
+                .compute_effective_headers()
+                .await
+                .map_err(|error| self.with_log_redaction_policy(error))?;
+            self.effective_headers = Some(headers);
         }
         Ok(self.effective_headers.as_ref().expect(
             "effective headers cache must be populated after computation",
@@ -959,6 +1023,7 @@ impl HttpRequest {
     }
 
     /// Returns cached merged outbound headers when available.
+    #[inline(always)]
     pub(crate) fn effective_headers_cached(&self) -> Option<&HeaderMap> {
         self.effective_headers.as_ref()
     }
@@ -979,6 +1044,7 @@ impl HttpRequest {
     /// When to call:
     /// - immediately before starting a new send attempt;
     /// - after any mutation that can change final outbound headers.
+    #[inline(always)]
     pub(crate) fn invalidate_effective_headers_cache(&mut self) {
         self.effective_headers = None;
     }
@@ -1023,7 +1089,7 @@ impl HttpRequest {
             if let Ok(url) = self.resolved_url() {
                 error = error.with_url(&url);
             }
-            Some(error)
+            Some(self.with_log_redaction_policy(error))
         } else {
             None
         }
@@ -1059,6 +1125,20 @@ impl HttpRequest {
             }
             HttpRequestBody::Text(text) => builder.body(text),
         }
+    }
+
+    /// Attaches this request's immutable policy snapshot to an error.
+    ///
+    /// # Parameters
+    ///
+    /// * `error` - Error leaving a request-scoped operation.
+    ///
+    /// # Returns
+    ///
+    /// The same error configured for safe request-context debug rendering.
+    #[inline(always)]
+    fn with_log_redaction_policy(&self, error: HttpError) -> HttpError {
+        error.with_log_redaction_policy(self.log_redaction_policy().clone())
     }
 }
 

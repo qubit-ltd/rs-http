@@ -22,8 +22,9 @@ use qubit_http::{
     HttpErrorKind,
     HttpRequestBody,
     HttpRetryMethodPolicy,
+    LogRedactionPolicy,
 };
-use qubit_sanitize::SensitivityLevel;
+use qubit_redact::Sensitivity;
 use serde::ser::{
     Error as _,
     Serializer,
@@ -53,12 +54,11 @@ fn test_request_builder_debug_masks_sensitive_values() {
     options
         .set_base_url("https://api.example.com/root/")
         .expect("base URL should be valid");
-    options
-        .log_sanitize_policy
-        .insert_sensitive_header("x-debug-secret", SensitivityLevel::High);
-    options
-        .log_sanitize_policy
-        .insert_sensitive_query_param("debugToken", SensitivityLevel::High);
+    options.log_redaction_policy = LogRedactionPolicy::builder()
+        .raise_header("x-debug-secret", Sensitivity::High)
+        .raise_query("debugToken", Sensitivity::High)
+        .build()
+        .expect("log redaction policy should be valid");
     let mut default_headers = HeaderMap::new();
     default_headers.insert(
         "x-debug-secret",

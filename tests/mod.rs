@@ -19,7 +19,7 @@ mod client;
 mod common;
 mod error;
 mod options;
+mod redact;
 mod request;
 mod response;
-mod sanitize;
 mod sse;

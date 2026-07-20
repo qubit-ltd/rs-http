@@ -27,7 +27,7 @@ use url::form_urlencoded;
 use url::Url;
 
 use crate::content_type;
-use crate::sanitize::SanitizedDebugger;
+use crate::redact::RedactedDebugger;
 use crate::{
     AsyncHttpHeaderInjector,
     HttpClient,
@@ -37,7 +37,7 @@ use crate::{
     HttpRequestStreamingBody,
     HttpResult,
     HttpRetryMethodPolicy,
-    LogSanitizePolicy,
+    LogRedactionPolicy,
 };
 
 use super::http_request::HttpRequest;
@@ -83,13 +83,13 @@ pub struct HttpRequestBuilder {
     pub(super) injectors: Vec<HttpHeaderInjector>,
     /// Async header injectors snapshot from the originating client.
     pub(super) async_injectors: Vec<AsyncHttpHeaderInjector>,
-    /// Log sanitization policy snapshot from the originating client.
-    pub(super) log_sanitize_policy: LogSanitizePolicy,
+    /// Log redaction policy snapshot from the originating client.
+    pub(super) log_redaction_policy: LogRedactionPolicy,
 }
 
 impl fmt::Debug for HttpRequestBuilder {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let debugger = SanitizedDebugger::new(&self.log_sanitize_policy);
+        let debugger = RedactedDebugger::new(&self.log_redaction_policy);
         let url = self.debug_resolved_url().map(|url| debugger.url(&url));
         let base_url = self.base_url.as_ref().map(|url| debugger.url(url));
         formatter
@@ -150,7 +150,7 @@ impl HttpRequestBuilder {
             default_headers: client.headers_snapshot(),
             injectors: client.injectors_snapshot(),
             async_injectors: client.async_injectors_snapshot(),
-            log_sanitize_policy: options.log_sanitize_policy.clone(),
+            log_redaction_policy: options.log_redaction_policy.clone(),
         }
     }
 

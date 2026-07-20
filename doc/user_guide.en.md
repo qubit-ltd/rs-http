@@ -1,8 +1,8 @@
 # qubit-http User Guide
 
-This guide is based on the current source code and tests. It applies to crate `qubit-http` 0.8, imported from Rust code as `qubit_http`.
+This guide is based on the current source code and tests. It applies to crate `qubit-http` 0.10, imported from Rust code as `qubit_http`.
 
-`qubit-http` is an asynchronous HTTP client infrastructure crate. It wraps `reqwest` and provides unified client options, request building, response reading, error classification, TRACE logging with URL/header/body sanitization, retries, proxies, IPv4-only resolution, request/response interceptors, and Server-Sent Events (SSE) decoding and reconnection.
+`qubit-http` is an asynchronous HTTP client infrastructure crate. It wraps `reqwest` and provides unified client options, request building, response reading, error classification, TRACE logging with URL/header/body redaction, retries, proxies, IPv4-only resolution, request/response interceptors, and Server-Sent Events (SSE) decoding and reconnection.
 
 ## How To Read This Guide
 
@@ -10,14 +10,15 @@ This guide is based on the current source code and tests. It applies to crate `q
 | --- | --- |
 | First integration | “Quick Start”, “Building Requests”, “Reading Responses” |
 | Client configuration | “Creating A Client”, “Loading From qubit-config”, “Configuration Reference” |
-| Failure diagnosis | “Error Model”, “Automatic Retry”, “Logging Sanitization” |
+| Failure diagnosis | “Error Model”, “Automatic Retry”, “Logging Redaction” |
 | Streaming or SSE | “Reading Responses”, “SSE Decoding” |
 
 ## Installation And Imports
 
 ```toml
 [dependencies]
-qubit-http = "0.8"
+qubit-http = "0.10"
+qubit-redact = "0.1"
 http = "1.4"
 qubit-config = { path = "../rs-config", version = "0.14", default-features = false }
 serde = { version = "1", features = ["derive"] }
@@ -89,7 +90,7 @@ Default behavior:
 | Automatic retry | Disabled |
 | Retry max attempts | 3, including the first attempt |
 | Retry method policy | Idempotent methods only |
-| Log sanitization | Built-in common auth/token/cookie/secret/password names for headers, query parameters, and body fields |
+| Log redaction | Built-in common auth/token/cookie/secret/password names for headers, query parameters, and body fields |
 | IPv4-only | Disabled |
 | SSE JSON mode | `Lenient` |
 | SSE done-marker policy | `DefaultDone`, recognizing `[DONE]` |
@@ -154,10 +155,13 @@ Common configuration keys:
 | `proxy.enabled` | Enables outbound proxying |
 | `use_env_proxy` | Whether to inherit environment proxies when explicit proxying is disabled |
 | `logging.enabled` | Allows TRACE HTTP logs |
-| `log_sanitize.url_path_policy` | URL path policy: `redact` by default, or explicit `preserve` |
-| `log_sanitize.sensitive_headers` | Extra sensitive header names added to the default log-sanitization set |
-| `log_sanitize.sensitive_query_params` | Extra sensitive query-parameter names added to the default set |
-| `log_sanitize.sensitive_body_fields` | Extra sensitive JSON/form/multipart body-field names added to the default set |
+| `log_redaction.url_path_policy` | URL path policy: `redact` by default, or explicit `preserve` |
+| `log_redaction.sensitive_headers` | Extra sensitive header names added to the default log-redaction set |
+| `log_redaction.sensitive_query_params` | Extra sensitive query-parameter names added to the default set |
+| `log_redaction.sensitive_body_fields` | Extra sensitive JSON/form/multipart body-field names added to the default set |
+| `log_redaction.excluded_sensitive_headers` | Exact header names explicitly allowed to remain visible |
+| `log_redaction.excluded_sensitive_query_params` | Exact query-parameter names explicitly allowed to remain visible |
+| `log_redaction.excluded_sensitive_body_fields` | Exact structured-body field names explicitly allowed to remain visible |
 | `retry.enabled` | Enables built-in retry |
 | `retry.max_attempts` | Max attempts, including the first request |
 | `retry.delay_strategy` | `NONE`, `FIXED`, `RANDOM`, `EXPONENTIAL_BACKOFF`, or `EXPONENTIAL` |
@@ -562,7 +566,7 @@ if error.kind == qubit_http::HttpErrorKind::RetryAborted {
 }
 ```
 
-## Logging Sanitization
+## Logging Redaction
 
 HTTP logs use `tracing::trace!`. Both conditions must be true:
 
@@ -571,11 +575,11 @@ HTTP logs use `tracing::trace!`. Both conditions must be true:
 
 Request headers, request body, response headers, and response body can be toggled separately. Body logs include only the first `logging.body_size_limit` bytes and show a truncation marker for the remainder. Binary bodies are rendered as `<binary N bytes>`. Unsupported bodies without a structured or textual `Content-Type` are rendered as `<redacted: unsupported HTTP body>`. Request-body logging previews buffered body variants (`bytes_body`, `text_body`, `json_body`, `form_body`, `multipart_body`, and `ndjson_body`); `stream_body` and `streaming_body` are logged as `<skipped: streaming request body>` because the logger does not consume upload streams.
 
-Logs are sanitized through `LogSanitizer` and `LogSanitizePolicy`, backed by `qubit-sanitize` adapters for URLs, headers, and HTTP bodies. URL username, password, fragment, and sensitive query parameters are masked, and non-root URL paths are redacted by default. Set `log_sanitize.url_path_policy` to `preserve` only after reviewing that diagnostic boundary. JSON/form/multipart body fields are masked when their names match the policy. Mask strings follow `qubit-sanitize` sensitivity levels: token/header-like fields usually become `****`, while secret-like fields such as `password` and `client_secret` become `<redacted>`. Multipart sanitization applies to every `multipart/*` media type. Multipart file parts are rendered as `<redacted: file part>`, and malformed, missing-boundary, or truncated multipart bodies are rendered as `<redacted: multipart body>` so raw upload bytes are not leaked.
+Logs are redacted through `LogRedactor` and `LogRedactionPolicy`, backed by `qubit-redact` adapters for URLs, headers, and HTTP bodies. URL username, password, fragment, and sensitive query parameters are masked, and non-root URL paths are redacted by default. Set `log_redaction.url_path_policy` to `preserve` only after reviewing that diagnostic boundary. JSON/form/multipart body fields are masked when their names match the policy. Mask strings follow `qubit-redact` sensitivity levels: token/header-like fields usually become `****`, while secret-like fields such as `password` and `client_secret` become `<redacted>`. Multipart redaction applies to every `multipart/*` media type. Multipart file parts are rendered as `<redacted: file part>`, and malformed, missing-boundary, or truncated multipart bodies are rendered as `<redacted: multipart body>` so raw upload bytes are not leaked.
 
-For headers, `http::HeaderValue::is_sensitive()` is a value-level `Secret` declaration. Request, response, streaming-response, and `Debug` rendering honor it before header-name matching. Removing a sensitive header name cannot expose a marked value, while the configured `Secret` mask policy still controls the replacement. Unmarked values continue to use the configured name matching, levels, and exclusions; no wrapper type or alternate Header API is required.
+For headers, `http::HeaderValue::is_sensitive()` is a value-level `Secret` declaration. Request, response, streaming-response, and `Debug` rendering honor it before header-name matching. An allow rule cannot expose a marked value; unmarked values continue to use the same immutable name policy snapshot.
 
-Default sensitive names and mask levels come from `qubit_sanitize::SensitiveFields`, so `rs-http` does not maintain or export its own sensitive-name lists. Matching trims whitespace, lowercases names, removes common separators such as `_`, `-`, `.`, and spaces, and uses suffix matching, so names like `access_token`, `access-token`, `accessToken`, and `x-openai-api-key` match the same default. Configuration keys under `log_sanitize.*` extend the default name sets. Code can also tune `options.log_sanitize_policy` through its domain methods; use `LogSanitizePolicy::empty()` if you intentionally want a custom-only policy. The `insert_*` and `extend_*` methods retain the strongest configured level. Use `set_*_level` only for an intentional replacement, including a downgrade.
+Default sensitive names and mask levels come from `RedactionPolicy::default()`. Matching canonicalizes common separators and uses token-suffix boundaries. Build all header, query, and body changes through `LogRedactionPolicy::builder()` and install the result once. `raise_*` retains the stronger level, `override_*` explicitly replaces it, and `allow_*_exact` or `allow_*_suffix` records a deliberate visibility rule. `logging.body_size_limit` is a presentation bound, while `BodyBudget` remains a non-bypassable parser-input and rendered-output bound.
 
 Example:
 
@@ -584,26 +588,20 @@ use http::Method;
 use qubit_http::{
     HttpClientFactory,
     HttpClientOptions,
+    LogRedactionPolicy,
 };
-use qubit_sanitize::SensitivityLevel;
+use qubit_redact::Sensitivity;
 use serde_json::json;
 
 let mut options = HttpClientOptions::new();
 options.logging.enabled = true;
 options.logging.log_request_header = true;
 options.logging.log_request_body = true;
-options.log_sanitize_policy.insert_sensitive_header(
-    "x-api-key",
-    SensitivityLevel::High,
-);
-options.log_sanitize_policy.insert_sensitive_query_param(
-    "access_token",
-    SensitivityLevel::High,
-);
-options.log_sanitize_policy.insert_sensitive_body_field(
-    "password",
-    SensitivityLevel::Secret,
-);
+options.log_redaction_policy = LogRedactionPolicy::builder()
+    .raise_header("x-api-key", Sensitivity::High)
+    .raise_query("access_token", Sensitivity::High)
+    .raise_body("password", Sensitivity::Secret)
+    .build()?;
 
 let client = HttpClientFactory::new().create(options)?;
 let request = client
@@ -823,10 +821,13 @@ The table below lists every configuration key supported by `HttpClientOptions::f
 | `pool_idle_timeout` | Connection pool idle timeout |
 | `pool_max_idle_per_host` | Max idle connections per host |
 | `use_env_proxy` | Whether to inherit environment proxies when explicit proxying is disabled; defaults to `false` |
-| `log_sanitize.url_path_policy` | URL path policy: `redact` by default, or explicit `preserve` |
-| `log_sanitize.sensitive_headers` | String list added to the default sensitive-header set |
-| `log_sanitize.sensitive_query_params` | String list added to the default sensitive-query-parameter set |
-| `log_sanitize.sensitive_body_fields` | String list added to the default sensitive-body-field set |
+| `log_redaction.url_path_policy` | URL path policy: `redact` by default, or explicit `preserve` |
+| `log_redaction.sensitive_headers` | String list added to the default sensitive-header set |
+| `log_redaction.sensitive_query_params` | String list added to the default sensitive-query-parameter set |
+| `log_redaction.sensitive_body_fields` | String list added to the default sensitive-body-field set |
+| `log_redaction.excluded_sensitive_headers` | String list of exact header names explicitly allowed to remain visible |
+| `log_redaction.excluded_sensitive_query_params` | String list of exact query-parameter names explicitly allowed to remain visible |
+| `log_redaction.excluded_sensitive_body_fields` | String list of exact structured-body field names explicitly allowed to remain visible |
 | `default_headers` | JSON map string of default request headers; cannot be combined with `default_headers.<name>` |
 | `default_headers.<name>` | One default request header subkey; cannot be combined with the `default_headers` JSON map |
 | `timeouts.connect_timeout` | Connect timeout |

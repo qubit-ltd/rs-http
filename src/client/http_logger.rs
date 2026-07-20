@@ -10,11 +10,11 @@
 //! Encapsulates request and response logging behavior.
 
 use http::header::CONTENT_TYPE;
+use tracing::callsite::DefaultCallsite;
+use tracing::metadata::Kind;
+use tracing::Metadata;
 
-use crate::sanitize::{
-    BodyLogContext,
-    SanitizedLogger,
-};
+use crate::redact::RedactedLogger;
 use crate::{
     HttpClientOptions,
     HttpLoggingOptions,
@@ -28,11 +28,25 @@ const UNRESOLVED_REQUEST_URL: &str = "<unresolved request URL>";
 const STREAMING_REQUEST_BODY_SKIPPED: &str =
     "<skipped: streaming request body>";
 
-/// HTTP logger bound to one pair of logging options and a sanitizer policy.
+/// Callsite metadata used to query the current dispatcher directly, bypassing
+/// shared interest caching that can change while thread-local subscribers are
+/// installed concurrently.
+static HTTP_LOGGER_ENABLED_CALLSITE: DefaultCallsite =
+    DefaultCallsite::new(&HTTP_LOGGER_ENABLED_METADATA);
+static HTTP_LOGGER_ENABLED_METADATA: Metadata<'static> = tracing::metadata! {
+    name: "qubit_http_logger_enabled",
+    target: module_path!(),
+    level: tracing::Level::TRACE,
+    fields: &[],
+    callsite: &HTTP_LOGGER_ENABLED_CALLSITE,
+    kind: Kind::EVENT,
+};
+
+/// HTTP logger bound to one pair of logging options and a redactor policy.
 #[derive(Debug, Clone)]
 pub struct HttpLogger<'a> {
     options: &'a HttpLoggingOptions,
-    sanitized_logger: SanitizedLogger,
+    redacted_logger: RedactedLogger,
 }
 
 /// Request body preview category used by TRACE logging.
@@ -57,7 +71,7 @@ impl<'a> HttpLogger<'a> {
     pub fn new(options: &'a HttpClientOptions) -> Self {
         Self {
             options: &options.logging,
-            sanitized_logger: SanitizedLogger::from_options(options),
+            redacted_logger: RedactedLogger::from_options(options),
         }
     }
 
@@ -83,10 +97,7 @@ impl<'a> HttpLogger<'a> {
             .unwrap_or_else(|| request.headers());
 
         if self.options.log_request_header {
-            for (name, value) in headers {
-                let masked = self.sanitized_logger.header_value(name, value);
-                tracing::trace!("{}: {}", name.as_str(), masked);
-            }
+            tracing::trace!("{}", self.redacted_logger.headers(headers));
         }
 
         if self.options.log_request_body {
@@ -95,11 +106,7 @@ impl<'a> HttpLogger<'a> {
                     let content_type = Self::content_type(headers);
                     tracing::trace!(
                         "Request body: {}",
-                        self.sanitized_logger.body(
-                            bytes,
-                            BodyLogContext::Request,
-                            content_type
-                        )
+                        self.redacted_logger.body(bytes, content_type)
                     );
                 }
                 RequestBodyLogPreview::Empty => {
@@ -135,14 +142,14 @@ impl<'a> HttpLogger<'a> {
         tracing::trace!(
             "<-- {} {}",
             response.status().as_u16(),
-            self.sanitized_logger.url(response.url())
+            self.redacted_logger.url(response.url())
         );
 
         if self.options.log_response_header {
-            for (name, value) in response.headers() {
-                let masked = self.sanitized_logger.header_value(name, value);
-                tracing::trace!("{}: {}", name.as_str(), masked);
-            }
+            tracing::trace!(
+                "{}",
+                self.redacted_logger.headers(response.headers())
+            );
         }
 
         if self.options.log_response_body {
@@ -150,11 +157,8 @@ impl<'a> HttpLogger<'a> {
             if let Some(body) = response.buffered_body_for_logging() {
                 tracing::trace!(
                     "Response body: {}",
-                    self.sanitized_logger.body(
-                        body.as_ref(),
-                        BodyLogContext::Response,
-                        content_type.as_ref()
-                    )
+                    self.redacted_logger
+                        .body(body.as_ref(), content_type.as_ref())
                 );
             } else if response
                 .can_buffer_body_for_logging(self.options.body_size_limit)
@@ -162,11 +166,8 @@ impl<'a> HttpLogger<'a> {
                 let body = response.bytes().await?;
                 tracing::trace!(
                     "Response body: {}",
-                    self.sanitized_logger.body(
-                        body.as_ref(),
-                        BodyLogContext::Response,
-                        content_type.as_ref()
-                    )
+                    self.redacted_logger
+                        .body(body.as_ref(), content_type.as_ref())
                 );
             } else {
                 tracing::trace!(
@@ -196,14 +197,14 @@ impl<'a> HttpLogger<'a> {
         tracing::trace!(
             "<-- {} {} (stream)",
             response_meta.status().as_u16(),
-            self.sanitized_logger.url(response_meta.url())
+            self.redacted_logger.url(response_meta.url())
         );
 
         if self.options.log_response_header {
-            for (name, value) in response_meta.headers() {
-                let masked = self.sanitized_logger.header_value(name, value);
-                tracing::trace!("{}: {}", name.as_str(), masked);
-            }
+            tracing::trace!(
+                "{}",
+                self.redacted_logger.headers(response_meta.headers())
+            );
         }
     }
 
@@ -213,7 +214,10 @@ impl<'a> HttpLogger<'a> {
     /// # Returns
     /// `true` when logging is enabled and TRACE is active.
     pub fn is_trace_enabled(&self) -> bool {
-        self.options.enabled && tracing::enabled!(tracing::Level::TRACE)
+        self.options.enabled
+            && tracing::dispatcher::get_default(|dispatcher| {
+                dispatcher.enabled(&HTTP_LOGGER_ENABLED_METADATA)
+            })
     }
 
     /// Returns the URL text used by request logging.
@@ -227,7 +231,8 @@ impl<'a> HttpLogger<'a> {
     fn request_log_url(&self, request: &HttpRequest) -> String {
         request
             .resolved_url()
-            .map(|url| self.sanitized_logger.url(&url))
+            .map(|url| self.redacted_logger.url(&url))
+            .map(|url| url.to_string())
             .unwrap_or_else(|_| UNRESOLVED_REQUEST_URL.to_string())
     }
 
