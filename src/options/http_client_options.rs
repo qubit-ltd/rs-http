@@ -221,112 +221,6 @@ impl HttpClientOptions {
         Self::from_config_impl(config)
     }
 
-    /// Parses and sets the base URL used to resolve relative request paths.
-    ///
-    /// # Parameters
-    /// - `base_url`: Absolute base URL string.
-    ///
-    /// # Returns
-    /// `Ok(self)` or [`HttpConfigError`] if the URL is invalid.
-    #[inline]
-    pub fn set_base_url(
-        &mut self,
-        base_url: &str,
-    ) -> Result<&mut Self, HttpConfigError> {
-        let parsed = Self::parse_base_url(base_url)?;
-        self.base_url = Some(parsed);
-        Ok(self)
-    }
-
-    /// Validates and adds one client-level default header.
-    ///
-    /// # Parameters
-    /// - `name`: Header name.
-    /// - `value`: Header value.
-    ///
-    /// # Returns
-    /// `Ok(self)` or an error if name/value are invalid.
-    #[inline]
-    pub fn add_header(
-        &mut self,
-        name: &str,
-        value: &str,
-    ) -> HttpResult<&mut Self> {
-        let (header_name, header_value) = parse_header(name, value)?;
-        self.default_headers.insert(header_name, header_value);
-        Ok(self)
-    }
-
-    /// Validates and adds many client-level default headers atomically.
-    ///
-    /// If any input pair is invalid, no header from this batch is applied.
-    ///
-    /// # Parameters
-    /// - `headers`: Iterator of `(name, value)` pairs.
-    ///
-    /// # Returns
-    /// `Ok(self)` or an error if any pair is invalid.
-    pub fn add_headers(
-        &mut self,
-        headers: &[(&str, &str)],
-    ) -> HttpResult<&mut Self> {
-        let mut parsed_headers = HeaderMap::new();
-        for &(name, value) in headers {
-            let (header_name, header_value) = parse_header(name, value)?;
-            parsed_headers.insert(header_name, header_value);
-        }
-        self.default_headers.extend(parsed_headers);
-        Ok(self)
-    }
-
-    /// Runs [`ProxyOptions::validate`], [`HttpLoggingOptions::validate`], retry
-    /// validation, and SSE limit validation.
-    ///
-    /// # Returns
-    /// `Ok(())` or the first sub-validator error.
-    pub fn validate(&self) -> Result<(), HttpConfigError> {
-        self.timeouts
-            .validate_arguments()
-            .with_path_prefix("timeouts")?;
-        self.proxy.validate_arguments()?;
-        self.logging.validate_arguments()?;
-        self.retry.validate_arguments().with_path_prefix("retry")?;
-        Self::validate_positive_limit(
-            "error_response_preview_limit",
-            self.error_response_preview_limit,
-        )?;
-        Self::validate_positive_limit(
-            "response_body_size_limit",
-            self.response_body_size_limit,
-        )?;
-        if let Some(user_agent) = self.user_agent.as_deref() {
-            require_that(
-                user_agent,
-                "user_agent",
-                |value| !value.trim().is_empty(),
-                "blank_user_agent",
-                "Value cannot be empty",
-            )?;
-            HeaderValue::from_str(user_agent).map_err(|error| {
-                HttpConfigError::invalid_value(
-                    "user_agent",
-                    format!("Invalid header value: {error}"),
-                )
-            })?;
-        }
-        Self::validate_positive_limit(
-            "sse.max_line_bytes",
-            self.sse_max_line_bytes,
-        )?;
-        Self::validate_positive_limit(
-            "sse.max_frame_bytes",
-            self.sse_max_frame_bytes,
-        )?;
-        Ok(())
-    }
-}
-
-impl HttpClientOptions {
     /// Implements [`Self::from_config`] after constructor dispatch.
     ///
     /// # Parameters
@@ -693,6 +587,110 @@ impl HttpClientOptions {
         }
 
         Ok(opts)
+    }
+
+    /// Parses and sets the base URL used to resolve relative request paths.
+    ///
+    /// # Parameters
+    /// - `base_url`: Absolute base URL string.
+    ///
+    /// # Returns
+    /// `Ok(self)` or [`HttpConfigError`] if the URL is invalid.
+    #[inline]
+    pub fn set_base_url(
+        &mut self,
+        base_url: &str,
+    ) -> Result<&mut Self, HttpConfigError> {
+        let parsed = Self::parse_base_url(base_url)?;
+        self.base_url = Some(parsed);
+        Ok(self)
+    }
+
+    /// Validates and adds one client-level default header.
+    ///
+    /// # Parameters
+    /// - `name`: Header name.
+    /// - `value`: Header value.
+    ///
+    /// # Returns
+    /// `Ok(self)` or an error if name/value are invalid.
+    #[inline]
+    pub fn add_header(
+        &mut self,
+        name: &str,
+        value: &str,
+    ) -> HttpResult<&mut Self> {
+        let (header_name, header_value) = parse_header(name, value)?;
+        self.default_headers.insert(header_name, header_value);
+        Ok(self)
+    }
+
+    /// Validates and adds many client-level default headers atomically.
+    ///
+    /// If any input pair is invalid, no header from this batch is applied.
+    ///
+    /// # Parameters
+    /// - `headers`: Iterator of `(name, value)` pairs.
+    ///
+    /// # Returns
+    /// `Ok(self)` or an error if any pair is invalid.
+    pub fn add_headers(
+        &mut self,
+        headers: &[(&str, &str)],
+    ) -> HttpResult<&mut Self> {
+        let mut parsed_headers = HeaderMap::new();
+        for &(name, value) in headers {
+            let (header_name, header_value) = parse_header(name, value)?;
+            parsed_headers.insert(header_name, header_value);
+        }
+        self.default_headers.extend(parsed_headers);
+        Ok(self)
+    }
+
+    /// Runs [`ProxyOptions::validate`], [`HttpLoggingOptions::validate`], retry
+    /// validation, and SSE limit validation.
+    ///
+    /// # Returns
+    /// `Ok(())` or the first sub-validator error.
+    pub fn validate(&self) -> Result<(), HttpConfigError> {
+        self.timeouts
+            .validate_arguments()
+            .with_path_prefix("timeouts")?;
+        self.proxy.validate_arguments()?;
+        self.logging.validate_arguments()?;
+        self.retry.validate_arguments().with_path_prefix("retry")?;
+        Self::validate_positive_limit(
+            "error_response_preview_limit",
+            self.error_response_preview_limit,
+        )?;
+        Self::validate_positive_limit(
+            "response_body_size_limit",
+            self.response_body_size_limit,
+        )?;
+        if let Some(user_agent) = self.user_agent.as_deref() {
+            require_that(
+                user_agent,
+                "user_agent",
+                |value| !value.trim().is_empty(),
+                "blank_user_agent",
+                "Value cannot be empty",
+            )?;
+            HeaderValue::from_str(user_agent).map_err(|error| {
+                HttpConfigError::invalid_value(
+                    "user_agent",
+                    format!("Invalid header value: {error}"),
+                )
+            })?;
+        }
+        Self::validate_positive_limit(
+            "sse.max_line_bytes",
+            self.sse_max_line_bytes,
+        )?;
+        Self::validate_positive_limit(
+            "sse.max_frame_bytes",
+            self.sse_max_frame_bytes,
+        )?;
+        Ok(())
     }
 
     fn resolve_config_error<R>(
