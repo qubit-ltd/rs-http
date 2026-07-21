@@ -26,7 +26,7 @@ use qubit_json::{
 };
 use qubit_redact::{
     http::UrlPathPolicy,
-    RedactionPolicy,
+    RedactionPolicyBuilder,
     Sensitivity,
 };
 use std::str::FromStr;
@@ -894,10 +894,7 @@ impl HttpClientOptions {
         field: &str,
         name: &str,
     ) -> Result<(), HttpConfigError> {
-        RedactionPolicy::builder()
-            .raise(name, Sensitivity::Low)
-            .build()
-            .map(|_| ())
+        RedactionPolicyBuilder::validate_field_name(name)
             .map_err(|error| {
                 HttpConfigError::invalid_value(field, error.to_string())
             })

@@ -110,9 +110,8 @@ impl LogRedactor {
         content_type: Option<&str>,
     ) -> BodyRedaction {
         let preview = BodyPreview::new(body, limit);
-        let parsed_content_type = content_type.map(Self::parse_content_type);
         self.http_redactor
-            .redact_body(preview.capture(), parsed_content_type.as_ref())
+            .redact_body_with_content_type_text(preview.capture(), content_type)
     }
 
     /// Redacts a body preview using a native Content-Type header value.
@@ -188,22 +187,6 @@ impl LogRedactor {
         self.http_redactor.redact_urls_in_text(text)
     }
 
-    /// Parses one Content-Type or returns a deliberately non-UTF-8 value.
-    ///
-    /// # Parameters
-    ///
-    /// * `value` - Content-Type text supplied by the public API.
-    ///
-    /// # Returns
-    ///
-    /// The parsed value, or a sentinel that makes runtime parsing fail closed.
-    fn parse_content_type(value: &str) -> HeaderValue {
-        match HeaderValue::from_str(value) {
-            Ok(value) => value,
-            Err(_) => HeaderValue::from_bytes(&[0xff])
-                .expect("fixed non-UTF-8 header sentinel must be valid"),
-        }
-    }
 }
 
 impl Default for LogRedactor {
