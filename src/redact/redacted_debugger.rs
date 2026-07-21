@@ -95,7 +95,10 @@ impl RedactedDebugger {
     ///
     /// Text with recognized HTTP URLs redacted.
     #[inline(always)]
-    pub(crate) fn diagnostic_text(&self, text: &str) -> String {
+    pub(crate) fn diagnostic_text(
+        &self,
+        text: &str,
+    ) -> qubit_redact::LogSafeText<'static> {
         self.redactor.redact_diagnostic_text(text)
     }
 }
