@@ -11,12 +11,12 @@ use qubit_redact::{
     http::{
         BodyBudget,
         HttpRedactionPolicy,
+        HttpRedactionPolicyBuilder,
         TextBodyPolicy,
         UnkeyedJsonValuePolicy,
         UrlPathPolicy,
     },
     PolicyError,
-    RedactionPolicyBuilder,
     Sensitivity,
 };
 
@@ -26,24 +26,12 @@ use super::LogRedactionPolicy;
 #[must_use]
 #[derive(Debug, Clone)]
 pub struct LogRedactionPolicyBuilder {
-    /// Header-field policy construction state.
-    header: RedactionPolicyBuilder,
-    /// Query and form field-policy construction state.
-    query: RedactionPolicyBuilder,
-    /// Structured-body field-policy construction state.
-    body: RedactionPolicyBuilder,
-    /// URL path visibility choice.
-    url_path_policy: UrlPathPolicy,
-    /// Opaque text body visibility choice.
-    text_body_policy: TextBodyPolicy,
-    /// Unkeyed JSON scalar visibility choice.
-    unkeyed_json_value_policy: UnkeyedJsonValuePolicy,
-    /// Hard body input and output limits.
-    body_budget: BodyBudget,
+    /// Canonical HTTP policy construction state.
+    http: HttpRedactionPolicyBuilder,
 }
 
 macro_rules! field_builder_methods {
-    ($raise:ident, $override:ident, $allow_exact:ident, $allow_suffix:ident, $field:ident) => {
+    ($raise:ident, $override:ident, $allow_exact:ident, $allow_suffix:ident) => {
         /// Raises the named field to at least `level`.
         ///
         /// # Parameters
@@ -56,7 +44,7 @@ macro_rules! field_builder_methods {
         /// The updated builder.
         #[inline]
         pub fn $raise(mut self, name: &str, level: Sensitivity) -> Self {
-            self.$field = self.$field.raise(name, level);
+            self.http = self.http.$raise(name, level);
             self
         }
 
@@ -72,7 +60,7 @@ macro_rules! field_builder_methods {
         /// The updated builder.
         #[inline]
         pub fn $override(mut self, name: &str, level: Sensitivity) -> Self {
-            self.$field = self.$field.override_level(name, level);
+            self.http = self.http.$override(name, level);
             self
         }
 
@@ -87,7 +75,7 @@ macro_rules! field_builder_methods {
         /// The updated builder.
         #[inline]
         pub fn $allow_exact(mut self, name: &str) -> Self {
-            self.$field = self.$field.allow_exact(name);
+            self.http = self.http.$allow_exact(name);
             self
         }
 
@@ -102,14 +90,14 @@ macro_rules! field_builder_methods {
         /// The updated builder.
         #[inline]
         pub fn $allow_suffix(mut self, name: &str) -> Self {
-            self.$field = self.$field.allow_suffix(name);
+            self.http = self.http.$allow_suffix(name);
             self
         }
     };
 }
 
 impl LogRedactionPolicyBuilder {
-    /// Creates a builder from three independent default policy builders.
+    /// Creates a wrapper around the canonical HTTP policy builder.
     ///
     /// # Returns
     ///
@@ -117,13 +105,7 @@ impl LogRedactionPolicyBuilder {
     #[inline]
     pub fn new() -> Self {
         Self {
-            header: RedactionPolicyBuilder::new(),
-            query: RedactionPolicyBuilder::new(),
-            body: RedactionPolicyBuilder::new(),
-            url_path_policy: UrlPathPolicy::default(),
-            text_body_policy: TextBodyPolicy::default(),
-            unkeyed_json_value_policy: UnkeyedJsonValuePolicy::default(),
-            body_budget: BodyBudget::default(),
+            http: HttpRedactionPolicy::builder(),
         }
     }
 
@@ -131,22 +113,19 @@ impl LogRedactionPolicyBuilder {
         raise_header,
         override_header,
         allow_header_exact,
-        allow_header_suffix,
-        header
+        allow_header_suffix
     );
     field_builder_methods!(
         raise_query,
         override_query,
         allow_query_exact,
-        allow_query_suffix,
-        query
+        allow_query_suffix
     );
     field_builder_methods!(
         raise_body,
         override_body,
         allow_body_exact,
-        allow_body_suffix,
-        body
+        allow_body_suffix
     );
 
     /// Selects how non-root URL paths are rendered.
@@ -159,8 +138,8 @@ impl LogRedactionPolicyBuilder {
     ///
     /// The updated builder.
     #[inline(always)]
-    pub const fn url_path_policy(mut self, policy: UrlPathPolicy) -> Self {
-        self.url_path_policy = policy;
+    pub fn url_path_policy(mut self, policy: UrlPathPolicy) -> Self {
+        self.http = self.http.url_path_policy(policy);
         self
     }
 
@@ -174,8 +153,8 @@ impl LogRedactionPolicyBuilder {
     ///
     /// The updated builder.
     #[inline(always)]
-    pub const fn text_body_policy(mut self, policy: TextBodyPolicy) -> Self {
-        self.text_body_policy = policy;
+    pub fn text_body_policy(mut self, policy: TextBodyPolicy) -> Self {
+        self.http = self.http.text_body_policy(policy);
         self
     }
 
@@ -189,11 +168,11 @@ impl LogRedactionPolicyBuilder {
     ///
     /// The updated builder.
     #[inline(always)]
-    pub const fn unkeyed_json_value_policy(
+    pub fn unkeyed_json_value_policy(
         mut self,
         policy: UnkeyedJsonValuePolicy,
     ) -> Self {
-        self.unkeyed_json_value_policy = policy;
+        self.http = self.http.unkeyed_json_value_policy(policy);
         self
     }
 
@@ -207,8 +186,8 @@ impl LogRedactionPolicyBuilder {
     ///
     /// The updated builder.
     #[inline(always)]
-    pub const fn body_budget(mut self, budget: BodyBudget) -> Self {
-        self.body_budget = budget;
+    pub fn body_budget(mut self, budget: BodyBudget) -> Self {
+        self.http = self.http.body_budget(budget);
         self
     }
 
@@ -223,18 +202,7 @@ impl LogRedactionPolicyBuilder {
     /// Returns [`PolicyError`] from the first invalid header, query, or body
     /// policy encountered in that order.
     pub fn build(self) -> Result<LogRedactionPolicy, PolicyError> {
-        let header = self.header.build()?;
-        let query = self.query.build()?;
-        let body = self.body.build()?;
-        let http_policy = HttpRedactionPolicy::builder(header)
-            .query_policy(query)
-            .body_policy(body)
-            .url_path_policy(self.url_path_policy)
-            .text_body_policy(self.text_body_policy)
-            .unkeyed_json_value_policy(self.unkeyed_json_value_policy)
-            .body_budget(self.body_budget)
-            .build();
-        Ok(LogRedactionPolicy::new(http_policy))
+        self.http.build().map(LogRedactionPolicy::new)
     }
 }
 

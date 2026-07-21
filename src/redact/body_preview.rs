@@ -46,14 +46,6 @@ impl<'a> BodyPreview<'a> {
     /// with its exact total source length.
     #[inline]
     pub(crate) fn capture(self) -> BodyCapture<'a> {
-        if self.bytes.len() <= self.limit {
-            BodyCapture::complete(self.bytes)
-        } else {
-            BodyCapture::truncated(
-                &self.bytes[..self.limit],
-                Some(self.bytes.len()),
-            )
-            .unwrap_or(BodyCapture::complete(&self.bytes[..self.limit]))
-        }
+        BodyCapture::prefix(self.bytes, self.limit)
     }
 }

@@ -157,12 +157,15 @@ impl LogRedactor {
         truncated: bool,
         content_type: Option<&HeaderValue>,
     ) -> BodyRedaction {
-        let capture = if truncated {
-            let source_len = source_len.filter(|total| *total > bytes.len());
-            BodyCapture::truncated(bytes, source_len)
-                .unwrap_or(BodyCapture::complete(bytes))
-        } else {
-            BodyCapture::complete(bytes)
+        let capture = match (truncated, source_len) {
+            (false, _) => BodyCapture::complete(bytes),
+            (true, None) => BodyCapture::truncated_unknown(bytes),
+            (true, Some(total)) => {
+                match BodyCapture::truncated(bytes, Some(total)) {
+                    Ok(capture) => capture,
+                    Err(_) => BodyCapture::truncated_unknown(bytes),
+                }
+            }
         };
         self.http_redactor.redact_body(capture, content_type)
     }
@@ -175,26 +178,14 @@ impl LogRedactor {
     ///
     /// # Returns
     ///
-    /// Text with every recognized URL token redacted under this snapshot.
-    pub(crate) fn redact_diagnostic_text(&self, text: &str) -> String {
-        let mut redacted = String::with_capacity(text.len());
-        let mut token_start = None;
-        for (index, ch) in text.char_indices() {
-            if ch.is_whitespace() {
-                if let Some(start) = token_start.take() {
-                    redacted.push_str(
-                        &self.redact_diagnostic_token(&text[start..index]),
-                    );
-                }
-                redacted.push(ch);
-            } else if token_start.is_none() {
-                token_start = Some(index);
-            }
-        }
-        if let Some(start) = token_start {
-            redacted.push_str(&self.redact_diagnostic_token(&text[start..]));
-        }
-        redacted
+    /// Log-safe text with every recognized URL token redacted under this
+    /// snapshot.
+    #[inline(always)]
+    pub(crate) fn redact_diagnostic_text(
+        &self,
+        text: &str,
+    ) -> qubit_redact::LogSafeText<'static> {
+        self.http_redactor.redact_urls_in_text(text)
     }
 
     /// Parses one Content-Type or returns a deliberately non-UTF-8 value.
@@ -213,45 +204,6 @@ impl LogRedactor {
                 .expect("fixed non-UTF-8 header sentinel must be valid"),
         }
     }
-
-    /// Redacts one token that may contain an absolute HTTP URL.
-    ///
-    /// # Parameters
-    ///
-    /// * `token` - One whitespace-delimited diagnostic token.
-    ///
-    /// # Returns
-    ///
-    /// The original token when it has no URL, otherwise a redacted rendering.
-    fn redact_diagnostic_token(&self, token: &str) -> String {
-        let Some(start) = find_url_scheme_start(token) else {
-            return token.to_owned();
-        };
-        let prefix = &token[..start];
-        let mut end = token.len();
-        loop {
-            let candidate = &token[start..end];
-            if let Ok(url) = Url::parse(candidate) {
-                return format!(
-                    "{prefix}{}{suffix}",
-                    self.http_redactor.redact_url(&url),
-                    suffix = &token[end..],
-                );
-            }
-            let Some((previous, ch)) = previous_char_boundary(token, end)
-            else {
-                return token.to_owned();
-            };
-            if previous <= start || !is_trimmable_url_suffix(ch) {
-                return format!(
-                    "{prefix}{}{suffix}",
-                    self.http_redactor.redact_url_str(candidate),
-                    suffix = &token[end..],
-                );
-            }
-            end = previous;
-        }
-    }
 }
 
 impl Default for LogRedactor {
@@ -260,78 +212,4 @@ impl Default for LogRedactor {
     fn default() -> Self {
         Self::new(LogRedactionPolicy::default())
     }
-}
-
-/// Finds the first absolute HTTP URL scheme inside a token.
-///
-/// # Parameters
-///
-/// * `token` - Diagnostic token to inspect.
-///
-/// # Returns
-///
-/// The first scheme byte offset, or `None` when no HTTP scheme is present.
-fn find_url_scheme_start(token: &str) -> Option<usize> {
-    match (
-        find_ascii_case_insensitive(token, "http://"),
-        find_ascii_case_insensitive(token, "https://"),
-    ) {
-        (Some(http), Some(https)) => Some(http.min(https)),
-        (Some(http), None) => Some(http),
-        (None, Some(https)) => Some(https),
-        (None, None) => None,
-    }
-}
-
-/// Finds an ASCII substring without requiring matching case.
-///
-/// # Parameters
-///
-/// * `text` - Text to search.
-/// * `needle` - Non-empty ASCII substring to find.
-///
-/// # Returns
-///
-/// The first byte offset, or `None` when no match exists.
-fn find_ascii_case_insensitive(text: &str, needle: &str) -> Option<usize> {
-    let needle = needle.as_bytes();
-    if needle.is_empty() || text.len() < needle.len() {
-        return None;
-    }
-    text.as_bytes()
-        .windows(needle.len())
-        .position(|window| window.eq_ignore_ascii_case(needle))
-}
-
-/// Returns the previous UTF-8 boundary and character.
-///
-/// # Parameters
-///
-/// * `text` - Source UTF-8 text.
-/// * `end` - Current character boundary.
-///
-/// # Returns
-///
-/// The preceding byte offset and character, or `None` at the start.
-///
-/// # Panics
-///
-/// Panics when `end` is out of bounds or not a character boundary.
-#[inline(always)]
-fn previous_char_boundary(text: &str, end: usize) -> Option<(usize, char)> {
-    text[..end].char_indices().next_back()
-}
-
-/// Reports whether punctuation may be trimmed from the end of a URL token.
-///
-/// # Parameters
-///
-/// * `ch` - Candidate trailing character.
-///
-/// # Returns
-///
-/// `true` for punctuation commonly adjacent to URLs in prose.
-#[inline(always)]
-const fn is_trimmable_url_suffix(ch: char) -> bool {
-    matches!(ch, '.' | ',' | ';' | ':' | '!' | '?' | ')' | ']' | '}')
 }

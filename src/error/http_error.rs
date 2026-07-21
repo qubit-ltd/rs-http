@@ -63,7 +63,7 @@ impl fmt::Debug for HttpError {
             .field("method", &self.method)
             .field("url", &url)
             .field("status", &self.status)
-            .field("message", &message)
+            .field("message", &format_args!("{message}"))
             .field("response_body_preview_len", &response_body_preview_len)
             .field("retry_after", &self.retry_after)
             .field("source_present", &self.source.is_some())
