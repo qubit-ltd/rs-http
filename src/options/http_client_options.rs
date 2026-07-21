@@ -20,6 +20,10 @@ use qubit_config::{
     ConfigReader,
     ConfigResult,
 };
+use qubit_json::{
+    JsonDecodeOptions,
+    LenientJsonDecoder,
+};
 use qubit_redact::{
     http::UrlPathPolicy,
     RedactionPolicy,
@@ -566,7 +570,9 @@ impl HttpClientOptions {
         }
         if let Some(json_str) = json_headers {
             let parsed: HashMap<String, String> =
-                match serde_json::from_str(&json_str) {
+                match LenientJsonDecoder::new(JsonDecodeOptions::strict())
+                    .decode(&json_str)
+                {
                     Ok(parsed) => parsed,
                     Err(error) => {
                         return Err(HttpConfigError::type_error(
