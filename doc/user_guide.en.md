@@ -18,7 +18,7 @@ This guide is based on the current source code and tests. It applies to crate `q
 ```toml
 [dependencies]
 qubit-http = "0.10"
-qubit-redact = "0.1"
+qubit-redact = "0.3"
 http = "1.4"
 qubit-config = { path = "../rs-config", version = "0.14", default-features = false }
 serde = { version = "1", features = ["derive"] }
