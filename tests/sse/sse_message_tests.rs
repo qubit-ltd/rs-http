@@ -71,6 +71,25 @@ fn test_sse_message_decode_json_with_mode_lenient_returns_none_for_bad_json() {
 }
 
 #[test]
+fn test_sse_message_decode_json_with_mode_lenient_normalizes_control_characters() {
+    let message = SseMessage {
+        event: Some("response.output_text.delta".to_string()),
+        data: "{\"delta\":\"line\nbreak\"}".to_string(),
+        last_event_id: Some("evt-4".to_string()),
+    };
+
+    let payload = message
+        .decode_json_with_mode::<TestPayload>(SseJsonMode::Lenient)
+        .expect("lenient mode should repair supported JSON text");
+    assert_eq!(
+        payload,
+        Some(TestPayload {
+            delta: "line\nbreak".to_string(),
+        }),
+    );
+}
+
+#[test]
 fn test_sse_message_decode_json_redacts_deserializer_value() {
     const SECRET: &str = "SSE_TOP_SECRET";
     let message = SseMessage {

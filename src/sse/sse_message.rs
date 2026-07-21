@@ -71,7 +71,10 @@ impl SseMessage {
     ///
     /// # Returns
     /// - `Ok(Some(T))` when `data` is valid JSON for `T`.
-    /// - `Ok(None)` in lenient mode when JSON parsing fails.
+    /// - `Ok(Some(T))` in lenient mode when supported text normalization makes
+    ///   `data` valid JSON for `T`.
+    /// - `Ok(None)` in lenient mode when JSON remains invalid after
+    ///   normalization.
     ///
     /// # Errors
     /// Returns [`HttpError::sse_decode`] in strict mode when JSON parsing
@@ -85,7 +88,9 @@ impl SseMessage {
     {
         match mode {
             SseJsonMode::Strict => self.decode_json::<T>().map(Some),
-            SseJsonMode::Lenient => match self.decode_json::<T>() {
+            SseJsonMode::Lenient => match LenientJsonDecoder::default()
+                .decode::<T>(&self.data)
+            {
                 Ok(value) => Ok(Some(value)),
                 Err(_) => {
                     tracing::debug!(
