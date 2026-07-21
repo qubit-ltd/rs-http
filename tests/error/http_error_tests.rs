@@ -69,9 +69,9 @@ fn test_http_error_debug_redacts_url_tokens_with_punctuation() {
 }
 
 #[test]
-fn test_http_error_debug_redacts_first_url_scheme_inside_token() {
+fn test_http_error_debug_redacts_url_schemes_inside_token() {
     let error = HttpError::transport(
-        "failed prefixhttps://debug-user:debug-url-secret@example.com/path?accessToken=debug-query-secret/http://not-a-second-url",
+        "failed prefixhttps://debug-user:debug-url-secret@example.com/path?accessToken=debug-query-secret/http://second-user:second-secret@second.example/private",
     );
 
     let debug = format!("{error:?}");
@@ -79,7 +79,10 @@ fn test_http_error_debug_redacts_first_url_scheme_inside_token() {
     assert!(!debug.contains("debug-user"));
     assert!(!debug.contains("debug-url-secret"));
     assert!(!debug.contains("debug-query-secret"));
+    assert!(!debug.contains("second-user"));
+    assert!(!debug.contains("second-secret"));
     assert!(debug.contains("prefixhttps://****:%3Credacted%3E@example.com"));
+    assert!(debug.contains("http://****:%3Credacted%3E@second.example"));
 }
 
 #[test]
