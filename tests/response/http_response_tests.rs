@@ -186,6 +186,24 @@ async fn test_http_response_json_success_decodes_value() {
 }
 
 #[tokio::test]
+async fn test_http_response_json_rejects_markdown_fence() {
+    let mut response = HttpResponse::new(
+        StatusCode::OK,
+        HeaderMap::new(),
+        Bytes::from_static(b"```json\n{\"n\":42}\n```"),
+        Url::parse("https://example.com/json-fence").unwrap(),
+        Method::GET,
+    );
+
+    let error = response
+        .json::<serde_json::Value>()
+        .await
+        .expect_err("strict HTTP response JSON must reject Markdown fences");
+    assert_eq!(error.kind, HttpErrorKind::Decode);
+    assert_eq!(error.status, Some(StatusCode::OK));
+}
+
+#[tokio::test]
 async fn test_http_response_json_redacts_deserializer_value() {
     const SECRET: &str = "HTTP_TOP_SECRET";
     let mut response = HttpResponse::new(
