@@ -88,19 +88,19 @@ impl SseMessage {
     {
         match mode {
             SseJsonMode::Strict => self.decode_json::<T>().map(Some),
-            SseJsonMode::Lenient => match LenientJsonDecoder::default()
-                .decode::<T>(&self.data)
-            {
-                Ok(value) => Ok(Some(value)),
-                Err(_) => {
-                    tracing::debug!(
+            SseJsonMode::Lenient => {
+                match LenientJsonDecoder::default().decode::<T>(&self.data) {
+                    Ok(value) => Ok(Some(value)),
+                    Err(_) => {
+                        tracing::debug!(
                         "Skipping malformed SSE message JSON in lenient mode (event={:?}, last_event_id={:?})",
                         self.event,
                         self.last_event_id
                     );
-                    Ok(None)
+                        Ok(None)
+                    }
                 }
-            },
+            }
         }
     }
 }
