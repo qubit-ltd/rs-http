@@ -58,10 +58,7 @@ qubit-redact = { version = "0.3", path = "../rs-redact", default-features = fals
 [dev-dependencies]
 tokio = { version = "1.52", features = ["full", "test-util"] }
 tracing-subscriber = { version = "0.3", features = ["fmt"] }
-qubit-datatype = { path = "../rs-datatype", version = "0.8", default-features = false, features = ["converter"] }
-
-[patch.crates-io]
-qubit-datatype = { path = "../rs-datatype", version = "0.8" }
+qubit-datatype = { version = "0.8", default-features = false, features = ["converter"] }
 
 [package.metadata.docs.rs]
 all-features = true
