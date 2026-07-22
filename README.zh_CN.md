@@ -93,6 +93,9 @@ let client = HttpClientFactory::new().create(options)?;
 输出硬上限。截断 body 统一使用 `<truncated>` 标记；调用方知道源长度时，结果保留精确
 源长度元数据。配置只读取 `log_redaction` section，不兼容旧 key。
 
+`HttpError` 的 `Debug` 与 `Display` 都会应用同一套日志脱敏策略，因此常规错误格式化不会
+暴露 URL 中的敏感值。
+
 ## 后续阅读
 
 | 任务 | 阅读 |

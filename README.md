@@ -97,6 +97,9 @@ bodies use one generic `<truncated>` marker and retain exact source metadata
 when the caller knows it. Configuration uses only the `log_redaction` section;
 there is no compatibility path for the old key.
 
+`HttpError` applies the same log-redaction policy to both `Debug` and
+`Display`, so ordinary error formatting does not expose sensitive URL values.
+
 ## Common Next Steps
 
 | Task | Read |

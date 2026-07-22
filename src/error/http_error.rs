@@ -15,7 +15,6 @@ use http::{
     Method,
     StatusCode,
 };
-use thiserror::Error;
 use url::Url;
 
 use super::RetryHint;
@@ -26,8 +25,6 @@ use qubit_error::BoxError;
 use super::HttpErrorKind;
 
 /// Unified HTTP error type.
-#[derive(Error)]
-#[error("{message}")]
 pub struct HttpError {
     /// Error category.
     pub kind: HttpErrorKind,
@@ -44,10 +41,26 @@ pub struct HttpError {
     /// Optional `Retry-After` duration parsed from a non-success response.
     pub retry_after: Option<Duration>,
     /// Optional source error.
-    #[source]
     pub source: Option<BoxError>,
-    /// Policy used when rendering this error with [`Debug`](fmt::Debug).
+    /// Policy used when rendering this error with [`Debug`](fmt::Debug) or
+    /// [`Display`](fmt::Display).
     pub log_redaction_policy: Box<LogRedactionPolicy>,
+}
+
+impl fmt::Display for HttpError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let debugger = RedactedDebugger::new(&self.log_redaction_policy);
+        let message = debugger.diagnostic_text(&self.message);
+        fmt::Display::fmt(&message, formatter)
+    }
+}
+
+impl Error for HttpError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        self.source
+            .as_deref()
+            .map(|source| source as &(dyn Error + 'static))
+    }
 }
 
 impl fmt::Debug for HttpError {
@@ -173,7 +186,8 @@ impl HttpError {
         self
     }
 
-    /// Attaches the log redaction policy used by [`Debug`](fmt::Debug).
+    /// Attaches the log redaction policy used by [`Debug`](fmt::Debug) and
+    /// [`Display`](fmt::Display).
     ///
     /// # Parameters
     /// - `policy`: Policy whose custom sensitive names should be honored.
