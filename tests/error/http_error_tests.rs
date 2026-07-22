@@ -6,6 +6,8 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
+use std::error::Error;
+
 use http::StatusCode;
 use qubit_http::{
     HttpError,
@@ -117,6 +119,37 @@ fn test_http_error_debug_uses_custom_log_redaction_policy() {
 
     assert!(!debug.contains("debug-custom-secret"));
     assert!(debug.contains("customer_secret=****"));
+}
+
+#[test]
+fn test_http_error_display_masks_sensitive_url_values() {
+    let error = HttpError::transport(
+        "transport failed for https://display-user:display-password@example.com/path?access_token=display-secret",
+    );
+
+    let display = error.to_string();
+
+    assert!(!display.contains("display-user"));
+    assert!(!display.contains("display-password"));
+    assert!(!display.contains("display-secret"));
+    assert!(display.contains("****"));
+}
+
+#[test]
+fn test_http_error_display_uses_custom_log_redaction_policy() {
+    let policy = LogRedactionPolicy::builder()
+        .raise_query("customer_secret", Sensitivity::High)
+        .build()
+        .expect("log redaction policy should be valid");
+    let error = HttpError::transport(
+        "transport failed for https://example.com/path?customer_secret=display-custom-secret&visible=ok",
+    )
+    .with_log_redaction_policy(policy);
+
+    let display = error.to_string();
+
+    assert!(!display.contains("display-custom-secret"));
+    assert!(display.contains("customer_secret=****"));
 }
 
 #[test]
@@ -233,6 +266,7 @@ fn test_http_error_from_io_error_maps_to_transport_with_source() {
     assert_eq!(error.kind, HttpErrorKind::Transport);
     assert!(error.message.contains("disk gone"));
     assert!(error.source.is_some());
+    assert!(Error::source(&error).is_some());
 }
 
 #[test]
