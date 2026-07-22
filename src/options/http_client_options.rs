@@ -706,7 +706,7 @@ impl HttpClientOptions {
     where
         R: ConfigReader + ?Sized,
     {
-        let section_path = config.resolve_key("");
+        let section_path = config.scope_path().to_owned();
         error.path = if error.path.is_empty() {
             section_path
         } else if section_path.is_empty()
@@ -894,10 +894,9 @@ impl HttpClientOptions {
         field: &str,
         name: &str,
     ) -> Result<(), HttpConfigError> {
-        RedactionPolicyBuilder::validate_field_name(name)
-            .map_err(|error| {
-                HttpConfigError::invalid_value(field, error.to_string())
-            })
+        RedactionPolicyBuilder::validate_field_name(name).map_err(|error| {
+            HttpConfigError::invalid_value(field, error.to_string())
+        })
     }
 
     fn validate_positive_limit(

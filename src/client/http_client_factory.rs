@@ -187,7 +187,7 @@ impl HttpClientFactory {
         self.create(options).map_err(|e| {
             HttpConfigError::new(
                 crate::HttpConfigErrorKind::InvalidValue,
-                config.resolve_key(""),
+                config.scope_path(),
                 e.to_string(),
             )
         })
@@ -201,7 +201,7 @@ fn resolve_config_error<R>(
 where
     R: ConfigReader + ?Sized,
 {
-    let section_path = config.resolve_key("");
+    let section_path = config.scope_path().to_owned();
     error.path = if error.path.is_empty() {
         section_path
     } else if section_path.is_empty()
