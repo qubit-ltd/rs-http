@@ -345,6 +345,24 @@ fn test_http_client_options_default_headers_invalid_json() {
 }
 
 #[test]
+fn test_http_client_options_default_headers_json_form_rejects_markdown_fence() {
+    let mut config = Config::new();
+    config
+        .set(
+            "http.default_headers",
+            "```json\n{\"x-app-id\":\"my-app\"}\n```".to_string(),
+        )
+        .unwrap();
+
+    let error = HttpClientOptions::from_config(&config.section("http"))
+        .expect_err("strict default_headers JSON must reject Markdown fences");
+    assert_eq!(error.kind, HttpConfigErrorKind::TypeError);
+    assert!(error
+        .message
+        .starts_with("Failed to parse default_headers JSON:"));
+}
+
+#[test]
 fn test_http_client_options_invalid_header_name() {
     let mut config = Config::new();
     config
