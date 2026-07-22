@@ -20,7 +20,8 @@ use serde::{
 #[serde(rename_all = "snake_case")]
 #[display(style = "snake_case")]
 pub enum SseJsonMode {
-    /// Apply supported JSON normalization, then skip chunks that remain invalid.
+    /// Apply supported JSON normalization, then skip chunks that remain
+    /// invalid.
     #[from_str(regex = "(?i)lenient")]
     Lenient,
     /// Propagate [`crate::HttpError::sse_decode`] on first failure.

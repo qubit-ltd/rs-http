@@ -186,7 +186,6 @@ impl LogRedactor {
     ) -> qubit_redact::LogSafeText<'static> {
         self.http_redactor.redact_urls_in_text(text)
     }
-
 }
 
 impl Default for LogRedactor {

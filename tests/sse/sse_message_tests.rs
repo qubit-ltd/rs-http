@@ -71,7 +71,8 @@ fn test_sse_message_decode_json_with_mode_lenient_returns_none_for_bad_json() {
 }
 
 #[test]
-fn test_sse_message_decode_json_with_mode_lenient_normalizes_control_characters() {
+fn test_sse_message_decode_json_with_mode_lenient_normalizes_control_characters(
+) {
     let message = SseMessage {
         event: Some("response.output_text.delta".to_string()),
         data: "{\"delta\":\"line\nbreak\"}".to_string(),
