@@ -20,6 +20,8 @@ use qubit_http::{
     sse::SseReconnectOptions,
     HttpResponse,
     HttpResult,
+};
+use qubit_retry::{
     RetryDelay,
     RetryJitter,
 };

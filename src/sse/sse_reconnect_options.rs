@@ -9,7 +9,7 @@
 
 use std::time::Duration;
 
-use crate::{
+use qubit_retry::{
     RetryDelay,
     RetryJitter,
     RetryOptions,

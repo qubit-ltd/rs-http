@@ -34,6 +34,8 @@ use qubit_http::{
     HttpErrorKind,
     HttpRequestInterceptor,
     HttpResponseInterceptor,
+};
+use qubit_retry::{
     RetryDelay,
     RetryJitter,
     RetryOptions,

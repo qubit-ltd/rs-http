@@ -52,11 +52,6 @@ pub use options::{
     ProxyOptions,
     ProxyType,
 };
-pub use qubit_retry::{
-    RetryDelay,
-    RetryJitter,
-    RetryOptions,
-};
 pub use redact::{
     LogRedactionPolicy,
     LogRedactionPolicyBuilder,

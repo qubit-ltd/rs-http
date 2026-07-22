@@ -37,12 +37,12 @@ use qubit_http::{
     HttpResponseInterceptor,
     HttpRetryMethodPolicy,
     LogRedactionPolicy,
-    RetryDelay,
 };
 use qubit_redact::{
     http::TextBodyPolicy,
     Sensitivity,
 };
+use qubit_retry::RetryDelay;
 use tokio::time::timeout;
 
 use crate::common::{

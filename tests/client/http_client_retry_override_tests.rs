@@ -27,8 +27,8 @@ use qubit_http::{
     HttpClientOptions,
     HttpErrorKind,
     HttpRetryMethodPolicy,
-    RetryDelay,
 };
+use qubit_retry::RetryDelay;
 use tokio::time::timeout;
 
 use crate::common::{

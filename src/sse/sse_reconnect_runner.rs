@@ -38,8 +38,10 @@ use crate::{
     HttpResponse,
     HttpResult,
     LogRedactionPolicy,
-    RetryDelay,
     RetryHint,
+};
+use qubit_retry::{
+    RetryDelay,
     RetryOptions,
 };
 

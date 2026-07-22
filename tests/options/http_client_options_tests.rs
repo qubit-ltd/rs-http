@@ -32,12 +32,12 @@ use qubit_http::{
     HttpRetryOptions,
     LogRedactionPolicy,
     ProxyType,
-    RetryDelay,
 };
 use qubit_redact::{
     http::UrlPathPolicy,
     Sensitivity,
 };
+use qubit_retry::RetryDelay;
 
 #[test]
 fn test_http_client_options_defaults() {
