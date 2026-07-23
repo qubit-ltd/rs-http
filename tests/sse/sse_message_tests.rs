@@ -13,7 +13,10 @@ use qubit_http::sse::{
 };
 use qubit_http::HttpErrorKind;
 
-use crate::common::SensitiveChoice;
+use crate::common::{
+    SensitiveChoice,
+    capture_trace_logs,
+};
 
 #[derive(Debug, serde::Deserialize, PartialEq, Eq)]
 struct TestPayload {
@@ -68,6 +71,29 @@ fn test_sse_message_decode_json_with_mode_lenient_returns_none_for_bad_json() {
         .decode_json_with_mode::<TestPayload>(SseJsonMode::Lenient)
         .expect("lenient mode should not fail");
     assert!(payload.is_none());
+}
+
+#[test]
+fn test_sse_message_decode_json_with_mode_lenient_logs_redacted_diagnostics() {
+    const SECRET: &str = "SSE_LOG_SECRET";
+    let message = SseMessage {
+        event: Some("response.output_text.delta".to_string()),
+        data: SECRET.to_string(),
+        last_event_id: Some("evt-log".to_string()),
+    };
+
+    let logs = capture_trace_logs(|| {
+        let payload = message
+            .decode_json_with_mode::<TestPayload>(SseJsonMode::Lenient)
+            .expect("lenient mode should skip malformed JSON");
+        assert!(payload.is_none());
+    });
+
+    assert!(logs.contains("error_kind=invalid_json"));
+    assert!(logs.contains("error_stage=parse"));
+    assert!(logs.contains("event=Some(\"response.output_text.delta\")"));
+    assert!(logs.contains("last_event_id=Some(\"evt-log\")"));
+    assert!(!logs.contains(SECRET));
 }
 
 #[test]
