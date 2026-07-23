@@ -58,7 +58,7 @@ qubit-redact = { version = "0.3", path = "../rs-redact", default-features = fals
 [dev-dependencies]
 tokio = { version = "1.52", features = ["full", "test-util"] }
 tracing-subscriber = { version = "0.3", features = ["fmt"] }
-qubit-datatype = { version = "0.9", default-features = false, features = ["converter"] }
+qubit-datatype = { version = "0.9", path = "../rs-datatype", default-features = false, features = ["converter"] }
 
 [package.metadata.docs.rs]
 all-features = true
