@@ -13,6 +13,7 @@ use qubit_http::{
 use qubit_redact::{
     http::{
         BodyBudget,
+        DiagnosticBudget,
         UnkeyedJsonValuePolicy,
     },
     PolicyError,
@@ -22,10 +23,13 @@ use qubit_redact::{
 /// Verifies that log policy construction consumes an immutable builder.
 #[test]
 fn test_log_redaction_policy_is_built_immutably() {
+    let diagnostic_budget = DiagnosticBudget::new(512, 384)
+        .expect("diagnostic budget should be valid");
     let policy = LogRedactionPolicy::builder()
         .raise_header("x-tenant-secret", Sensitivity::Secret)
         .allow_query_exact("public_token")
         .body_budget(BodyBudget::new(128, 256).expect("budget should be valid"))
+        .diagnostic_budget(diagnostic_budget)
         .build()
         .expect("policy should be valid");
 
@@ -43,6 +47,7 @@ fn test_log_redaction_policy_is_built_immutably() {
             .sensitivity_for("public_token"),
         None,
     );
+    assert_eq!(policy.http_policy().diagnostic_budget(), diagnostic_budget,);
 }
 
 /// Verifies that default log policy delegates to the runtime HTTP default.

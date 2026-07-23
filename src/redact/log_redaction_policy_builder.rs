@@ -10,6 +10,7 @@
 use qubit_redact::{
     http::{
         BodyBudget,
+        DiagnosticBudget,
         HttpRedactionPolicy,
         HttpRedactionPolicyBuilder,
         TextBodyPolicy,
@@ -188,6 +189,21 @@ impl LogRedactionPolicyBuilder {
     #[inline(always)]
     pub fn body_budget(mut self, budget: BodyBudget) -> Self {
         self.http = self.http.body_budget(budget);
+        self
+    }
+
+    /// Sets checked hard diagnostic input and output limits.
+    ///
+    /// # Parameters
+    ///
+    /// * `budget` - Previously validated hard byte limits.
+    ///
+    /// # Returns
+    ///
+    /// The updated builder.
+    #[inline(always)]
+    pub fn diagnostic_budget(mut self, budget: DiagnosticBudget) -> Self {
+        self.http = self.http.diagnostic_budget(budget);
         self
     }
 
