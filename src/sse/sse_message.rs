@@ -91,12 +91,16 @@ impl SseMessage {
             SseJsonMode::Lenient => {
                 match LenientJsonDecoder::default().decode::<T>(&self.data) {
                     Ok(value) => Ok(Some(value)),
-                    Err(_) => {
+                    Err(error) => {
                         tracing::debug!(
-                        "Skipping malformed SSE message JSON in lenient mode (event={:?}, last_event_id={:?})",
-                        self.event,
-                        self.last_event_id
-                    );
+                            error_kind = %error.kind(),
+                            error_stage = %error.stage(),
+                            normalized_line = ?error.normalized_line(),
+                            normalized_column = ?error.normalized_column(),
+                            event = ?self.event,
+                            last_event_id = ?self.last_event_id,
+                            "Skipping malformed SSE message JSON in lenient mode",
+                        );
                         Ok(None)
                     }
                 }
