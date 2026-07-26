@@ -122,6 +122,7 @@ impl RedactedLogger {
                 self.body_size_limit,
                 content_type,
             )
-            .to_string()
+            .into_log_safe_text()
+            .into_owned()
     }
 }
