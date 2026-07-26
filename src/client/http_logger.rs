@@ -232,7 +232,7 @@ impl<'a> HttpLogger<'a> {
         request
             .resolved_url()
             .map(|url| self.redacted_logger.url(&url))
-            .map(|url| url.to_string())
+            .map(|url| url.into_owned())
             .unwrap_or_else(|_| UNRESOLVED_REQUEST_URL.to_string())
     }
 

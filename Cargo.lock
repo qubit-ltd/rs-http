@@ -906,8 +906,16 @@ name = "qubit-clock"
 version = "0.10.0"
 dependencies = [
  "pin-project-lite",
+ "qubit-collections",
  "thiserror",
  "tokio",
+]
+
+[[package]]
+name = "qubit-collections"
+version = "0.1.0"
+dependencies = [
+ "hashbrown 0.17.1",
 ]
 
 [[package]]
@@ -929,7 +937,6 @@ version = "0.9.0"
 dependencies = [
  "serde",
  "serde_json",
- "strum",
  "thiserror",
 ]
 
