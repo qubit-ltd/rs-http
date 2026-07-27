@@ -8,15 +8,10 @@
 //! Strictness for JSON parsing on SSE `data:` lines.
 
 use parse_display::FromStr as DeriveFromStr;
-use serde::{
-    Deserialize,
-    Serialize,
-};
+use serde::{Deserialize, Serialize};
 
 /// How to handle JSON parse failures on SSE `data:` lines.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, DeriveFromStr,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, DeriveFromStr)]
 #[serde(rename_all = "snake_case")]
 #[display(style = "snake_case")]
 pub enum SseJsonMode {

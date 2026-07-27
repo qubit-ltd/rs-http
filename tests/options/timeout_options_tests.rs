@@ -9,17 +9,12 @@
 use std::time::Duration;
 
 use qubit_config::Config;
-use qubit_http::{
-    HttpConfigErrorKind,
-    HttpTimeoutOptions,
-};
+use qubit_http::{HttpConfigErrorKind, HttpTimeoutOptions};
 
 #[test]
 fn test_timeout_options_defaults_when_no_keys() {
     let config = Config::new();
-    let opts =
-        HttpTimeoutOptions::from_config(&config.section("http.timeouts"))
-            .unwrap();
+    let opts = HttpTimeoutOptions::from_config(&config.section("http.timeouts")).unwrap();
     assert_eq!(opts, HttpTimeoutOptions::default());
 }
 
@@ -39,9 +34,7 @@ fn test_timeout_options_all_fields() {
         .set("http.timeouts.request_timeout", Duration::from_secs(60))
         .unwrap();
 
-    let opts =
-        HttpTimeoutOptions::from_config(&config.section("http.timeouts"))
-            .unwrap();
+    let opts = HttpTimeoutOptions::from_config(&config.section("http.timeouts")).unwrap();
     assert_eq!(opts.connect_timeout, Duration::from_secs(5));
     assert_eq!(opts.read_timeout, Duration::from_secs(30));
     assert_eq!(opts.write_timeout, Duration::from_secs(20));
@@ -77,8 +70,7 @@ fn test_timeout_options_invalid_type_is_prefixed() {
     let mut config = Config::new();
     config.set("t.connect_timeout", "invalid").unwrap();
 
-    let err =
-        HttpTimeoutOptions::from_config(&config.section("t")).unwrap_err();
+    let err = HttpTimeoutOptions::from_config(&config.section("t")).unwrap_err();
 
     assert_eq!(err.path, "t.connect_timeout");
 }
@@ -88,8 +80,7 @@ fn test_timeout_options_invalid_read_timeout_type_is_prefixed() {
     let mut config = Config::new();
     config.set("t.read_timeout", "invalid").unwrap();
 
-    let err =
-        HttpTimeoutOptions::from_config(&config.section("t")).unwrap_err();
+    let err = HttpTimeoutOptions::from_config(&config.section("t")).unwrap_err();
 
     assert_eq!(err.kind, HttpConfigErrorKind::TypeError);
     assert_eq!(err.path, "t.read_timeout");
@@ -100,8 +91,7 @@ fn test_timeout_options_invalid_write_timeout_type_is_prefixed() {
     let mut config = Config::new();
     config.set("t.write_timeout", "invalid").unwrap();
 
-    let err =
-        HttpTimeoutOptions::from_config(&config.section("t")).unwrap_err();
+    let err = HttpTimeoutOptions::from_config(&config.section("t")).unwrap_err();
 
     assert_eq!(err.kind, HttpConfigErrorKind::TypeError);
     assert_eq!(err.path, "t.write_timeout");
@@ -129,8 +119,7 @@ fn test_timeout_options_from_config_rejects_zero_request_timeout() {
         .set("t.request_timeout", Duration::ZERO)
         .expect("test config should set request_timeout");
 
-    let err =
-        HttpTimeoutOptions::from_config(&config.section("t")).unwrap_err();
+    let err = HttpTimeoutOptions::from_config(&config.section("t")).unwrap_err();
     assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
     assert_eq!(err.path, "request_timeout");
 }

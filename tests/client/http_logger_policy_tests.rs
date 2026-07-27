@@ -7,44 +7,19 @@
 // =============================================================================
 
 use bytes::Bytes;
-use futures_util::{
-    stream,
-    StreamExt,
-};
-use http::header::{
-    AUTHORIZATION,
-    CONTENT_TYPE,
-    SET_COOKIE,
-};
-use http::{
-    HeaderMap,
-    HeaderValue,
-    Method,
-    StatusCode,
-};
+use futures_util::{stream, StreamExt};
+use http::header::{AUTHORIZATION, CONTENT_TYPE, SET_COOKIE};
+use http::{HeaderMap, HeaderValue, Method, StatusCode};
 use qubit_http::{
-    HttpClientFactory,
-    HttpClientOptions,
-    HttpErrorKind,
-    HttpLogger,
-    HttpLoggingOptions,
-    HttpRequest,
-    HttpRequestBody,
-    HttpRequestBodyByteStream,
-    HttpResponse,
-    HttpResponseMeta,
+    HttpClientFactory, HttpClientOptions, HttpErrorKind, HttpLogger, HttpLoggingOptions,
+    HttpRequest, HttpRequestBody, HttpRequestBodyByteStream, HttpResponse, HttpResponseMeta,
     LogRedactionPolicy,
 };
 use qubit_redact::http::TextBodyPolicy;
 use tokio::time::timeout;
 use url::Url;
 
-use crate::common::{
-    capture_trace_logs,
-    spawn_one_shot_server,
-    ResponseChunk,
-    ResponsePlan,
-};
+use crate::common::{capture_trace_logs, spawn_one_shot_server, ResponseChunk, ResponsePlan};
 
 fn logging_request(
     method: Method,
@@ -175,7 +150,9 @@ fn test_log_response_masks_sensitive_response_url() {
             .expect("response logging should succeed");
     });
 
-    assert!(logs.contains("<-- 200 https://example.com/%3Credacted%3E?password=%3Credacted%3E&access_token=****"));
+    assert!(logs.contains(
+        "<-- 200 https://example.com/%3Credacted%3E?password=%3Credacted%3E&access_token=****"
+    ));
     assert!(!logs.contains("secret"));
 }
 
@@ -250,9 +227,7 @@ fn test_log_stream_response_headers_respects_toggle() {
         );
         logger.log_stream_response_headers(&response_meta);
     });
-    assert!(
-        logs.contains("<-- 200 https://example.com/%3Credacted%3E (stream)")
-    );
+    assert!(logs.contains("<-- 200 https://example.com/%3Credacted%3E (stream)"));
     assert!(!logs.contains("text/event-stream"));
 }
 
@@ -272,9 +247,7 @@ fn test_log_request_includes_builder_query_params() {
         logger.log_request(&request);
     });
 
-    assert!(logs.contains(
-        "--> GET https://example.com/%3Credacted%3E?existing=1&added=two+words"
-    ));
+    assert!(logs.contains("--> GET https://example.com/%3Credacted%3E?existing=1&added=two+words"));
 }
 
 #[test]
@@ -346,9 +319,7 @@ fn test_log_request_non_utf8_content_type_redacts_body() {
         logger.log_request(&request);
     });
 
-    assert!(
-        logs.contains("Request body: <redacted: invalid content type body>")
-    );
+    assert!(logs.contains("Request body: <redacted: invalid content type body>"));
     assert!(!logs.contains("unclassified-request-secret"));
 }
 
@@ -364,8 +335,7 @@ fn test_log_response_text_body_redacts_by_default() {
             StatusCode::OK,
             headers,
             Bytes::from_static(b"trace-response-secret"),
-            Url::parse("https://example.com/text")
-                .expect("response URL should parse"),
+            Url::parse("https://example.com/text").expect("response URL should parse"),
             Method::GET,
         );
         let runtime = tokio::runtime::Builder::new_current_thread()
@@ -393,10 +363,7 @@ fn test_log_request_stream_body_logged_as_skipped() {
         Method::POST,
         "https://example.com/stream-upload",
         headers,
-        HttpRequestBody::Stream(vec![
-            Bytes::from_static(b"a"),
-            Bytes::from_static(b"b"),
-        ]),
+        HttpRequestBody::Stream(vec![Bytes::from_static(b"a"), Bytes::from_static(b"b")]),
     );
     let logs = capture_trace_logs(|| {
         logger.log_request(&request);
@@ -419,9 +386,8 @@ fn test_log_request_streaming_body_logged_as_skipped() {
         .request(Method::POST, "https://example.com/streaming-upload")
         .streaming_body(|| {
             Box::pin(async move {
-                Box::pin(stream::iter([Ok(Bytes::from_static(
-                    b"secret-stream",
-                ))])) as HttpRequestBodyByteStream
+                Box::pin(stream::iter([Ok(Bytes::from_static(b"secret-stream"))]))
+                    as HttpRequestBodyByteStream
             })
         })
         .build();
@@ -461,15 +427,14 @@ fn test_execute_returns_body_read_error_from_response_logging() {
             .build()
             .expect("failed to build tokio runtime");
         runtime.block_on(async {
-            let server =
-                spawn_one_shot_server(ResponsePlan::PartialThenDelay {
-                    status: 200,
-                    headers: vec![],
-                    total_length: 64,
-                    prefix: b"partial-body".to_vec(),
-                    delay: std::time::Duration::from_millis(5),
-                })
-                .await;
+            let server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
+                status: 200,
+                headers: vec![],
+                total_length: 64,
+                prefix: b"partial-body".to_vec(),
+                delay: std::time::Duration::from_millis(5),
+            })
+            .await;
 
             let mut options = HttpClientOptions::default();
             options.base_url = Some(server.base_url());
@@ -481,13 +446,10 @@ fn test_execute_returns_body_read_error_from_response_logging() {
             let request = client
                 .request(Method::GET, "/trace-body-read-error")
                 .build();
-            let error = timeout(
-                std::time::Duration::from_secs(3),
-                client.execute(request),
-            )
-            .await
-            .expect("execute timed out")
-            .expect_err("response logging should surface body read failure");
+            let error = timeout(std::time::Duration::from_secs(3), client.execute(request))
+                .await
+                .expect("execute timed out")
+                .expect_err("response logging should surface body read failure");
             assert_eq!(error.kind, HttpErrorKind::Transport);
             assert_eq!(error.method, Some(Method::GET));
             assert!(error
@@ -495,10 +457,9 @@ fn test_execute_returns_body_read_error_from_response_logging() {
                 .as_ref()
                 .is_some_and(|url| url.path() == "/trace-body-read-error"));
 
-            let captured =
-                timeout(std::time::Duration::from_secs(3), server.finish())
-                    .await
-                    .expect("server finish timed out");
+            let captured = timeout(std::time::Duration::from_secs(3), server.finish())
+                .await
+                .expect("server finish timed out");
             assert_eq!(captured.target, "/trace-body-read-error");
         });
     });
@@ -515,10 +476,7 @@ fn test_execute_skips_trace_response_body_for_streaming_or_unknown_size_body() {
         runtime.block_on(async {
             let server = spawn_one_shot_server(ResponsePlan::Chunked {
                 status: 200,
-                headers: vec![(
-                    "Content-Type".to_string(),
-                    "text/plain".to_string(),
-                )],
+                headers: vec![("Content-Type".to_string(), "text/plain".to_string())],
                 chunks: vec![
                     ResponseChunk {
                         delay: std::time::Duration::ZERO,
@@ -535,23 +493,17 @@ fn test_execute_skips_trace_response_body_for_streaming_or_unknown_size_body() {
 
             let mut options = HttpClientOptions::default();
             options.base_url = Some(server.base_url());
-            options.timeouts.read_timeout =
-                std::time::Duration::from_millis(80);
+            options.timeouts.read_timeout = std::time::Duration::from_millis(80);
             let client = HttpClientFactory::new()
                 .create(options)
                 .expect("client should be created");
 
-            let request =
-                client.request(Method::GET, "/trace-streaming").build();
-            let mut response = timeout(
-                std::time::Duration::from_secs(3),
-                client.execute(request),
-            )
-            .await
-            .expect("execute timed out")
-            .expect("request should start");
-            let mut stream =
-                response.stream().expect("stream body should be available");
+            let request = client.request(Method::GET, "/trace-streaming").build();
+            let mut response = timeout(std::time::Duration::from_secs(3), client.execute(request))
+                .await
+                .expect("execute timed out")
+                .expect("request should start");
+            let mut stream = response.stream().expect("stream body should be available");
             let first = stream
                 .next()
                 .await
@@ -570,8 +522,7 @@ fn test_execute_skips_trace_response_body_for_streaming_or_unknown_size_body() {
                 .expect("server finish timed out");
         });
     });
-    assert!(logs
-        .contains("Response body: <skipped: streaming or unknown-size body>"));
+    assert!(logs.contains("Response body: <skipped: streaming or unknown-size body>"));
 }
 
 #[test]
@@ -603,24 +554,19 @@ fn test_execute_logs_response_body_when_content_type_only_has_sse_prefix() {
                 .create(options)
                 .expect("client should be created");
 
-            let request =
-                client.request(Method::GET, "/trace-not-sse-prefix").build();
-            let mut response = timeout(
-                std::time::Duration::from_secs(3),
-                client.execute(request),
-            )
-            .await
-            .expect("execute timed out")
-            .expect("request should succeed");
+            let request = client.request(Method::GET, "/trace-not-sse-prefix").build();
+            let mut response = timeout(std::time::Duration::from_secs(3), client.execute(request))
+                .await
+                .expect("execute timed out")
+                .expect("request should succeed");
             assert_eq!(
                 response.text().await.expect("body should remain readable"),
                 "not an sse response"
             );
 
-            let captured =
-                timeout(std::time::Duration::from_secs(3), server.finish())
-                    .await
-                    .expect("server finish timed out");
+            let captured = timeout(std::time::Duration::from_secs(3), server.finish())
+                .await
+                .expect("server finish timed out");
             assert_eq!(captured.target, "/trace-not-sse-prefix");
         });
     });
@@ -637,8 +583,7 @@ fn test_log_stream_response_headers_disabled_emits_nothing() {
     let response_meta = HttpResponseMeta::new(
         StatusCode::OK,
         HeaderMap::new(),
-        Url::parse("https://example.com/stream-disabled")
-            .expect("URL should parse"),
+        Url::parse("https://example.com/stream-disabled").expect("URL should parse"),
         Method::GET,
     );
 
@@ -653,8 +598,7 @@ fn test_log_stream_response_headers_logs_non_utf8_header_values() {
     let mut headers = HeaderMap::new();
     headers.insert(
         "x-bin",
-        HeaderValue::from_bytes(&[0xFF, 0xFE])
-            .expect("header bytes should be accepted"),
+        HeaderValue::from_bytes(&[0xFF, 0xFE]).expect("header bytes should be accepted"),
     );
     let mut client_options = HttpClientOptions::default();
     client_options.logging = HttpLoggingOptions::default();
@@ -662,17 +606,14 @@ fn test_log_stream_response_headers_logs_non_utf8_header_values() {
     let response_meta = HttpResponseMeta::new(
         StatusCode::OK,
         headers,
-        Url::parse("https://example.com/stream-non-utf8")
-            .expect("URL should parse"),
+        Url::parse("https://example.com/stream-non-utf8").expect("URL should parse"),
         Method::GET,
     );
 
     let logs = capture_trace_logs(|| {
         logger.log_stream_response_headers(&response_meta);
     });
-    assert!(
-        logs.contains("<-- 200 https://example.com/%3Credacted%3E (stream)")
-    );
+    assert!(logs.contains("<-- 200 https://example.com/%3Credacted%3E (stream)"));
     assert!(logs.contains("x-bin: [<non-utf8>]"));
 }
 
@@ -688,8 +629,7 @@ fn test_log_stream_response_headers_masks_native_sensitive_value() {
     let response_meta = HttpResponseMeta::new(
         StatusCode::OK,
         headers,
-        Url::parse("https://example.com/stream-sensitive")
-            .expect("URL should parse"),
+        Url::parse("https://example.com/stream-sensitive").expect("URL should parse"),
         Method::GET,
     );
 
@@ -746,10 +686,7 @@ fn test_log_request_logs_json_form_multipart_ndjson_and_empty_bodies() {
 
     let ndjson_request = client
         .request(Method::POST, "https://example.com/ndjson-body")
-        .ndjson_body(&[
-            serde_json::json!({"id": 1}),
-            serde_json::json!({"id": 2}),
-        ])
+        .ndjson_body(&[serde_json::json!({"id": 1}), serde_json::json!({"id": 2})])
         .expect("ndjson body should serialize")
         .build();
     let ndjson_logs = capture_trace_logs(|| {
@@ -778,8 +715,7 @@ fn test_log_response_empty_body_renders_empty_placeholder() {
             StatusCode::OK,
             HeaderMap::new(),
             Bytes::new(),
-            Url::parse("https://example.com/empty-response")
-                .expect("URL should parse"),
+            Url::parse("https://example.com/empty-response").expect("URL should parse"),
             Method::GET,
         );
         let runtime = tokio::runtime::Builder::new_current_thread()
@@ -814,8 +750,7 @@ fn test_execute_logs_response_body_from_backend_when_trace_enabled() {
             let client = HttpClientFactory::new()
                 .create(options)
                 .expect("client should be created");
-            let request =
-                client.request(Method::GET, "/logger-backend-path").build();
+            let request = client.request(Method::GET, "/logger-backend-path").build();
             let mut response = client
                 .execute(request)
                 .await
@@ -863,10 +798,7 @@ fn test_log_response_skips_body_when_backend_already_consumed() {
         runtime.block_on(async {
             let server = spawn_one_shot_server(ResponsePlan::Immediate {
                 status: 200,
-                headers: vec![(
-                    "Content-Type".to_string(),
-                    "text/plain".to_string(),
-                )],
+                headers: vec![("Content-Type".to_string(), "text/plain".to_string())],
                 body: b"already-consumed".to_vec(),
             })
             .await;
@@ -877,15 +809,13 @@ fn test_log_response_skips_body_when_backend_already_consumed() {
             let client = HttpClientFactory::new()
                 .create(options)
                 .expect("client should be created");
-            let request =
-                client.request(Method::GET, "/consumed-backend").build();
+            let request = client.request(Method::GET, "/consumed-backend").build();
             let mut response = client
                 .execute(request)
                 .await
                 .expect("request should succeed");
 
-            let mut stream =
-                response.stream().expect("stream should be available");
+            let mut stream = response.stream().expect("stream should be available");
             let _ = stream
                 .next()
                 .await
@@ -906,8 +836,7 @@ fn test_log_response_skips_body_when_backend_already_consumed() {
             assert_eq!(captured.target, "/consumed-backend");
         });
     });
-    assert!(logs
-        .contains("Response body: <skipped: streaming or unknown-size body>"));
+    assert!(logs.contains("Response body: <skipped: streaming or unknown-size body>"));
 }
 
 #[test]
@@ -953,6 +882,5 @@ fn test_log_response_skips_body_for_sse_content_type() {
             assert_eq!(captured.target, "/sse-log-skip");
         });
     });
-    assert!(logs
-        .contains("Response body: <skipped: streaming or unknown-size body>"));
+    assert!(logs.contains("Response body: <skipped: streaming or unknown-size body>"));
 }

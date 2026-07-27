@@ -8,16 +8,8 @@
 
 use bytes::Bytes;
 use http::header::RETRY_AFTER;
-use http::{
-    HeaderMap,
-    HeaderValue,
-    Method,
-    StatusCode,
-};
-use qubit_http::{
-    HttpErrorKind,
-    HttpResponse,
-};
+use http::{HeaderMap, HeaderValue, Method, StatusCode};
+use qubit_http::{HttpErrorKind, HttpResponse};
 use url::Url;
 
 use crate::common::SensitiveChoice;
@@ -47,8 +39,10 @@ fn test_http_response_debug_masks_sensitive_values() {
         "set-cookie",
         HeaderValue::from_static("session=debug-cookie-secret"),
     );
-    let mut url = Url::parse("https://debug-user:debug-url-secret@example.com/data?access_token=debug-query-secret")
-        .expect("URL should parse");
+    let mut url = Url::parse(
+        "https://debug-user:debug-url-secret@example.com/data?access_token=debug-query-secret",
+    )
+    .expect("URL should parse");
     url.set_fragment(Some("debug-fragment-secret"));
     let response = HttpResponse::new(
         StatusCode::OK,
@@ -128,8 +122,7 @@ fn test_http_response_meta_accessor_returns_shared_metadata() {
 }
 
 #[test]
-fn test_http_response_retry_after_hint_handles_applicable_status_and_past_date()
-{
+fn test_http_response_retry_after_hint_handles_applicable_status_and_past_date() {
     let mut headers = HeaderMap::new();
     headers.insert(
         RETRY_AFTER,
@@ -210,8 +203,7 @@ async fn test_http_response_json_redacts_deserializer_value() {
         StatusCode::OK,
         HeaderMap::new(),
         Bytes::from(format!("\"{SECRET}\"")),
-        Url::parse("https://example.com/secure-json")
-            .expect("test URL must parse"),
+        Url::parse("https://example.com/secure-json").expect("test URL must parse"),
         Method::GET,
     );
     let error = response
@@ -222,14 +214,10 @@ async fn test_http_response_json_redacts_deserializer_value() {
     assert_eq!(error.status, Some(StatusCode::OK));
     assert_eq!(
         error.url,
-        Some(
-            Url::parse("https://example.com/secure-json")
-                .expect("test URL must parse")
-        )
+        Some(Url::parse("https://example.com/secure-json").expect("test URL must parse"))
     );
-    let source = std::error::Error::source(&error).expect(
-        "HTTP JSON decode errors must retain the redacted decoder source",
-    );
+    let source = std::error::Error::source(&error)
+        .expect("HTTP JSON decode errors must retain the redacted decoder source");
     let decode_error = source
         .downcast_ref::<qubit_json::JsonDecodeError>()
         .expect("HTTP JSON decode source must be JsonDecodeError");

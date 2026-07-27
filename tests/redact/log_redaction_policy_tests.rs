@@ -6,25 +6,17 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use qubit_http::{
-    LogRedactionPolicy,
-    LogRedactionPolicyBuilder,
-};
+use qubit_http::{LogRedactionPolicy, LogRedactionPolicyBuilder};
 use qubit_redact::{
-    http::{
-        BodyBudget,
-        DiagnosticBudget,
-        UnkeyedJsonValuePolicy,
-    },
-    PolicyError,
-    Sensitivity,
+    http::{BodyBudget, DiagnosticBudget, UnkeyedJsonValuePolicy},
+    PolicyError, Sensitivity,
 };
 
 /// Verifies that log policy construction consumes an immutable builder.
 #[test]
 fn test_log_redaction_policy_is_built_immutably() {
-    let diagnostic_budget = DiagnosticBudget::new(512, 384)
-        .expect("diagnostic budget should be valid");
+    let diagnostic_budget =
+        DiagnosticBudget::new(512, 384).expect("diagnostic budget should be valid");
     let policy = LogRedactionPolicy::builder()
         .raise_header("x-tenant-secret", Sensitivity::Secret)
         .allow_query_exact("public_token")

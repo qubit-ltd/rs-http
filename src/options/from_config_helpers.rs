@@ -38,17 +38,10 @@
 
 use std::collections::HashMap;
 
-use http::{
-    HeaderMap,
-    HeaderName,
-    HeaderValue,
-};
+use http::{HeaderMap, HeaderName, HeaderValue};
 #[cfg(not(target_pointer_width = "64"))]
 use qubit_config::ConfigError;
-use qubit_config::{
-    ConfigReader,
-    ConfigResult,
-};
+use qubit_config::{ConfigReader, ConfigResult};
 
 use super::HttpConfigError;
 
@@ -56,10 +49,7 @@ use super::HttpConfigError;
 ///
 /// Configuration data stays platform-independent as `u64`; conversion to the
 /// platform-sized type happens only at the HTTP API boundary.
-pub(crate) fn get_optional_usize<R>(
-    config: &R,
-    key: &str,
-) -> ConfigResult<Option<usize>>
+pub(crate) fn get_optional_usize<R>(config: &R, key: &str) -> ConfigResult<Option<usize>>
 where
     R: ConfigReader + ?Sized,
 {
@@ -71,14 +61,13 @@ where
         Ok(Some(value as usize))
     }
     #[cfg(not(target_pointer_width = "64"))]
-    usize::try_from(value).map(Some).map_err(|_| {
-        ConfigError::DeserializeError {
+    usize::try_from(value)
+        .map(Some)
+        .map_err(|_| ConfigError::DeserializeError {
             path: config.resolve_key(key),
-            message: "configuration value exceeds the platform usize range"
-                .to_string(),
+            message: "configuration value exceeds the platform usize range".to_string(),
             source: None,
-        }
-    })
+        })
 }
 
 /// Converts a map of header names to values into an [`HeaderMap`].
@@ -100,13 +89,12 @@ pub(crate) fn hashmap_to_headermap(
     let mut header_map = HeaderMap::new();
     for (name, value) in map {
         let entry_path = format!("{path}.{name}");
-        let header_name =
-            HeaderName::from_bytes(name.as_bytes()).map_err(|e| {
-                HttpConfigError::invalid_header(
-                    entry_path.clone(),
-                    format!("Invalid header name '{}': {}", name, e),
-                )
-            })?;
+        let header_name = HeaderName::from_bytes(name.as_bytes()).map_err(|e| {
+            HttpConfigError::invalid_header(
+                entry_path.clone(),
+                format!("Invalid header name '{}': {}", name, e),
+            )
+        })?;
         let header_value = HeaderValue::from_str(&value).map_err(|e| {
             HttpConfigError::invalid_header(
                 entry_path,

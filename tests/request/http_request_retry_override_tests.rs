@@ -6,10 +6,7 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use qubit_http::{
-    HttpRequestRetryOverride,
-    HttpRetryMethodPolicy,
-};
+use qubit_http::{HttpRequestRetryOverride, HttpRetryMethodPolicy};
 
 #[test]
 fn test_request_retry_override_default_follows_client_policy() {

@@ -7,22 +7,11 @@
 // =============================================================================
 //! Public unified HTTP log redactor.
 
-use http::{
-    HeaderMap,
-    HeaderValue,
-};
-use qubit_redact::http::{
-    BodyCapture,
-    BodyRedaction,
-    HttpRedactor,
-    RedactedHeaders,
-};
+use http::{HeaderMap, HeaderValue};
+use qubit_redact::http::{BodyCapture, BodyRedaction, HttpRedactor, RedactedHeaders};
 use url::Url;
 
-use super::{
-    BodyPreview,
-    LogRedactionPolicy,
-};
+use super::{BodyPreview, LogRedactionPolicy};
 
 /// Delegates every HTTP diagnostic domain to one runtime redactor.
 #[must_use = "use the redactor to produce safe HTTP diagnostics"]
@@ -159,12 +148,10 @@ impl LogRedactor {
         let capture = match (truncated, source_len) {
             (false, _) => BodyCapture::complete(bytes),
             (true, None) => BodyCapture::truncated_unknown(bytes),
-            (true, Some(total)) => {
-                match BodyCapture::truncated(bytes, Some(total)) {
-                    Ok(capture) => capture,
-                    Err(_) => BodyCapture::truncated_unknown(bytes),
-                }
-            }
+            (true, Some(total)) => match BodyCapture::truncated(bytes, Some(total)) {
+                Ok(capture) => capture,
+                Err(_) => BodyCapture::truncated_unknown(bytes),
+            },
         };
         self.http_redactor.redact_body(capture, content_type)
     }
@@ -180,10 +167,7 @@ impl LogRedactor {
     /// Log-safe text with every recognized URL token redacted under this
     /// snapshot.
     #[inline(always)]
-    pub(crate) fn redact_diagnostic_text(
-        &self,
-        text: &str,
-    ) -> qubit_redact::LogSafeText<'static> {
+    pub(crate) fn redact_diagnostic_text(&self, text: &str) -> qubit_redact::LogSafeText<'static> {
         self.http_redactor.redact_urls_in_text(text)
     }
 }

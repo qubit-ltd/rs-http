@@ -7,10 +7,7 @@
 // =============================================================================
 
 use http::Method;
-use qubit_http::{
-    HttpClientFactory,
-    HttpErrorKind,
-};
+use qubit_http::{HttpClientFactory, HttpErrorKind};
 
 #[test]
 fn test_header_parser_rejects_invalid_builder_header_name() {

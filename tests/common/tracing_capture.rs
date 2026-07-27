@@ -7,10 +7,7 @@
 // =============================================================================
 
 use std::io;
-use std::sync::{
-    Arc,
-    Mutex,
-};
+use std::sync::{Arc, Mutex};
 
 use tracing_subscriber::fmt::MakeWriter;
 
@@ -70,6 +67,5 @@ where
         .lock()
         .expect("failed to read tracing capture buffer")
         .clone();
-    String::from_utf8(bytes)
-        .expect("captured tracing output is not valid UTF-8")
+    String::from_utf8(bytes).expect("captured tracing output is not valid UTF-8")
 }

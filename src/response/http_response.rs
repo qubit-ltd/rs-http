@@ -8,63 +8,26 @@
 //! Unified HTTP response type and helpers.
 
 use std::fmt;
-use std::sync::{
-    Arc,
-    Mutex,
-};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_stream::stream;
 use bytes::Bytes;
-use futures_util::{
-    stream as futures_stream,
-    StreamExt,
-};
-use http::header::{
-    CONTENT_LENGTH,
-    CONTENT_TYPE,
-};
-use http::{
-    HeaderMap,
-    HeaderValue,
-    Method,
-    StatusCode,
-};
-use qubit_json::{
-    JsonDecodeOptions,
-    LenientJsonDecoder,
-};
+use futures_util::{stream as futures_stream, StreamExt};
+use http::header::{CONTENT_LENGTH, CONTENT_TYPE};
+use http::{HeaderMap, HeaderValue, Method, StatusCode};
+use qubit_json::{JsonDecodeOptions, LenientJsonDecoder};
 use serde::de::DeserializeOwned;
 use tokio_util::sync::CancellationToken;
 use url::Url;
 
 use crate::content_type;
-use crate::error::{
-    backend_error_mapper::map_reqwest_error,
-    ReqwestErrorPhase,
-};
-use crate::redact::{
-    LogRedactor,
-    RedactedDebugger,
-};
-use crate::sse::{
-    DoneMarkerPolicy,
-    SseChunkStream,
-    SseJsonMode,
-    SseMessageStream,
-};
-use crate::{
-    HttpByteStream,
-    HttpError,
-    HttpErrorKind,
-    HttpResult,
-    LogRedactionPolicy,
-};
+use crate::error::{backend_error_mapper::map_reqwest_error, ReqwestErrorPhase};
+use crate::redact::{LogRedactor, RedactedDebugger};
+use crate::sse::{DoneMarkerPolicy, SseChunkStream, SseJsonMode, SseMessageStream};
+use crate::{HttpByteStream, HttpError, HttpErrorKind, HttpResult, LogRedactionPolicy};
 
-use super::{
-    HttpResponseMeta,
-    HttpResponseOptions,
-};
+use super::{HttpResponseMeta, HttpResponseOptions};
 
 /// Snapshot of a body read failure retained after the backend body is consumed.
 #[derive(Debug, Clone)]
@@ -212,8 +175,7 @@ pub struct HttpResponse {
 
 impl fmt::Debug for HttpResponse {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let debugger =
-            RedactedDebugger::new(self.options.log_redactor.policy());
+        let debugger = RedactedDebugger::new(self.options.log_redactor.policy());
         let url = debugger.url(self.meta.url());
         let request_url = debugger.url(&self.runtime.request_url);
         formatter
@@ -251,11 +213,7 @@ impl HttpResponse {
             meta: HttpResponseMeta::new(status, headers, url.clone(), method),
             backend: None,
             buffered_body: Some(body),
-            runtime: HttpResponseRuntime::new(
-                Duration::from_secs(30),
-                None,
-                url,
-            ),
+            runtime: HttpResponseRuntime::new(Duration::from_secs(30), None, url),
             options: HttpResponseOptions::default(),
         }
     }
@@ -273,11 +231,7 @@ impl HttpResponse {
             meta,
             backend: Some(backend),
             buffered_body: None,
-            runtime: HttpResponseRuntime::new(
-                read_timeout,
-                cancellation_token,
-                request_url,
-            ),
+            runtime: HttpResponseRuntime::new(read_timeout, cancellation_token, request_url),
             options,
         }
     }
@@ -338,10 +292,7 @@ impl HttpResponse {
     /// # Parameters
     /// - `error`: Error produced while reading the response body.
     fn remember_body_read_failure(&self, error: &HttpError) {
-        Self::remember_body_read_failure_state(
-            &self.runtime.body_read_failure,
-            error,
-        );
+        Self::remember_body_read_failure_state(&self.runtime.body_read_failure, error);
     }
 
     /// Stores the first body read failure in a shared state holder.
@@ -349,10 +300,7 @@ impl HttpResponse {
     /// # Parameters
     /// - `state`: Shared failure state captured by response streams.
     /// - `error`: Error produced while reading the response body.
-    fn remember_body_read_failure_state(
-        state: &BodyReadFailureState,
-        error: &HttpError,
-    ) {
+    fn remember_body_read_failure_state(state: &BodyReadFailureState, error: &HttpError) {
         if let Ok(mut guard) = state.lock() {
             guard.get_or_insert_with(|| BodyReadFailure::from_error(error));
         }
@@ -372,10 +320,8 @@ impl HttpResponse {
         let method = self.meta.method().clone();
         let url = self.request_url().clone();
         let error_preview_limit = self.options.error_response_preview_limit;
-        let diagnostic_redactor =
-            LogRedactor::new(self.options.log_redactor.policy().clone());
-        let body_preview =
-            self.into_error_body_preview(error_preview_limit).await?;
+        let diagnostic_redactor = LogRedactor::new(self.options.log_redactor.policy().clone());
+        let body_preview = self.into_error_body_preview(error_preview_limit).await?;
         let log_redaction_policy = diagnostic_redactor.policy().clone();
         let message = format!(
             "{} with status {} for {} {}; response body preview: {}",
@@ -403,10 +349,7 @@ impl HttpResponse {
     /// Returns [`HttpErrorKind::Cancelled`](crate::HttpErrorKind::Cancelled)
     /// when the request cancellation token fires while preview bytes are being
     /// read.
-    pub(crate) async fn into_error_body_preview(
-        mut self,
-        max_bytes: usize,
-    ) -> HttpResult<String> {
+    pub(crate) async fn into_error_body_preview(mut self, max_bytes: usize) -> HttpResult<String> {
         let limit = max_bytes.max(1);
         let Some(backend) = self.backend.take() else {
             return Ok("<empty>".to_string());
@@ -425,9 +368,7 @@ impl HttpResponse {
     pub async fn bytes(&mut self) -> HttpResult<Bytes> {
         if let Some(body) = &self.buffered_body {
             if body.len() > self.options.response_body_size_limit {
-                return Err(
-                    self.response_body_size_limit_error(body.len() as u64)
-                );
+                return Err(self.response_body_size_limit_error(body.len() as u64));
             }
             return Ok(body.clone());
         }
@@ -475,13 +416,9 @@ impl HttpResponse {
 
             match next {
                 Ok(Ok(Some(chunk))) => {
-                    let observed_size =
-                        (body.len() as u64).saturating_add(chunk.len() as u64);
-                    if observed_size
-                        > self.options.response_body_size_limit as u64
-                    {
-                        let error =
-                            self.response_body_size_limit_error(observed_size);
+                    let observed_size = (body.len() as u64).saturating_add(chunk.len() as u64);
+                    if observed_size > self.options.response_body_size_limit as u64 {
+                        let error = self.response_body_size_limit_error(observed_size);
                         self.remember_body_read_failure(&error);
                         return Err(error);
                     }
@@ -511,9 +448,7 @@ impl HttpResponse {
                     .with_method(self.meta.method())
                     .with_url(&self.runtime.request_url)
                     .with_status(status)
-                    .with_log_redaction_policy(
-                        self.log_redaction_policy().clone(),
-                    );
+                    .with_log_redaction_policy(self.log_redaction_policy().clone());
                     self.remember_body_read_failure(&error);
                     return Err(error);
                 }
@@ -526,16 +461,14 @@ impl HttpResponse {
     pub fn stream(&mut self) -> HttpResult<HttpByteStream> {
         if let Some(body) = self.buffered_body.as_ref() {
             let bytes = body.clone();
-            return Ok(Box::pin(futures_stream::once(
-                async move { Ok(bytes) },
-            )));
+            return Ok(Box::pin(futures_stream::once(async move { Ok(bytes) })));
         }
         if let Some(error) = self.previous_body_read_error() {
             return Err(error);
         }
-        if let Some(error) = self.cancelled_error_if_needed(
-            "Streaming response cancelled before reading response body",
-        ) {
+        if let Some(error) = self
+            .cancelled_error_if_needed("Streaming response cancelled before reading response body")
+        {
             return Err(error);
         }
         let Some(backend) = self.backend.take() else {
@@ -630,9 +563,7 @@ impl HttpResponse {
                     .with_status(self.meta.status())
                     .with_url(self.meta.url())
                     .with_source(error)
-                    .with_log_redaction_policy(
-                        self.log_redaction_policy().clone(),
-                    )
+                    .with_log_redaction_policy(self.log_redaction_policy().clone())
             })
     }
 
@@ -688,9 +619,7 @@ impl HttpResponse {
                 max_line_bytes,
                 max_frame_bytes,
             ),
-            Err(error) => {
-                Box::pin(futures_stream::once(async move { Err(error) }))
-            }
+            Err(error) => Box::pin(futures_stream::once(async move { Err(error) })),
         }
     }
 
@@ -709,9 +638,7 @@ impl HttpResponse {
                 max_line_bytes,
                 max_frame_bytes,
             ),
-            Err(error) => {
-                Box::pin(futures_stream::once(async move { Err(error) }))
-            }
+            Err(error) => Box::pin(futures_stream::once(async move { Err(error) })),
         }
     }
 
@@ -728,18 +655,14 @@ impl HttpResponse {
         let max_line_bytes = self.options.sse_max_line_bytes;
         let max_frame_bytes = self.options.sse_max_frame_bytes;
         match self.stream() {
-            Ok(stream) => {
-                crate::sse::decode_json_chunks_from_stream_with_limits(
-                    stream,
-                    done_policy,
-                    mode,
-                    max_line_bytes,
-                    max_frame_bytes,
-                )
-            }
-            Err(error) => {
-                Box::pin(futures_stream::once(async move { Err(error) }))
-            }
+            Ok(stream) => crate::sse::decode_json_chunks_from_stream_with_limits(
+                stream,
+                done_policy,
+                mode,
+                max_line_bytes,
+                max_frame_bytes,
+            ),
+            Err(error) => Box::pin(futures_stream::once(async move { Err(error) })),
         }
     }
 
@@ -771,19 +694,15 @@ impl HttpResponse {
     /// `true` only when this response is not SSE, has an explicit
     /// `Content-Length`, and declared length is within `body_log_limit`.
     #[inline]
-    pub(crate) fn can_buffer_body_for_logging(
-        &self,
-        body_log_limit: usize,
-    ) -> bool {
+    pub(crate) fn can_buffer_body_for_logging(&self, body_log_limit: usize) -> bool {
         if self.backend.is_none() {
             return false;
         }
         if self.is_sse_response() {
             return false;
         }
-        self.content_length_hint().is_some_and(|content_length| {
-            content_length <= body_log_limit as u64
-        })
+        self.content_length_hint()
+            .is_some_and(|content_length| content_length <= body_log_limit as u64)
     }
 
     /// Reads bounded preview bytes from a response body for status error
@@ -894,9 +813,7 @@ impl HttpResponse {
                     .with_method(self.meta.method())
                     .with_url(&self.runtime.request_url)
                     .with_status(self.meta.status())
-                    .with_log_redaction_policy(
-                        self.log_redaction_policy().clone(),
-                    ),
+                    .with_log_redaction_policy(self.log_redaction_policy().clone()),
             )
         } else {
             None
