@@ -7,31 +7,15 @@
 // =============================================================================
 //! Reqwest-backed HTTP client factory.
 
-use std::net::{
-    IpAddr,
-    SocketAddr,
-};
+use std::net::{IpAddr, SocketAddr};
 
-use reqwest::dns::{
-    Addrs,
-    Name,
-    Resolve,
-    Resolving,
-};
+use reqwest::dns::{Addrs, Name, Resolve, Resolving};
 use reqwest::redirect::Policy;
 
 use crate::HttpConfigError;
-use crate::{
-    HttpClient,
-    HttpClientOptions,
-    HttpError,
-    HttpResult,
-};
+use crate::{HttpClient, HttpClientOptions, HttpError, HttpResult};
 use qubit_config::ConfigReader;
-use qubit_error::{
-    BoxError,
-    IntoBoxError,
-};
+use qubit_error::{BoxError, IntoBoxError};
 
 /// DNS resolver that filters out non-IPv4 addresses for `ipv4_only` mode.
 #[derive(Debug, Clone, Copy, Default)]
@@ -52,11 +36,10 @@ impl Resolve for Ipv4OnlyResolver {
     fn resolve(&self, name: Name) -> Resolving {
         let host = name.as_str().to_string();
         Box::pin(async move {
-            let resolved =
-                match tokio::net::lookup_host((host.as_str(), 0)).await {
-                    Ok(resolved) => resolved,
-                    Err(error) => return Err(error.into_box_error()),
-                };
+            let resolved = match tokio::net::lookup_host((host.as_str(), 0)).await {
+                Ok(resolved) => resolved,
+                Err(error) => return Err(error.into_box_error()),
+            };
             filter_ipv4_addrs(&host, resolved)
         })
     }
@@ -117,31 +100,25 @@ impl HttpClientFactory {
         }
 
         if options.proxy.enabled {
-            let host = options.proxy.host.clone().expect(
-                "proxy.host must exist after HttpClientOptions::validate",
-            );
+            let host = options
+                .proxy
+                .host
+                .clone()
+                .expect("proxy.host must exist after HttpClientOptions::validate");
             if options.ipv4_only && is_ipv6_literal_host(&host) {
                 return Err(HttpError::proxy_config(format!(
                     "Proxy host '{host}' is IPv6, which is not allowed when ipv4_only=true",
                 )));
             }
-            let port = options.proxy.port.expect(
-                "proxy.port must exist after HttpClientOptions::validate",
-            );
+            let port = options
+                .proxy
+                .port
+                .expect("proxy.port must exist after HttpClientOptions::validate");
 
-            let proxy_url = format!(
-                "{}://{}:{}",
-                options.proxy.proxy_type.scheme(),
-                host,
-                port
-            );
-            let mut proxy =
-                reqwest::Proxy::all(&proxy_url).map_err(|error| {
-                    HttpError::proxy_config(format!(
-                        "Invalid proxy URL '{}': {}",
-                        proxy_url, error
-                    ))
-                })?;
+            let proxy_url = format!("{}://{}:{}", options.proxy.proxy_type.scheme(), host, port);
+            let mut proxy = reqwest::Proxy::all(&proxy_url).map_err(|error| {
+                HttpError::proxy_config(format!("Invalid proxy URL '{}': {}", proxy_url, error))
+            })?;
 
             if let Some(username) = options.proxy.username.clone() {
                 let password = options.proxy.password.as_deref().unwrap_or("");
@@ -172,15 +149,12 @@ impl HttpClientFactory {
     /// - `Ok(HttpClient)` when parsing, validation, and client build succeed.
     /// - `Err(HttpConfigError)` on config or validation errors; build failures
     ///   are mapped to [`HttpConfigError`].
-    pub fn create_from_config<R>(
-        &self,
-        config: &R,
-    ) -> Result<HttpClient, HttpConfigError>
+    pub fn create_from_config<R>(&self, config: &R) -> Result<HttpClient, HttpConfigError>
     where
         R: ConfigReader + ?Sized,
     {
-        let options = HttpClientOptions::from_config(config)
-            .map_err(|e| resolve_config_error(config, e))?;
+        let options =
+            HttpClientOptions::from_config(config).map_err(|e| resolve_config_error(config, e))?;
         options
             .validate()
             .map_err(|e| resolve_config_error(config, e))?;
@@ -194,10 +168,7 @@ impl HttpClientFactory {
     }
 }
 
-fn resolve_config_error<R>(
-    config: &R,
-    mut error: HttpConfigError,
-) -> HttpConfigError
+fn resolve_config_error<R>(config: &R, mut error: HttpConfigError) -> HttpConfigError
 where
     R: ConfigReader + ?Sized,
 {
@@ -234,8 +205,7 @@ fn filter_ipv4_addrs<I>(host: &str, resolved: I) -> Result<Addrs, BoxError>
 where
     I: IntoIterator<Item = SocketAddr>,
 {
-    let ipv4_addrs: Vec<SocketAddr> =
-        resolved.into_iter().filter(SocketAddr::is_ipv4).collect();
+    let ipv4_addrs: Vec<SocketAddr> = resolved.into_iter().filter(SocketAddr::is_ipv4).collect();
     if ipv4_addrs.is_empty() {
         let error = std::io::Error::new(
             std::io::ErrorKind::AddrNotAvailable,

@@ -35,46 +35,19 @@ pub mod sse;
 pub use client::http_logger::HttpLogger;
 pub use client::HttpClient;
 pub use client::HttpClientFactory;
-pub use error::{
-    HttpError,
-    HttpErrorKind,
-    HttpResult,
-    RetryHint,
-};
+pub use error::{HttpError, HttpErrorKind, HttpResult, RetryHint};
 pub use options::{
-    HttpClientOptions,
-    HttpConfigError,
-    HttpConfigErrorKind,
-    HttpLoggingOptions,
-    HttpRetryMethodPolicy,
-    HttpRetryOptions,
-    HttpTimeoutOptions,
-    ProxyOptions,
-    ProxyType,
+    HttpClientOptions, HttpConfigError, HttpConfigErrorKind, HttpLoggingOptions,
+    HttpRetryMethodPolicy, HttpRetryOptions, HttpTimeoutOptions, ProxyOptions, ProxyType,
 };
-pub use redact::{
-    LogRedactionPolicy,
-    LogRedactionPolicyBuilder,
-    LogRedactor,
-};
+pub use redact::{LogRedactionPolicy, LogRedactionPolicyBuilder, LogRedactor};
 pub use request::{
-    AsyncHttpHeaderInjector,
-    HttpHeaderInjector,
-    HttpRequest,
-    HttpRequestBody,
-    HttpRequestBodyByteStream,
-    HttpRequestBuilder,
-    HttpRequestInterceptor,
-    HttpRequestInterceptors,
-    HttpRequestRetryOverride,
-    HttpRequestStreamingBody,
+    AsyncHttpHeaderInjector, HttpHeaderInjector, HttpRequest, HttpRequestBody,
+    HttpRequestBodyByteStream, HttpRequestBuilder, HttpRequestInterceptor, HttpRequestInterceptors,
+    HttpRequestRetryOverride, HttpRequestStreamingBody,
 };
 pub use response::{
-    HttpByteStream,
-    HttpResponse,
-    HttpResponseInterceptor,
-    HttpResponseInterceptorContext,
-    HttpResponseInterceptors,
-    HttpResponseMeta,
+    HttpByteStream, HttpResponse, HttpResponseInterceptor, HttpResponseInterceptorContext,
+    HttpResponseInterceptors, HttpResponseMeta,
 };
 pub use tokio_util::sync::CancellationToken;

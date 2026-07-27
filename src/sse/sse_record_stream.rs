@@ -16,5 +16,4 @@ use crate::HttpResult;
 use super::sse_record::SseRecord;
 
 /// Pin-boxed stream of internal SSE records or [`HttpError`](crate::HttpError).
-pub(crate) type SseRecordStream =
-    Pin<Box<dyn Stream<Item = HttpResult<SseRecord>> + Send>>;
+pub(crate) type SseRecordStream = Pin<Box<dyn Stream<Item = HttpResult<SseRecord>> + Send>>;

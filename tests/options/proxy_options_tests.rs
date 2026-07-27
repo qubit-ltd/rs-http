@@ -7,11 +7,7 @@
 // =============================================================================
 
 use qubit_config::Config;
-use qubit_http::{
-    HttpConfigErrorKind,
-    ProxyOptions,
-    ProxyType,
-};
+use qubit_http::{HttpConfigErrorKind, ProxyOptions, ProxyType};
 
 #[test]
 fn test_proxy_options_default_values() {
@@ -27,8 +23,7 @@ fn test_proxy_options_default_values() {
 #[test]
 fn test_proxy_options_defaults_when_no_keys() {
     let config = Config::new();
-    let opts =
-        ProxyOptions::from_config(&config.section("http.proxy")).unwrap();
+    let opts = ProxyOptions::from_config(&config.section("http.proxy")).unwrap();
     assert_eq!(opts, ProxyOptions::default());
 }
 

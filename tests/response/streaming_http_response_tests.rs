@@ -10,24 +10,12 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use futures_util::StreamExt;
-use http::{
-    HeaderMap,
-    Method,
-    StatusCode,
-};
-use qubit_http::{
-    HttpClientFactory,
-    HttpClientOptions,
-    HttpErrorKind,
-    HttpResponse,
-};
+use http::{HeaderMap, Method, StatusCode};
+use qubit_http::{HttpClientFactory, HttpClientOptions, HttpErrorKind, HttpResponse};
 use tokio::time::timeout;
 use url::Url;
 
-use crate::common::{
-    spawn_one_shot_server,
-    ResponsePlan,
-};
+use crate::common::{spawn_one_shot_server, ResponsePlan};
 
 #[test]
 fn test_http_stream_response_is_success_and_new() {
@@ -57,8 +45,7 @@ async fn test_http_stream_response_into_stream_consumes_body() {
         Method::GET,
     );
 
-    let mut stream =
-        response.stream().expect("stream body should be available");
+    let mut stream = response.stream().expect("stream body should be available");
     let mut chunks = Vec::new();
     while let Some(item) = stream.next().await {
         chunks.push(item.expect("stream item should decode"));
@@ -68,8 +55,7 @@ async fn test_http_stream_response_into_stream_consumes_body() {
 }
 
 #[tokio::test]
-async fn test_http_stream_response_backend_taken_then_stream_and_bytes_are_empty(
-) {
+async fn test_http_stream_response_backend_taken_then_stream_and_bytes_are_empty() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
         headers: vec![("Content-Type".to_string(), "text/plain".to_string())],
@@ -191,8 +177,7 @@ async fn test_http_response_stream_remembers_read_failure() {
         .await
         .expect("execute timed out")
         .expect("request should start");
-    let mut stream =
-        response.stream().expect("stream body should be available");
+    let mut stream = response.stream().expect("stream body should be available");
 
     let first = stream
         .next()
@@ -209,9 +194,10 @@ async fn test_http_response_stream_remembers_read_failure() {
     assert_eq!(stream_error.status, Some(StatusCode::OK));
     drop(stream);
 
-    let second_error = response.bytes().await.expect_err(
-        "bytes after stream failure should preserve the read failure",
-    );
+    let second_error = response
+        .bytes()
+        .await
+        .expect_err("bytes after stream failure should preserve the read failure");
     assert_eq!(second_error.kind, HttpErrorKind::Transport);
     assert_eq!(second_error.status, Some(StatusCode::OK));
     assert!(second_error

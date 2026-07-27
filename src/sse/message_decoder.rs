@@ -12,13 +12,7 @@ use futures_util::StreamExt;
 
 use crate::HttpByteStream;
 
-use super::{
-    frame_decoder,
-    line_decoder,
-    SseMessageStream,
-    SseRecord,
-    SseRecordStream,
-};
+use super::{frame_decoder, line_decoder, SseMessageStream, SseRecord, SseRecordStream};
 
 /// Parses internal SSE records from a body byte stream with explicit size
 /// limits.
@@ -54,11 +48,8 @@ pub(crate) fn decode_messages_from_stream_with_limits(
     max_line_bytes: usize,
     max_frame_bytes: usize,
 ) -> SseMessageStream {
-    let mut records = decode_records_from_stream_with_limits(
-        stream,
-        max_line_bytes,
-        max_frame_bytes,
-    );
+    let mut records =
+        decode_records_from_stream_with_limits(stream, max_line_bytes, max_frame_bytes);
     let output = stream! {
         while let Some(item) = records.next().await {
             match item {

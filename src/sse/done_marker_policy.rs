@@ -9,10 +9,7 @@
 //!
 //! Defines how stream completion markers are recognized.
 
-use serde::{
-    Deserialize,
-    Serialize,
-};
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
 

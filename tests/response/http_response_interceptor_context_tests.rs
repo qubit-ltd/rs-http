@@ -10,21 +10,12 @@ use std::time::Duration;
 
 use http::header::RETRY_AFTER;
 use http::header::SET_COOKIE;
-use http::{
-    HeaderMap,
-    HeaderValue,
-    Method,
-    StatusCode,
-};
-use qubit_http::{
-    HttpResponseInterceptorContext,
-    HttpResponseMeta,
-};
+use http::{HeaderMap, HeaderValue, Method, StatusCode};
+use qubit_http::{HttpResponseInterceptorContext, HttpResponseMeta};
 use url::Url;
 
 #[test]
-fn test_http_response_interceptor_context_exposes_immutable_status_and_method()
-{
+fn test_http_response_interceptor_context_exposes_immutable_status_and_method() {
     let context = HttpResponseInterceptorContext::new(
         StatusCode::ACCEPTED,
         HeaderMap::new(),
@@ -52,9 +43,7 @@ fn test_http_response_interceptor_context_mutates_headers_and_url() {
     context
         .headers_mut()
         .insert("x-intercepted", HeaderValue::from_static("yes"));
-    context.set_url(
-        Url::parse("https://example.test/rewritten").expect("valid URL"),
-    );
+    context.set_url(Url::parse("https://example.test/rewritten").expect("valid URL"));
 
     assert_eq!(
         context
@@ -70,8 +59,7 @@ fn test_http_response_interceptor_context_mutates_headers_and_url() {
 }
 
 #[test]
-fn test_http_response_interceptor_context_from_meta_preserves_retry_after_hint()
-{
+fn test_http_response_interceptor_context_from_meta_preserves_retry_after_hint() {
     let mut headers = HeaderMap::new();
     headers.insert(RETRY_AFTER, HeaderValue::from_static("3"));
     let meta = HttpResponseMeta::new(

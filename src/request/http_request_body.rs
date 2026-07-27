@@ -10,19 +10,11 @@
 use std::fmt;
 
 use bytes::Bytes;
-use serde::{
-    Deserialize,
-    Serialize,
-};
-use strum::{
-    Display,
-    EnumString,
-};
+use serde::{Deserialize, Serialize};
+use strum::{Display, EnumString};
 
 /// Encodes how the outbound body is represented before sending via reqwest.
-#[derive(
-    Clone, PartialEq, Eq, Default, Serialize, Deserialize, Display, EnumString,
-)]
+#[derive(Clone, PartialEq, Eq, Default, Serialize, Deserialize, Display, EnumString)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub enum HttpRequestBody {

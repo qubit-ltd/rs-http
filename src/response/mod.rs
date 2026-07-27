@@ -17,9 +17,6 @@ mod http_response_options;
 pub use http_byte_stream::HttpByteStream;
 pub use http_response::HttpResponse;
 pub use http_response_interceptor_context::HttpResponseInterceptorContext;
-pub use http_response_interceptors::{
-    HttpResponseInterceptor,
-    HttpResponseInterceptors,
-};
+pub use http_response_interceptors::{HttpResponseInterceptor, HttpResponseInterceptors};
 pub use http_response_meta::HttpResponseMeta;
 pub(crate) use http_response_options::HttpResponseOptions;

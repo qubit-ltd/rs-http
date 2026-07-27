@@ -6,35 +6,20 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use std::sync::{
-    Arc,
-    Mutex,
-};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use http::header::HeaderName;
-use http::{
-    HeaderValue,
-    Method,
-    StatusCode,
-};
+use http::{HeaderValue, Method, StatusCode};
 use qubit_http::{
-    AsyncHttpHeaderInjector,
-    HttpClientFactory,
-    HttpClientOptions,
-    HttpHeaderInjector,
+    AsyncHttpHeaderInjector, HttpClientFactory, HttpClientOptions, HttpHeaderInjector,
 };
 use tokio::time::timeout;
 
-use crate::common::{
-    spawn_multi_shot_server,
-    spawn_one_shot_server,
-    ResponsePlan,
-};
+use crate::common::{spawn_multi_shot_server, spawn_one_shot_server, ResponsePlan};
 
 #[tokio::test]
-async fn test_async_header_injector_runs_after_sync_injector_with_stable_order()
-{
+async fn test_async_header_injector_runs_after_sync_injector_with_stable_order() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
         headers: vec![],
@@ -103,9 +88,7 @@ async fn test_async_header_injector_failure_short_circuits_request() {
         .expect("client should be created");
     client.add_async_header_injector(AsyncHttpHeaderInjector::new(
         |_headers: &mut http::HeaderMap| {
-            Box::pin(async move {
-                Err(qubit_http::HttpError::other("async injector failed"))
-            })
+            Box::pin(async move { Err(qubit_http::HttpError::other("async injector failed")) })
         },
     ));
 

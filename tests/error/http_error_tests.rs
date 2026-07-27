@@ -9,16 +9,8 @@
 use std::error::Error;
 
 use http::StatusCode;
-use qubit_http::{
-    HttpError,
-    HttpErrorKind,
-    LogRedactionPolicy,
-    RetryHint,
-};
-use qubit_redact::{
-    http::UrlPathPolicy,
-    Sensitivity,
-};
+use qubit_http::{HttpError, HttpErrorKind, LogRedactionPolicy, RetryHint};
+use qubit_redact::{http::UrlPathPolicy, Sensitivity};
 
 #[test]
 fn test_http_error_builder_methods() {
@@ -107,8 +99,9 @@ fn test_http_error_debug_uses_custom_log_redaction_policy() {
         .raise_query("customer_secret", Sensitivity::High)
         .build()
         .expect("log redaction policy should be valid");
-    let url = url::Url::parse("https://example.com/path?customer_secret=debug-custom-secret&visible=ok")
-        .expect("URL should parse");
+    let url =
+        url::Url::parse("https://example.com/path?customer_secret=debug-custom-secret&visible=ok")
+            .expect("URL should parse");
     let error = HttpError::transport(
         "transport failed for https://example.com/path?customer_secret=debug-custom-secret&visible=ok",
     )

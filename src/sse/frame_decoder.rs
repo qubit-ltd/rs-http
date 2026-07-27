@@ -13,12 +13,7 @@ use async_stream::stream;
 use futures_util::StreamExt;
 
 use super::line_decoder::SseLineStream;
-use super::{
-    SseControl,
-    SseMessage,
-    SseRecord,
-    SseRecordStream,
-};
+use super::{SseControl, SseMessage, SseRecord, SseRecordStream};
 
 /// Groups newline-delimited SSE fields into internal [`SseRecord`] values.
 ///
@@ -29,10 +24,7 @@ use super::{
 ///
 /// # Returns
 /// Stream of records or forwarded transport/protocol errors.
-pub(crate) fn decode_records(
-    mut lines: SseLineStream,
-    max_frame_bytes: usize,
-) -> SseRecordStream {
+pub(crate) fn decode_records(mut lines: SseLineStream, max_frame_bytes: usize) -> SseRecordStream {
     let output = stream! {
         let max_frame_bytes = max_frame_bytes.max(1);
         let mut current_event: Option<String> = None;

@@ -9,17 +9,10 @@
 use std::time::Duration;
 
 use http::Method;
-use qubit_http::{
-    HttpClientFactory,
-    HttpClientOptions,
-    HttpErrorKind,
-};
+use qubit_http::{HttpClientFactory, HttpClientOptions, HttpErrorKind};
 use tokio::time::timeout;
 
-use crate::common::{
-    spawn_one_shot_server,
-    ResponsePlan,
-};
+use crate::common::{spawn_one_shot_server, ResponsePlan};
 
 #[test]
 fn test_ipv4_only_option_is_preserved_in_client_options() {
@@ -108,7 +101,10 @@ async fn test_ipv4_only_fails_on_hostname_without_ipv4_address() {
         .unwrap_err();
 
     assert!(
-        matches!(error.kind, HttpErrorKind::Transport | HttpErrorKind::WriteTimeout),
+        matches!(
+            error.kind,
+            HttpErrorKind::Transport | HttpErrorKind::WriteTimeout
+        ),
         "expected IPv4-only DNS failure to be transport or write timeout, got {:?}",
         error.kind
     );

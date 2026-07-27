@@ -9,27 +9,11 @@
 //!
 //! Category enum for [`crate::HttpConfigError`].
 
-use parse_display::{
-    Display,
-    FromStr as DeriveFromStr,
-};
-use serde::{
-    Deserialize,
-    Serialize,
-};
+use parse_display::{Display, FromStr as DeriveFromStr};
+use serde::{Deserialize, Serialize};
 
 /// Category of HTTP configuration errors.
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Serialize,
-    Deserialize,
-    Display,
-    DeriveFromStr,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Display, DeriveFromStr)]
 #[serde(rename_all = "snake_case")]
 #[display(style = "snake_case")]
 pub enum HttpConfigErrorKind {

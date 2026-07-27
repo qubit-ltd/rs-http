@@ -9,17 +9,11 @@
 //!
 //! One EventSource-style message dispatch after frame reassembly.
 
-use qubit_json::{
-    JsonDecodeOptions,
-    LenientJsonDecoder,
-};
+use qubit_json::{JsonDecodeOptions, LenientJsonDecoder};
 use serde::de::DeserializeOwned;
 
 use super::SseJsonMode;
-use crate::{
-    HttpError,
-    HttpResult,
-};
+use crate::{HttpError, HttpResult};
 
 /// One EventSource-style message dispatch after `data:` line reassembly.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -79,32 +73,27 @@ impl SseMessage {
     /// # Errors
     /// Returns [`HttpError::sse_decode`] in strict mode when JSON parsing
     /// fails.
-    pub fn decode_json_with_mode<T>(
-        &self,
-        mode: SseJsonMode,
-    ) -> HttpResult<Option<T>>
+    pub fn decode_json_with_mode<T>(&self, mode: SseJsonMode) -> HttpResult<Option<T>>
     where
         T: DeserializeOwned,
     {
         match mode {
             SseJsonMode::Strict => self.decode_json::<T>().map(Some),
-            SseJsonMode::Lenient => {
-                match LenientJsonDecoder::default().decode::<T>(&self.data) {
-                    Ok(value) => Ok(Some(value)),
-                    Err(error) => {
-                        tracing::debug!(
-                            error_kind = %error.kind(),
-                            error_stage = %error.stage(),
-                            normalized_line = ?error.normalized_line(),
-                            normalized_column = ?error.normalized_column(),
-                            event = ?self.event,
-                            last_event_id = ?self.last_event_id,
-                            "Skipping malformed SSE message JSON in lenient mode",
-                        );
-                        Ok(None)
-                    }
+            SseJsonMode::Lenient => match LenientJsonDecoder::default().decode::<T>(&self.data) {
+                Ok(value) => Ok(Some(value)),
+                Err(error) => {
+                    tracing::debug!(
+                        error_kind = %error.kind(),
+                        error_stage = %error.stage(),
+                        normalized_line = ?error.normalized_line(),
+                        normalized_column = ?error.normalized_column(),
+                        event = ?self.event,
+                        last_event_id = ?self.last_event_id,
+                        "Skipping malformed SSE message JSON in lenient mode",
+                    );
+                    Ok(None)
                 }
-            }
+            },
         }
     }
 }

@@ -9,29 +9,18 @@
 use std::time::Duration;
 
 use http::Method;
-use qubit_http::{
-    HttpClientFactory,
-    HttpClientOptions,
-    HttpErrorKind,
-    ProxyType,
-};
+use qubit_http::{HttpClientFactory, HttpClientOptions, HttpErrorKind, ProxyType};
 use tokio::time::timeout;
 
 use crate::common::{
-    spawn_one_shot_server,
-    spawn_simple_proxy_server,
-    ProxyBehavior,
-    ResponsePlan,
+    spawn_one_shot_server, spawn_simple_proxy_server, ProxyBehavior, ResponsePlan,
 };
 
 #[tokio::test]
 async fn test_http_proxy_forwards_request_and_sends_proxy_auth() {
     let backend = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
-        headers: vec![(
-            "Content-Type".to_string(),
-            "application/json".to_string(),
-        )],
+        headers: vec![("Content-Type".to_string(), "application/json".to_string())],
         body: br#"{"ok":true}"#.to_vec(),
     })
     .await;

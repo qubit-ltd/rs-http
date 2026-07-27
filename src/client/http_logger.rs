@@ -16,17 +16,12 @@ use tracing::Metadata;
 
 use crate::redact::RedactedLogger;
 use crate::{
-    HttpClientOptions,
-    HttpLoggingOptions,
-    HttpRequest,
-    HttpRequestBody,
-    HttpResponse,
+    HttpClientOptions, HttpLoggingOptions, HttpRequest, HttpRequestBody, HttpResponse,
     HttpResponseMeta,
 };
 
 const UNRESOLVED_REQUEST_URL: &str = "<unresolved request URL>";
-const STREAMING_REQUEST_BODY_SKIPPED: &str =
-    "<skipped: streaming request body>";
+const STREAMING_REQUEST_BODY_SKIPPED: &str = "<skipped: streaming request body>";
 
 /// Callsite metadata used to query the current dispatcher directly, bypassing
 /// shared interest caching that can change while thread-local subscribers are
@@ -131,10 +126,7 @@ impl<'a> HttpLogger<'a> {
     /// # Errors
     /// Returns [`crate::HttpError`] when reading the response body for logging
     /// fails.
-    pub async fn log_response(
-        &self,
-        response: &mut HttpResponse,
-    ) -> crate::HttpResult<()> {
+    pub async fn log_response(&self, response: &mut HttpResponse) -> crate::HttpResult<()> {
         if !self.is_trace_enabled() {
             return Ok(());
         }
@@ -146,10 +138,7 @@ impl<'a> HttpLogger<'a> {
         );
 
         if self.options.log_response_header {
-            tracing::trace!(
-                "{}",
-                self.redacted_logger.headers(response.headers())
-            );
+            tracing::trace!("{}", self.redacted_logger.headers(response.headers()));
         }
 
         if self.options.log_response_body {
@@ -160,9 +149,7 @@ impl<'a> HttpLogger<'a> {
                     self.redacted_logger
                         .body(body.as_ref(), content_type.as_ref())
                 );
-            } else if response
-                .can_buffer_body_for_logging(self.options.body_size_limit)
-            {
+            } else if response.can_buffer_body_for_logging(self.options.body_size_limit) {
                 let body = response.bytes().await?;
                 tracing::trace!(
                     "Response body: {}",
@@ -170,9 +157,7 @@ impl<'a> HttpLogger<'a> {
                         .body(body.as_ref(), content_type.as_ref())
                 );
             } else {
-                tracing::trace!(
-                    "Response body: <skipped: streaming or unknown-size body>"
-                );
+                tracing::trace!("Response body: <skipped: streaming or unknown-size body>");
             }
         }
         Ok(())
@@ -186,10 +171,7 @@ impl<'a> HttpLogger<'a> {
     ///
     /// # Returns
     /// Nothing; no-op when disabled or TRACE off.
-    pub fn log_stream_response_headers(
-        &self,
-        response_meta: &HttpResponseMeta,
-    ) {
+    pub fn log_stream_response_headers(&self, response_meta: &HttpResponseMeta) {
         if !self.is_trace_enabled() {
             return;
         }
@@ -201,10 +183,7 @@ impl<'a> HttpLogger<'a> {
         );
 
         if self.options.log_response_header {
-            tracing::trace!(
-                "{}",
-                self.redacted_logger.headers(response_meta.headers())
-            );
+            tracing::trace!("{}", self.redacted_logger.headers(response_meta.headers()));
         }
     }
 
@@ -243,25 +222,17 @@ impl<'a> HttpLogger<'a> {
     ///
     /// # Returns
     /// Body preview category for logger rendering.
-    fn request_body_for_log(
-        request: &HttpRequest,
-    ) -> RequestBodyLogPreview<'_> {
+    fn request_body_for_log(request: &HttpRequest) -> RequestBodyLogPreview<'_> {
         if request.has_streaming_body() {
-            return RequestBodyLogPreview::Skipped(
-                STREAMING_REQUEST_BODY_SKIPPED,
-            );
+            return RequestBodyLogPreview::Skipped(STREAMING_REQUEST_BODY_SKIPPED);
         }
         match request.body() {
             HttpRequestBody::Bytes(bytes)
             | HttpRequestBody::Json(bytes)
             | HttpRequestBody::Form(bytes)
             | HttpRequestBody::Multipart(bytes)
-            | HttpRequestBody::Ndjson(bytes) => {
-                RequestBodyLogPreview::Bytes(bytes.as_ref())
-            }
-            HttpRequestBody::Text(text) => {
-                RequestBodyLogPreview::Bytes(text.as_bytes())
-            }
+            | HttpRequestBody::Ndjson(bytes) => RequestBodyLogPreview::Bytes(bytes.as_ref()),
+            HttpRequestBody::Text(text) => RequestBodyLogPreview::Bytes(text.as_bytes()),
             HttpRequestBody::Stream(_) => {
                 RequestBodyLogPreview::Skipped(STREAMING_REQUEST_BODY_SKIPPED)
             }
