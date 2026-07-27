@@ -213,7 +213,10 @@ where
     {
         error.path
     } else {
-        config.resolve_key(&error.path)
+        match config.resolve_key(&error.path) {
+            Ok(path) => path,
+            Err(error) => return HttpConfigError::from(error),
+        }
     };
     error
 }

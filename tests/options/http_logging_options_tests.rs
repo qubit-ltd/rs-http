@@ -17,8 +17,9 @@ fn test_http_logging_options_from_config_preserves_defaults_for_missing_flags()
         .set("logging.log_request_body", false)
         .expect("test config should set flag");
 
-    let options = HttpLoggingOptions::from_config(&config.section("logging"))
-        .expect("read logging");
+    let options =
+        HttpLoggingOptions::from_config(&config.section("logging").unwrap())
+            .expect("read logging");
 
     assert!(options.enabled);
     assert!(options.log_request_header);
