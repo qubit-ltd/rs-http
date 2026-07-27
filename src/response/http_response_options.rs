@@ -8,11 +8,16 @@
 //! Decode and error-preview options bound to one response instance.
 
 use crate::constants::{
-    DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES, DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES,
-    DEFAULT_SSE_MAX_FRAME_BYTES, DEFAULT_SSE_MAX_LINE_BYTES,
+    DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES,
+    DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES,
+    DEFAULT_SSE_MAX_FRAME_BYTES,
+    DEFAULT_SSE_MAX_LINE_BYTES,
 };
 use crate::redact::LogRedactor;
-use crate::sse::{DoneMarkerPolicy, SseJsonMode};
+use crate::sse::{
+    DoneMarkerPolicy,
+    SseJsonMode,
+};
 
 /// Decode/error-preview options bound to one response instance.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,7 +42,8 @@ pub(crate) struct HttpResponseOptions {
 impl Default for HttpResponseOptions {
     fn default() -> Self {
         Self {
-            error_response_preview_limit: DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES,
+            error_response_preview_limit:
+                DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES,
             response_body_size_limit: DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES,
             sse_json_mode: SseJsonMode::Lenient,
             sse_max_line_bytes: DEFAULT_SSE_MAX_LINE_BYTES,

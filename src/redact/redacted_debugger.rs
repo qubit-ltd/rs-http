@@ -11,7 +11,10 @@ use http::HeaderMap;
 use qubit_redact::http::RedactedHeaders;
 use url::Url;
 
-use super::{LogRedactionPolicy, LogRedactor};
+use super::{
+    LogRedactionPolicy,
+    LogRedactor,
+};
 
 /// Renders diagnostic fields with one immutable policy snapshot.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -92,7 +95,10 @@ impl RedactedDebugger {
     ///
     /// Text with recognized HTTP URLs redacted.
     #[inline(always)]
-    pub(crate) fn diagnostic_text(&self, text: &str) -> qubit_redact::LogSafeText<'static> {
+    pub(crate) fn diagnostic_text(
+        &self,
+        text: &str,
+    ) -> qubit_redact::LogSafeText<'static> {
         self.redactor.redact_diagnostic_text(text)
     }
 }

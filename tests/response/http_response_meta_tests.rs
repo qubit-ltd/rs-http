@@ -8,8 +8,16 @@
 
 use http::header::RETRY_AFTER;
 use http::header::SET_COOKIE;
-use http::{HeaderMap, HeaderValue, Method, StatusCode};
-use qubit_http::{HttpResponseMeta, LogRedactionPolicy};
+use http::{
+    HeaderMap,
+    HeaderValue,
+    Method,
+    StatusCode,
+};
+use qubit_http::{
+    HttpResponseMeta,
+    LogRedactionPolicy,
+};
 use qubit_redact::http::UrlPathPolicy;
 use url::Url;
 
@@ -24,7 +32,8 @@ fn test_http_response_meta_retry_after_only_applies_to_retryable_statuses() {
         url.clone(),
         Method::GET,
     );
-    let success = HttpResponseMeta::new(StatusCode::OK, headers, url, Method::GET);
+    let success =
+        HttpResponseMeta::new(StatusCode::OK, headers, url, Method::GET);
 
     assert_eq!(
         rate_limited.retry_after_hint(),

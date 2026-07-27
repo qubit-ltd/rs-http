@@ -7,7 +7,10 @@
 // =============================================================================
 //! Response interceptor abstraction for successful HTTP responses.
 
-use qubit_function::{ArcMutatingFunction, MutatingFunction};
+use qubit_function::{
+    ArcMutatingFunction,
+    MutatingFunction,
+};
 
 use super::HttpResponseInterceptorContext;
 use super::HttpResponseMeta;
@@ -56,8 +59,12 @@ impl HttpResponseInterceptors {
     /// # Errors
     /// Returns the first interceptor error and enriches it with
     /// status/method/URL context when missing.
-    pub fn apply(&self, response_meta: &mut HttpResponseMeta) -> HttpResult<()> {
-        let mut context = HttpResponseInterceptorContext::from_meta(response_meta);
+    pub fn apply(
+        &self,
+        response_meta: &mut HttpResponseMeta,
+    ) -> HttpResult<()> {
+        let mut context =
+            HttpResponseInterceptorContext::from_meta(response_meta);
         for interceptor in &self.interceptors {
             interceptor.apply(&mut context).map_err(|error| {
                 let mut mapped = error;
@@ -70,7 +77,9 @@ impl HttpResponseInterceptors {
                 if mapped.url.is_none() {
                     mapped = mapped.with_url(context.url());
                 }
-                mapped.with_log_redaction_policy(response_meta.log_redaction_policy().clone())
+                mapped.with_log_redaction_policy(
+                    response_meta.log_redaction_policy().clone(),
+                )
             })?;
         }
         context.apply_to_meta(response_meta);

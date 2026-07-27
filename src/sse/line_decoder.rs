@@ -13,9 +13,16 @@ use std::pin::Pin;
 
 use async_stream::stream;
 use bytes::BytesMut;
-use futures_util::{Stream, StreamExt};
+use futures_util::{
+    Stream,
+    StreamExt,
+};
 
-use crate::{HttpByteStream, HttpError, HttpResult};
+use crate::{
+    HttpByteStream,
+    HttpError,
+    HttpResult,
+};
 
 /// Pin-boxed stream of newline-delimited text lines or errors.
 pub type SseLineStream = Pin<Box<dyn Stream<Item = HttpResult<String>> + Send>>;
@@ -47,7 +54,10 @@ fn take_buffered_line(buffer: &mut BytesMut) -> HttpResult<String> {
 ///
 /// # Returns
 /// Stream of lines or [`HttpError::sse_protocol`] on invalid UTF-8.
-pub fn decode_lines(mut stream: HttpByteStream, max_line_bytes: usize) -> SseLineStream {
+pub fn decode_lines(
+    mut stream: HttpByteStream,
+    max_line_bytes: usize,
+) -> SseLineStream {
     let output = stream! {
         let max_line_bytes = max_line_bytes.max(1);
         let mut buffer = BytesMut::new();
@@ -122,7 +132,11 @@ pub fn decode_lines(mut stream: HttpByteStream, max_line_bytes: usize) -> SseLin
 ///
 /// # Returns
 /// `Ok(())` when appended, or [`HttpError`] when the line is too large.
-fn append_line_bytes(buffer: &mut BytesMut, bytes: &[u8], max_line_bytes: usize) -> HttpResult<()> {
+fn append_line_bytes(
+    buffer: &mut BytesMut,
+    bytes: &[u8],
+    max_line_bytes: usize,
+) -> HttpResult<()> {
     if buffer.len() + bytes.len() > max_line_bytes {
         return Err(HttpError::sse_protocol(format!(
             "SSE line exceeds max_line_bytes ({max_line_bytes})"

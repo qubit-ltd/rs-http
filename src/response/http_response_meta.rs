@@ -8,10 +8,17 @@
 //! Shared HTTP response metadata (status, headers, URL, request method).
 
 use std::fmt;
-use std::time::{Duration, SystemTime};
+use std::time::{
+    Duration,
+    SystemTime,
+};
 
 use http::header::RETRY_AFTER;
-use http::{HeaderMap, Method, StatusCode};
+use http::{
+    HeaderMap,
+    Method,
+    StatusCode,
+};
 use httpdate::parse_http_date;
 use url::Url;
 
@@ -36,7 +43,12 @@ pub struct HttpResponseMeta {
 impl HttpResponseMeta {
     /// Creates response metadata from status/headers/url/method parts.
     #[inline]
-    pub fn new(status: StatusCode, headers: HeaderMap, url: Url, method: Method) -> Self {
+    pub fn new(
+        status: StatusCode,
+        headers: HeaderMap,
+        url: Url,
+        method: Method,
+    ) -> Self {
         Self {
             status,
             headers,
@@ -54,7 +66,10 @@ impl HttpResponseMeta {
     /// # Returns
     /// Updated metadata.
     #[inline(always)]
-    pub fn with_log_redaction_policy(mut self, policy: LogRedactionPolicy) -> Self {
+    pub fn with_log_redaction_policy(
+        mut self,
+        policy: LogRedactionPolicy,
+    ) -> Self {
         self.log_redaction_policy = policy;
         self
     }
@@ -167,7 +182,10 @@ impl HttpResponseMeta {
     /// # Returns
     /// Nothing.
     #[inline(always)]
-    pub(super) fn set_log_redaction_policy(&mut self, policy: LogRedactionPolicy) {
+    pub(super) fn set_log_redaction_policy(
+        &mut self,
+        policy: LogRedactionPolicy,
+    ) {
         self.log_redaction_policy = policy;
     }
 }

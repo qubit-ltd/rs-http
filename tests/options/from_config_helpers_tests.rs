@@ -7,7 +7,10 @@
 // =============================================================================
 
 use qubit_config::Config;
-use qubit_http::{HttpClientOptions, HttpConfigErrorKind};
+use qubit_http::{
+    HttpClientOptions,
+    HttpConfigErrorKind,
+};
 
 #[test]
 fn test_from_config_helpers_reports_invalid_header_value_path() {

@@ -16,4 +16,5 @@ use crate::HttpResult;
 use super::sse_chunk::SseChunk;
 
 /// Pin-boxed stream of [`SseChunk`] or [`HttpError`](crate::HttpError).
-pub type SseChunkStream<T> = Pin<Box<dyn Stream<Item = HttpResult<SseChunk<T>>> + Send>>;
+pub type SseChunkStream<T> =
+    Pin<Box<dyn Stream<Item = HttpResult<SseChunk<T>>> + Send>>;

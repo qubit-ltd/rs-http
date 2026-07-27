@@ -6,13 +6,25 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    Arc,
+    Mutex,
+};
 
-use http::{HeaderMap, HeaderValue, Method, StatusCode};
+use http::{
+    HeaderMap,
+    HeaderValue,
+    Method,
+    StatusCode,
+};
 use qubit_function::MutatingFunction;
 use qubit_http::{
-    HttpError, HttpErrorKind, HttpResponseInterceptor, HttpResponseInterceptorContext,
-    HttpResponseInterceptors, HttpResponseMeta,
+    HttpError,
+    HttpErrorKind,
+    HttpResponseInterceptor,
+    HttpResponseInterceptorContext,
+    HttpResponseInterceptors,
+    HttpResponseMeta,
 };
 use url::Url;
 
@@ -37,7 +49,8 @@ fn test_response_interceptor_apply_receives_context() {
                 header,
             ));
             context.set_url(
-                Url::parse("https://example.test/rewritten").expect("valid rewritten URL"),
+                Url::parse("https://example.test/rewritten")
+                    .expect("valid rewritten URL"),
             );
             Ok(())
         },
@@ -75,16 +88,18 @@ fn test_response_interceptor_apply_receives_context() {
 }
 
 #[test]
-fn test_response_interceptor_context_allows_header_mutation_without_status_mutation() {
-    let interceptor =
-        HttpResponseInterceptor::new(|context: &mut qubit_http::HttpResponseInterceptorContext| {
+fn test_response_interceptor_context_allows_header_mutation_without_status_mutation(
+) {
+    let interceptor = HttpResponseInterceptor::new(
+        |context: &mut qubit_http::HttpResponseInterceptorContext| {
             context
                 .headers_mut()
                 .insert("x-intercepted", HeaderValue::from_static("yes"));
             assert_eq!(context.status(), StatusCode::OK);
             assert_eq!(context.method(), &Method::POST);
             Ok(())
-        });
+        },
+    );
     let mut meta = HttpResponseMeta::new(
         StatusCode::OK,
         HeaderMap::new(),
@@ -113,10 +128,11 @@ fn test_response_interceptor_context_allows_header_mutation_without_status_mutat
 
 #[test]
 fn test_response_interceptor_apply_propagates_error() {
-    let interceptor =
-        HttpResponseInterceptor::new(|_meta: &mut qubit_http::HttpResponseInterceptorContext| {
+    let interceptor = HttpResponseInterceptor::new(
+        |_meta: &mut qubit_http::HttpResponseInterceptorContext| {
             Err(HttpError::other("response interceptor failure"))
-        });
+        },
+    );
     let meta = HttpResponseMeta::new(
         StatusCode::OK,
         HeaderMap::new(),
@@ -162,7 +178,8 @@ fn test_response_interceptors_apply_enriches_error_context() {
 
 #[test]
 fn test_response_interceptors_apply_preserves_existing_error_context() {
-    let existing_url = Url::parse("https://example.test/existing").expect("valid test URL");
+    let existing_url =
+        Url::parse("https://example.test/existing").expect("valid test URL");
     let mut interceptors = HttpResponseInterceptors::new();
     interceptors.push(HttpResponseInterceptor::new({
         let existing_url = existing_url.clone();
@@ -191,10 +208,9 @@ fn test_response_interceptors_apply_preserves_existing_error_context() {
 
 #[test]
 fn test_response_interceptor_clone_and_debug() {
-    let interceptor =
-        HttpResponseInterceptor::new(|_meta: &mut qubit_http::HttpResponseInterceptorContext| {
-            Ok(())
-        });
+    let interceptor = HttpResponseInterceptor::new(
+        |_meta: &mut qubit_http::HttpResponseInterceptorContext| Ok(()),
+    );
     let cloned = interceptor.clone();
 
     let output = format!("{:?}", cloned);

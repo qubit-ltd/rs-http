@@ -9,10 +9,16 @@
 
 use qubit_redact::{
     http::{
-        BodyBudget, DiagnosticBudget, HttpRedactionPolicy, HttpRedactionPolicyBuilder,
-        TextBodyPolicy, UnkeyedJsonValuePolicy, UrlPathPolicy,
+        BodyBudget,
+        DiagnosticBudget,
+        HttpRedactionPolicy,
+        HttpRedactionPolicyBuilder,
+        TextBodyPolicy,
+        UnkeyedJsonValuePolicy,
+        UrlPathPolicy,
     },
-    PolicyError, Sensitivity,
+    PolicyError,
+    Sensitivity,
 };
 
 use super::LogRedactionPolicy;
@@ -163,7 +169,10 @@ impl LogRedactionPolicyBuilder {
     ///
     /// The updated builder.
     #[inline(always)]
-    pub fn unkeyed_json_value_policy(mut self, policy: UnkeyedJsonValuePolicy) -> Self {
+    pub fn unkeyed_json_value_policy(
+        mut self,
+        policy: UnkeyedJsonValuePolicy,
+    ) -> Self {
         self.http = self.http.unkeyed_json_value_policy(policy);
         self
     }

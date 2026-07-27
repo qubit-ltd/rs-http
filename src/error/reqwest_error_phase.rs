@@ -7,11 +7,27 @@
 // =============================================================================
 //! Reqwest transport phase markers used for error classification.
 
-use parse_display::{Display, FromStr as DeriveFromStr};
-use serde::{Deserialize, Serialize};
+use parse_display::{
+    Display,
+    FromStr as DeriveFromStr,
+};
+use serde::{
+    Deserialize,
+    Serialize,
+};
 
 /// Phase where a [`reqwest::Error`] happened.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Display, DeriveFromStr)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    Display,
+    DeriveFromStr,
+)]
 #[serde(rename_all = "snake_case")]
 #[display(style = "snake_case")]
 pub(crate) enum ReqwestErrorPhase {

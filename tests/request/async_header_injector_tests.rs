@@ -12,12 +12,13 @@ use qubit_http::AsyncHttpHeaderInjector;
 
 #[tokio::test]
 async fn test_async_header_injector_apply_updates_header_map() {
-    let injector = AsyncHttpHeaderInjector::new(|headers: &mut http::HeaderMap| {
-        Box::pin(async move {
-            headers.insert("x-async", HeaderValue::from_static("ok"));
-            Ok(())
-        })
-    });
+    let injector =
+        AsyncHttpHeaderInjector::new(|headers: &mut http::HeaderMap| {
+            Box::pin(async move {
+                headers.insert("x-async", HeaderValue::from_static("ok"));
+                Ok(())
+            })
+        });
 
     let mut headers = HeaderMap::new();
     injector
@@ -35,9 +36,12 @@ async fn test_async_header_injector_apply_updates_header_map() {
 
 #[tokio::test]
 async fn test_async_header_injector_apply_propagates_error() {
-    let injector = AsyncHttpHeaderInjector::new(|_headers: &mut http::HeaderMap| {
-        Box::pin(async move { Err(qubit_http::HttpError::other("injector failed")) })
-    });
+    let injector =
+        AsyncHttpHeaderInjector::new(|_headers: &mut http::HeaderMap| {
+            Box::pin(async move {
+                Err(qubit_http::HttpError::other("injector failed"))
+            })
+        });
 
     let mut headers = HeaderMap::new();
     let error = injector
@@ -50,12 +54,13 @@ async fn test_async_header_injector_apply_propagates_error() {
 
 #[tokio::test]
 async fn test_async_header_injector_clone_keeps_same_behavior() {
-    let injector = AsyncHttpHeaderInjector::new(|headers: &mut http::HeaderMap| {
-        Box::pin(async move {
-            headers.insert("x-clone", HeaderValue::from_static("ok"));
-            Ok(())
-        })
-    });
+    let injector =
+        AsyncHttpHeaderInjector::new(|headers: &mut http::HeaderMap| {
+            Box::pin(async move {
+                headers.insert("x-clone", HeaderValue::from_static("ok"));
+                Ok(())
+            })
+        });
     let cloned = injector.clone();
 
     let mut headers = HeaderMap::new();
@@ -73,9 +78,10 @@ async fn test_async_header_injector_clone_keeps_same_behavior() {
 
 #[test]
 fn test_async_header_injector_debug_output_contains_type_name() {
-    let injector = AsyncHttpHeaderInjector::new(|_headers: &mut http::HeaderMap| {
-        Box::pin(async move { Ok(()) })
-    });
+    let injector =
+        AsyncHttpHeaderInjector::new(|_headers: &mut http::HeaderMap| {
+            Box::pin(async move { Ok(()) })
+        });
     let output = format!("{injector:?}");
     assert!(output.contains("AsyncHttpHeaderInjector"));
 }

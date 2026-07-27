@@ -6,8 +6,16 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use http::{HeaderMap, Method, StatusCode};
-use qubit_http::{HttpResponseInterceptor, HttpResponseInterceptors, HttpResponseMeta};
+use http::{
+    HeaderMap,
+    Method,
+    StatusCode,
+};
+use qubit_http::{
+    HttpResponseInterceptor,
+    HttpResponseInterceptors,
+    HttpResponseMeta,
+};
 use url::Url;
 
 #[test]
@@ -15,9 +23,10 @@ fn test_http_response_interceptors_clear_removes_registered_callbacks() {
     let mut interceptors = HttpResponseInterceptors::new();
     interceptors.push(HttpResponseInterceptor::new(
         |context: &mut qubit_http::HttpResponseInterceptorContext| {
-            context
-                .headers_mut()
-                .insert("x-interceptor", http::HeaderValue::from_static("called"));
+            context.headers_mut().insert(
+                "x-interceptor",
+                http::HeaderValue::from_static("called"),
+            );
             Ok(())
         },
     ));

@@ -9,10 +9,15 @@
 
 use std::time::Duration;
 
-use qubit_retry::{RetryDelay, RetryJitter, RetryOptions};
+use qubit_retry::{
+    RetryDelay,
+    RetryJitter,
+    RetryOptions,
+};
 
 /// Default upper bound for SSE reconnect delay backoff.
-pub(crate) const DEFAULT_SSE_MAX_RECONNECT_DELAY: Duration = Duration::from_secs(30);
+pub(crate) const DEFAULT_SSE_MAX_RECONNECT_DELAY: Duration =
+    Duration::from_secs(30);
 
 /// Default exponential backoff multiplier for SSE reconnect delay growth.
 pub(crate) const DEFAULT_SSE_RECONNECT_BACKOFF_MULTIPLIER: f64 = 2.0;

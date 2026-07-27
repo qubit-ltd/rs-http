@@ -9,7 +9,11 @@
 use bytes::Bytes;
 use http::Method;
 use qubit_http::{
-    HttpClientFactory, HttpClientOptions, HttpLogger, HttpLoggingOptions, LogRedactionPolicy,
+    HttpClientFactory,
+    HttpClientOptions,
+    HttpLogger,
+    HttpLoggingOptions,
+    LogRedactionPolicy,
 };
 use qubit_redact::http::TextBodyPolicy;
 
@@ -64,7 +68,9 @@ fn test_http_logger_redacts_request_url_query_and_json_body() {
 
     let logs = capture_trace_logs(|| logger.log_request(&request));
 
-    assert!(logs.contains("--> POST https://example.com/%3Credacted%3E?access_token=****"));
+    assert!(logs.contains(
+        "--> POST https://example.com/%3Credacted%3E?access_token=****"
+    ));
     assert!(logs.contains(r#""password":"<redacted>""#));
     assert!(!logs.contains("raw-token"));
     assert!(!logs.contains("secret"));

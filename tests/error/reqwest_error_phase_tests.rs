@@ -9,10 +9,17 @@
 use std::time::Duration;
 
 use http::Method;
-use qubit_http::{HttpClientFactory, HttpClientOptions, HttpErrorKind};
+use qubit_http::{
+    HttpClientFactory,
+    HttpClientOptions,
+    HttpErrorKind,
+};
 use tokio::time::timeout;
 
-use crate::common::{spawn_one_shot_server, ResponsePlan};
+use crate::common::{
+    spawn_one_shot_server,
+    ResponsePlan,
+};
 
 #[tokio::test]
 async fn test_reqwest_error_phase_send_timeout_maps_to_write_timeout() {

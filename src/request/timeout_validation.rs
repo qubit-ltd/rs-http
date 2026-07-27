@@ -9,7 +9,10 @@
 
 use std::time::Duration;
 
-use crate::{HttpError, HttpResult};
+use crate::{
+    HttpError,
+    HttpResult,
+};
 
 /// Validates a request-level timeout duration.
 ///
@@ -22,7 +25,10 @@ use crate::{HttpError, HttpResult};
 ///
 /// # Errors
 /// Returns [`HttpError`] when `timeout` is zero.
-pub(crate) fn validate_positive_timeout(name: &str, timeout: Duration) -> HttpResult<()> {
+pub(crate) fn validate_positive_timeout(
+    name: &str,
+    timeout: Duration,
+) -> HttpResult<()> {
     if timeout.is_zero() {
         return Err(HttpError::other(format!(
             "{name} must be greater than zero"

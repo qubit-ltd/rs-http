@@ -6,7 +6,10 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use super::{SseControl, SseMessage};
+use super::{
+    SseControl,
+    SseMessage,
+};
 
 /// Internal SSE record stream item before public message filtering.
 #[derive(Debug, Clone, PartialEq, Eq)]
