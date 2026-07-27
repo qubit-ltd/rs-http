@@ -10,7 +10,10 @@ use bytes::Bytes;
 use futures_util::stream;
 use http::Method;
 use qubit_http::{
-    HttpClientFactory, HttpRequestBody, HttpRequestBodyByteStream, HttpRequestStreamingBody,
+    HttpClientFactory,
+    HttpRequestBody,
+    HttpRequestBodyByteStream,
+    HttpRequestStreamingBody,
 };
 
 #[test]

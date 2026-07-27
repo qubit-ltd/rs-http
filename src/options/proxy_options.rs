@@ -9,8 +9,14 @@
 use std::fmt;
 use std::str::FromStr;
 
-use qubit_argument::{require_that, ArgumentResult};
-use qubit_config::{ConfigReader, ConfigResult};
+use qubit_argument::{
+    require_that,
+    ArgumentResult,
+};
+use qubit_config::{
+    ConfigReader,
+    ConfigResult,
+};
 
 use super::HttpConfigError;
 

@@ -7,14 +7,19 @@
 // =============================================================================
 
 use http::Method;
-use qubit_http::{HttpClientFactory, HttpRequestInterceptor, HttpRequestInterceptors};
+use qubit_http::{
+    HttpClientFactory,
+    HttpRequestInterceptor,
+    HttpRequestInterceptors,
+};
 
 #[test]
 fn test_http_request_interceptors_apply_in_insertion_order() {
     let client = HttpClientFactory::new()
         .create_default()
         .expect("default client should be created");
-    let mut request = client.request(Method::GET, "https://example.com/").build();
+    let mut request =
+        client.request(Method::GET, "https://example.com/").build();
     let mut interceptors = HttpRequestInterceptors::new();
     interceptors.push(HttpRequestInterceptor::new(
         |request: &mut qubit_http::HttpRequest| {

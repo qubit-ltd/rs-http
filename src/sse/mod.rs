@@ -26,7 +26,8 @@ mod sse_record;
 mod sse_record_stream;
 
 pub(crate) use message_decoder::{
-    decode_messages_from_stream_with_limits, decode_records_from_stream_with_limits,
+    decode_messages_from_stream_with_limits,
+    decode_records_from_stream_with_limits,
 };
 pub(crate) use sse_reconnect_runner::SseReconnectRunner;
 

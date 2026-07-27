@@ -7,7 +7,10 @@
 // =============================================================================
 //! Request interceptor abstraction for outgoing HTTP requests.
 
-use qubit_function::{ArcMutatingFunction, MutatingFunction};
+use qubit_function::{
+    ArcMutatingFunction,
+    MutatingFunction,
+};
 use url::Url;
 
 use super::http_request::HttpRequest;
@@ -17,7 +20,8 @@ use crate::HttpResult;
 /// before URL resolution, header merge, and network I/O.
 ///
 /// Returning `Err` short-circuits execution for the current attempt.
-pub type HttpRequestInterceptor = ArcMutatingFunction<HttpRequest, HttpResult<()>>;
+pub type HttpRequestInterceptor =
+    ArcMutatingFunction<HttpRequest, HttpResult<()>>;
 
 /// Ordered request interceptor list with unified application behavior.
 #[derive(Debug, Clone, Default)]
@@ -69,7 +73,9 @@ impl HttpRequestInterceptors {
                         mapped = mapped.with_url(&parsed_url);
                     }
                 }
-                mapped.with_log_redaction_policy(request.log_redaction_policy().clone())
+                mapped.with_log_redaction_policy(
+                    request.log_redaction_policy().clone(),
+                )
             })?;
         }
         Ok(())

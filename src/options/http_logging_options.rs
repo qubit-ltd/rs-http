@@ -6,8 +6,14 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use qubit_argument::{require_that, ArgumentResult};
-use qubit_config::{ConfigReader, ConfigResult};
+use qubit_argument::{
+    require_that,
+    ArgumentResult,
+};
+use qubit_config::{
+    ConfigReader,
+    ConfigResult,
+};
 
 use super::from_config_helpers::get_optional_usize;
 use super::HttpConfigError;

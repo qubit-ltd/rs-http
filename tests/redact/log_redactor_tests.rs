@@ -6,9 +6,18 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use http::{HeaderMap, HeaderValue};
-use qubit_http::{LogRedactionPolicy, LogRedactor};
-use qubit_redact::http::{BodyBudget, UrlPathPolicy};
+use http::{
+    HeaderMap,
+    HeaderValue,
+};
+use qubit_http::{
+    LogRedactionPolicy,
+    LogRedactor,
+};
+use qubit_redact::http::{
+    BodyBudget,
+    UrlPathPolicy,
+};
 use url::Url;
 
 /// Verifies that presentation and hard budgets both constrain body previews.
@@ -21,7 +30,8 @@ fn test_body_preview_obeys_both_presentation_and_hard_budget() {
     let redactor = LogRedactor::new(policy);
     let body = br#"{"password":"never-log-this","padding":"xxxxxxxxxxxxxxxxxxxxxxxx"}"#;
 
-    let rendered = redactor.redact_body_preview(body, 24, Some("application/json"));
+    let rendered =
+        redactor.redact_body_preview(body, 24, Some("application/json"));
 
     assert!(!rendered.to_string().contains("never-log-this"));
     assert!(rendered.is_truncated());
@@ -73,8 +83,9 @@ fn test_log_redactor_uses_one_policy_snapshot() {
         .build()
         .expect("policy should be valid");
     let redactor = LogRedactor::new(policy);
-    let url = Url::parse("https://example.com/private/path?public_token=query-value")
-        .expect("URL should parse");
+    let url =
+        Url::parse("https://example.com/private/path?public_token=query-value")
+            .expect("URL should parse");
     let mut headers = HeaderMap::new();
     headers.insert("x-public-token", HeaderValue::from_static("header-value"));
 
@@ -112,7 +123,8 @@ fn test_log_redactor_default_never_exposes_cross_domain_sentinels() {
     let mut native_secret = HeaderValue::from_static("native-header-secret");
     native_secret.set_sensitive(true);
     headers.insert("x-diagnostic", native_secret);
-    let body = br#"{"password":"body-password","items":[{"token":"body-token"}]}"#;
+    let body =
+        br#"{"password":"body-password","items":[{"token":"body-token"}]}"#;
 
     let url_text = redactor.redact_url(&url).to_string();
     let header_text = redactor.redact_headers(&headers).to_string();
@@ -139,7 +151,8 @@ fn test_log_redactor_invalid_content_type_fails_closed() {
     let redactor = LogRedactor::default();
     let body = b"invalid-content-type-secret";
 
-    let rendered = redactor.redact_body_preview(body, body.len(), Some("bad\nvalue"));
+    let rendered =
+        redactor.redact_body_preview(body, body.len(), Some("bad\nvalue"));
 
     assert!(!rendered.to_string().contains("invalid-content-type-secret"));
 }

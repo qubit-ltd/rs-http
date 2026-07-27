@@ -10,7 +10,10 @@
 use url::Url;
 
 use super::ReqwestErrorPhase;
-use crate::{HttpError, HttpErrorKind};
+use crate::{
+    HttpError,
+    HttpErrorKind,
+};
 
 /// Maps a [`reqwest::Error`] into [`HttpError`] with phase-aware timeout
 /// classification and optional context.

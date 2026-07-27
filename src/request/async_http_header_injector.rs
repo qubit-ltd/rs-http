@@ -15,9 +15,13 @@ use http::HeaderMap;
 
 use crate::HttpResult;
 
-type AsyncHttpHeaderInjectorFuture<'a> = Pin<Box<dyn Future<Output = HttpResult<()>> + Send + 'a>>;
+type AsyncHttpHeaderInjectorFuture<'a> =
+    Pin<Box<dyn Future<Output = HttpResult<()>> + Send + 'a>>;
 type AsyncHttpHeaderInjectorFn =
-    dyn for<'a> Fn(&'a mut HeaderMap) -> AsyncHttpHeaderInjectorFuture<'a> + Send + Sync + 'static;
+    dyn for<'a> Fn(&'a mut HeaderMap) -> AsyncHttpHeaderInjectorFuture<'a>
+        + Send
+        + Sync
+        + 'static;
 
 /// Async HTTP header injector that can await external state (for example token
 /// refresh) before mutating outbound request headers.

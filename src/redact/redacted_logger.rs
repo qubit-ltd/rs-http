@@ -7,13 +7,19 @@
 // =============================================================================
 //! Safe rendering helpers for HTTP TRACE logs.
 
-use http::{HeaderMap, HeaderValue};
+use http::{
+    HeaderMap,
+    HeaderValue,
+};
 use qubit_redact::http::RedactedHeaders;
 use url::Url;
 
 use crate::HttpClientOptions;
 
-use super::{LogRedactionPolicy, LogRedactor};
+use super::{
+    LogRedactionPolicy,
+    LogRedactor,
+};
 
 /// Applies one policy snapshot and one presentation body limit to TRACE data.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,7 +42,10 @@ impl RedactedLogger {
     ///
     /// A safe TRACE rendering helper.
     #[inline]
-    pub(crate) fn new(policy: LogRedactionPolicy, body_size_limit: usize) -> Self {
+    pub(crate) fn new(
+        policy: LogRedactionPolicy,
+        body_size_limit: usize,
+    ) -> Self {
         Self {
             redactor: LogRedactor::new(policy),
             body_size_limit,
@@ -99,12 +108,20 @@ impl RedactedLogger {
     ///
     /// `<empty>` for an empty body, otherwise bounded log-safe text.
     #[inline]
-    pub(crate) fn body(&self, body: &[u8], content_type: Option<&HeaderValue>) -> String {
+    pub(crate) fn body(
+        &self,
+        body: &[u8],
+        content_type: Option<&HeaderValue>,
+    ) -> String {
         if body.is_empty() {
             return "<empty>".to_owned();
         }
         self.redactor
-            .redact_body_preview_with_header(body, self.body_size_limit, content_type)
+            .redact_body_preview_with_header(
+                body,
+                self.body_size_limit,
+                content_type,
+            )
             .into_log_safe_text()
             .into_owned()
     }

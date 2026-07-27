@@ -8,12 +8,21 @@
 
 use std::time::Duration;
 
-use qubit_argument::{require_that, ArgumentResult, OptionArgument};
-use qubit_config::{ConfigReader, ConfigResult};
+use qubit_argument::{
+    require_that,
+    ArgumentResult,
+    OptionArgument,
+};
+use qubit_config::{
+    ConfigReader,
+    ConfigResult,
+};
 
 use super::HttpConfigError;
 use crate::constants::{
-    DEFAULT_CONNECT_TIMEOUT_SECS, DEFAULT_READ_TIMEOUT_SECS, DEFAULT_WRITE_TIMEOUT_SECS,
+    DEFAULT_CONNECT_TIMEOUT_SECS,
+    DEFAULT_READ_TIMEOUT_SECS,
+    DEFAULT_WRITE_TIMEOUT_SECS,
 };
 
 /// Connect, read, write, and optional whole-request timeouts for HTTP I/O.
@@ -126,7 +135,10 @@ impl HttpTimeoutOptions {
 
 /// Returns `value` when it is nonzero while preserving the public domain
 /// diagnostic on failure.
-fn validate_positive_duration(path: &str, value: Duration) -> ArgumentResult<Duration> {
+fn validate_positive_duration(
+    path: &str,
+    value: Duration,
+) -> ArgumentResult<Duration> {
     require_that(
         value,
         path,

@@ -8,8 +8,15 @@
 
 use bytes::Bytes;
 use futures_util::StreamExt;
-use http::{HeaderMap, Method, StatusCode};
-use qubit_http::{HttpErrorKind, HttpResponse};
+use http::{
+    HeaderMap,
+    Method,
+    StatusCode,
+};
+use qubit_http::{
+    HttpErrorKind,
+    HttpResponse,
+};
 use url::Url;
 
 #[tokio::test]

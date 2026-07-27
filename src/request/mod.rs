@@ -28,7 +28,10 @@ pub use http_request::HttpRequest;
 pub use http_request_body::HttpRequestBody;
 pub use http_request_body_byte_stream::HttpRequestBodyByteStream;
 pub use http_request_builder::HttpRequestBuilder;
-pub use http_request_interceptors::{HttpRequestInterceptor, HttpRequestInterceptors};
+pub use http_request_interceptors::{
+    HttpRequestInterceptor,
+    HttpRequestInterceptors,
+};
 pub use http_request_retry_override::HttpRequestRetryOverride;
 pub use http_request_streaming_body::HttpRequestStreamingBody;
 pub(crate) use timeout_validation::validate_positive_timeout;

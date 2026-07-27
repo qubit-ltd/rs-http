@@ -7,21 +7,40 @@
 // =============================================================================
 
 use std::sync::{
-    atomic::{AtomicUsize, Ordering},
+    atomic::{
+        AtomicUsize,
+        Ordering,
+    },
     Arc,
 };
-use std::time::{Duration, Instant};
+use std::time::{
+    Duration,
+    Instant,
+};
 
 use futures_util::StreamExt;
-use http::{Method, StatusCode};
+use http::{
+    Method,
+    StatusCode,
+};
 use qubit_http::{
-    AsyncHttpHeaderInjector, CancellationToken, HttpClientFactory, HttpClientOptions, HttpError,
-    HttpErrorKind, RetryHint,
+    AsyncHttpHeaderInjector,
+    CancellationToken,
+    HttpClientFactory,
+    HttpClientOptions,
+    HttpError,
+    HttpErrorKind,
+    RetryHint,
 };
 use qubit_retry::RetryDelay;
 use tokio::time::timeout;
 
-use crate::common::{spawn_multi_shot_server, spawn_one_shot_server, ResponseChunk, ResponsePlan};
+use crate::common::{
+    spawn_multi_shot_server,
+    spawn_one_shot_server,
+    ResponseChunk,
+    ResponsePlan,
+};
 
 #[test]
 fn test_cancelled_error_semantics() {
@@ -32,7 +51,8 @@ fn test_cancelled_error_semantics() {
 }
 
 #[tokio::test]
-async fn test_execute_request_with_pre_cancelled_token_returns_cancelled_error() {
+async fn test_execute_request_with_pre_cancelled_token_returns_cancelled_error()
+{
     let server = spawn_multi_shot_server(vec![]).await;
 
     let mut options = HttpClientOptions::default();
@@ -61,7 +81,8 @@ async fn test_execute_request_with_pre_cancelled_token_returns_cancelled_error()
 }
 
 #[tokio::test]
-async fn test_execute_request_with_pre_cancelled_token_skips_request_interceptors() {
+async fn test_execute_request_with_pre_cancelled_token_skips_request_interceptors(
+) {
     let server = spawn_multi_shot_server(vec![]).await;
 
     let mut options = HttpClientOptions::default();
@@ -243,7 +264,8 @@ async fn test_execute_request_can_be_cancelled_while_reading_response_body() {
 }
 
 #[tokio::test]
-async fn test_execute_request_can_be_cancelled_while_reading_status_error_preview() {
+async fn test_execute_request_can_be_cancelled_while_reading_status_error_preview(
+) {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 503,
         headers: vec![],
@@ -430,7 +452,8 @@ async fn test_execute_stream_body_can_be_cancelled_after_first_chunk() {
         .expect("execute timed out")
         .expect("request should start");
 
-    let mut stream = response.stream().expect("stream body should be available");
+    let mut stream =
+        response.stream().expect("stream body should be available");
     let first = stream
         .next()
         .await
@@ -458,7 +481,10 @@ async fn test_execute_stream_body_can_be_cancelled_after_first_chunk() {
 async fn test_sse_messages_reports_pre_cancelled_stream_before_reading_body() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
-        headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+        headers: vec![(
+            "Content-Type".to_string(),
+            "text/event-stream".to_string(),
+        )],
         chunks: vec![],
         finish: false,
     })
@@ -502,7 +528,10 @@ async fn test_sse_messages_reports_pre_cancelled_stream_before_reading_body() {
 async fn test_sse_chunks_reports_pre_cancelled_stream_before_reading_body() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
-        headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+        headers: vec![(
+            "Content-Type".to_string(),
+            "text/event-stream".to_string(),
+        )],
         chunks: vec![],
         finish: false,
     })
