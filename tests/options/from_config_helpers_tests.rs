@@ -19,8 +19,9 @@ fn test_from_config_helpers_reports_invalid_header_value_path() {
         .set("http.default_headers.x-bad", "line1\nline2".to_string())
         .expect("test config should accept raw string");
 
-    let error = HttpClientOptions::from_config(&config.section("http"))
-        .expect_err("invalid header value should fail");
+    let error =
+        HttpClientOptions::from_config(&config.section("http").unwrap())
+            .expect_err("invalid header value should fail");
 
     assert_eq!(error.kind, HttpConfigErrorKind::InvalidHeader);
     assert_eq!(error.path, "http.default_headers.x-bad");

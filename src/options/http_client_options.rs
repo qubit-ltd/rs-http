@@ -302,8 +302,12 @@ impl HttpClientOptions {
         }
 
         // timeouts
-        if config.contains_section("timeouts") {
-            let timeouts_config = config.section("timeouts");
+        if config
+            .contains_section("timeouts")
+            .map_err(HttpConfigError::from)?
+        {
+            let timeouts_config =
+                config.section("timeouts").map_err(HttpConfigError::from)?;
             opts.timeouts =
                 match HttpTimeoutOptions::from_config(&timeouts_config) {
                     Ok(timeouts) => timeouts,
@@ -317,8 +321,12 @@ impl HttpClientOptions {
         }
 
         // proxy
-        if config.contains_section("proxy") {
-            let proxy_config = config.section("proxy");
+        if config
+            .contains_section("proxy")
+            .map_err(HttpConfigError::from)?
+        {
+            let proxy_config =
+                config.section("proxy").map_err(HttpConfigError::from)?;
             opts.proxy = match ProxyOptions::from_config(&proxy_config) {
                 Ok(proxy) => proxy,
                 Err(error) => {
@@ -331,8 +339,12 @@ impl HttpClientOptions {
         }
 
         // logging
-        if config.contains_section("logging") {
-            let logging_config = config.section("logging");
+        if config
+            .contains_section("logging")
+            .map_err(HttpConfigError::from)?
+        {
+            let logging_config =
+                config.section("logging").map_err(HttpConfigError::from)?;
             opts.logging =
                 match HttpLoggingOptions::from_config(&logging_config) {
                     Ok(logging) => logging,
@@ -345,8 +357,12 @@ impl HttpClientOptions {
                 };
         }
 
-        if config.contains_section("retry") {
-            let retry_config = config.section("retry");
+        if config
+            .contains_section("retry")
+            .map_err(HttpConfigError::from)?
+        {
+            let retry_config =
+                config.section("retry").map_err(HttpConfigError::from)?;
             opts.retry = match HttpRetryOptions::from_config(&retry_config) {
                 Ok(retry) => retry,
                 Err(error) => {
@@ -358,8 +374,12 @@ impl HttpClientOptions {
             };
         }
 
-        if config.contains_section("sse") {
-            let sse_config = config.section("sse");
+        if config
+            .contains_section("sse")
+            .map_err(HttpConfigError::from)?
+        {
+            let sse_config =
+                config.section("sse").map_err(HttpConfigError::from)?;
             let sse = match Self::read_sse_config(&sse_config) {
                 Ok(sse) => sse,
                 Err(error) => {
@@ -422,8 +442,13 @@ impl HttpClientOptions {
             }
         }
 
-        if config.contains_section("log_redaction") {
-            let log_redaction_config = config.section("log_redaction");
+        if config
+            .contains_section("log_redaction")
+            .map_err(HttpConfigError::from)?
+        {
+            let log_redaction_config = config
+                .section("log_redaction")
+                .map_err(HttpConfigError::from)?;
             let log_redaction =
                 match Self::read_log_redaction_config(&log_redaction_config) {
                     Ok(log_redaction) => log_redaction,
@@ -544,7 +569,7 @@ impl HttpClientOptions {
                 Ok(value) => value,
                 Err(error) => {
                     return Err(HttpConfigError::config_error(
-                        config.resolve_key(k),
+                        config.resolve_key(k).map_err(HttpConfigError::from)?,
                         error.to_string(),
                     ))
                 }
@@ -564,7 +589,9 @@ impl HttpClientOptions {
             };
         if !header_map.is_empty() && json_headers.is_some() {
             return Err(HttpConfigError::invalid_value(
-                config.resolve_key(headers_prefix),
+                config
+                    .resolve_key(headers_prefix)
+                    .map_err(HttpConfigError::from)?,
                 "default_headers sub-key form and JSON map form cannot be used at the same time",
             ));
         }
@@ -576,7 +603,9 @@ impl HttpClientOptions {
                     Ok(parsed) => parsed,
                     Err(error) => {
                         return Err(HttpConfigError::type_error(
-                            config.resolve_key(headers_prefix),
+                            config
+                                .resolve_key(headers_prefix)
+                                .map_err(HttpConfigError::from)?,
                             format!(
                                 "Failed to parse default_headers JSON: {error}"
                             ),
@@ -587,7 +616,9 @@ impl HttpClientOptions {
         }
         if !header_map.is_empty() {
             opts.default_headers = hashmap_to_headermap(
-                &config.resolve_key(headers_prefix),
+                &config
+                    .resolve_key(headers_prefix)
+                    .map_err(HttpConfigError::from)?,
                 header_map,
             )?;
         }
@@ -718,7 +749,10 @@ impl HttpClientOptions {
         {
             error.path
         } else {
-            config.resolve_key(&error.path)
+            match config.resolve_key(&error.path) {
+                Ok(path) => path,
+                Err(error) => return HttpConfigError::from(error),
+            }
         };
         error
     }
