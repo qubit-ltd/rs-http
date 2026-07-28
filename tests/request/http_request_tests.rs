@@ -140,6 +140,7 @@ fn test_http_request_debug_masks_native_sensitive_header_value() {
 fn test_http_request_debug_honors_url_path_redaction_policy() {
     let mut options = HttpClientOptions::new();
     options.log_redaction_policy = LogRedactionPolicy::builder()
+        .load_default()
         .url_path_policy(UrlPathPolicy::Redact)
         .build()
         .expect("log redaction policy should be valid");

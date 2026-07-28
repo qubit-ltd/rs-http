@@ -161,6 +161,7 @@ fn test_http_error_debug_honors_url_path_redaction_policy() {
         .with_url(&url)
         .with_log_redaction_policy(
             LogRedactionPolicy::builder()
+                .load_default()
                 .url_path_policy(UrlPathPolicy::Redact)
                 .build()
                 .expect("log redaction policy should be valid"),

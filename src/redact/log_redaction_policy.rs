@@ -20,11 +20,18 @@ pub struct LogRedactionPolicy {
 }
 
 impl LogRedactionPolicy {
-    /// Creates a builder initialized from the current default redaction policy.
+    /// Creates a builder without header, query, or body field rules.
     ///
     /// # Returns
     ///
-    /// A mutable builder that produces one immutable snapshot.
+    /// A mutable builder with fail-closed behavior defaults that produces one
+    /// immutable snapshot.
+    ///
+    /// # Warning
+    ///
+    /// Call [`LogRedactionPolicyBuilder::load_default`] before
+    /// application-specific changes when the conservative runtime field rules
+    /// are required.
     #[inline(always)]
     pub fn builder() -> LogRedactionPolicyBuilder {
         LogRedactionPolicyBuilder::new()
