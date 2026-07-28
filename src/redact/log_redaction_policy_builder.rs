@@ -98,17 +98,12 @@ macro_rules! field_builder_methods {
 }
 
 impl LogRedactionPolicyBuilder {
-    /// Creates a wrapper around an empty canonical HTTP policy builder.
+    /// Creates a wrapper around the conservative canonical HTTP policy builder.
     ///
     /// # Returns
     ///
-    /// A builder with fail-closed runtime behavior defaults but no header,
-    /// query, or body field rules.
-    ///
-    /// # Warning
-    ///
-    /// Call [`Self::load_default`] before application-specific changes when
-    /// the conservative runtime field rules are required.
+    /// A builder that inherits the runtime's fail-closed behavior and field
+    /// rules, ready for application-specific changes.
     #[inline]
     pub fn new() -> Self {
         Self {
@@ -125,8 +120,7 @@ impl LogRedactionPolicyBuilder {
     /// # Warning
     ///
     /// This replaces every prior field rule, behavior choice, budget, and
-    /// recorded validation error. Call this method before adding
-    /// application-specific configuration.
+    /// recorded validation error.
     #[inline]
     pub fn load_default(mut self) -> Self {
         self.http = self.http.load_default();

@@ -73,9 +73,9 @@ query fields, native-sensitive headers, structured bodies, and hard body
 budgets. Non-root URL paths, opaque text, and unkeyed JSON values are redacted
 by default.
 
-`LogRedactionPolicy::builder()` starts without field rules. Call
-`.load_default()` before application-specific changes to retain the conservative
-runtime defaults:
+`LogRedactionPolicy::builder()` starts from the conservative runtime default
+snapshot, so application-specific rules can be added directly. Use
+`.load_default()` only to explicitly reset earlier builder changes:
 
 ```rust
 use qubit_http::{HttpClientFactory, HttpClientOptions, LogRedactionPolicy};
@@ -83,7 +83,6 @@ use qubit_redact::{Sensitivity, http::UrlPathPolicy};
 
 let mut options = HttpClientOptions::new();
 options.log_redaction_policy = LogRedactionPolicy::builder()
-    .load_default()
     .raise_header("x-api-key", Sensitivity::High)
     .raise_query("access_token", Sensitivity::High)
     .raise_body("password", Sensitivity::Secret)
