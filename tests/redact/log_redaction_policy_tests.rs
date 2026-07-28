@@ -68,11 +68,10 @@ fn test_log_redaction_policy_default_builder_matches_policy_builder() {
     );
 }
 
-/// Verifies an opt-in builder inherits the runtime's conservative defaults.
+/// Verifies the builder inherits the runtime's conservative defaults.
 #[test]
-fn test_log_redaction_policy_builder_load_default_inherits_runtime_defaults() {
+fn test_log_redaction_policy_builder_inherits_runtime_defaults() {
     let policy = LogRedactionPolicy::builder()
-        .load_default()
         .build()
         .expect("default policy should be valid");
 

@@ -459,8 +459,7 @@ impl HttpClientOptions {
                         ))
                     }
                 };
-            let mut policy_builder =
-                LogRedactionPolicy::builder().load_default();
+            let mut policy_builder = LogRedactionPolicy::builder();
             if let Some(value) = log_redaction.url_path_policy.as_deref() {
                 let policy = match Self::parse_url_path_policy(value) {
                     Ok(policy) => policy,

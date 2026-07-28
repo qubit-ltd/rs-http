@@ -579,7 +579,7 @@ Logs are redacted through `LogRedactor` and `LogRedactionPolicy`, backed by `qub
 
 For headers, `http::HeaderValue::is_sensitive()` is a value-level `Secret` declaration. Request, response, streaming-response, and `Debug` rendering honor it before header-name matching. An allow rule cannot expose a marked value; unmarked values continue to use the same immutable name policy snapshot.
 
-Default sensitive names and mask levels come from `RedactionPolicy::default()`. Matching canonicalizes common separators and uses token-suffix boundaries. `LogRedactionPolicy::builder()` starts without field rules, so call `.load_default()` before applying header, query, or body changes that must retain the defaults. `raise_*` retains the stronger level, `override_*` explicitly replaces it, and `allow_*_exact` or `allow_*_suffix` records a deliberate visibility rule. `logging.body_size_limit` is a presentation bound, while `BodyBudget` remains a non-bypassable parser-input and rendered-output bound.
+Default sensitive names and mask levels come from `RedactionPolicy::default()`. Matching canonicalizes common separators and uses token-suffix boundaries. `LogRedactionPolicy::builder()` starts from that conservative snapshot, so header, query, and body changes retain the defaults directly; `.load_default()` explicitly resets earlier builder changes. `raise_*` retains the stronger level, `override_*` explicitly replaces it, and `allow_*_exact` or `allow_*_suffix` records a deliberate visibility rule. `logging.body_size_limit` is a presentation bound, while `BodyBudget` remains a non-bypassable parser-input and rendered-output bound.
 
 Example:
 
@@ -598,7 +598,6 @@ options.logging.enabled = true;
 options.logging.log_request_header = true;
 options.logging.log_request_body = true;
 options.log_redaction_policy = LogRedactionPolicy::builder()
-    .load_default()
     .raise_header("x-api-key", Sensitivity::High)
     .raise_query("access_token", Sensitivity::High)
     .raise_body("password", Sensitivity::Secret)
