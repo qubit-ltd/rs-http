@@ -579,7 +579,7 @@ HTTP 日志使用 `tracing::trace!`。必须同时满足：
 
 对于 header，`http::HeaderValue::is_sensitive()` 是值级 `Secret` 声明。请求、响应、流式响应和 `Debug` 渲染都会在 header name 匹配前处理该标记。allow 规则不能暴露已标记值；未标记值继续使用同一个不可变 name policy 快照。
 
-默认敏感名称和掩码级别来自 `RedactionPolicy::default()`。匹配会规范化常见分隔符，并使用 token-suffix 边界。所有 header、query 和 body 调整都通过 `LogRedactionPolicy::builder()` 完成，再一次性安装结果。`raise_*` 保留更强等级，`override_*` 显式替换等级，`allow_*_exact` 与 `allow_*_suffix` 表达有意的可见规则。`logging.body_size_limit` 是展示限额，`BodyBudget` 则是不可绕过的 parser 输入和渲染输出硬上限。
+默认敏感名称和掩码级别来自 `RedactionPolicy::default()`。匹配会规范化常见分隔符，并使用 token-suffix 边界。`LogRedactionPolicy::builder()` 开始时没有字段规则；需要保留默认规则的 header、query 和 body 调整，必须先调用 `.load_default()`。`raise_*` 保留更强等级，`override_*` 显式替换等级，`allow_*_exact` 与 `allow_*_suffix` 表达有意的可见规则。`logging.body_size_limit` 是展示限额，`BodyBudget` 则是不可绕过的 parser 输入和渲染输出硬上限。
 
 示例：
 
@@ -598,6 +598,7 @@ options.logging.enabled = true;
 options.logging.log_request_header = true;
 options.logging.log_request_body = true;
 options.log_redaction_policy = LogRedactionPolicy::builder()
+    .load_default()
     .raise_header("x-api-key", Sensitivity::High)
     .raise_query("access_token", Sensitivity::High)
     .raise_body("password", Sensitivity::Secret)
