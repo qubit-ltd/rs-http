@@ -71,15 +71,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 `qubit-redact` HTTP redactor 统一处理 URL 用户信息、fragment、query 字段、原生敏感
 header、结构化 body 和硬预算。非根 URL path、不透明文本和无键 JSON 值默认隐藏。
 
-`LogRedactionPolicy::builder()` 从保守的运行时默认快照开始，因此可以直接添加业务规则。
-只有需要显式重置此前的 builder 配置时才使用 `.load_default()`：
+`LogRedactionPolicy::builder()` 不包含字段规则，但保留安全关闭行为和有限预算。
+需要扩展保守运行时默认快照时，使用 `LogRedactionPolicy::builder_from_default()`；
+`.load_default()` 用于显式重置此前的 builder 配置：
 
 ```rust
 use qubit_http::{HttpClientFactory, HttpClientOptions, LogRedactionPolicy};
 use qubit_redact::{Sensitivity, http::UrlPathPolicy};
 
 let mut options = HttpClientOptions::new();
-options.log_redaction_policy = LogRedactionPolicy::builder()
+options.log_redaction_policy = LogRedactionPolicy::builder_from_default()
     .raise_header("x-api-key", Sensitivity::High)
     .raise_query("access_token", Sensitivity::High)
     .raise_body("password", Sensitivity::Secret)
