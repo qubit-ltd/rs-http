@@ -208,7 +208,7 @@ fn test_http_client_options_debug_masks_sensitive_values() {
 #[test]
 fn test_http_client_options_debug_honors_explicit_sensitivity_override() {
     let mut options = HttpClientOptions::new();
-    options.log_redaction_policy = LogRedactionPolicy::builder()
+    options.log_redaction_policy = LogRedactionPolicy::builder_from_default()
         .override_header("authorization", Sensitivity::Low)
         .build()
         .expect("log redaction policy should be valid");

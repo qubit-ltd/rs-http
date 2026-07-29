@@ -98,16 +98,28 @@ macro_rules! field_builder_methods {
 }
 
 impl LogRedactionPolicyBuilder {
-    /// Creates a wrapper around the conservative canonical HTTP policy builder.
+    /// Creates a wrapper around an empty canonical HTTP policy builder.
     ///
     /// # Returns
     ///
-    /// A builder that inherits the runtime's fail-closed behavior and field
-    /// rules, ready for application-specific changes.
+    /// A builder with no field rules, fail-closed behavior, and finite budgets.
     #[inline]
     pub fn new() -> Self {
         Self {
             http: HttpRedactionPolicy::builder(),
+        }
+    }
+
+    /// Creates a wrapper around the current default HTTP policy snapshot.
+    ///
+    /// # Returns
+    ///
+    /// A builder that retains the runtime's field rules, fail-closed behavior,
+    /// and budgets for application-specific changes.
+    #[inline]
+    pub fn from_default() -> Self {
+        Self {
+            http: HttpRedactionPolicy::builder_from_default(),
         }
     }
 

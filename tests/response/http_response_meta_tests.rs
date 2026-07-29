@@ -80,7 +80,7 @@ fn test_http_response_meta_debug_honors_url_path_redaction_policy() {
         Method::GET,
     )
     .with_log_redaction_policy(
-        LogRedactionPolicy::builder()
+        LogRedactionPolicy::builder_from_default()
             .load_default()
             .url_path_policy(UrlPathPolicy::Redact)
             .build()
