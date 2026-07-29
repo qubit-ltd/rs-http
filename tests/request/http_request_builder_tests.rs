@@ -54,7 +54,7 @@ fn test_request_builder_debug_masks_sensitive_values() {
     options
         .set_base_url("https://api.example.com/root/")
         .expect("base URL should be valid");
-    options.log_redaction_policy = LogRedactionPolicy::builder()
+    options.log_redaction_policy = LogRedactionPolicy::builder_from_default()
         .load_default()
         .raise_header("x-debug-secret", Sensitivity::High)
         .raise_query("debugToken", Sensitivity::High)

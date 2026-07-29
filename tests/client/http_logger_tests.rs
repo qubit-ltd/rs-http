@@ -28,7 +28,7 @@ fn test_http_logger_logs_request_body_preview_with_truncation() {
         body_size_limit: 4,
         ..HttpLoggingOptions::default()
     };
-    options.log_redaction_policy = LogRedactionPolicy::builder()
+    options.log_redaction_policy = LogRedactionPolicy::builder_from_default()
         .text_body_policy(TextBodyPolicy::PassThrough)
         .build()
         .expect("log redaction policy should be valid");

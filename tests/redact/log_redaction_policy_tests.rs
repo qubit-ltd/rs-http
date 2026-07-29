@@ -25,7 +25,7 @@ use qubit_redact::{
 fn test_log_redaction_policy_is_built_immutably() {
     let diagnostic_budget = DiagnosticBudget::new(512, 384)
         .expect("diagnostic budget should be valid");
-    let policy = LogRedactionPolicy::builder()
+    let policy = LogRedactionPolicy::builder_from_default()
         .raise_header("x-tenant-secret", Sensitivity::Secret)
         .allow_query_exact("public_token")
         .body_budget(BodyBudget::new(128, 256).expect("budget should be valid"))
@@ -59,19 +59,31 @@ fn test_log_redaction_policy_default_wraps_http_default() {
     );
 }
 
-/// Verifies both public default-builder entry points produce the same policy.
+/// Verifies both empty-builder entry points produce the same policy.
 #[test]
 fn test_log_redaction_policy_default_builder_matches_policy_builder() {
+    let builder = LogRedactionPolicy::builder()
+        .build()
+        .expect("the empty log policy should be valid");
+
     assert_eq!(
         LogRedactionPolicyBuilder::default().build(),
-        LogRedactionPolicy::builder().build(),
+        Ok(builder.clone()),
+    );
+    assert_eq!(
+        builder
+            .http_policy()
+            .query_policy()
+            .sensitivity_for("access_token"),
+        None,
     );
 }
 
-/// Verifies the builder inherits the runtime's conservative defaults.
+/// Verifies the explicit default builder inherits the runtime's conservative
+/// defaults.
 #[test]
-fn test_log_redaction_policy_builder_inherits_runtime_defaults() {
-    let policy = LogRedactionPolicy::builder()
+fn test_log_redaction_policy_builder_from_default_inherits_runtime_defaults() {
+    let policy = LogRedactionPolicy::builder_from_default()
         .build()
         .expect("default policy should be valid");
 
@@ -85,7 +97,7 @@ fn test_log_redaction_policy_builder_inherits_runtime_defaults() {
 /// Verifies every field domain retains only its own builder configuration.
 #[test]
 fn test_log_redaction_policy_builder_keeps_domains_independent() {
-    let policy = LogRedactionPolicy::builder()
+    let policy = LogRedactionPolicy::builder_from_default()
         .raise_header("x-private-header", Sensitivity::Secret)
         .allow_header_suffix("public_token")
         .raise_query("tenant_query", Sensitivity::High)
@@ -137,7 +149,7 @@ fn test_log_redaction_policy_builder_keeps_domains_independent() {
 /// Verifies invalid header names fail during immutable policy construction.
 #[test]
 fn test_log_redaction_policy_builder_reports_invalid_header_field() {
-    let result = LogRedactionPolicy::builder()
+    let result = LogRedactionPolicy::builder_from_default()
         .raise_header("---", Sensitivity::High)
         .build();
 
@@ -147,7 +159,7 @@ fn test_log_redaction_policy_builder_reports_invalid_header_field() {
 /// Verifies invalid query names fail during immutable policy construction.
 #[test]
 fn test_log_redaction_policy_builder_reports_invalid_query_field() {
-    let result = LogRedactionPolicy::builder()
+    let result = LogRedactionPolicy::builder_from_default()
         .raise_query("...", Sensitivity::High)
         .build();
 
@@ -157,7 +169,7 @@ fn test_log_redaction_policy_builder_reports_invalid_query_field() {
 /// Verifies invalid body names fail during immutable policy construction.
 #[test]
 fn test_log_redaction_policy_builder_reports_invalid_body_field() {
-    let result = LogRedactionPolicy::builder()
+    let result = LogRedactionPolicy::builder_from_default()
         .raise_body("___", Sensitivity::High)
         .build();
 

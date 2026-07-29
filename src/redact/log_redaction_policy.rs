@@ -20,15 +20,25 @@ pub struct LogRedactionPolicy {
 }
 
 impl LogRedactionPolicy {
+    /// Creates a builder without header, query, or body field rules.
+    ///
+    /// # Returns
+    ///
+    /// A mutable builder with fail-closed behavior and finite default budgets.
+    #[inline(always)]
+    pub fn builder() -> LogRedactionPolicyBuilder {
+        LogRedactionPolicyBuilder::new()
+    }
+
     /// Creates a builder from the conservative runtime HTTP policy snapshot.
     ///
     /// # Returns
     ///
-    /// A mutable builder that retains fail-closed behavior and field rules
-    /// unless application-specific configuration replaces them.
+    /// A mutable builder containing the current default field rules, behavior,
+    /// and budgets.
     #[inline(always)]
-    pub fn builder() -> LogRedactionPolicyBuilder {
-        LogRedactionPolicyBuilder::new()
+    pub fn builder_from_default() -> LogRedactionPolicyBuilder {
+        LogRedactionPolicyBuilder::from_default()
     }
 
     /// Creates a log policy from a complete runtime HTTP policy.

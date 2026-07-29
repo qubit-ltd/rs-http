@@ -23,7 +23,7 @@ use url::Url;
 /// Verifies that presentation and hard budgets both constrain body previews.
 #[test]
 fn test_body_preview_obeys_both_presentation_and_hard_budget() {
-    let policy = LogRedactionPolicy::builder()
+    let policy = LogRedactionPolicy::builder_from_default()
         .body_budget(BodyBudget::new(32, 48).expect("budget should be valid"))
         .build()
         .expect("policy should be valid");
@@ -42,7 +42,7 @@ fn test_body_preview_obeys_both_presentation_and_hard_budget() {
 /// Verifies that the runtime hard limit still applies above presentation.
 #[test]
 fn test_body_preview_hard_budget_preserves_exact_metadata() {
-    let policy = LogRedactionPolicy::builder()
+    let policy = LogRedactionPolicy::builder_from_default()
         .body_budget(BodyBudget::new(8, 64).expect("budget should be valid"))
         .build()
         .expect("policy should be valid");
@@ -75,7 +75,7 @@ fn test_body_preview_zero_limit_preserves_truthful_metadata() {
 /// Verifies that URL, headers, and body all use the same policy snapshot.
 #[test]
 fn test_log_redactor_uses_one_policy_snapshot() {
-    let policy = LogRedactionPolicy::builder()
+    let policy = LogRedactionPolicy::builder_from_default()
         .allow_query_exact("public_token")
         .allow_header_exact("x-public-token")
         .allow_body_exact("public_token")
