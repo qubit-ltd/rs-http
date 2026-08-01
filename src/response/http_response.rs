@@ -34,6 +34,7 @@ use qubit_json::{
     JsonDecodeOptions,
     LenientJsonDecoder,
 };
+use qubit_redact::http::HttpRedactor;
 use serde::de::DeserializeOwned;
 use tokio_util::sync::CancellationToken;
 use url::Url;
@@ -43,10 +44,7 @@ use crate::error::{
     backend_error_mapper::map_reqwest_error,
     ReqwestErrorPhase,
 };
-use crate::redact::{
-    HttpRedactor,
-    RedactedDebugger,
-};
+use crate::redact::RedactedDebugger;
 use crate::sse::{
     DoneMarkerPolicy,
     SseChunkStream,
@@ -58,7 +56,6 @@ use crate::{
     HttpError,
     HttpErrorKind,
     HttpResult,
-    HttpRedactionPolicy,
 };
 
 use super::{
@@ -508,9 +505,7 @@ impl HttpResponse {
                     .with_method(self.meta.method())
                     .with_url(&self.runtime.request_url)
                     .with_status(status)
-                    .with_log_redactor(
-                        self.log_redactor().clone(),
-                    );
+                    .with_log_redactor(self.log_redactor().clone());
                     self.remember_body_read_failure(&error);
                     return Err(error);
                 }
@@ -627,9 +622,7 @@ impl HttpResponse {
                     .with_status(self.meta.status())
                     .with_url(self.meta.url())
                     .with_source(error)
-                    .with_log_redactor(
-                        self.log_redactor().clone(),
-                    )
+                    .with_log_redactor(self.log_redactor().clone())
             })
     }
 
@@ -679,7 +672,8 @@ impl HttpResponse {
     pub fn sse_messages(mut self) -> SseMessageStream {
         let max_line_bytes = self.options.sse_max_line_bytes;
         let max_frame_bytes = self.options.sse_max_frame_bytes;
-        match self.stream() {
+        let log_redactor = self.log_redactor().clone();
+        let decoded: SseMessageStream = match self.stream() {
             Ok(stream) => crate::sse::decode_messages_from_stream_with_limits(
                 stream,
                 max_line_bytes,
@@ -688,7 +682,11 @@ impl HttpResponse {
             Err(error) => {
                 Box::pin(futures_stream::once(async move { Err(error) }))
             }
-        }
+        };
+        Box::pin(decoded.map(move |result| {
+            result
+                .map_err(|error| error.with_log_redactor(log_redactor.clone()))
+        }))
     }
 
     /// Decodes body stream as internal SSE records for reconnect state
@@ -700,7 +698,8 @@ impl HttpResponse {
     pub(crate) fn sse_records(mut self) -> crate::sse::SseRecordStream {
         let max_line_bytes = self.options.sse_max_line_bytes;
         let max_frame_bytes = self.options.sse_max_frame_bytes;
-        match self.stream() {
+        let log_redactor = self.log_redactor().clone();
+        let decoded: crate::sse::SseRecordStream = match self.stream() {
             Ok(stream) => crate::sse::decode_records_from_stream_with_limits(
                 stream,
                 max_line_bytes,
@@ -709,7 +708,11 @@ impl HttpResponse {
             Err(error) => {
                 Box::pin(futures_stream::once(async move { Err(error) }))
             }
-        }
+        };
+        Box::pin(decoded.map(move |result| {
+            result
+                .map_err(|error| error.with_log_redactor(log_redactor.clone()))
+        }))
     }
 
     /// Decodes SSE `data:` lines as JSON chunks using this response's SSE JSON
@@ -724,7 +727,8 @@ impl HttpResponse {
         let mode = self.options.sse_json_mode;
         let max_line_bytes = self.options.sse_max_line_bytes;
         let max_frame_bytes = self.options.sse_max_frame_bytes;
-        match self.stream() {
+        let log_redactor = self.log_redactor().clone();
+        let decoded: SseChunkStream<T> = match self.stream() {
             Ok(stream) => {
                 crate::sse::decode_json_chunks_from_stream_with_limits(
                     stream,
@@ -737,20 +741,15 @@ impl HttpResponse {
             Err(error) => {
                 Box::pin(futures_stream::once(async move { Err(error) }))
             }
-        }
+        };
+        Box::pin(decoded.map(move |result| {
+            result
+                .map_err(|error| error.with_log_redactor(log_redactor.clone()))
+        }))
     }
 
-    /// Returns the policy snapshot used for response diagnostics and errors.
-    ///
-    /// # Returns
-    ///
-    /// The immutable policy captured when this response was created.
-    #[inline(always)]
-    pub(crate) fn log_redaction_policy(&self) -> &HttpRedactionPolicy {
-        self.options.log_redactor.policy()
-    }
-
-    /// Returns the shared log redactor used for response diagnostics and errors.
+    /// Returns the shared log redactor used for response diagnostics and
+    /// errors.
     #[inline(always)]
     pub(crate) fn log_redactor(&self) -> &Arc<HttpRedactor> {
         &self.options.log_redactor
@@ -897,9 +896,7 @@ impl HttpResponse {
                     .with_method(self.meta.method())
                     .with_url(&self.runtime.request_url)
                     .with_status(self.meta.status())
-                    .with_log_redactor(
-                        self.log_redactor().clone(),
-                    ),
+                    .with_log_redactor(self.log_redactor().clone()),
             )
         } else {
             None
@@ -960,9 +957,25 @@ impl HttpResponse {
         if bytes.is_empty() && !truncated {
             return "<empty>".to_owned();
         }
-        log_redactor
-            .redact_captured_body(bytes, source_len, truncated, content_type)
-            .to_string()
+        let capture = if truncated {
+            source_len.map_or_else(
+                || qubit_redact::http::BodyCapture::truncated_unknown(bytes),
+                |total_len| {
+                    qubit_redact::http::BodyCapture::truncated(
+                        bytes,
+                        Some(total_len),
+                    )
+                    .unwrap_or_else(|_| {
+                        qubit_redact::http::BodyCapture::truncated_unknown(
+                            bytes,
+                        )
+                    })
+                },
+            )
+        } else {
+            qubit_redact::http::BodyCapture::complete(bytes)
+        };
+        log_redactor.redact_body(capture, content_type).to_string()
     }
 
     /// Extracts a Content-Type header value.

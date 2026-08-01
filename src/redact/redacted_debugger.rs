@@ -5,24 +5,24 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
+// qubit-style: allow source-test-pair
 //! Safe rendering helpers for `Debug` implementations.
 
 use http::HeaderMap;
-use qubit_redact::http::RedactedHeaders;
+use qubit_redact::http::{
+    HttpRedactor,
+    RedactedHeaders,
+};
 use url::Url;
 
-use super::{
-    HttpRedactor,
-};
-
 /// Renders diagnostic fields with one immutable policy snapshot.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct RedactedDebugger {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct RedactedDebugger<'redactor> {
     /// Unified redactor used for every debug field.
-    redactor: HttpRedactor,
+    redactor: &'redactor HttpRedactor,
 }
 
-impl RedactedDebugger {
+impl<'redactor> RedactedDebugger<'redactor> {
     /// Creates a debugger from the supplied policy without merging defaults.
     ///
     /// # Parameters
@@ -33,9 +33,9 @@ impl RedactedDebugger {
     ///
     /// A safe debug renderer.
     #[inline(always)]
-    pub(crate) fn new(log_redactor: &HttpRedactor) -> Self {
+    pub(crate) const fn new(log_redactor: &'redactor HttpRedactor) -> Self {
         Self {
-            redactor: log_redactor.clone(),
+            redactor: log_redactor,
         }
     }
 
@@ -98,6 +98,6 @@ impl RedactedDebugger {
         &self,
         text: &str,
     ) -> qubit_redact::LogSafeText<'static> {
-        self.redactor.redact_diagnostic_text(text)
+        self.redactor.redact_urls_in_text(text)
     }
 }

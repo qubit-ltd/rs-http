@@ -52,11 +52,6 @@ pub use options::{
     ProxyOptions,
     ProxyType,
 };
-pub(crate) use redact::{
-    HttpRedactionPolicy,
-    HttpRedactionPolicyBuilder,
-    HttpRedactor,
-};
 pub use request::{
     AsyncHttpHeaderInjector,
     HttpHeaderInjector,

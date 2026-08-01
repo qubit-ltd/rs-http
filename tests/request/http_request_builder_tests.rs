@@ -23,10 +23,8 @@ use qubit_http::{
     HttpRequestBody,
     HttpRetryMethodPolicy,
 };
+use qubit_redact::http::HttpRedactionPolicy;
 use qubit_redact::Sensitivity;
-use qubit_redact::{
-    http::HttpRedactionPolicy,
-};
 use serde::ser::{
     Error as _,
     Serializer,

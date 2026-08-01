@@ -22,6 +22,7 @@ use http::{
     Method,
 };
 use qubit_function::MutatingFunction;
+use qubit_redact::http::HttpRedactor;
 use reqwest::Response;
 use tokio_util::sync::CancellationToken;
 use url::Host;
@@ -32,7 +33,6 @@ use crate::error::{
     ReqwestErrorPhase,
 };
 use crate::redact::RedactedDebugger;
-use crate::redact::HttpRedactor;
 use crate::{
     AsyncHttpHeaderInjector,
     HttpError,
@@ -116,9 +116,8 @@ pub struct HttpRequest {
 
 impl fmt::Debug for HttpRequest {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let debugger = RedactedDebugger::new(
-            self.context.log_redactor.as_ref(),
-        );
+        let debugger =
+            RedactedDebugger::new(self.context.log_redactor.as_ref());
         let url = self.resolved_url().ok().map(|url| debugger.url(&url));
         let base_url =
             self.context.base_url.as_ref().map(|url| debugger.url(url));
@@ -620,11 +619,6 @@ impl HttpRequest {
         &self.context.log_redactor
     }
 
-    /// Returns the policy snapshot used by this request for diagnostics.
-    pub(crate) fn log_redaction_policy(&self) -> &crate::HttpRedactionPolicy {
-        self.context.log_redactor.policy()
-    }
-
     /// Moves the current body out, leaving [`HttpRequestBody::Empty`] in its
     /// place.
     ///
@@ -688,9 +682,7 @@ impl HttpRequest {
             ),
         )
         .await
-        .map_err(|error| {
-            error.with_log_redactor(log_redactor.clone())
-        })?
+        .map_err(|error| error.with_log_redactor(log_redactor.clone()))?
         .clone();
         let url = self.resolved_base_url()?;
         let request_url = self.resolved_url()?;

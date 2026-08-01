@@ -22,16 +22,14 @@ use http::{
     HeaderValue,
     Method,
 };
+use qubit_redact::http::HttpRedactor;
 use serde::Serialize;
 use tokio_util::sync::CancellationToken;
 use url::form_urlencoded;
 use url::Url;
 
 use crate::content_type;
-use crate::redact::{
-    HttpRedactor,
-    RedactedDebugger,
-};
+use crate::redact::RedactedDebugger;
 use crate::{
     AsyncHttpHeaderInjector,
     HttpClient,

@@ -25,8 +25,12 @@ use qubit_json::{
     LenientJsonDecoder,
 };
 use qubit_redact::{
-    http::UrlPathPolicy,
-    RedactionPolicyBuilder,
+    http::{
+        HttpRedactionPolicy,
+        HttpRedactor,
+        UrlPathPolicy,
+    },
+    PolicyLocation,
     Sensitivity,
 };
 use std::str::FromStr;
@@ -49,10 +53,7 @@ use crate::{
         DEFAULT_SSE_MAX_FRAME_BYTES,
         DEFAULT_SSE_MAX_LINE_BYTES,
     },
-    redact::{
-        HttpRedactionPolicy,
-        RedactedDebugger,
-    },
+    redact::RedactedDebugger,
     request::parse_header,
     sse::{
         DoneMarkerPolicy,
@@ -143,7 +144,8 @@ impl Default for HttpClientOptions {
 
 impl fmt::Debug for HttpClientOptions {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let debugger = RedactedDebugger::new(&self.log_redaction_policy);
+        let redactor = HttpRedactor::new(self.log_redaction_policy.clone());
+        let debugger = RedactedDebugger::new(&redactor);
         let base_url = debugger.optional_url(self.base_url.as_ref());
         formatter
             .debug_struct("HttpClientOptions")
@@ -459,7 +461,8 @@ impl HttpClientOptions {
                         ))
                     }
                 };
-            let mut policy_builder = HttpRedactionPolicy::builder_from_default();
+            let mut policy_builder =
+                HttpRedactionPolicy::builder_from_default();
             if let Some(value) = log_redaction.url_path_policy.as_deref() {
                 let policy = match Self::parse_url_path_policy(value) {
                     Ok(policy) => policy,
@@ -474,13 +477,14 @@ impl HttpClientOptions {
             }
             if let Some(names) = log_redaction.sensitive_headers {
                 for name in names {
-                    Self::validate_redaction_field("sensitive_headers", &name)
-                        .map_err(|error| {
-                            Self::resolve_config_error(
-                                &log_redaction_config,
-                                error,
-                            )
-                        })?;
+                    Self::validate_redaction_field(
+                        "sensitive_headers",
+                        &name,
+                        PolicyLocation::HttpHeader,
+                    )
+                    .map_err(|error| {
+                        Self::resolve_config_error(&log_redaction_config, error)
+                    })?;
                     policy_builder =
                         policy_builder.raise_header(&name, Sensitivity::High);
                 }
@@ -490,6 +494,7 @@ impl HttpClientOptions {
                     Self::validate_redaction_field(
                         "sensitive_query_params",
                         &name,
+                        PolicyLocation::HttpQuery,
                     )
                     .map_err(|error| {
                         Self::resolve_config_error(&log_redaction_config, error)
@@ -503,6 +508,7 @@ impl HttpClientOptions {
                     Self::validate_redaction_field(
                         "sensitive_body_fields",
                         &name,
+                        PolicyLocation::HttpBody,
                     )
                     .map_err(|error| {
                         Self::resolve_config_error(&log_redaction_config, error)
@@ -516,6 +522,7 @@ impl HttpClientOptions {
                     Self::validate_redaction_field(
                         "excluded_sensitive_headers",
                         &name,
+                        PolicyLocation::HttpHeader,
                     )
                     .map_err(|error| {
                         Self::resolve_config_error(&log_redaction_config, error)
@@ -528,6 +535,7 @@ impl HttpClientOptions {
                     Self::validate_redaction_field(
                         "excluded_sensitive_query_params",
                         &name,
+                        PolicyLocation::HttpQuery,
                     )
                     .map_err(|error| {
                         Self::resolve_config_error(&log_redaction_config, error)
@@ -540,6 +548,7 @@ impl HttpClientOptions {
                     Self::validate_redaction_field(
                         "excluded_sensitive_body_fields",
                         &name,
+                        PolicyLocation::HttpBody,
                     )
                     .map_err(|error| {
                         Self::resolve_config_error(&log_redaction_config, error)
@@ -927,8 +936,23 @@ impl HttpClientOptions {
     fn validate_redaction_field(
         field: &str,
         name: &str,
+        location: PolicyLocation,
     ) -> Result<(), HttpConfigError> {
-        RedactionPolicyBuilder::validate_field_name(name).map_err(|error| {
+        let result = match location {
+            PolicyLocation::HttpHeader => HttpRedactionPolicy::empty_builder()
+                .raise_header(name, Sensitivity::High)
+                .build(),
+            PolicyLocation::HttpQuery => HttpRedactionPolicy::empty_builder()
+                .raise_query(name, Sensitivity::High)
+                .build(),
+            PolicyLocation::HttpBody => HttpRedactionPolicy::empty_builder()
+                .raise_body(name, Sensitivity::High)
+                .build(),
+            _ => unreachable!(
+                "configuration fields always target one HTTP rule context"
+            ),
+        };
+        result.map(|_| ()).map_err(|error| {
             HttpConfigError::invalid_value(field, error.to_string())
         })
     }

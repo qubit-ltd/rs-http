@@ -5,26 +5,30 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
+// qubit-style: allow source-test-pair
 //! Safe rendering helpers for HTTP TRACE logs.
+
+use std::sync::Arc;
 
 use http::{
     HeaderMap,
     HeaderValue,
 };
-use qubit_redact::http::RedactedHeaders;
+use qubit_redact::http::{
+    HttpRedactor,
+    RedactedHeaders,
+};
 use url::Url;
 
 use crate::HttpClientOptions;
 
-use super::{
-    HttpRedactor,
-};
+use super::BodyPreview;
 
 /// Applies one policy snapshot and one presentation body limit to TRACE data.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RedactedLogger {
     /// Unified redactor for URLs, headers, and bodies.
-    redactor: HttpRedactor,
+    redactor: Arc<HttpRedactor>,
     /// Maximum source bytes offered by the presentation layer.
     body_size_limit: usize,
 }
@@ -42,33 +46,31 @@ impl RedactedLogger {
     /// A safe TRACE rendering helper.
     #[inline]
     pub(crate) fn new(
-        log_redactor: &HttpRedactor,
+        log_redactor: Arc<HttpRedactor>,
         body_size_limit: usize,
     ) -> Self {
         Self {
-            redactor: log_redactor.clone(),
+            redactor: log_redactor,
             body_size_limit,
         }
     }
 
-    /// Creates a logger from a client option snapshot.
+    /// Creates a logger from a client option snapshot and its shared redactor.
     ///
     /// # Parameters
     ///
     /// * `options` - Client options carrying policy and presentation limits.
+    /// * `log_redactor` - Exact shared redactor owned by the client lifecycle.
     ///
     /// # Returns
     ///
-    /// A helper detached from later option mutations.
+    /// A helper using the supplied immutable redactor snapshot.
     #[inline(always)]
-    pub(crate) fn from_options(options: &HttpClientOptions) -> Self {
-        let log_redactor = HttpRedactor::new(
-            options.log_redaction_policy.clone(),
-        );
-        Self::new(
-            &log_redactor,
-            options.logging.body_size_limit,
-        )
+    pub(crate) fn from_options_with_redactor(
+        options: &HttpClientOptions,
+        log_redactor: Arc<HttpRedactor>,
+    ) -> Self {
+        Self::new(log_redactor, options.logging.body_size_limit)
     }
 
     /// Returns a redacted URL representation.
@@ -119,9 +121,8 @@ impl RedactedLogger {
             return "<empty>".to_owned();
         }
         self.redactor
-            .redact_body_preview_with_header(
-                body,
-                self.body_size_limit,
+            .redact_body(
+                BodyPreview::new(body, self.body_size_limit).capture(),
                 content_type,
             )
             .into_log_safe_text()

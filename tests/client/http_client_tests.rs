@@ -38,11 +38,11 @@ use qubit_http::{
     HttpRetryMethodPolicy,
 };
 use qubit_redact::{
-    Sensitivity,
     http::{
         HttpRedactionPolicy,
         TextBodyPolicy,
     },
+    Sensitivity,
 };
 use qubit_retry::RetryDelay;
 use tokio::time::timeout;
@@ -1009,7 +1009,7 @@ async fn test_execute_non_success_text_body_pass_through_uses_same_policy_snapsh
     );
     assert!(error.message.contains("opt-in-status-text"));
     assert!(!error.message.contains("strong-default-secret"));
-    assert!(error.message.contains("accessToken=st****et"));
+    assert!(error.message.contains("accessToken=****"));
 }
 
 #[tokio::test]

@@ -14,11 +14,9 @@ use qubit_http::{
     HttpLogger,
     HttpLoggingOptions,
 };
-use qubit_redact::{
-    http::{
-        HttpRedactionPolicy,
-        TextBodyPolicy,
-    },
+use qubit_redact::http::{
+    HttpRedactionPolicy,
+    TextBodyPolicy,
 };
 
 use crate::common::capture_trace_logs;

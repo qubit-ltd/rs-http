@@ -13,12 +13,12 @@ use crate::constants::{
     DEFAULT_SSE_MAX_FRAME_BYTES,
     DEFAULT_SSE_MAX_LINE_BYTES,
 };
-use std::sync::Arc;
-use crate::redact::HttpRedactor;
 use crate::sse::{
     DoneMarkerPolicy,
     SseJsonMode,
 };
+use qubit_redact::http::HttpRedactor;
+use std::sync::Arc;
 
 /// Decode/error-preview options bound to one response instance.
 #[derive(Debug, Clone, PartialEq, Eq)]

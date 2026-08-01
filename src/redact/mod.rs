@@ -12,10 +12,5 @@ mod redacted_debugger;
 mod redacted_logger;
 
 pub(crate) use body_preview::BodyPreview;
-pub(crate) use qubit_redact::http::{
-    HttpRedactionPolicy,
-    HttpRedactionPolicyBuilder,
-    HttpRedactor,
-};
 pub(crate) use redacted_debugger::RedactedDebugger;
 pub(crate) use redacted_logger::RedactedLogger;

@@ -119,7 +119,7 @@ fn test_http_error_debug_uses_custom_log_redaction_policy() {
     let debug = format!("{error:?}");
 
     assert!(!debug.contains("debug-custom-secret"));
-    assert!(debug.contains("customer_secret=****"));
+    assert!(debug.contains("customer_secret=%3Credacted%3E"));
 }
 
 #[test]
@@ -150,7 +150,7 @@ fn test_http_error_display_uses_custom_log_redaction_policy() {
     let display = error.to_string();
 
     assert!(!display.contains("display-custom-secret"));
-    assert!(display.contains("customer_secret=****"));
+    assert!(display.contains("customer_secret=%3Credacted%3E"));
 }
 
 #[test]
