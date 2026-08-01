@@ -29,8 +29,8 @@
 
 ```toml
 [dependencies]
-qubit-http = "0.10"
-qubit-redact = "0.3"
+qubit-http = "0.11"
+qubit-redact = "0.4"
 http = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
@@ -67,20 +67,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## 日志脱敏
 
-所有 TRACE 与 `Debug` 路径共享同一个不可变 `LogRedactionPolicy` 快照。底层
-`qubit-redact` HTTP redactor 统一处理 URL 用户信息、fragment、query 字段、原生敏感
+所有 TRACE 与 `Debug` 路径共享从 `qubit_redact::http` 导入的不可变
+`HttpRedactionPolicy` 快照。规范 HTTP redactor 统一处理 URL 用户信息、fragment、query 字段、原生敏感
 header、结构化 body 和硬预算。非根 URL path、不透明文本和无键 JSON 值默认隐藏。
 
-`LogRedactionPolicy::builder()` 不包含字段规则，但保留安全关闭行为和有限预算。
-需要扩展保守运行时默认快照时，使用 `LogRedactionPolicy::builder_from_default()`；
-`.load_default()` 用于显式重置此前的 builder 配置：
+`HttpRedactionPolicy::empty_builder()` 使用空应用规则和创建时的全局 floor 快照。
+扩展保守默认快照时使用 `HttpRedactionPolicy::builder_from_default()`；
+只有显式调用 `.disable_floor()` 才会关闭全部 floor 保护：
+
+全局 policy 与 floor 默认值只能安装一次，只影响未来快照；既有 client、request、response
+和 error 会保留原来的 redactor。迁移旧 façade 时，必须直接从
+`qubit_redact::http` 导入 `HttpRedactionPolicy` 与 `HttpRedactor`；`qubit_http`
+不再重导出它们，也不再提供 `LogRedactionPolicy`、`LogRedactionPolicyBuilder` 或
+`LogRedactor`。
 
 ```rust
-use qubit_http::{HttpClientFactory, HttpClientOptions, LogRedactionPolicy};
-use qubit_redact::{Sensitivity, http::UrlPathPolicy};
+use qubit_http::{HttpClientFactory, HttpClientOptions};
+use qubit_redact::{Sensitivity, http::{HttpRedactionPolicy, UrlPathPolicy}};
 
 let mut options = HttpClientOptions::new();
-options.log_redaction_policy = LogRedactionPolicy::builder_from_default()
+options.log_redaction_policy = HttpRedactionPolicy::builder_from_default()
     .raise_header("x-api-key", Sensitivity::High)
     .raise_query("access_token", Sensitivity::High)
     .raise_body("password", Sensitivity::Secret)

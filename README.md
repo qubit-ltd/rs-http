@@ -29,8 +29,8 @@ For full examples and advanced options, read the [User Guide](doc/user_guide.en.
 
 ```toml
 [dependencies]
-qubit-http = "0.10"
-qubit-redact = "0.3"
+qubit-http = "0.11"
+qubit-redact = "0.4"
 http = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
@@ -67,23 +67,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Logging Redaction
 
-Every TRACE and `Debug` path uses one immutable `LogRedactionPolicy` snapshot.
-The underlying `qubit-redact` HTTP redactor handles URL userinfo, fragments,
+Every TRACE and `Debug` path uses one immutable `HttpRedactionPolicy` snapshot
+from `qubit_redact::http`. The canonical HTTP redactor handles URL userinfo, fragments,
 query fields, native-sensitive headers, structured bodies, and hard body
 budgets. Non-root URL paths, opaque text, and unkeyed JSON values are redacted
 by default.
 
-`LogRedactionPolicy::builder()` starts without field rules while retaining
-fail-closed behavior and finite budgets. Use
-`LogRedactionPolicy::builder_from_default()` to extend the conservative runtime
-default snapshot; `.load_default()` explicitly resets earlier builder changes:
+`HttpRedactionPolicy::empty_builder()` starts with empty application rules and a
+snapshot of the global floor. Use `HttpRedactionPolicy::builder_from_default()`
+to extend the conservative runtime snapshot; `.disable_floor()` is the explicit
+escape hatch that removes all floor protection.
+
+Global policy and floor defaults install once and affect only future snapshots;
+existing clients, requests, responses, and errors retain their original
+redactor. Migrate from the previous façade by importing
+`HttpRedactionPolicy` and `HttpRedactor` directly from `qubit_redact::http`.
+`qubit_http` no longer re-exports them or provides `LogRedactionPolicy`,
+`LogRedactionPolicyBuilder`, or `LogRedactor`.
 
 ```rust
-use qubit_http::{HttpClientFactory, HttpClientOptions, LogRedactionPolicy};
-use qubit_redact::{Sensitivity, http::UrlPathPolicy};
+use qubit_http::{HttpClientFactory, HttpClientOptions};
+use qubit_redact::{Sensitivity, http::{HttpRedactionPolicy, UrlPathPolicy}};
 
 let mut options = HttpClientOptions::new();
-options.log_redaction_policy = LogRedactionPolicy::builder_from_default()
+options.log_redaction_policy = HttpRedactionPolicy::builder_from_default()
     .raise_header("x-api-key", Sensitivity::High)
     .raise_query("access_token", Sensitivity::High)
     .raise_body("password", Sensitivity::Secret)
