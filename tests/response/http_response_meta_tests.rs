@@ -80,7 +80,7 @@ fn test_http_response_meta_debug_honors_url_path_redaction_policy() {
         Method::GET,
     )
     .with_log_redaction_policy(
-        HttpRedactionPolicy::builder_from_default()
+        HttpRedactionPolicy::default().to_builder()
             .url_path_policy(UrlPathPolicy::Redact)
             .build()
             .expect("log redaction policy should be valid"),

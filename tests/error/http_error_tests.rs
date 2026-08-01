@@ -103,7 +103,7 @@ fn test_http_error_debug_redacts_uppercase_url_scheme_tokens() {
 
 #[test]
 fn test_http_error_debug_uses_custom_log_redaction_policy() {
-    let policy = HttpRedactionPolicy::builder_from_default()
+    let policy = HttpRedactionPolicy::default().to_builder()
         .raise_query("customer_secret", Sensitivity::High)
         .build()
         .expect("log redaction policy should be valid");
@@ -138,7 +138,7 @@ fn test_http_error_display_masks_sensitive_url_values() {
 
 #[test]
 fn test_http_error_display_uses_custom_log_redaction_policy() {
-    let policy = HttpRedactionPolicy::builder_from_default()
+    let policy = HttpRedactionPolicy::default().to_builder()
         .raise_query("customer_secret", Sensitivity::High)
         .build()
         .expect("log redaction policy should be valid");
@@ -160,7 +160,7 @@ fn test_http_error_debug_honors_url_path_redaction_policy() {
     let error = HttpError::transport(format!("transport failed for {raw_url}"))
         .with_url(&url)
         .with_log_redaction_policy(
-            HttpRedactionPolicy::builder_from_default()
+            HttpRedactionPolicy::default().to_builder()
                 .url_path_policy(UrlPathPolicy::Redact)
                 .build()
                 .expect("log redaction policy should be valid"),

@@ -27,6 +27,8 @@ use qubit_json::{
 use qubit_redact::{
     http::{
         HttpRedactionPolicy,
+        HttpRedactionPolicyBuilder,
+        HttpFieldContext,
         HttpRedactor,
         UrlPathPolicy,
     },
@@ -462,7 +464,7 @@ impl HttpClientOptions {
                     }
                 };
             let mut policy_builder =
-                HttpRedactionPolicy::builder_from_default();
+                HttpRedactionPolicy::default().to_builder();
             if let Some(value) = log_redaction.url_path_policy.as_deref() {
                 let policy = match Self::parse_url_path_policy(value) {
                     Ok(policy) => policy,
@@ -485,8 +487,11 @@ impl HttpClientOptions {
                     .map_err(|error| {
                         Self::resolve_config_error(&log_redaction_config, error)
                     })?;
-                    policy_builder =
-                        policy_builder.raise_header(&name, Sensitivity::High);
+                    policy_builder = policy_builder.raise(
+                        HttpFieldContext::Header,
+                        &name,
+                        Sensitivity::High,
+                    );
                 }
             }
             if let Some(names) = log_redaction.sensitive_query_params {
@@ -499,8 +504,11 @@ impl HttpClientOptions {
                     .map_err(|error| {
                         Self::resolve_config_error(&log_redaction_config, error)
                     })?;
-                    policy_builder =
-                        policy_builder.raise_query(&name, Sensitivity::High);
+                    policy_builder = policy_builder.raise(
+                        HttpFieldContext::Query,
+                        &name,
+                        Sensitivity::High,
+                    );
                 }
             }
             if let Some(names) = log_redaction.sensitive_body_fields {
@@ -513,8 +521,11 @@ impl HttpClientOptions {
                     .map_err(|error| {
                         Self::resolve_config_error(&log_redaction_config, error)
                     })?;
-                    policy_builder =
-                        policy_builder.raise_body(&name, Sensitivity::High);
+                    policy_builder = policy_builder.raise(
+                        HttpFieldContext::Body,
+                        &name,
+                        Sensitivity::High,
+                    );
                 }
             }
             if let Some(names) = log_redaction.excluded_sensitive_headers {
@@ -527,7 +538,8 @@ impl HttpClientOptions {
                     .map_err(|error| {
                         Self::resolve_config_error(&log_redaction_config, error)
                     })?;
-                    policy_builder = policy_builder.allow_header_exact(&name);
+                    policy_builder =
+                        policy_builder.allow_exact(HttpFieldContext::Header, &name);
                 }
             }
             if let Some(names) = log_redaction.excluded_sensitive_query_params {
@@ -540,7 +552,8 @@ impl HttpClientOptions {
                     .map_err(|error| {
                         Self::resolve_config_error(&log_redaction_config, error)
                     })?;
-                    policy_builder = policy_builder.allow_query_exact(&name);
+                    policy_builder =
+                        policy_builder.allow_exact(HttpFieldContext::Query, &name);
                 }
             }
             if let Some(names) = log_redaction.excluded_sensitive_body_fields {
@@ -553,7 +566,8 @@ impl HttpClientOptions {
                     .map_err(|error| {
                         Self::resolve_config_error(&log_redaction_config, error)
                     })?;
-                    policy_builder = policy_builder.allow_body_exact(&name);
+                    policy_builder =
+                        policy_builder.allow_exact(HttpFieldContext::Body, &name);
                 }
             }
             opts.log_redaction_policy =
@@ -939,20 +953,23 @@ impl HttpClientOptions {
         location: PolicyLocation,
     ) -> Result<(), HttpConfigError> {
         let result = match location {
-            PolicyLocation::HttpHeader => HttpRedactionPolicy::empty_builder()
-                .raise_header(name, Sensitivity::High)
-                .build(),
-            PolicyLocation::HttpQuery => HttpRedactionPolicy::empty_builder()
-                .raise_query(name, Sensitivity::High)
-                .build(),
-            PolicyLocation::HttpBody => HttpRedactionPolicy::empty_builder()
-                .raise_body(name, Sensitivity::High)
-                .build(),
+            PolicyLocation::HttpHeader => HttpRedactionPolicyBuilder::validate_field_name(
+                HttpFieldContext::Header,
+                name,
+            ),
+            PolicyLocation::HttpQuery => HttpRedactionPolicyBuilder::validate_field_name(
+                HttpFieldContext::Query,
+                name,
+            ),
+            PolicyLocation::HttpBody => HttpRedactionPolicyBuilder::validate_field_name(
+                HttpFieldContext::Body,
+                name,
+            ),
             _ => unreachable!(
                 "configuration fields always target one HTTP rule context"
             ),
         };
-        result.map(|_| ()).map_err(|error| {
+        result.map_err(|error| {
             HttpConfigError::invalid_value(field, error.to_string())
         })
     }
