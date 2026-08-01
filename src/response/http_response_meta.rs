@@ -8,6 +8,7 @@
 //! Shared HTTP response metadata (status, headers, URL, request method).
 
 use std::fmt;
+use std::sync::Arc;
 use std::time::{
     Duration,
     SystemTime,
@@ -23,7 +24,8 @@ use httpdate::parse_http_date;
 use url::Url;
 
 use crate::redact::RedactedDebugger;
-use crate::LogRedactionPolicy;
+use crate::redact::HttpRedactor;
+use crate::HttpRedactionPolicy;
 
 /// HTTP response metadata available before body buffering/stream consumption.
 #[derive(Clone)]
@@ -37,7 +39,7 @@ pub struct HttpResponseMeta {
     /// Originating request method.
     method: Method,
     /// Redaction policy snapshot used by standalone debug output.
-    log_redaction_policy: LogRedactionPolicy,
+    log_redactor: Arc<HttpRedactor>,
 }
 
 impl HttpResponseMeta {
@@ -54,11 +56,28 @@ impl HttpResponseMeta {
             headers,
             url,
             method,
-            log_redaction_policy: LogRedactionPolicy::default(),
+            log_redactor: Arc::new(HttpRedactor::default()),
         }
     }
 
-    /// Attaches the log redaction policy used for standalone debug output.
+    /// Attaches the shared log redactor used for standalone debug output.
+    ///
+    /// # Parameters
+    /// - `log_redactor`: Shared redactor to apply when formatting this
+    ///   metadata.
+    ///
+    /// # Returns
+    /// Updated metadata.
+    #[inline(always)]
+    pub fn with_log_redactor(
+        mut self,
+        log_redactor: Arc<HttpRedactor>,
+    ) -> Self {
+        self.log_redactor = log_redactor;
+        self
+    }
+
+    /// Attaches a policy snapshot used for standalone debug output.
     ///
     /// # Parameters
     /// - `policy`: Policy snapshot to apply when formatting this metadata.
@@ -68,9 +87,9 @@ impl HttpResponseMeta {
     #[inline(always)]
     pub fn with_log_redaction_policy(
         mut self,
-        policy: LogRedactionPolicy,
+        policy: HttpRedactionPolicy,
     ) -> Self {
-        self.log_redaction_policy = policy;
+        self.log_redactor = Arc::new(HttpRedactor::new(policy));
         self
     }
 
@@ -170,8 +189,32 @@ impl HttpResponseMeta {
     /// # Returns
     /// Borrowed policy snapshot.
     #[inline(always)]
-    pub(super) fn log_redaction_policy(&self) -> &LogRedactionPolicy {
-        &self.log_redaction_policy
+    pub(crate) fn log_redactor(&self) -> &Arc<HttpRedactor> {
+        &self.log_redactor
+    }
+
+    /// Returns the log redaction policy snapshot for response diagnostics.
+    ///
+    /// # Returns
+    /// Borrowed policy snapshot.
+    #[inline(always)]
+    pub(super) fn log_redaction_policy(&self) -> &HttpRedactionPolicy {
+        self.log_redactor.policy()
+    }
+
+    /// Replaces the shared log redactor snapshot.
+    ///
+    /// # Parameters
+    /// - `log_redactor`: New shared redactor snapshot.
+    ///
+    /// # Returns
+    /// Nothing.
+    #[inline(always)]
+    pub(super) fn set_log_redactor(
+        &mut self,
+        log_redactor: Arc<HttpRedactor>,
+    ) {
+        self.log_redactor = log_redactor;
     }
 
     /// Replaces the log redaction policy snapshot.
@@ -182,17 +225,17 @@ impl HttpResponseMeta {
     /// # Returns
     /// Nothing.
     #[inline(always)]
-    pub(super) fn set_log_redaction_policy(
+    pub(crate) fn set_log_redaction_policy(
         &mut self,
-        policy: LogRedactionPolicy,
+        policy: HttpRedactionPolicy,
     ) {
-        self.log_redaction_policy = policy;
+        self.log_redactor = Arc::new(HttpRedactor::new(policy));
     }
 }
 
 impl fmt::Debug for HttpResponseMeta {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let debugger = RedactedDebugger::new(&self.log_redaction_policy);
+        let debugger = RedactedDebugger::new(&self.log_redactor);
         let url = debugger.url(&self.url);
         formatter
             .debug_struct("HttpResponseMeta")

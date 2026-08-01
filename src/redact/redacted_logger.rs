@@ -17,15 +17,14 @@ use url::Url;
 use crate::HttpClientOptions;
 
 use super::{
-    LogRedactionPolicy,
-    LogRedactor,
+    HttpRedactor,
 };
 
 /// Applies one policy snapshot and one presentation body limit to TRACE data.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RedactedLogger {
     /// Unified redactor for URLs, headers, and bodies.
-    redactor: LogRedactor,
+    redactor: HttpRedactor,
     /// Maximum source bytes offered by the presentation layer.
     body_size_limit: usize,
 }
@@ -43,11 +42,11 @@ impl RedactedLogger {
     /// A safe TRACE rendering helper.
     #[inline]
     pub(crate) fn new(
-        policy: LogRedactionPolicy,
+        log_redactor: &HttpRedactor,
         body_size_limit: usize,
     ) -> Self {
         Self {
-            redactor: LogRedactor::new(policy),
+            redactor: log_redactor.clone(),
             body_size_limit,
         }
     }
@@ -63,8 +62,11 @@ impl RedactedLogger {
     /// A helper detached from later option mutations.
     #[inline(always)]
     pub(crate) fn from_options(options: &HttpClientOptions) -> Self {
-        Self::new(
+        let log_redactor = HttpRedactor::new(
             options.log_redaction_policy.clone(),
+        );
+        Self::new(
+            &log_redactor,
             options.logging.body_size_limit,
         )
     }

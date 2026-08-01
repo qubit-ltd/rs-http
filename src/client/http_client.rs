@@ -16,6 +16,7 @@ use std::time::{
     Duration,
     Instant,
 };
+use std::sync::Arc;
 
 use qubit_retry::{
     AttemptFailure,
@@ -27,7 +28,7 @@ use qubit_retry::{
     RetryErrorReason,
 };
 
-use crate::redact::LogRedactor;
+use crate::redact::HttpRedactor;
 use crate::sse::SseReconnectRunner;
 use crate::{
     response::HttpResponseOptions,
@@ -65,6 +66,9 @@ pub struct HttpClient {
     pub(super) backend: reqwest::Client,
     /// Timeouts, proxy, logging, default headers, and related settings.
     pub(super) options: HttpClientOptions,
+    /// Shared redactor for all request/response/error snapshots created by this
+    /// client.
+    log_redactor: Arc<HttpRedactor>,
     /// Header injectors applied to every outgoing request after default
     /// headers.
     pub(super) injectors: Vec<HttpHeaderInjector>,
@@ -92,9 +96,13 @@ impl HttpClient {
         backend: reqwest::Client,
         options: HttpClientOptions,
     ) -> Self {
+        let log_redactor = Arc::new(HttpRedactor::new(
+            options.log_redaction_policy.clone(),
+        ));
         Self {
             backend,
             options,
+            log_redactor,
             injectors: Vec::new(),
             async_injectors: Vec::new(),
             request_interceptors: HttpRequestInterceptors::new(),
@@ -110,6 +118,11 @@ impl HttpClient {
     /// options installed on this client.
     pub fn options(&self) -> &HttpClientOptions {
         &self.options
+    }
+
+    /// Returns the shared [`HttpRedactor`] used by this client.
+    pub(crate) fn log_redactor(&self) -> &Arc<HttpRedactor> {
+        &self.log_redactor
     }
 
     /// Appends a [`HttpHeaderInjector`] so its mutation function runs on every
@@ -292,16 +305,13 @@ impl HttpClient {
         &self,
         request: HttpRequest,
     ) -> HttpResult<HttpResponse> {
-        let log_redaction_policy = request.log_redaction_policy().clone();
         let retry_options = self.options.retry.resolve(&request);
         let result = if retry_options.should_retry(&request) {
             self.execute_with_retry(request, retry_options).await
         } else {
             self.execute_once(request).await
         };
-        result.map_err(|error| {
-            error.with_log_redaction_policy(log_redaction_policy)
-        })
+        result.map_err(|error| error.with_log_redactor(self.log_redactor.clone()))
     }
 
     /// Performs one non-retrying execution: pre-send cancellation check,
@@ -327,7 +337,6 @@ impl HttpClient {
         &self,
         request: HttpRequest,
     ) -> HttpResult<HttpResponse> {
-        let log_redaction_policy = request.log_redaction_policy().clone();
         let result = async {
             let mut request = request;
             if let Some(error) = request
@@ -351,9 +360,7 @@ impl HttpClient {
             Ok(response)
         }
         .await;
-        result.map_err(|error| {
-            error.with_log_redaction_policy(log_redaction_policy)
-        })
+        result.map_err(|error| error.with_log_redactor(self.log_redactor.clone()))
     }
 
     /// Single low-level send: cancellation check, request logging, one backend
@@ -389,13 +396,14 @@ impl HttpClient {
         let request_url = request.resolved_url()?;
         let backend_response =
             request.send_impl(&self.backend, &logger).await?;
+        let log_redactor = request.log_redactor().clone();
         let meta = HttpResponseMeta::new(
             backend_response.status(),
             backend_response.headers().clone(),
             backend_response.url().clone(),
             request.method().clone(),
         )
-        .with_log_redaction_policy(self.options.log_redaction_policy.clone());
+        .with_log_redactor(log_redactor.clone());
         let response_options = HttpResponseOptions::new(
             self.options.error_response_preview_limit,
             self.options.response_body_size_limit,
@@ -403,7 +411,7 @@ impl HttpClient {
             self.options.sse_max_line_bytes,
             self.options.sse_max_frame_bytes,
             self.options.sse_done_marker_policy.clone(),
-            LogRedactor::new(self.options.log_redaction_policy.clone()),
+            log_redactor,
         );
         Ok(HttpResponse::from_backend(
             meta,

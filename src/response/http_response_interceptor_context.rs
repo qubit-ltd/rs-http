@@ -8,6 +8,7 @@
 //! Response interceptor context with controlled metadata mutation.
 
 use std::fmt;
+use std::sync::Arc;
 use std::time::Duration;
 
 use http::{
@@ -18,8 +19,11 @@ use http::{
 use url::Url;
 
 use super::HttpResponseMeta;
-use crate::redact::RedactedDebugger;
-use crate::LogRedactionPolicy;
+use crate::redact::{
+    HttpRedactor,
+    RedactedDebugger,
+};
+use crate::HttpRedactionPolicy;
 
 /// Metadata view passed to response interceptors.
 ///
@@ -38,7 +42,7 @@ pub struct HttpResponseInterceptorContext {
     /// Originating request method captured before interceptor execution.
     method: Method,
     /// Redaction policy snapshot used by standalone debug output.
-    log_redaction_policy: LogRedactionPolicy,
+    log_redactor: Arc<HttpRedactor>,
 }
 
 impl HttpResponseInterceptorContext {
@@ -65,7 +69,7 @@ impl HttpResponseInterceptorContext {
             headers,
             url,
             method,
-            log_redaction_policy: LogRedactionPolicy::default(),
+            log_redactor: Arc::new(HttpRedactor::default()),
         }
     }
 
@@ -87,7 +91,24 @@ impl HttpResponseInterceptorContext {
         .with_log_redaction_policy(meta.log_redaction_policy().clone())
     }
 
-    /// Attaches the log redaction policy used for standalone debug output.
+    /// Attaches the shared log redactor used for standalone debug output.
+    ///
+    /// # Parameters
+    /// - `log_redactor`: Shared log redactor to apply when formatting this
+    ///   context.
+    ///
+    /// # Returns
+    /// Updated context.
+    #[inline(always)]
+    pub fn with_log_redactor(
+        mut self,
+        log_redactor: Arc<HttpRedactor>,
+    ) -> Self {
+        self.log_redactor = log_redactor;
+        self
+    }
+
+    /// Attaches a policy snapshot used for standalone debug output.
     ///
     /// # Parameters
     /// - `policy`: Policy snapshot to apply when formatting this context.
@@ -97,9 +118,9 @@ impl HttpResponseInterceptorContext {
     #[inline(always)]
     pub fn with_log_redaction_policy(
         mut self,
-        policy: LogRedactionPolicy,
+        policy: HttpRedactionPolicy,
     ) -> Self {
-        self.log_redaction_policy = policy;
+        self.log_redactor = Arc::new(HttpRedactor::new(policy));
         self
     }
 
@@ -162,6 +183,15 @@ impl HttpResponseInterceptorContext {
         &self.method
     }
 
+    /// Returns the shared log redactor.
+    ///
+    /// # Returns
+    /// Borrowed shared redactor.
+    #[inline(always)]
+    pub(crate) fn log_redactor(&self) -> &Arc<HttpRedactor> {
+        &self.log_redactor
+    }
+
     /// Returns parsed `Retry-After` when status and headers provide one.
     ///
     /// # Returns
@@ -186,13 +216,13 @@ impl HttpResponseInterceptorContext {
     pub(super) fn apply_to_meta(self, meta: &mut HttpResponseMeta) {
         meta.set_headers(self.headers);
         meta.set_url(self.url);
-        meta.set_log_redaction_policy(self.log_redaction_policy);
+        meta.set_log_redactor(self.log_redactor);
     }
 }
 
 impl fmt::Debug for HttpResponseInterceptorContext {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let debugger = RedactedDebugger::new(&self.log_redaction_policy);
+        let debugger = RedactedDebugger::new(&self.log_redactor);
         let url = debugger.url(&self.url);
         formatter
             .debug_struct("HttpResponseInterceptorContext")

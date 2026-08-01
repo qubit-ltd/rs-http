@@ -13,7 +13,8 @@ use crate::constants::{
     DEFAULT_SSE_MAX_FRAME_BYTES,
     DEFAULT_SSE_MAX_LINE_BYTES,
 };
-use crate::redact::LogRedactor;
+use std::sync::Arc;
+use crate::redact::HttpRedactor;
 use crate::sse::{
     DoneMarkerPolicy,
     SseJsonMode,
@@ -35,8 +36,8 @@ pub(crate) struct HttpResponseOptions {
     /// How [`crate::HttpResponse::sse_chunks`] recognizes end-of-stream
     /// `data:` markers.
     pub sse_done_marker_policy: DoneMarkerPolicy,
-    /// Redactor used for status-error body previews.
-    pub log_redactor: LogRedactor,
+    /// Shared redactor used for status-error body previews.
+    pub log_redactor: Arc<HttpRedactor>,
 }
 
 impl Default for HttpResponseOptions {
@@ -49,7 +50,7 @@ impl Default for HttpResponseOptions {
             sse_max_line_bytes: DEFAULT_SSE_MAX_LINE_BYTES,
             sse_max_frame_bytes: DEFAULT_SSE_MAX_FRAME_BYTES,
             sse_done_marker_policy: DoneMarkerPolicy::default(),
-            log_redactor: LogRedactor::default(),
+            log_redactor: Arc::new(HttpRedactor::default()),
         }
     }
 }
@@ -62,7 +63,7 @@ impl HttpResponseOptions {
         sse_max_line_bytes: usize,
         sse_max_frame_bytes: usize,
         sse_done_marker_policy: DoneMarkerPolicy,
-        log_redactor: LogRedactor,
+        log_redactor: Arc<HttpRedactor>,
     ) -> Self {
         Self {
             error_response_preview_limit: error_response_preview_limit.max(1),

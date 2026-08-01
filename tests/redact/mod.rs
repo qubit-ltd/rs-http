@@ -5,6 +5,3 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-
-mod log_redaction_policy_tests;
-mod log_redactor_tests;

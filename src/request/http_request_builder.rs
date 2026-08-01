@@ -7,6 +7,7 @@
 // =============================================================================
 //! Builder for [`super::http_request::HttpRequest`].
 
+use std::sync::Arc;
 use std::time::Duration;
 use std::{
     fmt,
@@ -27,7 +28,10 @@ use url::form_urlencoded;
 use url::Url;
 
 use crate::content_type;
-use crate::redact::RedactedDebugger;
+use crate::redact::{
+    HttpRedactor,
+    RedactedDebugger,
+};
 use crate::{
     AsyncHttpHeaderInjector,
     HttpClient,
@@ -37,7 +41,6 @@ use crate::{
     HttpRequestStreamingBody,
     HttpResult,
     HttpRetryMethodPolicy,
-    LogRedactionPolicy,
 };
 
 use super::http_request::HttpRequest;
@@ -83,13 +86,13 @@ pub struct HttpRequestBuilder {
     pub(super) injectors: Vec<HttpHeaderInjector>,
     /// Async header injectors snapshot from the originating client.
     pub(super) async_injectors: Vec<AsyncHttpHeaderInjector>,
-    /// Log redaction policy snapshot from the originating client.
-    pub(super) log_redaction_policy: LogRedactionPolicy,
+    /// Log redaction snapshot from the originating client.
+    pub(super) log_redactor: Arc<HttpRedactor>,
 }
 
 impl fmt::Debug for HttpRequestBuilder {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let debugger = RedactedDebugger::new(&self.log_redaction_policy);
+        let debugger = RedactedDebugger::new(self.log_redactor.as_ref());
         let url = self.debug_resolved_url().map(|url| debugger.url(&url));
         let base_url = self.base_url.as_ref().map(|url| debugger.url(url));
         formatter
@@ -150,7 +153,7 @@ impl HttpRequestBuilder {
             default_headers: client.headers_snapshot(),
             injectors: client.injectors_snapshot(),
             async_injectors: client.async_injectors_snapshot(),
-            log_redaction_policy: options.log_redaction_policy.clone(),
+            log_redactor: client.log_redactor().clone(),
         }
     }
 

@@ -9,6 +9,7 @@
 
 use std::fmt;
 use std::future::Future;
+use std::sync::Arc;
 use std::sync::RwLock;
 use std::time::Duration;
 
@@ -31,6 +32,7 @@ use crate::error::{
     ReqwestErrorPhase,
 };
 use crate::redact::RedactedDebugger;
+use crate::redact::HttpRedactor;
 use crate::{
     AsyncHttpHeaderInjector,
     HttpError,
@@ -39,7 +41,6 @@ use crate::{
     HttpLogger,
     HttpRequestStreamingBody,
     HttpResult,
-    LogRedactionPolicy,
 };
 
 use super::http_request_body::HttpRequestBody;
@@ -81,9 +82,9 @@ struct HttpRequestContext {
     /// Client async header injectors snapshot captured when this request
     /// builder was created.
     async_injectors: Vec<AsyncHttpHeaderInjector>,
-    /// Log redaction policy snapshot captured when this request builder was
+    /// Shared log redactor snapshot captured when this request builder was
     /// created.
-    log_redaction_policy: LogRedactionPolicy,
+    log_redactor: Arc<HttpRedactor>,
 }
 
 /// Immutable snapshot of a single HTTP call produced by
@@ -115,8 +116,9 @@ pub struct HttpRequest {
 
 impl fmt::Debug for HttpRequest {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let debugger =
-            RedactedDebugger::new(&self.context.log_redaction_policy);
+        let debugger = RedactedDebugger::new(
+            self.context.log_redactor.as_ref(),
+        );
         let url = self.resolved_url().ok().map(|url| debugger.url(&url));
         let base_url =
             self.context.base_url.as_ref().map(|url| debugger.url(url));
@@ -179,7 +181,7 @@ impl HttpRequest {
                 default_headers: builder.default_headers,
                 injectors: builder.injectors,
                 async_injectors: builder.async_injectors,
-                log_redaction_policy: builder.log_redaction_policy,
+                log_redactor: builder.log_redactor,
             },
         };
         request.refresh_resolved_url_cache();
@@ -296,7 +298,7 @@ impl HttpRequest {
         value: &str,
     ) -> Result<&mut Self, HttpError> {
         let (header_name, header_value) = parse_header(name, value)
-            .map_err(|error| self.with_log_redaction_policy(error))?;
+            .map_err(|error| self.with_log_redactor(error))?;
         self.headers.insert(header_name, header_value);
         self.invalidate_effective_headers_cache();
         Ok(self)
@@ -426,7 +428,7 @@ impl HttpRequest {
         timeout: Duration,
     ) -> HttpResult<&mut Self> {
         validate_positive_timeout("request_timeout", timeout)
-            .map_err(|error| self.with_log_redaction_policy(error))?;
+            .map_err(|error| self.with_log_redactor(error))?;
         self.execution_options.request_timeout = Some(timeout);
         Ok(self)
     }
@@ -457,7 +459,7 @@ impl HttpRequest {
         timeout: Duration,
     ) -> HttpResult<&mut Self> {
         validate_positive_timeout("write_timeout", timeout)
-            .map_err(|error| self.with_log_redaction_policy(error))?;
+            .map_err(|error| self.with_log_redactor(error))?;
         self.execution_options.write_timeout = timeout;
         Ok(self)
     }
@@ -478,7 +480,7 @@ impl HttpRequest {
         timeout: Duration,
     ) -> HttpResult<&mut Self> {
         validate_positive_timeout("read_timeout", timeout)
-            .map_err(|error| self.with_log_redaction_policy(error))?;
+            .map_err(|error| self.with_log_redactor(error))?;
         self.execution_options.read_timeout = timeout;
         Ok(self)
     }
@@ -614,8 +616,13 @@ impl HttpRequest {
     ///
     /// The immutable request policy snapshot.
     #[inline(always)]
-    pub(crate) fn log_redaction_policy(&self) -> &LogRedactionPolicy {
-        &self.context.log_redaction_policy
+    pub(crate) fn log_redactor(&self) -> &Arc<HttpRedactor> {
+        &self.context.log_redactor
+    }
+
+    /// Returns the policy snapshot used by this request for diagnostics.
+    pub(crate) fn log_redaction_policy(&self) -> &crate::HttpRedactionPolicy {
+        self.context.log_redactor.policy()
     }
 
     /// Moves the current body out, leaving [`HttpRequestBody::Empty`] in its
@@ -662,7 +669,7 @@ impl HttpRequest {
         // mutations are refreshed instead of reusing stale headers from
         // prior attempts.
         self.invalidate_effective_headers_cache();
-        let log_redaction_policy = self.log_redaction_policy().clone();
+        let log_redactor = self.log_redactor().clone();
         let method = self.method().clone();
         let request_url_context = self.resolved_url().ok();
         let write_timeout = self.execution_options.write_timeout;
@@ -682,7 +689,7 @@ impl HttpRequest {
         )
         .await
         .map_err(|error| {
-            error.with_log_redaction_policy(log_redaction_policy.clone())
+            error.with_log_redactor(log_redactor.clone())
         })?
         .clone();
         let url = self.resolved_base_url()?;
@@ -712,7 +719,7 @@ impl HttpRequest {
                 ),
             )
             .await
-            .map_err(|error| error.with_log_redaction_policy(log_redaction_policy.clone()))?;
+            .map_err(|error| error.with_log_redactor(log_redactor.clone()))?;
             builder = builder.body(body);
         } else {
             builder = Self::apply_request_body(builder, self.take_body());
@@ -730,7 +737,7 @@ impl HttpRequest {
                     return Err(HttpError::cancelled("Request cancelled while sending")
                         .with_method(&method)
                         .with_url(&request_url)
-                        .with_log_redaction_policy(log_redaction_policy.clone()));
+                        .with_log_redactor(log_redactor.clone()));
                 }
                 send_result = send_future => send_result,
             }
@@ -747,14 +754,14 @@ impl HttpRequest {
                 method.clone(),
                 request_url.clone(),
             )
-            .with_log_redaction_policy(log_redaction_policy.clone())),
+            .with_log_redactor(log_redactor.clone())),
             Err(_) => Err(HttpError::write_timeout(format!(
                 "Write timeout after {:?} while sending request",
                 self.execution_options.write_timeout
             ))
             .with_method(&method)
             .with_url(&request_url)
-            .with_log_redaction_policy(log_redaction_policy)),
+            .with_log_redactor(log_redactor)),
         }
     }
 
@@ -873,7 +880,7 @@ impl HttpRequest {
         let cached = match self.resolved_url.read() {
             Ok(guard) => guard.clone(),
             Err(_) => {
-                return Err(self.with_log_redaction_policy(HttpError::other(
+                return Err(self.with_log_redactor(HttpError::other(
                     "Resolved URL cache read lock poisoned",
                 )))
             }
@@ -883,11 +890,11 @@ impl HttpRequest {
         }
         let resolved = self
             .compute_resolved_url()
-            .map_err(|error| self.with_log_redaction_policy(error))?;
+            .map_err(|error| self.with_log_redactor(error))?;
         match self.resolved_url.write() {
             Ok(mut guard) => *guard = Some(resolved.clone()),
             Err(_) => {
-                return Err(self.with_log_redaction_policy(HttpError::other(
+                return Err(self.with_log_redactor(HttpError::other(
                     "Resolved URL cache write lock poisoned",
                 )))
             }
@@ -1012,7 +1019,7 @@ impl HttpRequest {
             let headers = self
                 .compute_effective_headers()
                 .await
-                .map_err(|error| self.with_log_redaction_policy(error))?;
+                .map_err(|error| self.with_log_redactor(error))?;
             self.effective_headers = Some(headers);
         }
         Ok(self.effective_headers.as_ref().expect(
@@ -1087,7 +1094,7 @@ impl HttpRequest {
             if let Ok(url) = self.resolved_url() {
                 error = error.with_url(&url);
             }
-            Some(self.with_log_redaction_policy(error))
+            Some(self.with_log_redactor(error))
         } else {
             None
         }
@@ -1135,8 +1142,8 @@ impl HttpRequest {
     ///
     /// The same error configured for safe request-context debug rendering.
     #[inline(always)]
-    fn with_log_redaction_policy(&self, error: HttpError) -> HttpError {
-        error.with_log_redaction_policy(self.log_redaction_policy().clone())
+    fn with_log_redactor(&self, error: HttpError) -> HttpError {
+        error.with_log_redactor(self.log_redactor().clone())
     }
 }
 

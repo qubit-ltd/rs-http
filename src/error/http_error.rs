@@ -9,6 +9,7 @@
 
 use std::error::Error;
 use std::fmt;
+use std::sync::Arc;
 use std::time::Duration;
 
 use http::{
@@ -18,8 +19,10 @@ use http::{
 use url::Url;
 
 use super::RetryHint;
-use crate::redact::RedactedDebugger;
-use crate::LogRedactionPolicy;
+use crate::{
+    HttpRedactionPolicy,
+    redact::{HttpRedactor, RedactedDebugger},
+};
 use qubit_error::BoxError;
 
 use super::HttpErrorKind;
@@ -42,14 +45,14 @@ pub struct HttpError {
     pub retry_after: Option<Duration>,
     /// Optional source error.
     pub source: Option<BoxError>,
-    /// Policy used when rendering this error with [`Debug`](fmt::Debug) or
+    /// Redactor used when rendering this error with [`Debug`](fmt::Debug) or
     /// [`Display`](fmt::Display).
-    pub log_redaction_policy: Box<LogRedactionPolicy>,
+    pub log_redactor: Arc<HttpRedactor>,
 }
 
 impl fmt::Display for HttpError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let debugger = RedactedDebugger::new(&self.log_redaction_policy);
+        let debugger = RedactedDebugger::new(self.log_redactor.as_ref());
         let message = debugger.diagnostic_text(&self.message);
         fmt::Display::fmt(&message, formatter)
     }
@@ -65,7 +68,7 @@ impl Error for HttpError {
 
 impl fmt::Debug for HttpError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let debugger = RedactedDebugger::new(&self.log_redaction_policy);
+        let debugger = RedactedDebugger::new(self.log_redactor.as_ref());
         let url = debugger.optional_url(self.url.as_ref());
         let message = debugger.diagnostic_text(&self.message);
         let response_body_preview_len =
@@ -104,7 +107,7 @@ impl HttpError {
             response_body_preview: None,
             retry_after: None,
             source: None,
-            log_redaction_policy: Box::new(LogRedactionPolicy::default()),
+            log_redactor: Arc::new(HttpRedactor::default()),
         }
     }
 
@@ -186,8 +189,21 @@ impl HttpError {
         self
     }
 
-    /// Attaches the log redaction policy used by [`Debug`](fmt::Debug) and
+    /// Attaches the log redactor used by [`Debug`](fmt::Debug) and
     /// [`Display`](fmt::Display).
+    ///
+    /// # Parameters
+    /// - `policy`: Policy whose custom sensitive names should be honored.
+    ///
+    /// # Returns
+    /// `self` for chaining.
+    #[inline(always)]
+    pub fn with_log_redactor(mut self, log_redactor: Arc<HttpRedactor>) -> Self {
+        self.log_redactor = log_redactor;
+        self
+    }
+
+    /// Attaches one redaction policy snapshot by rebuilding the shared redactor.
     ///
     /// # Parameters
     /// - `policy`: Policy whose custom sensitive names should be honored.
@@ -197,9 +213,9 @@ impl HttpError {
     #[inline(always)]
     pub fn with_log_redaction_policy(
         mut self,
-        policy: LogRedactionPolicy,
+        policy: HttpRedactionPolicy,
     ) -> Self {
-        self.log_redaction_policy = Box::new(policy);
+        self.log_redactor = Arc::new(HttpRedactor::new(policy));
         self
     }
 
