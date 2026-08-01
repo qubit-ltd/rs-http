@@ -30,7 +30,7 @@
 ```toml
 [dependencies]
 qubit-http = "0.11"
-qubit-redact = "0.4"
+qubit-redact = "0.5"
 http = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
@@ -71,9 +71,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 `HttpRedactionPolicy` 快照。规范 HTTP redactor 统一处理 URL 用户信息、fragment、query 字段、原生敏感
 header、结构化 body 和硬预算。非根 URL path、不透明文本和无键 JSON 值默认隐藏。
 
-`HttpRedactionPolicy::empty_builder()` 使用空应用规则和创建时的全局 floor 快照。
-扩展保守默认快照时使用 `HttpRedactionPolicy::builder_from_default()`；
-只有显式调用 `.disable_floor()` 才会关闭全部 floor 保护：
+`HttpRedactionPolicy::builder()` 使用空应用规则和标准 floor。
+扩展保守默认快照时使用 `HttpRedactionPolicy::default().to_builder()`；
+只有显式调用 `.disable_all_floors()` 才会关闭全部 floor 保护：
 
 全局 policy 与 floor 默认值只能安装一次，只影响未来快照；既有 client、request、response
 和 error 会保留原来的 redactor。迁移旧 façade 时，必须直接从
@@ -83,14 +83,16 @@ header、结构化 body 和硬预算。非根 URL path、不透明文本和无�
 
 ```rust
 use qubit_http::{HttpClientFactory, HttpClientOptions};
-use qubit_redact::{Sensitivity, http::{HttpRedactionPolicy, UrlPathPolicy}};
+use qubit_redact::{Sensitivity, http::{
+    HttpFieldContext, HttpRedactionPolicy, UrlPathPolicy,
+}};
 
 let mut options = HttpClientOptions::new();
-options.log_redaction_policy = HttpRedactionPolicy::builder_from_default()
-    .raise_header("x-api-key", Sensitivity::High)
-    .raise_query("access_token", Sensitivity::High)
-    .raise_body("password", Sensitivity::Secret)
-    .allow_query_exact("known_public_token")
+options.log_redaction_policy = HttpRedactionPolicy::default().to_builder()
+    .raise(HttpFieldContext::Header, "x-api-key", Sensitivity::High)
+    .raise(HttpFieldContext::Query, "access_token", Sensitivity::High)
+    .raise(HttpFieldContext::Body, "password", Sensitivity::Secret)
+    .allow_exact(HttpFieldContext::Query, "known_public_token")
     .url_path_policy(UrlPathPolicy::Preserve)
     .build()?;
 

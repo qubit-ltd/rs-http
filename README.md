@@ -30,7 +30,7 @@ For full examples and advanced options, read the [User Guide](doc/user_guide.en.
 ```toml
 [dependencies]
 qubit-http = "0.11"
-qubit-redact = "0.4"
+qubit-redact = "0.5"
 http = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
@@ -73,9 +73,9 @@ query fields, native-sensitive headers, structured bodies, and hard body
 budgets. Non-root URL paths, opaque text, and unkeyed JSON values are redacted
 by default.
 
-`HttpRedactionPolicy::empty_builder()` starts with empty application rules and a
-snapshot of the global floor. Use `HttpRedactionPolicy::builder_from_default()`
-to extend the conservative runtime snapshot; `.disable_floor()` is the explicit
+`HttpRedactionPolicy::builder()` starts with empty application rules and the
+standard floor. Use `HttpRedactionPolicy::default().to_builder()`
+to extend the conservative runtime snapshot; `.disable_all_floors()` is the explicit
 escape hatch that removes all floor protection.
 
 Global policy and floor defaults install once and affect only future snapshots;
@@ -87,14 +87,16 @@ redactor. Migrate from the previous façade by importing
 
 ```rust
 use qubit_http::{HttpClientFactory, HttpClientOptions};
-use qubit_redact::{Sensitivity, http::{HttpRedactionPolicy, UrlPathPolicy}};
+use qubit_redact::{Sensitivity, http::{
+    HttpFieldContext, HttpRedactionPolicy, UrlPathPolicy,
+}};
 
 let mut options = HttpClientOptions::new();
-options.log_redaction_policy = HttpRedactionPolicy::builder_from_default()
-    .raise_header("x-api-key", Sensitivity::High)
-    .raise_query("access_token", Sensitivity::High)
-    .raise_body("password", Sensitivity::Secret)
-    .allow_query_exact("known_public_token")
+options.log_redaction_policy = HttpRedactionPolicy::default().to_builder()
+    .raise(HttpFieldContext::Header, "x-api-key", Sensitivity::High)
+    .raise(HttpFieldContext::Query, "access_token", Sensitivity::High)
+    .raise(HttpFieldContext::Body, "password", Sensitivity::Secret)
+    .allow_exact(HttpFieldContext::Query, "known_public_token")
     .url_path_policy(UrlPathPolicy::Preserve)
     .build()?;
 

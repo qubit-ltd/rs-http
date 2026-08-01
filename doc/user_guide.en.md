@@ -18,7 +18,7 @@ This guide is based on the current source code and tests. It applies to crate `q
 ```toml
 [dependencies]
 qubit-http = "0.11"
-qubit-redact = "0.4"
+qubit-redact = "0.5"
 http = "1.4"
 qubit-config = { path = "../rs-config", version = "0.14", default-features = false }
 serde = { version = "1", features = ["derive"] }
@@ -579,7 +579,7 @@ Logs are redacted through the canonical `qubit_redact::http::HttpRedactor` and `
 
 For headers, `http::HeaderValue::is_sensitive()` is a value-level `Secret` declaration. Request, response, streaming-response, and `Debug` rendering honor it before header-name matching. An allow rule cannot expose a marked value; unmarked values continue to use the same immutable name policy snapshot.
 
-`HttpRedactionPolicy::empty_builder()` has empty application rules but captures one global-floor snapshot for header, query, and body. Use `builder_from_default()` to extend a default snapshot. Application allow rules cannot bypass an enabled floor; `disable_floor()` is the explicit all-context escape hatch. Import these types from `qubit_redact::http`, never from `qubit_http`. `logging.body_size_limit` is a presentation bound, while `BodyBudget` remains a non-bypassable parser-input and rendered-output bound.
+`HttpRedactionPolicy::builder()` has empty application rules and the standard floor for header, query, and body. Use `HttpRedactionPolicy::default().to_builder()` to extend a default snapshot. Application allow rules cannot bypass an enabled floor; `disable_all_floors()` is the explicit all-context escape hatch. Import these types from `qubit_redact::http`, never from `qubit_http`. `logging.body_size_limit` is a presentation bound, while `BodyBudget` remains a non-bypassable parser-input and rendered-output bound.
 
 Global policy and floor defaults install once and affect only future snapshots.
 The client creates one `Arc<HttpRedactor>` and preserves it through requests,
@@ -597,17 +597,17 @@ use qubit_http::{
     HttpClientFactory,
     HttpClientOptions,
 };
-use qubit_redact::{Sensitivity, http::HttpRedactionPolicy};
+use qubit_redact::{Sensitivity, http::{HttpFieldContext, HttpRedactionPolicy}};
 use serde_json::json;
 
 let mut options = HttpClientOptions::new();
 options.logging.enabled = true;
 options.logging.log_request_header = true;
 options.logging.log_request_body = true;
-options.log_redaction_policy = HttpRedactionPolicy::builder_from_default()
-    .raise_header("x-api-key", Sensitivity::High)
-    .raise_query("access_token", Sensitivity::High)
-    .raise_body("password", Sensitivity::Secret)
+options.log_redaction_policy = HttpRedactionPolicy::default().to_builder()
+    .raise(HttpFieldContext::Header, "x-api-key", Sensitivity::High)
+    .raise(HttpFieldContext::Query, "access_token", Sensitivity::High)
+    .raise(HttpFieldContext::Body, "password", Sensitivity::Secret)
     .build()?;
 
 let client = HttpClientFactory::new().create(options)?;
