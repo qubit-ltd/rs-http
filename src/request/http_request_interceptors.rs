@@ -73,9 +73,7 @@ impl HttpRequestInterceptors {
                         mapped = mapped.with_url(&parsed_url);
                     }
                 }
-                mapped.with_log_redaction_policy(
-                    request.log_redaction_policy().clone(),
-                )
+                mapped.with_log_redactor(request.log_redactor().clone())
             })?;
         }
         Ok(())

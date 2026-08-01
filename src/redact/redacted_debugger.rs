@@ -12,15 +12,14 @@ use qubit_redact::http::RedactedHeaders;
 use url::Url;
 
 use super::{
-    LogRedactionPolicy,
-    LogRedactor,
+    HttpRedactor,
 };
 
 /// Renders diagnostic fields with one immutable policy snapshot.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RedactedDebugger {
     /// Unified redactor used for every debug field.
-    redactor: LogRedactor,
+    redactor: HttpRedactor,
 }
 
 impl RedactedDebugger {
@@ -28,15 +27,15 @@ impl RedactedDebugger {
     ///
     /// # Parameters
     ///
-    /// * `policy` - Exact immutable policy snapshot to use.
+    /// * `log_redactor` - Immutable redactor snapshot to use.
     ///
     /// # Returns
     ///
     /// A safe debug renderer.
     #[inline(always)]
-    pub(crate) fn new(policy: &LogRedactionPolicy) -> Self {
+    pub(crate) fn new(log_redactor: &HttpRedactor) -> Self {
         Self {
-            redactor: LogRedactor::new(policy.clone()),
+            redactor: log_redactor.clone(),
         }
     }
 

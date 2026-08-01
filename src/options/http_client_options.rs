@@ -50,7 +50,7 @@ use crate::{
         DEFAULT_SSE_MAX_LINE_BYTES,
     },
     redact::{
-        LogRedactionPolicy,
+        HttpRedactionPolicy,
         RedactedDebugger,
     },
     request::parse_header,
@@ -95,7 +95,7 @@ pub struct HttpClientOptions {
     /// Retry options.
     pub retry: HttpRetryOptions,
     /// Log redaction policy for URL, header, and body previews.
-    pub log_redaction_policy: LogRedactionPolicy,
+    pub log_redaction_policy: HttpRedactionPolicy,
     /// Whether IPv4-only DNS behavior is requested.
     pub ipv4_only: bool,
     /// Default JSON handling mode used by [`crate::HttpResponse::sse_chunks`].
@@ -131,7 +131,7 @@ impl Default for HttpClientOptions {
             pool_max_idle_per_host: None,
             use_env_proxy: false,
             retry: HttpRetryOptions::default(),
-            log_redaction_policy: LogRedactionPolicy::default(),
+            log_redaction_policy: HttpRedactionPolicy::default(),
             ipv4_only: false,
             sse_json_mode: SseJsonMode::Lenient,
             sse_done_marker_policy: DoneMarkerPolicy::default(),
@@ -459,7 +459,7 @@ impl HttpClientOptions {
                         ))
                     }
                 };
-            let mut policy_builder = LogRedactionPolicy::builder_from_default();
+            let mut policy_builder = HttpRedactionPolicy::builder_from_default();
             if let Some(value) = log_redaction.url_path_policy.as_deref() {
                 let policy = match Self::parse_url_path_policy(value) {
                     Ok(policy) => policy,

@@ -44,7 +44,7 @@ use crate::error::{
     ReqwestErrorPhase,
 };
 use crate::redact::{
-    LogRedactor,
+    HttpRedactor,
     RedactedDebugger,
 };
 use crate::sse::{
@@ -58,7 +58,7 @@ use crate::{
     HttpError,
     HttpErrorKind,
     HttpResult,
-    LogRedactionPolicy,
+    HttpRedactionPolicy,
 };
 
 use super::{
@@ -80,7 +80,7 @@ struct BodyReadFailure {
     /// Optional HTTP status context.
     status: Option<StatusCode>,
     /// Exact policy snapshot used by the originating response.
-    log_redaction_policy: LogRedactionPolicy,
+    log_redactor: Arc<HttpRedactor>,
 }
 
 impl BodyReadFailure {
@@ -98,7 +98,7 @@ impl BodyReadFailure {
             method: error.method.clone(),
             url: error.url.clone(),
             status: error.status,
-            log_redaction_policy: (*error.log_redaction_policy).clone(),
+            log_redactor: error.log_redactor.clone(),
         }
     }
 
@@ -120,7 +120,7 @@ impl BodyReadFailure {
         if let Some(status) = self.status {
             error = error.with_status(status);
         }
-        error.with_log_redaction_policy(self.log_redaction_policy.clone())
+        error.with_log_redactor(self.log_redactor.clone())
     }
 }
 
@@ -144,7 +144,7 @@ fn map_response_read_error(
     method: Method,
     url: Url,
     status: StatusCode,
-    log_redaction_policy: &LogRedactionPolicy,
+    log_redactor: &Arc<HttpRedactor>,
 ) -> HttpError {
     if error.is_timeout() {
         return map_reqwest_error(
@@ -155,7 +155,7 @@ fn map_response_read_error(
             url,
         )
         .with_status(status)
-        .with_log_redaction_policy(log_redaction_policy.clone());
+        .with_log_redactor(log_redactor.clone());
     }
 
     let error = error.without_url();
@@ -164,7 +164,7 @@ fn map_response_read_error(
         .with_url(&url)
         .with_status(status)
         .with_source(error)
-        .with_log_redaction_policy(log_redaction_policy.clone())
+        .with_log_redactor(log_redactor.clone())
 }
 
 /// Runtime state bound to one response instance.
@@ -212,8 +212,7 @@ pub struct HttpResponse {
 
 impl fmt::Debug for HttpResponse {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let debugger =
-            RedactedDebugger::new(self.options.log_redactor.policy());
+        let debugger = RedactedDebugger::new(&self.options.log_redactor);
         let url = debugger.url(self.meta.url());
         let request_url = debugger.url(&self.runtime.request_url);
         formatter
@@ -372,24 +371,22 @@ impl HttpResponse {
         let method = self.meta.method().clone();
         let url = self.request_url().clone();
         let error_preview_limit = self.options.error_response_preview_limit;
-        let diagnostic_redactor =
-            LogRedactor::new(self.options.log_redactor.policy().clone());
+        let log_redactor = self.log_redactor().clone();
         let body_preview =
             self.into_error_body_preview(error_preview_limit).await?;
-        let log_redaction_policy = diagnostic_redactor.policy().clone();
         let message = format!(
             "{} with status {} for {} {}; response body preview: {}",
             message_prefix,
             status,
             method,
-            diagnostic_redactor.redact_url(&url),
+            log_redactor.redact_url(&url),
             body_preview
         );
         let mut mapped = HttpError::status(status, message)
             .with_method(&method)
             .with_url(&url)
             .with_response_body_preview(body_preview)
-            .with_log_redaction_policy(log_redaction_policy);
+            .with_log_redactor(log_redactor.clone());
         if let Some(retry_after) = retry_after {
             mapped = mapped.with_retry_after(retry_after);
         }
@@ -461,8 +458,8 @@ impl HttpResponse {
                             .with_method(&method)
                             .with_url(&url)
                             .with_status(status)
-                            .with_log_redaction_policy(
-                                self.log_redaction_policy().clone(),
+                            .with_log_redactor(
+                                self.log_redactor().clone(),
                             );
                         self.remember_body_read_failure(&error);
                         return Err(error);
@@ -498,7 +495,7 @@ impl HttpResponse {
                         method,
                         url,
                         status,
-                        self.log_redaction_policy(),
+                        self.log_redactor(),
                     );
                     self.remember_body_read_failure(&error);
                     return Err(error);
@@ -511,8 +508,8 @@ impl HttpResponse {
                     .with_method(self.meta.method())
                     .with_url(&self.runtime.request_url)
                     .with_status(status)
-                    .with_log_redaction_policy(
-                        self.log_redaction_policy().clone(),
+                    .with_log_redactor(
+                        self.log_redactor().clone(),
                     );
                     self.remember_body_read_failure(&error);
                     return Err(error);
@@ -548,7 +545,7 @@ impl HttpResponse {
         let read_timeout = self.runtime.read_timeout;
         let cancellation_token = self.runtime.cancellation_token.clone();
         let body_read_failure = self.runtime.body_read_failure.clone();
-        let log_redaction_policy = self.log_redaction_policy().clone();
+        let log_redactor = self.log_redactor().clone();
         let mut stream = backend.bytes_stream();
         let wrapped = stream! {
             loop {
@@ -559,7 +556,7 @@ impl HttpResponse {
                                 .with_method(&method)
                                 .with_url(&url)
                                 .with_status(status)
-                                .with_log_redaction_policy(log_redaction_policy.clone());
+                                .with_log_redactor(log_redactor.clone());
                             Self::remember_body_read_failure_state(&body_read_failure, &error);
                             yield Err(error);
                             break;
@@ -577,7 +574,7 @@ impl HttpResponse {
                             method.clone(),
                             url.clone(),
                             status,
-                            &log_redaction_policy,
+                            &log_redactor,
                         );
                         Self::remember_body_read_failure_state(&body_read_failure, &mapped);
                         yield Err(mapped);
@@ -592,7 +589,7 @@ impl HttpResponse {
                         .with_method(&method)
                         .with_url(&url)
                         .with_status(status)
-                        .with_log_redaction_policy(log_redaction_policy.clone());
+                        .with_log_redactor(log_redactor.clone());
                         Self::remember_body_read_failure_state(&body_read_failure, &error);
                         yield Err(error);
                         break;
@@ -613,7 +610,7 @@ impl HttpResponse {
             ))
             .with_status(self.meta.status())
             .with_url(self.meta.url())
-            .with_log_redaction_policy(self.log_redaction_policy().clone())
+            .with_log_redactor(self.log_redactor().clone())
         })
     }
 
@@ -630,8 +627,8 @@ impl HttpResponse {
                     .with_status(self.meta.status())
                     .with_url(self.meta.url())
                     .with_source(error)
-                    .with_log_redaction_policy(
-                        self.log_redaction_policy().clone(),
+                    .with_log_redactor(
+                        self.log_redactor().clone(),
                     )
             })
     }
@@ -749,8 +746,14 @@ impl HttpResponse {
     ///
     /// The immutable policy captured when this response was created.
     #[inline(always)]
-    pub(crate) fn log_redaction_policy(&self) -> &LogRedactionPolicy {
+    pub(crate) fn log_redaction_policy(&self) -> &HttpRedactionPolicy {
         self.options.log_redactor.policy()
+    }
+
+    /// Returns the shared log redactor used for response diagnostics and errors.
+    #[inline(always)]
+    pub(crate) fn log_redactor(&self) -> &Arc<HttpRedactor> {
+        &self.options.log_redactor
     }
 
     /// Returns a buffered body reference for response logging if available.
@@ -822,8 +825,8 @@ impl HttpResponse {
                         .with_method(&method)
                         .with_url(&url)
                         .with_status(status)
-                        .with_log_redaction_policy(
-                            self.log_redaction_policy().clone(),
+                        .with_log_redactor(
+                            self.log_redactor().clone(),
                         ));
                     }
                     item = tokio::time::timeout(read_timeout, response.chunk()) => item,
@@ -894,8 +897,8 @@ impl HttpResponse {
                     .with_method(self.meta.method())
                     .with_url(&self.runtime.request_url)
                     .with_status(self.meta.status())
-                    .with_log_redaction_policy(
-                        self.log_redaction_policy().clone(),
+                    .with_log_redactor(
+                        self.log_redactor().clone(),
                     ),
             )
         } else {
@@ -922,7 +925,7 @@ impl HttpResponse {
         .with_method(self.meta.method())
         .with_url(&self.runtime.request_url)
         .with_status(self.meta.status())
-        .with_log_redaction_policy(self.log_redaction_policy().clone())
+        .with_log_redactor(self.log_redactor().clone())
     }
 
     /// Returns whether response content-type is SSE (`text/event-stream`).
@@ -952,7 +955,7 @@ impl HttpResponse {
         source_len: Option<usize>,
         truncated: bool,
         content_type: Option<&HeaderValue>,
-        log_redactor: &LogRedactor,
+        log_redactor: &HttpRedactor,
     ) -> String {
         if bytes.is_empty() && !truncated {
             return "<empty>".to_owned();

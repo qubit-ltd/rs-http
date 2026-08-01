@@ -52,10 +52,10 @@ pub use options::{
     ProxyOptions,
     ProxyType,
 };
-pub use redact::{
-    LogRedactionPolicy,
-    LogRedactionPolicyBuilder,
-    LogRedactor,
+pub(crate) use redact::{
+    HttpRedactionPolicy,
+    HttpRedactionPolicyBuilder,
+    HttpRedactor,
 };
 pub use request::{
     AsyncHttpHeaderInjector,
