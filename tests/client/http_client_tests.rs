@@ -66,7 +66,7 @@ const CUSTOM_QUERY_SECRET: &str = "task12-custom-query-secret";
 ///
 /// A policy that treats [`CUSTOM_QUERY_FIELD`] as highly sensitive.
 fn custom_query_redaction_policy() -> HttpRedactionPolicy {
-    HttpRedactionPolicy::builder_from_default()
+    HttpRedactionPolicy::default().to_builder()
         .raise_query(CUSTOM_QUERY_FIELD, Sensitivity::High)
         .build()
         .expect("custom query policy should be valid")
@@ -873,7 +873,7 @@ async fn test_execute_response_metadata_debug_uses_custom_log_policy() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    options.log_redaction_policy = HttpRedactionPolicy::builder_from_default()
+    options.log_redaction_policy = HttpRedactionPolicy::default().to_builder()
         .raise_header("x-tenant-secret", Sensitivity::High)
         .raise_query("tenant_marker", Sensitivity::High)
         .build()
@@ -979,7 +979,7 @@ async fn test_execute_non_success_text_body_pass_through_uses_same_policy_snapsh
         body: b"opt-in-status-text".to_vec(),
     })
     .await;
-    let policy = HttpRedactionPolicy::builder_from_default()
+    let policy = HttpRedactionPolicy::default().to_builder()
         .text_body_policy(TextBodyPolicy::PassThrough)
         .override_query("accessToken", Sensitivity::Low)
         .build()
