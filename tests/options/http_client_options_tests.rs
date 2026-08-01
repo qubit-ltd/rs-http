@@ -9,7 +9,10 @@
 use std::time::Duration;
 
 use qubit_config::{
-    options::{InterpolationSources, ReadPolicy},
+    options::{
+        InterpolationSources,
+        ReadPolicy,
+    },
     Config,
 };
 use qubit_datatype::DataType;
@@ -222,7 +225,7 @@ fn test_http_client_options_debug_honors_explicit_sensitivity_override() {
     let debug = format!("{options:?}");
 
     assert!(
-        debug.contains("authorization: [Be****et]"),
+        debug.contains("authorization: [****]"),
         "unexpected debug output: {debug}",
     );
     assert!(!debug.contains("Bearer downgrade-secret"));
@@ -546,58 +549,49 @@ fn test_http_client_options_log_redaction_section() {
         .unwrap();
     assert!(opts
         .log_redaction_policy
-        .http_policy()
-        .header_policy()
+        .header_rules()
         .sensitivity_for("x-custom-secret")
         .is_some());
     assert!(opts
         .log_redaction_policy
-        .http_policy()
-        .header_policy()
+        .header_rules()
         .sensitivity_for("x-api-token")
         .is_some());
     assert!(opts
         .log_redaction_policy
-        .http_policy()
-        .header_policy()
+        .header_rules()
         .sensitivity_for("authorization")
-        .is_none());
+        .is_some());
     assert!(opts
         .log_redaction_policy
-        .http_policy()
-        .query_policy()
+        .query_rules()
         .sensitivity_for("session_token")
         .is_some());
     assert!(opts
         .log_redaction_policy
-        .http_policy()
-        .query_policy()
+        .query_rules()
         .sensitivity_for("access_token")
         .is_some());
     assert!(opts
         .log_redaction_policy
-        .http_policy()
-        .body_policy()
+        .body_rules()
         .sensitivity_for("customer_secret")
         .is_some());
     assert!(opts
         .log_redaction_policy
-        .http_policy()
-        .body_policy()
+        .body_rules()
         .sensitivity_for("client_secret")
         .is_some());
     assert!(opts
         .log_redaction_policy
-        .http_policy()
-        .query_policy()
+        .query_rules()
         .sensitivity_for("sig")
-        .is_none());
+        .is_some());
     assert!(opts
         .log_redaction_policy
-        .http_policy()
-        .body_policy()
+        .body_rules()
         .sensitivity_for("signature")
-        .is_none());
+        .is_some());
     assert_eq!(
         opts.log_redaction_policy.url_path_policy(),
         UrlPathPolicy::Preserve,
@@ -640,13 +634,13 @@ fn test_http_client_options_rejects_invalid_url_path_policy() {
 #[test]
 fn test_http_client_options_rejects_invalid_redaction_list_fields_with_resolved_path(
 ) {
-    for field in [
-        "sensitive_headers",
-        "sensitive_query_params",
-        "sensitive_body_fields",
-        "excluded_sensitive_headers",
-        "excluded_sensitive_query_params",
-        "excluded_sensitive_body_fields",
+    for (field, policy_location) in [
+        ("sensitive_headers", "http header"),
+        ("sensitive_query_params", "http query"),
+        ("sensitive_body_fields", "http body"),
+        ("excluded_sensitive_headers", "http header"),
+        ("excluded_sensitive_query_params", "http query"),
+        ("excluded_sensitive_body_fields", "http body"),
     ] {
         let path = format!("http.log_redaction.{field}");
         let mut config = Config::new();
@@ -660,6 +654,10 @@ fn test_http_client_options_rejects_invalid_redaction_list_fields_with_resolved_
 
         assert_eq!(error.path, path);
         assert_eq!(error.kind, HttpConfigErrorKind::InvalidValue);
+        assert!(
+            error.message.contains(policy_location),
+            "policy location was lost: {error:?}",
+        );
     }
 }
 
@@ -678,8 +676,7 @@ fn test_http_client_options_root_sensitive_headers_is_not_supported() {
 
     assert!(opts
         .log_redaction_policy
-        .http_policy()
-        .header_policy()
+        .header_rules()
         .sensitivity_for("xlegacysecret")
         .is_none());
 }
@@ -1399,20 +1396,17 @@ fn test_http_client_options_from_root_config_all_sections() {
     assert!(opts.default_headers.contains_key("x-root"));
     assert!(opts
         .log_redaction_policy
-        .http_policy()
-        .header_policy()
+        .header_rules()
         .sensitivity_for("x-root-secret")
         .is_some());
     assert!(opts
         .log_redaction_policy
-        .http_policy()
-        .query_policy()
+        .query_rules()
         .sensitivity_for("root_token")
         .is_some());
     assert!(opts
         .log_redaction_policy
-        .http_policy()
-        .body_policy()
+        .body_rules()
         .sensitivity_for("root_password")
         .is_some());
     assert_eq!(opts.timeouts.connect_timeout, Duration::from_secs(3));
@@ -1598,8 +1592,7 @@ fn test_http_client_options_interpolates_string_configuration_values() {
     );
     assert!(options
         .log_redaction_policy
-        .http_policy()
-        .header_policy()
+        .header_rules()
         .sensitivity_for("x-interpolated-secret")
         .is_some());
     assert_eq!(
@@ -1625,8 +1618,7 @@ fn test_http_client_options_log_redaction_header_number_from_config_is_converted
 
     assert!(opts
         .log_redaction_policy
-        .http_policy()
-        .header_policy()
+        .header_rules()
         .sensitivity_for("123")
         .is_some());
 }

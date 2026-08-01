@@ -14,14 +14,10 @@ use http::{
     Method,
     StatusCode,
 };
-use qubit_http::{
-    HttpResponseMeta,
-};
-use qubit_redact::{
-    http::{
-        HttpRedactionPolicy,
-        UrlPathPolicy,
-    },
+use qubit_http::HttpResponseMeta;
+use qubit_redact::http::{
+    HttpRedactionPolicy,
+    UrlPathPolicy,
 };
 use url::Url;
 

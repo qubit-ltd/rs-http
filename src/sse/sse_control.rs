@@ -5,6 +5,7 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
+// qubit-style: allow source-test-pair
 
 /// SSE control record that affects stream state but is not a user message.
 #[derive(Debug, Clone, PartialEq, Eq)]

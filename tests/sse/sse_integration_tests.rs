@@ -25,6 +25,10 @@ use qubit_http::{
     HttpErrorKind,
     HttpResponse,
 };
+use qubit_redact::{
+    http::HttpRedactionPolicy,
+    Sensitivity,
+};
 use tokio::time::timeout;
 
 use crate::common::{
@@ -215,6 +219,11 @@ async fn test_execute_stream_decode_json_chunks_uses_client_default_strict_mode(
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.sse_json_mode = SseJsonMode::Strict;
+    let expected_policy = HttpRedactionPolicy::builder_from_default()
+        .raise_body("sse_decode_secret", Sensitivity::Secret)
+        .build()
+        .expect("the custom HTTP policy should be valid");
+    options.log_redaction_policy = expected_policy.clone();
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.write_timeout = Duration::from_secs(2);
     let client = HttpClientFactory::new().create(options).unwrap();
@@ -228,6 +237,7 @@ async fn test_execute_stream_decode_json_chunks_uses_client_default_strict_mode(
 
     let error = chunks.next().await.unwrap().unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::SseDecode);
+    assert_eq!(error.log_redactor.policy(), &expected_policy);
 }
 
 #[tokio::test]
@@ -260,4 +270,50 @@ async fn test_execute_stream_decode_events_uses_client_default_sse_limits() {
     let error = events.next().await.unwrap().unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::SseProtocol);
     assert!(error.message.contains("max_frame_bytes"));
+}
+
+/// Verifies SSE decoding errors retain the client redactor snapshot instead of
+/// rebuilding a default redactor after the response has been created.
+#[tokio::test]
+async fn test_sse_decode_error_preserves_client_redactor_policy() {
+    let server = spawn_one_shot_server(ResponsePlan::Chunked {
+        status: 200,
+        headers: vec![(
+            "Content-Type".to_string(),
+            "text/event-stream".to_string(),
+        )],
+        chunks: vec![ResponseChunk {
+            delay: Duration::from_millis(0),
+            bytes: vec![0xFF, b'\n'],
+        }],
+        finish: true,
+    })
+    .await;
+
+    let expected_policy = HttpRedactionPolicy::builder_from_default()
+        .raise_query("tenant_stream_secret", Sensitivity::Secret)
+        .build()
+        .expect("the custom HTTP policy should be valid");
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.log_redaction_policy = expected_policy.clone();
+    let client = HttpClientFactory::new()
+        .create(options)
+        .expect("the client should be created");
+
+    let request = client.request(Method::GET, "/sse-invalid-utf8").build();
+    let response = client
+        .execute(request)
+        .await
+        .expect("the response should open");
+    let mut events = response.sse_messages();
+    let error = events
+        .next()
+        .await
+        .expect("the stream should yield one decode error")
+        .expect_err("the invalid UTF-8 line should fail SSE decoding");
+
+    assert_eq!(error.kind, HttpErrorKind::SseProtocol);
+    assert_eq!(error.log_redactor.policy(), &expected_policy);
+    server.finish().await;
 }

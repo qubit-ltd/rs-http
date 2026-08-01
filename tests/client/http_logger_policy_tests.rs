@@ -34,11 +34,9 @@ use qubit_http::{
     HttpResponse,
     HttpResponseMeta,
 };
-use qubit_redact::{
-    http::{
-        HttpRedactionPolicy,
-        TextBodyPolicy,
-    },
+use qubit_redact::http::{
+    HttpRedactionPolicy,
+    TextBodyPolicy,
 };
 use tokio::time::timeout;
 use url::Url;

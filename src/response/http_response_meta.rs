@@ -21,11 +21,13 @@ use http::{
     StatusCode,
 };
 use httpdate::parse_http_date;
+use qubit_redact::http::{
+    HttpRedactionPolicy,
+    HttpRedactor,
+};
 use url::Url;
 
 use crate::redact::RedactedDebugger;
-use crate::redact::HttpRedactor;
-use crate::HttpRedactionPolicy;
 
 /// HTTP response metadata available before body buffering/stream consumption.
 #[derive(Clone)]
@@ -193,15 +195,6 @@ impl HttpResponseMeta {
         &self.log_redactor
     }
 
-    /// Returns the log redaction policy snapshot for response diagnostics.
-    ///
-    /// # Returns
-    /// Borrowed policy snapshot.
-    #[inline(always)]
-    pub(super) fn log_redaction_policy(&self) -> &HttpRedactionPolicy {
-        self.log_redactor.policy()
-    }
-
     /// Replaces the shared log redactor snapshot.
     ///
     /// # Parameters
@@ -210,26 +203,8 @@ impl HttpResponseMeta {
     /// # Returns
     /// Nothing.
     #[inline(always)]
-    pub(super) fn set_log_redactor(
-        &mut self,
-        log_redactor: Arc<HttpRedactor>,
-    ) {
+    pub(super) fn set_log_redactor(&mut self, log_redactor: Arc<HttpRedactor>) {
         self.log_redactor = log_redactor;
-    }
-
-    /// Replaces the log redaction policy snapshot.
-    ///
-    /// # Parameters
-    /// - `policy`: New policy snapshot.
-    ///
-    /// # Returns
-    /// Nothing.
-    #[inline(always)]
-    pub(crate) fn set_log_redaction_policy(
-        &mut self,
-        policy: HttpRedactionPolicy,
-    ) {
-        self.log_redactor = Arc::new(HttpRedactor::new(policy));
     }
 }
 

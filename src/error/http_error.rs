@@ -16,13 +16,14 @@ use http::{
     Method,
     StatusCode,
 };
+use qubit_redact::http::{
+    HttpRedactionPolicy,
+    HttpRedactor,
+};
 use url::Url;
 
 use super::RetryHint;
-use crate::{
-    HttpRedactionPolicy,
-    redact::{HttpRedactor, RedactedDebugger},
-};
+use crate::redact::RedactedDebugger;
 use qubit_error::BoxError;
 
 use super::HttpErrorKind;
@@ -198,12 +199,16 @@ impl HttpError {
     /// # Returns
     /// `self` for chaining.
     #[inline(always)]
-    pub fn with_log_redactor(mut self, log_redactor: Arc<HttpRedactor>) -> Self {
+    pub fn with_log_redactor(
+        mut self,
+        log_redactor: Arc<HttpRedactor>,
+    ) -> Self {
         self.log_redactor = log_redactor;
         self
     }
 
-    /// Attaches one redaction policy snapshot by rebuilding the shared redactor.
+    /// Attaches one redaction policy snapshot by rebuilding the shared
+    /// redactor.
     ///
     /// # Parameters
     /// - `policy`: Policy whose custom sensitive names should be honored.

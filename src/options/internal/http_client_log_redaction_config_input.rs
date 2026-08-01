@@ -5,6 +5,7 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
+// qubit-style: allow source-test-pair
 //! Parsed values from the `log_redaction` configuration section.
 
 /// Intermediate log-redaction configuration before policy validation.

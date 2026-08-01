@@ -16,14 +16,14 @@ use http::{
     Method,
     StatusCode,
 };
+use qubit_redact::http::{
+    HttpRedactionPolicy,
+    HttpRedactor,
+};
 use url::Url;
 
 use super::HttpResponseMeta;
-use crate::redact::{
-    HttpRedactor,
-    RedactedDebugger,
-};
-use crate::HttpRedactionPolicy;
+use crate::redact::RedactedDebugger;
 
 /// Metadata view passed to response interceptors.
 ///
@@ -88,7 +88,7 @@ impl HttpResponseInterceptorContext {
             meta.url().clone(),
             meta.method().clone(),
         )
-        .with_log_redaction_policy(meta.log_redaction_policy().clone())
+        .with_log_redactor(meta.log_redactor().clone())
     }
 
     /// Attaches the shared log redactor used for standalone debug output.
@@ -181,15 +181,6 @@ impl HttpResponseInterceptorContext {
     #[inline(always)]
     pub fn method(&self) -> &Method {
         &self.method
-    }
-
-    /// Returns the shared log redactor.
-    ///
-    /// # Returns
-    /// Borrowed shared redactor.
-    #[inline(always)]
-    pub(crate) fn log_redactor(&self) -> &Arc<HttpRedactor> {
-        &self.log_redactor
     }
 
     /// Returns parsed `Retry-After` when status and headers provide one.

@@ -21,6 +21,7 @@ use http::header::{
     HeaderValue,
     CONTENT_TYPE,
 };
+use qubit_redact::http::HttpRedactor;
 use tokio_util::sync::CancellationToken;
 
 use super::{
@@ -35,7 +36,6 @@ use crate::{
     HttpClient,
     HttpError,
     HttpErrorKind,
-    redact::HttpRedactor,
     HttpRequest,
     HttpResponse,
     HttpResult,

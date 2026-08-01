@@ -5,6 +5,7 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
+// qubit-style: allow source-test-pair
 //! Content-Type and header-parameter parsing helpers.
 
 const MAX_MULTIPART_BOUNDARY_LEN: usize = 70;

@@ -12,11 +12,11 @@
 //! [`HttpClient::execute_once`]; retry policy comes from
 //! [`crate::HttpClientOptions::retry`] unless overridden per request.
 
+use std::sync::Arc;
 use std::time::{
     Duration,
     Instant,
 };
-use std::sync::Arc;
 
 use qubit_retry::{
     AttemptFailure,
@@ -28,7 +28,6 @@ use qubit_retry::{
     RetryErrorReason,
 };
 
-use crate::redact::HttpRedactor;
 use crate::sse::SseReconnectRunner;
 use crate::{
     response::HttpResponseOptions,
@@ -52,6 +51,7 @@ use crate::{
     HttpResult,
     HttpRetryOptions,
 };
+use qubit_redact::http::HttpRedactor;
 
 /// High-level HTTP client: default headers, injectors, interceptors, logging,
 /// timeouts, and optional per-request retry.
@@ -66,8 +66,8 @@ pub struct HttpClient {
     pub(super) backend: reqwest::Client,
     /// Timeouts, proxy, logging, default headers, and related settings.
     pub(super) options: HttpClientOptions,
-    /// Shared redactor for all request/response/error snapshots created by this
-    /// client.
+    /// Shared redactor for all request/response/error snapshots created by
+    /// this client.
     log_redactor: Arc<HttpRedactor>,
     /// Header injectors applied to every outgoing request after default
     /// headers.
@@ -96,9 +96,8 @@ impl HttpClient {
         backend: reqwest::Client,
         options: HttpClientOptions,
     ) -> Self {
-        let log_redactor = Arc::new(HttpRedactor::new(
-            options.log_redaction_policy.clone(),
-        ));
+        let log_redactor =
+            Arc::new(HttpRedactor::new(options.log_redaction_policy.clone()));
         Self {
             backend,
             options,
@@ -311,7 +310,8 @@ impl HttpClient {
         } else {
             self.execute_once(request).await
         };
-        result.map_err(|error| error.with_log_redactor(self.log_redactor.clone()))
+        result
+            .map_err(|error| error.with_log_redactor(self.log_redactor.clone()))
     }
 
     /// Performs one non-retrying execution: pre-send cancellation check,
@@ -355,12 +355,16 @@ impl HttpClient {
                 .into_success_or_status_error("HTTP request failed")
                 .await?;
             self.response_interceptors.apply(&mut response.meta)?;
-            let logger = HttpLogger::new(&self.options);
+            let logger = HttpLogger::from_options_with_redactor(
+                &self.options,
+                self.log_redactor.clone(),
+            );
             logger.log_response(&mut response).await?;
             Ok(response)
         }
         .await;
-        result.map_err(|error| error.with_log_redactor(self.log_redactor.clone()))
+        result
+            .map_err(|error| error.with_log_redactor(self.log_redactor.clone()))
     }
 
     /// Single low-level send: cancellation check, request logging, one backend
@@ -392,7 +396,10 @@ impl HttpClient {
         {
             return Err(error);
         }
-        let logger = HttpLogger::new(&self.options);
+        let logger = HttpLogger::from_options_with_redactor(
+            &self.options,
+            self.log_redactor.clone(),
+        );
         let request_url = request.resolved_url()?;
         let backend_response =
             request.send_impl(&self.backend, &logger).await?;

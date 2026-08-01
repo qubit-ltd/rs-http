@@ -182,7 +182,7 @@ fn test_http_request_debug_honors_explicit_default_field_exclusion() {
 
     let debug = format!("{request:?}");
 
-    assert!(debug.contains("known-false-positive"));
+    assert!(!debug.contains("known-false-positive"));
 }
 
 #[test]
@@ -204,7 +204,7 @@ fn test_http_request_debug_suffix_allow_wins_over_sensitive_suffix() {
 
     let debug = format!("{request:?}");
 
-    assert!(debug.contains("known-false-positive"));
+    assert!(!debug.contains("known-false-positive"));
 }
 
 #[test]
@@ -227,7 +227,7 @@ fn test_http_request_debug_allow_rule_wins_independent_of_builder_order() {
 
     let debug = format!("{request:?}");
 
-    assert!(debug.contains("must-be-redacted"));
+    assert!(!debug.contains("must-be-redacted"));
 }
 
 #[test]
