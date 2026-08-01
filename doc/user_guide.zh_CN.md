@@ -1,6 +1,6 @@
 # qubit-http 用户指南
 
-本文档基于当前源码和测试整理，适用于 crate `qubit-http` 0.10，Rust 代码中通过库名 `qubit_http` 使用。
+本文档基于当前源码和测试整理，适用于 crate `qubit-http` 0.11，Rust 代码中通过库名 `qubit_http` 使用。
 
 `qubit-http` 是一个异步 HTTP 客户端基础设施库。它封装 `reqwest`，提供统一的客户端配置、请求构建、响应读取、错误分类、TRACE 日志脱敏、自动重试、代理、IPv4-only 解析、请求/响应拦截器，以及 Server-Sent Events（SSE）解码和重连能力。
 
@@ -17,8 +17,8 @@
 
 ```toml
 [dependencies]
-qubit-http = "0.10"
-qubit-redact = "0.3"
+qubit-http = "0.11"
+qubit-redact = "0.4"
 http = "1.4"
 qubit-config = { path = "../rs-config", version = "0.14", default-features = false }
 serde = { version = "1", features = ["derive"] }
@@ -575,11 +575,17 @@ HTTP 日志使用 `tracing::trace!`。必须同时满足：
 
 可分别控制请求头、请求体、响应头、响应体。body 只记录前 `logging.body_size_limit` 字节，超出部分显示截断提示；二进制体显示为 `<binary N bytes>`。没有结构化或文本 `Content-Type` 的 unsupported body 会显示为 `<redacted: unsupported HTTP body>`，不会直接打印原始内容。请求体日志只预览已缓冲的 body 变体（`bytes_body`、`text_body`、`json_body`、`form_body`、`multipart_body`、`ndjson_body`）；`stream_body` 和 `streaming_body` 会记录为 `<skipped: streaming request body>`，因为 logger 不会消费上传流。
 
-日志统一经过 `LogRedactor` 和 `LogRedactionPolicy` 脱敏，底层复用 `qubit-redact` 的 URL、header 和 HTTP body 适配器。URL username、password、fragment 和敏感 query 参数会被掩码，非根 URL path 默认整体隐藏。只有在确认诊断边界安全后，才应把 `log_redaction.url_path_policy` 设为 `preserve`。JSON/form/multipart body 字段如果命中策略中的敏感名称，也会被掩码。具体 mask 字符串遵循 `qubit-redact` 的敏感级别：token/header 类字段通常显示为 `****`，`password`、`client_secret` 这类 secret 字段显示为 `<redacted>`。multipart 脱敏适用于所有 `multipart/*` 媒体类型。multipart 文件 part 会显示为 `<redacted: file part>`；格式异常、缺少 boundary 或已截断的 multipart body 会显示为 `<redacted: multipart body>`，避免原始上传字节泄露到日志。
+日志统一经过规范的 `qubit_redact::http::HttpRedactor` 和 `HttpRedactionPolicy` 脱敏。URL username、password、fragment 和敏感 query 参数会被掩码；header、query/form、body 分别使用独立规则快照及 floor 状态。multipart 文件 part 仍显示为 `<redacted: file part>`；格式异常、缺少 boundary 或已截断的 body 继续 fail closed。
 
 对于 header，`http::HeaderValue::is_sensitive()` 是值级 `Secret` 声明。请求、响应、流式响应和 `Debug` 渲染都会在 header name 匹配前处理该标记。allow 规则不能暴露已标记值；未标记值继续使用同一个不可变 name policy 快照。
 
-默认敏感名称和掩码级别来自 `RedactionPolicy::default()`。匹配会规范化常见分隔符，并使用 token-suffix 边界。`LogRedactionPolicy::builder()` 不包含字段规则；当 header、query 和 body 调整需要保留保守默认规则时，使用 `LogRedactionPolicy::builder_from_default()`。`.load_default()` 会显式重置此前的 builder 配置。`raise_*` 保留更强等级，`override_*` 显式替换等级，`allow_*_exact` 与 `allow_*_suffix` 表达有意的可见规则。`logging.body_size_limit` 是展示限额，`BodyBudget` 则是不可绕过的 parser 输入和渲染输出硬上限。
+`HttpRedactionPolicy::empty_builder()` 使用空应用规则，但会为 header、query、body 捕获同一份全局 floor 快照；扩展默认快照时使用 `builder_from_default()`。应用 allow 规则无法绕过启用的 floor；`disable_floor()` 是关闭所有上下文 floor 的显式逃生口。类型必须从 `qubit_redact::http` 导入，不能从 `qubit_http` 导入。`logging.body_size_limit` 是展示限额，`BodyBudget` 仍是不可绕过的输入与输出硬上限。
+
+全局 policy 与 floor 默认值只能安装一次，只影响未来快照。client 创建一份
+`Arc<HttpRedactor>`，并在 request、response、retry、interceptor、error 和 SSE 诊断中
+保持该快照。迁移时以从 `qubit_redact::http` 直接导入的 `HttpRedactionPolicy`、
+`HttpRedactionPolicyBuilder`、`HttpRedactor` 替代已删除的 `LogRedactionPolicy`、
+`LogRedactionPolicyBuilder`、`LogRedactor` façade；`qubit_http` 不再重导出这些类型。
 
 示例：
 
@@ -588,16 +594,15 @@ use http::Method;
 use qubit_http::{
     HttpClientFactory,
     HttpClientOptions,
-    LogRedactionPolicy,
 };
-use qubit_redact::Sensitivity;
+use qubit_redact::{Sensitivity, http::HttpRedactionPolicy};
 use serde_json::json;
 
 let mut options = HttpClientOptions::new();
 options.logging.enabled = true;
 options.logging.log_request_header = true;
 options.logging.log_request_body = true;
-options.log_redaction_policy = LogRedactionPolicy::builder_from_default()
+options.log_redaction_policy = HttpRedactionPolicy::builder_from_default()
     .raise_header("x-api-key", Sensitivity::High)
     .raise_query("access_token", Sensitivity::High)
     .raise_body("password", Sensitivity::Secret)

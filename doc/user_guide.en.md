@@ -1,6 +1,6 @@
 # qubit-http User Guide
 
-This guide is based on the current source code and tests. It applies to crate `qubit-http` 0.10, imported from Rust code as `qubit_http`.
+This guide is based on the current source code and tests. It applies to crate `qubit-http` 0.11, imported from Rust code as `qubit_http`.
 
 `qubit-http` is an asynchronous HTTP client infrastructure crate. It wraps `reqwest` and provides unified client options, request building, response reading, error classification, TRACE logging with URL/header/body redaction, retries, proxies, IPv4-only resolution, request/response interceptors, and Server-Sent Events (SSE) decoding and reconnection.
 
@@ -17,8 +17,8 @@ This guide is based on the current source code and tests. It applies to crate `q
 
 ```toml
 [dependencies]
-qubit-http = "0.10"
-qubit-redact = "0.3"
+qubit-http = "0.11"
+qubit-redact = "0.4"
 http = "1.4"
 qubit-config = { path = "../rs-config", version = "0.14", default-features = false }
 serde = { version = "1", features = ["derive"] }
@@ -575,11 +575,19 @@ HTTP logs use `tracing::trace!`. Both conditions must be true:
 
 Request headers, request body, response headers, and response body can be toggled separately. Body logs include only the first `logging.body_size_limit` bytes and show a truncation marker for the remainder. Binary bodies are rendered as `<binary N bytes>`. Unsupported bodies without a structured or textual `Content-Type` are rendered as `<redacted: unsupported HTTP body>`. Request-body logging previews buffered body variants (`bytes_body`, `text_body`, `json_body`, `form_body`, `multipart_body`, and `ndjson_body`); `stream_body` and `streaming_body` are logged as `<skipped: streaming request body>` because the logger does not consume upload streams.
 
-Logs are redacted through `LogRedactor` and `LogRedactionPolicy`, backed by `qubit-redact` adapters for URLs, headers, and HTTP bodies. URL username, password, fragment, and sensitive query parameters are masked, and non-root URL paths are redacted by default. Set `log_redaction.url_path_policy` to `preserve` only after reviewing that diagnostic boundary. JSON/form/multipart body fields are masked when their names match the policy. Mask strings follow `qubit-redact` sensitivity levels: token/header-like fields usually become `****`, while secret-like fields such as `password` and `client_secret` become `<redacted>`. Multipart redaction applies to every `multipart/*` media type. Multipart file parts are rendered as `<redacted: file part>`, and malformed, missing-boundary, or truncated multipart bodies are rendered as `<redacted: multipart body>` so raw upload bytes are not leaked.
+Logs are redacted through the canonical `qubit_redact::http::HttpRedactor` and `HttpRedactionPolicy`. URL username, password, fragment, and sensitive query parameters are masked, and non-root URL paths are redacted by default. JSON/form/multipart body fields use their independent rule snapshots and floor state. Multipart file parts remain `<redacted: file part>`; malformed, missing-boundary, or truncated multipart bodies remain fail-closed.
 
 For headers, `http::HeaderValue::is_sensitive()` is a value-level `Secret` declaration. Request, response, streaming-response, and `Debug` rendering honor it before header-name matching. An allow rule cannot expose a marked value; unmarked values continue to use the same immutable name policy snapshot.
 
-Default sensitive names and mask levels come from `RedactionPolicy::default()`. Matching canonicalizes common separators and uses token-suffix boundaries. `LogRedactionPolicy::builder()` starts without field rules; use `LogRedactionPolicy::builder_from_default()` when header, query, and body changes must retain the conservative defaults. `.load_default()` explicitly resets earlier builder changes. `raise_*` retains the stronger level, `override_*` explicitly replaces it, and `allow_*_exact` or `allow_*_suffix` records a deliberate visibility rule. `logging.body_size_limit` is a presentation bound, while `BodyBudget` remains a non-bypassable parser-input and rendered-output bound.
+`HttpRedactionPolicy::empty_builder()` has empty application rules but captures one global-floor snapshot for header, query, and body. Use `builder_from_default()` to extend a default snapshot. Application allow rules cannot bypass an enabled floor; `disable_floor()` is the explicit all-context escape hatch. Import these types from `qubit_redact::http`, never from `qubit_http`. `logging.body_size_limit` is a presentation bound, while `BodyBudget` remains a non-bypassable parser-input and rendered-output bound.
+
+Global policy and floor defaults install once and affect only future snapshots.
+The client creates one `Arc<HttpRedactor>` and preserves it through requests,
+responses, retries, interceptors, errors, and SSE diagnostics. For migration,
+replace the removed `LogRedactionPolicy`, `LogRedactionPolicyBuilder`, and
+`LogRedactor` façade types with `HttpRedactionPolicy`,
+`HttpRedactionPolicyBuilder`, and `HttpRedactor` imported directly from
+`qubit_redact::http`; `qubit_http` does not re-export them.
 
 Example:
 
@@ -588,16 +596,15 @@ use http::Method;
 use qubit_http::{
     HttpClientFactory,
     HttpClientOptions,
-    LogRedactionPolicy,
 };
-use qubit_redact::Sensitivity;
+use qubit_redact::{Sensitivity, http::HttpRedactionPolicy};
 use serde_json::json;
 
 let mut options = HttpClientOptions::new();
 options.logging.enabled = true;
 options.logging.log_request_header = true;
 options.logging.log_request_body = true;
-options.log_redaction_policy = LogRedactionPolicy::builder_from_default()
+options.log_redaction_policy = HttpRedactionPolicy::builder_from_default()
     .raise_header("x-api-key", Sensitivity::High)
     .raise_query("access_token", Sensitivity::High)
     .raise_body("password", Sensitivity::Secret)

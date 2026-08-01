@@ -1,6 +1,6 @@
 [package]
 name = "qubit-http"
-version = "0.10.0"
+version = "0.11.0"
 edition = "2021"
 rust-version = "1.94"
 authors = ["Haixing Hu <starfish.hu@gmail.com>"]
@@ -53,7 +53,7 @@ qubit-argument = "0.4"
 qubit-error = "0.2"
 qubit-function = "0.16"
 qubit-retry = { version = "0.17", path = "../rs-retry", features = ["tokio"] }
-qubit-redact = { version = "0.4", default-features = false, features = ["http"] }
+qubit-redact = { path = "../rs-redact", version = "0.4", default-features = false, features = ["http"] }
 
 [dev-dependencies]
 tokio = { version = "1.52", features = ["full", "test-util"] }
