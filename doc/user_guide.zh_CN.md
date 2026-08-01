@@ -18,7 +18,7 @@
 ```toml
 [dependencies]
 qubit-http = "0.11"
-qubit-redact = "0.4"
+qubit-redact = "0.5"
 http = "1.4"
 qubit-config = { path = "../rs-config", version = "0.14", default-features = false }
 serde = { version = "1", features = ["derive"] }
@@ -579,7 +579,7 @@ HTTP 日志使用 `tracing::trace!`。必须同时满足：
 
 对于 header，`http::HeaderValue::is_sensitive()` 是值级 `Secret` 声明。请求、响应、流式响应和 `Debug` 渲染都会在 header name 匹配前处理该标记。allow 规则不能暴露已标记值；未标记值继续使用同一个不可变 name policy 快照。
 
-`HttpRedactionPolicy::empty_builder()` 使用空应用规则，但会为 header、query、body 捕获同一份全局 floor 快照；扩展默认快照时使用 `builder_from_default()`。应用 allow 规则无法绕过启用的 floor；`disable_floor()` 是关闭所有上下文 floor 的显式逃生口。类型必须从 `qubit_redact::http` 导入，不能从 `qubit_http` 导入。`logging.body_size_limit` 是展示限额，`BodyBudget` 仍是不可绕过的输入与输出硬上限。
+`HttpRedactionPolicy::builder()` 使用空应用规则和标准 floor；扩展默认快照时使用 `HttpRedactionPolicy::default().to_builder()`。应用 allow 规则无法绕过启用的 floor；`disable_all_floors()` 是关闭所有上下文 floor 的显式逃生口。类型必须从 `qubit_redact::http` 导入，不能从 `qubit_http` 导入。`logging.body_size_limit` 是展示限额，`BodyBudget` 仍是不可绕过的输入与输出硬上限。
 
 全局 policy 与 floor 默认值只能安装一次，只影响未来快照。client 创建一份
 `Arc<HttpRedactor>`，并在 request、response、retry、interceptor、error 和 SSE 诊断中
@@ -595,17 +595,17 @@ use qubit_http::{
     HttpClientFactory,
     HttpClientOptions,
 };
-use qubit_redact::{Sensitivity, http::HttpRedactionPolicy};
+use qubit_redact::{Sensitivity, http::{HttpFieldContext, HttpRedactionPolicy}};
 use serde_json::json;
 
 let mut options = HttpClientOptions::new();
 options.logging.enabled = true;
 options.logging.log_request_header = true;
 options.logging.log_request_body = true;
-options.log_redaction_policy = HttpRedactionPolicy::builder_from_default()
-    .raise_header("x-api-key", Sensitivity::High)
-    .raise_query("access_token", Sensitivity::High)
-    .raise_body("password", Sensitivity::Secret)
+options.log_redaction_policy = HttpRedactionPolicy::default().to_builder()
+    .raise(HttpFieldContext::Header, "x-api-key", Sensitivity::High)
+    .raise(HttpFieldContext::Query, "access_token", Sensitivity::High)
+    .raise(HttpFieldContext::Body, "password", Sensitivity::Secret)
     .build()?;
 
 let client = HttpClientFactory::new().create(options)?;
