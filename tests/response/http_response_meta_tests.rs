@@ -16,9 +16,13 @@ use http::{
 };
 use qubit_http::{
     HttpResponseMeta,
-    LogRedactionPolicy,
 };
-use qubit_redact::http::UrlPathPolicy;
+use qubit_redact::{
+    http::{
+        HttpRedactionPolicy,
+        UrlPathPolicy,
+    },
+};
 use url::Url;
 
 #[test]
@@ -80,7 +84,7 @@ fn test_http_response_meta_debug_honors_url_path_redaction_policy() {
         Method::GET,
     )
     .with_log_redaction_policy(
-        LogRedactionPolicy::builder_from_default()
+        HttpRedactionPolicy::builder_from_default()
             .url_path_policy(UrlPathPolicy::Redact)
             .build()
             .expect("log redaction policy should be valid"),

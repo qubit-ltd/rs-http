@@ -13,9 +13,13 @@ use qubit_http::{
     HttpClientOptions,
     HttpLogger,
     HttpLoggingOptions,
-    LogRedactionPolicy,
 };
-use qubit_redact::http::TextBodyPolicy;
+use qubit_redact::{
+    http::{
+        HttpRedactionPolicy,
+        TextBodyPolicy,
+    },
+};
 
 use crate::common::capture_trace_logs;
 
@@ -28,7 +32,7 @@ fn test_http_logger_logs_request_body_preview_with_truncation() {
         body_size_limit: 4,
         ..HttpLoggingOptions::default()
     };
-    options.log_redaction_policy = LogRedactionPolicy::builder_from_default()
+    options.log_redaction_policy = HttpRedactionPolicy::builder_from_default()
         .text_body_policy(TextBodyPolicy::PassThrough)
         .build()
         .expect("log redaction policy should be valid");

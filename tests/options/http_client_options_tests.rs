@@ -33,11 +33,13 @@ use qubit_http::{
     HttpErrorKind,
     HttpRetryMethodPolicy,
     HttpRetryOptions,
-    LogRedactionPolicy,
     ProxyType,
 };
 use qubit_redact::{
-    http::UrlPathPolicy,
+    http::{
+        HttpRedactionPolicy,
+        UrlPathPolicy,
+    },
     Sensitivity,
 };
 use qubit_retry::RetryDelay;
@@ -208,7 +210,7 @@ fn test_http_client_options_debug_masks_sensitive_values() {
 #[test]
 fn test_http_client_options_debug_honors_explicit_sensitivity_override() {
     let mut options = HttpClientOptions::new();
-    options.log_redaction_policy = LogRedactionPolicy::builder_from_default()
+    options.log_redaction_policy = HttpRedactionPolicy::builder_from_default()
         .override_header("authorization", Sensitivity::Low)
         .build()
         .expect("log redaction policy should be valid");
@@ -596,7 +598,7 @@ fn test_http_client_options_log_redaction_section() {
         .sensitivity_for("signature")
         .is_none());
     assert_eq!(
-        opts.log_redaction_policy.http_policy().url_path_policy(),
+        opts.log_redaction_policy.url_path_policy(),
         UrlPathPolicy::Preserve,
     );
 }
@@ -614,7 +616,7 @@ fn test_http_client_options_parses_redact_url_path_policy() {
             .expect("redact URL path policy should parse");
 
     assert_eq!(
-        options.log_redaction_policy.http_policy().url_path_policy(),
+        options.log_redaction_policy.url_path_policy(),
         UrlPathPolicy::Redact,
     );
 }
@@ -1590,7 +1592,7 @@ fn test_http_client_options_interpolates_string_configuration_values() {
         DoneMarkerPolicy::Custom("[INTERPOLATED_DONE]".to_string()),
     );
     assert_eq!(
-        options.log_redaction_policy.http_policy().url_path_policy(),
+        options.log_redaction_policy.url_path_policy(),
         UrlPathPolicy::Preserve,
     );
     assert!(options

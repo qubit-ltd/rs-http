@@ -22,9 +22,11 @@ use qubit_http::{
     HttpErrorKind,
     HttpRequestBody,
     HttpRetryMethodPolicy,
-    LogRedactionPolicy,
 };
 use qubit_redact::Sensitivity;
+use qubit_redact::{
+    http::HttpRedactionPolicy,
+};
 use serde::ser::{
     Error as _,
     Serializer,
@@ -54,7 +56,7 @@ fn test_request_builder_debug_masks_sensitive_values() {
     options
         .set_base_url("https://api.example.com/root/")
         .expect("base URL should be valid");
-    options.log_redaction_policy = LogRedactionPolicy::builder_from_default()
+    options.log_redaction_policy = HttpRedactionPolicy::builder_from_default()
         .raise_header("x-debug-secret", Sensitivity::High)
         .raise_query("debugToken", Sensitivity::High)
         .build()
