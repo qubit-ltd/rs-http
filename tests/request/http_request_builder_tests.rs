@@ -6,7 +6,10 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use std::time::Duration;
+use std::{
+    error::Error as _,
+    time::Duration,
+};
 
 use bytes::Bytes;
 use http::header::CONTENT_TYPE;
@@ -453,6 +456,12 @@ fn test_request_builder_json_body_serialization_failure_returns_decode_error() {
 
     assert_eq!(error.kind, HttpErrorKind::Decode);
     assert!(error.message.contains("Failed to encode JSON body"));
+    assert!(!error.to_string().contains("boom"));
+    assert!(
+        error
+            .source()
+            .is_some_and(|source| source.to_string().contains("boom"))
+    );
 }
 
 #[test]
@@ -879,6 +888,12 @@ fn test_request_builder_ndjson_body_serialization_failure_returns_decode_error()
 
     assert_eq!(error.kind, HttpErrorKind::Decode);
     assert!(error.message.contains("Failed to encode NDJSON record"));
+    assert!(!error.to_string().contains("boom"));
+    assert!(
+        error
+            .source()
+            .is_some_and(|source| source.to_string().contains("boom"))
+    );
 }
 
 #[test]

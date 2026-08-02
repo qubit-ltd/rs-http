@@ -306,7 +306,8 @@ impl HttpRequestBuilder {
         T: Serialize,
     {
         let bytes = serde_json::to_vec(value).map_err(|error| {
-            HttpError::decode(format!("Failed to encode JSON body: {}", error))
+            HttpError::decode("Failed to encode JSON body")
+                .with_source(error)
         })?;
         if !self.headers.contains_key(CONTENT_TYPE) {
             self.headers.insert(
@@ -438,9 +439,8 @@ impl HttpRequestBuilder {
         let mut payload = String::new();
         for record in records {
             let line = serde_json::to_string(record).map_err(|error| {
-                HttpError::decode(format!(
-                    "Failed to encode NDJSON record: {error}"
-                ))
+                HttpError::decode("Failed to encode NDJSON record")
+                    .with_source(error)
             })?;
             payload.push_str(&line);
             payload.push('\n');
