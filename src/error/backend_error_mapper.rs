@@ -39,7 +39,7 @@ pub(crate) fn map_reqwest_error(
     let error = error.without_url();
     let kind = classify_reqwest_error_kind(is_timeout, phase, default_kind);
 
-    HttpError::new(kind, format!("HTTP transport error: {}", error))
+    HttpError::new(kind, "HTTP transport request failed")
         .with_method(&method)
         .with_url(&url)
         .with_source(error)
