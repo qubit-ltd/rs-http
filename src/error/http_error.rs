@@ -38,7 +38,11 @@ pub struct HttpError {
     pub url: Option<Url>,
     /// Optional response status code.
     pub status: Option<StatusCode>,
-    /// Human-readable message.
+    /// Human-readable, secret-free public summary.
+    ///
+    /// This text is escaped and URL-redacted during formatting, but arbitrary
+    /// non-URL secret syntax is not scanned. Internal constructors should keep
+    /// raw backend diagnostics only in [`Self::source`].
     pub message: String,
     /// Optional preview of non-success response body.
     pub response_body_preview: Option<String>,
@@ -94,7 +98,8 @@ impl HttpError {
     ///
     /// # Parameters
     /// - `kind`: Classification for retry logic and handling.
-    /// - `message`: Human-readable description.
+    /// - `message`: Secret-free human-readable description. Put arbitrary
+    ///   backend diagnostics in [`Self::with_source`] instead.
     ///
     /// # Returns
     /// New [`HttpError`].
