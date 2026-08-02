@@ -40,6 +40,7 @@ use qubit_http::{
 };
 use qubit_redact::{
     http::{
+        HttpFieldContext,
         HttpRedactionPolicy,
         UrlPathPolicy,
     },
@@ -215,7 +216,7 @@ fn test_http_client_options_debug_masks_sensitive_values() {
 fn test_http_client_options_debug_honors_explicit_sensitivity_override() {
     let mut options = HttpClientOptions::new();
     options.log_redaction_policy = HttpRedactionPolicy::default().to_builder()
-        .override_header("authorization", Sensitivity::Low)
+        .override_level(HttpFieldContext::Header, "authorization", Sensitivity::Low)
         .build()
         .expect("log redaction policy should be valid");
     options

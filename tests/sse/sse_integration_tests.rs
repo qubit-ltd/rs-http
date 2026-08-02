@@ -26,7 +26,7 @@ use qubit_http::{
     HttpResponse,
 };
 use qubit_redact::{
-    http::HttpRedactionPolicy,
+    http::{HttpFieldContext, HttpRedactionPolicy},
     Sensitivity,
 };
 use tokio::time::timeout;
@@ -220,7 +220,7 @@ async fn test_execute_stream_decode_json_chunks_uses_client_default_strict_mode(
     options.base_url = Some(server.base_url());
     options.sse_json_mode = SseJsonMode::Strict;
     let expected_policy = HttpRedactionPolicy::default().to_builder()
-        .raise_body("sse_decode_secret", Sensitivity::Secret)
+        .raise(HttpFieldContext::Body, "sse_decode_secret", Sensitivity::Secret)
         .build()
         .expect("the custom HTTP policy should be valid");
     options.log_redaction_policy = expected_policy.clone();
@@ -291,7 +291,7 @@ async fn test_sse_decode_error_preserves_client_redactor_policy() {
     .await;
 
     let expected_policy = HttpRedactionPolicy::default().to_builder()
-        .raise_query("tenant_stream_secret", Sensitivity::Secret)
+        .raise(HttpFieldContext::Query, "tenant_stream_secret", Sensitivity::Secret)
         .build()
         .expect("the custom HTTP policy should be valid");
     let mut options = HttpClientOptions::default();
