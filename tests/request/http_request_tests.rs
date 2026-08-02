@@ -28,7 +28,7 @@ use qubit_http::{
     HttpRetryMethodPolicy,
 };
 use qubit_redact::{
-    http::HttpRedactionPolicy,
+    http::{HttpFieldContext, HttpRedactionPolicy},
     http::UrlPathPolicy,
     Sensitivity,
 };
@@ -167,7 +167,7 @@ fn test_http_request_debug_honors_url_path_redaction_policy() {
 fn test_http_request_debug_honors_explicit_default_field_exclusion() {
     let mut options = HttpClientOptions::new();
     options.log_redaction_policy = HttpRedactionPolicy::default().to_builder()
-        .allow_query_exact("SIG")
+        .allow_exact(HttpFieldContext::Query, "SIG")
         .build()
         .expect("log redaction policy should be valid");
     let client = HttpClientFactory::new()
@@ -189,7 +189,7 @@ fn test_http_request_debug_honors_explicit_default_field_exclusion() {
 fn test_http_request_debug_suffix_allow_wins_over_sensitive_suffix() {
     let mut options = HttpClientOptions::new();
     options.log_redaction_policy = HttpRedactionPolicy::default().to_builder()
-        .allow_query_suffix("access_token")
+        .allow_suffix(HttpFieldContext::Query, "access_token")
         .build()
         .expect("log redaction policy should be valid");
     let client = HttpClientFactory::new()
@@ -211,8 +211,8 @@ fn test_http_request_debug_suffix_allow_wins_over_sensitive_suffix() {
 fn test_http_request_debug_allow_rule_wins_independent_of_builder_order() {
     let mut options = HttpClientOptions::new();
     options.log_redaction_policy = HttpRedactionPolicy::default().to_builder()
-        .allow_query_exact("sig")
-        .raise_query("SIG", Sensitivity::Secret)
+        .allow_exact(HttpFieldContext::Query, "sig")
+        .raise(HttpFieldContext::Query, "SIG", Sensitivity::Secret)
         .build()
         .expect("log redaction policy should be valid");
     let client = HttpClientFactory::new()
