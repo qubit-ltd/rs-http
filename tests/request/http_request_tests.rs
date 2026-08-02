@@ -10,26 +10,15 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use futures_util::stream;
-use http::{
-    HeaderMap,
-    HeaderName,
-    HeaderValue,
-    Method,
-};
+use http::{HeaderMap, HeaderName, HeaderValue, Method};
 use qubit_http::{
-    CancellationToken,
-    HttpClientFactory,
-    HttpClientOptions,
-    HttpErrorKind,
-    HttpRequestBody,
-    HttpRequestBodyByteStream,
-    HttpRequestRetryOverride,
-    HttpRequestStreamingBody,
+    CancellationToken, HttpClientFactory, HttpClientOptions, HttpErrorKind, HttpRequestBody,
+    HttpRequestBodyByteStream, HttpRequestRetryOverride, HttpRequestStreamingBody,
     HttpRetryMethodPolicy,
 };
 use qubit_redact::{
-    http::{HttpFieldContext, HttpRedactionPolicy},
     http::UrlPathPolicy,
+    http::{HttpFieldContext, HttpRedactionPolicy},
     Sensitivity,
 };
 use url::Url;
@@ -139,7 +128,8 @@ fn test_http_request_debug_masks_native_sensitive_header_value() {
 #[test]
 fn test_http_request_debug_honors_url_path_redaction_policy() {
     let mut options = HttpClientOptions::new();
-    options.log_redaction_policy = HttpRedactionPolicy::default().to_builder()
+    options.log_redaction_policy = HttpRedactionPolicy::default()
+        .to_builder()
         .url_path_policy(UrlPathPolicy::Redact)
         .build()
         .expect("log redaction policy should be valid");
@@ -166,8 +156,10 @@ fn test_http_request_debug_honors_url_path_redaction_policy() {
 #[test]
 fn test_http_request_debug_honors_explicit_default_field_exclusion() {
     let mut options = HttpClientOptions::new();
-    options.log_redaction_policy = HttpRedactionPolicy::default().to_builder()
+    options.log_redaction_policy = HttpRedactionPolicy::default()
+        .to_builder()
         .allow_exact(HttpFieldContext::Query, "SIG")
+        .expect("the test policy input should be valid")
         .build()
         .expect("log redaction policy should be valid");
     let client = HttpClientFactory::new()
@@ -188,8 +180,10 @@ fn test_http_request_debug_honors_explicit_default_field_exclusion() {
 #[test]
 fn test_http_request_debug_suffix_allow_wins_over_sensitive_suffix() {
     let mut options = HttpClientOptions::new();
-    options.log_redaction_policy = HttpRedactionPolicy::default().to_builder()
+    options.log_redaction_policy = HttpRedactionPolicy::default()
+        .to_builder()
         .allow_suffix(HttpFieldContext::Query, "access_token")
+        .expect("the test policy input should be valid")
         .build()
         .expect("log redaction policy should be valid");
     let client = HttpClientFactory::new()
@@ -210,9 +204,12 @@ fn test_http_request_debug_suffix_allow_wins_over_sensitive_suffix() {
 #[test]
 fn test_http_request_debug_allow_rule_wins_independent_of_builder_order() {
     let mut options = HttpClientOptions::new();
-    options.log_redaction_policy = HttpRedactionPolicy::default().to_builder()
+    options.log_redaction_policy = HttpRedactionPolicy::default()
+        .to_builder()
         .allow_exact(HttpFieldContext::Query, "sig")
+        .expect("the test policy input should be valid")
         .raise(HttpFieldContext::Query, "SIG", Sensitivity::Secret)
+        .expect("the test policy input should be valid")
         .build()
         .expect("log redaction policy should be valid");
     let client = HttpClientFactory::new()
@@ -413,11 +410,9 @@ fn test_http_request_setters_update_resolved_url_for_base_url_and_ipv4_only() {
 }
 
 #[test]
-fn test_http_request_set_streaming_body_replaces_existing_body_and_has_safe_debug(
-) {
+fn test_http_request_set_streaming_body_replaces_existing_body_and_has_safe_debug() {
     let mut request = new_request(Method::POST, "/streaming-upload");
-    request
-        .set_body(HttpRequestBody::Bytes(Bytes::from_static(b"legacy-body")));
+    request.set_body(HttpRequestBody::Bytes(Bytes::from_static(b"legacy-body")));
 
     let streaming_body = HttpRequestStreamingBody::new(|| {
         Box::pin(async move {
