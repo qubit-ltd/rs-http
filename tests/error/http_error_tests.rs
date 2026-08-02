@@ -9,14 +9,10 @@
 use std::error::Error;
 
 use http::StatusCode;
-use qubit_http::{
-    HttpError,
-    HttpErrorKind,
-    RetryHint,
-};
+use qubit_http::{HttpError, HttpErrorKind, RetryHint};
 use qubit_redact::{
-    http::{HttpFieldContext, HttpRedactionPolicy},
     http::UrlPathPolicy,
+    http::{HttpFieldContext, HttpRedactionPolicy},
     Sensitivity,
 };
 
@@ -103,8 +99,14 @@ fn test_http_error_debug_redacts_uppercase_url_scheme_tokens() {
 
 #[test]
 fn test_http_error_debug_uses_custom_log_redaction_policy() {
-    let policy = HttpRedactionPolicy::default().to_builder()
-        .raise(HttpFieldContext::Query, "customer_secret", Sensitivity::High)
+    let policy = HttpRedactionPolicy::default()
+        .to_builder()
+        .raise(
+            HttpFieldContext::Query,
+            "customer_secret",
+            Sensitivity::High,
+        )
+        .expect("the test policy input should be valid")
         .build()
         .expect("log redaction policy should be valid");
     let url =
@@ -138,8 +140,14 @@ fn test_http_error_display_masks_sensitive_url_values() {
 
 #[test]
 fn test_http_error_display_uses_custom_log_redaction_policy() {
-    let policy = HttpRedactionPolicy::default().to_builder()
-        .raise(HttpFieldContext::Query, "customer_secret", Sensitivity::High)
+    let policy = HttpRedactionPolicy::default()
+        .to_builder()
+        .raise(
+            HttpFieldContext::Query,
+            "customer_secret",
+            Sensitivity::High,
+        )
+        .expect("the test policy input should be valid")
         .build()
         .expect("log redaction policy should be valid");
     let error = HttpError::transport(
@@ -160,7 +168,8 @@ fn test_http_error_debug_honors_url_path_redaction_policy() {
     let error = HttpError::transport(format!("transport failed for {raw_url}"))
         .with_url(&url)
         .with_log_redaction_policy(
-            HttpRedactionPolicy::default().to_builder()
+            HttpRedactionPolicy::default()
+                .to_builder()
                 .url_path_policy(UrlPathPolicy::Redact)
                 .build()
                 .expect("log redaction policy should be valid"),

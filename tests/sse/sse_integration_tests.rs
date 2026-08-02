@@ -10,20 +10,10 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use futures_util::StreamExt;
-use http::{
-    HeaderMap,
-    Method,
-    StatusCode,
-};
+use http::{HeaderMap, Method, StatusCode};
 use qubit_http::{
-    sse::{
-        SseChunk,
-        SseJsonMode,
-    },
-    HttpClientFactory,
-    HttpClientOptions,
-    HttpErrorKind,
-    HttpResponse,
+    sse::{SseChunk, SseJsonMode},
+    HttpClientFactory, HttpClientOptions, HttpErrorKind, HttpResponse,
 };
 use qubit_redact::{
     http::{HttpFieldContext, HttpRedactionPolicy},
@@ -31,11 +21,7 @@ use qubit_redact::{
 };
 use tokio::time::timeout;
 
-use crate::common::{
-    spawn_one_shot_server,
-    ResponseChunk,
-    ResponsePlan,
-};
+use crate::common::{spawn_one_shot_server, ResponseChunk, ResponsePlan};
 
 #[derive(Debug, serde::Deserialize, PartialEq, Eq)]
 struct TestChunk {
@@ -80,8 +66,7 @@ async fn test_decode_events_handles_chunk_boundaries_and_trailing_flush() {
 
 #[tokio::test]
 async fn test_decode_events_reports_frame_limit_error() {
-    let response =
-        stream_response_from_chunks(vec![b"data: one\ndata: two\n\n".to_vec()]);
+    let response = stream_response_from_chunks(vec![b"data: one\ndata: two\n\n".to_vec()]);
     let mut events = response
         .sse_max_line_bytes(1024)
         .sse_max_frame_bytes(8)
@@ -109,10 +94,7 @@ async fn test_regression_sse_messages_chain_setters_before_decode() {
 async fn test_execute_stream_with_decode_events_end_to_end() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
-        headers: vec![(
-            "Content-Type".to_string(),
-            "text/event-stream".to_string(),
-        )],
+        headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
         chunks: vec![
             ResponseChunk {
                 delay: Duration::from_millis(0),
@@ -134,11 +116,10 @@ async fn test_execute_stream_with_decode_events_end_to_end() {
     let client = HttpClientFactory::new().create(options).unwrap();
 
     let request = client.request(Method::GET, "/sse").build();
-    let stream_response =
-        timeout(Duration::from_secs(3), client.execute(request))
-            .await
-            .expect("execute timed out")
-            .unwrap();
+    let stream_response = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .unwrap();
     let mut events = stream_response.sse_messages();
 
     let first = events.next().await.unwrap().unwrap();
@@ -154,14 +135,10 @@ async fn test_execute_stream_with_decode_events_end_to_end() {
 }
 
 #[tokio::test]
-async fn test_execute_stream_decode_events_reports_read_timeout_when_interrupted(
-) {
+async fn test_execute_stream_decode_events_reports_read_timeout_when_interrupted() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
-        headers: vec![(
-            "Content-Type".to_string(),
-            "text/event-stream".to_string(),
-        )],
+        headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
         chunks: vec![
             ResponseChunk {
                 delay: Duration::from_millis(0),
@@ -194,14 +171,10 @@ async fn test_execute_stream_decode_events_reports_read_timeout_when_interrupted
 }
 
 #[tokio::test]
-async fn test_execute_stream_decode_json_chunks_uses_client_default_strict_mode(
-) {
+async fn test_execute_stream_decode_json_chunks_uses_client_default_strict_mode() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
-        headers: vec![(
-            "Content-Type".to_string(),
-            "text/event-stream".to_string(),
-        )],
+        headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
         chunks: vec![
             ResponseChunk {
                 delay: Duration::from_millis(0),
@@ -219,8 +192,14 @@ async fn test_execute_stream_decode_json_chunks_uses_client_default_strict_mode(
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.sse_json_mode = SseJsonMode::Strict;
-    let expected_policy = HttpRedactionPolicy::default().to_builder()
-        .raise(HttpFieldContext::Body, "sse_decode_secret", Sensitivity::Secret)
+    let expected_policy = HttpRedactionPolicy::default()
+        .to_builder()
+        .raise(
+            HttpFieldContext::Body,
+            "sse_decode_secret",
+            Sensitivity::Secret,
+        )
+        .expect("the test policy input should be valid")
         .build()
         .expect("the custom HTTP policy should be valid");
     options.log_redaction_policy = expected_policy.clone();
@@ -244,10 +223,7 @@ async fn test_execute_stream_decode_json_chunks_uses_client_default_strict_mode(
 async fn test_execute_stream_decode_events_uses_client_default_sse_limits() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
-        headers: vec![(
-            "Content-Type".to_string(),
-            "text/event-stream".to_string(),
-        )],
+        headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
         chunks: vec![ResponseChunk {
             delay: Duration::from_millis(0),
             bytes: b"data: {\"value\":1}\ndata: {\"value\":2}\n\n".to_vec(),
@@ -278,10 +254,7 @@ async fn test_execute_stream_decode_events_uses_client_default_sse_limits() {
 async fn test_sse_decode_error_preserves_client_redactor_policy() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
-        headers: vec![(
-            "Content-Type".to_string(),
-            "text/event-stream".to_string(),
-        )],
+        headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
         chunks: vec![ResponseChunk {
             delay: Duration::from_millis(0),
             bytes: vec![0xFF, b'\n'],
@@ -290,8 +263,14 @@ async fn test_sse_decode_error_preserves_client_redactor_policy() {
     })
     .await;
 
-    let expected_policy = HttpRedactionPolicy::default().to_builder()
-        .raise(HttpFieldContext::Query, "tenant_stream_secret", Sensitivity::Secret)
+    let expected_policy = HttpRedactionPolicy::default()
+        .to_builder()
+        .raise(
+            HttpFieldContext::Query,
+            "tenant_stream_secret",
+            Sensitivity::Secret,
+        )
+        .expect("the test policy input should be valid")
         .build()
         .expect("the custom HTTP policy should be valid");
     let mut options = HttpClientOptions::default();
