@@ -18,7 +18,7 @@
 ```toml
 [dependencies]
 qubit-http = "0.11"
-qubit-redact = "0.5"
+qubit-redact = "0.6"
 http = "1.4"
 qubit-config = { path = "../rs-config", version = "0.14", default-features = false }
 serde = { version = "1", features = ["derive"] }
