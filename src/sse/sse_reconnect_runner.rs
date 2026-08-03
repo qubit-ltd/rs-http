@@ -10,7 +10,6 @@
 
 use std::error::Error as StdError;
 use std::io::ErrorKind;
-use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -82,7 +81,7 @@ struct ReconnectRuntime<'a> {
     /// Request URL used in reconnect cancellation and max-elapsed errors.
     request_url: Option<&'a url::Url>,
     /// Shared request redactor used by reconnect-generated errors.
-    log_redactor: &'a Arc<HttpRedactor>,
+    log_redactor: &'a HttpRedactor,
 }
 
 /// Outcome after trying to schedule one reconnect.
@@ -449,7 +448,7 @@ impl SseReconnectRunner {
 fn apply_last_event_id_header(
     request: &mut HttpRequest,
     last_event_id: &str,
-    log_redactor: &Arc<HttpRedactor>,
+    log_redactor: &HttpRedactor,
 ) -> HttpResult<()> {
     let header_value =
         HeaderValue::from_str(last_event_id).map_err(|error| {
@@ -617,7 +616,7 @@ async fn sleep_reconnect_delay(
     cancellation_token: Option<&CancellationToken>,
     request_method: &http::Method,
     request_url: Option<&url::Url>,
-    log_redactor: &Arc<HttpRedactor>,
+    log_redactor: &HttpRedactor,
 ) -> HttpResult<()> {
     if let Some(token) = cancellation_token {
         tokio::select! {
@@ -710,7 +709,7 @@ fn max_elapsed_exceeded_error(
     max_elapsed: Duration,
     request_method: &http::Method,
     request_url: Option<&url::Url>,
-    log_redactor: &Arc<HttpRedactor>,
+    log_redactor: &HttpRedactor,
 ) -> HttpError {
     let mut error = HttpError::retry_max_elapsed_exceeded(format!(
         "SSE reconnect max duration exceeded: {elapsed:?}/{max_elapsed:?}"
@@ -741,7 +740,7 @@ fn max_elapsed_exceeded_error_with_last_error(
     max_elapsed: Duration,
     request_method: &http::Method,
     request_url: Option<&url::Url>,
-    log_redactor: &Arc<HttpRedactor>,
+    log_redactor: &HttpRedactor,
 ) -> HttpError {
     let mut error = max_elapsed_exceeded_error(
         elapsed,
@@ -784,7 +783,7 @@ fn max_elapsed_exceeded_error_with_last_error(
 /// non-UTF8, or not SSE media type.
 fn validate_sse_response_content_type(
     response: &HttpResponse,
-    log_redactor: &Arc<HttpRedactor>,
+    log_redactor: &HttpRedactor,
 ) -> HttpResult<()> {
     let method = response.meta().method().clone();
     let url = response.request_url().clone();
