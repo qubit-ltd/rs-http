@@ -7,7 +7,6 @@
 // =============================================================================
 //! Builder for [`super::http_request::HttpRequest`].
 
-use std::sync::Arc;
 use std::time::Duration;
 use std::{
     fmt,
@@ -85,12 +84,12 @@ pub struct HttpRequestBuilder {
     /// Async header injectors snapshot from the originating client.
     pub(super) async_injectors: Vec<AsyncHttpHeaderInjector>,
     /// Log redaction snapshot from the originating client.
-    pub(super) log_redactor: Arc<HttpRedactor>,
+    pub(super) log_redactor: HttpRedactor,
 }
 
 impl fmt::Debug for HttpRequestBuilder {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let debugger = RedactedDebugger::new(self.log_redactor.as_ref());
+        let debugger = RedactedDebugger::new(&self.log_redactor);
         let url = self.debug_resolved_url().map(|url| debugger.url(&url));
         let base_url = self.base_url.as_ref().map(|url| debugger.url(url));
         formatter
@@ -306,8 +305,7 @@ impl HttpRequestBuilder {
         T: Serialize,
     {
         let bytes = serde_json::to_vec(value).map_err(|error| {
-            HttpError::decode("Failed to encode JSON body")
-                .with_source(error)
+            HttpError::decode("Failed to encode JSON body").with_source(error)
         })?;
         if !self.headers.contains_key(CONTENT_TYPE) {
             self.headers.insert(

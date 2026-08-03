@@ -8,8 +8,6 @@
 // qubit-style: allow source-test-pair
 //! Safe rendering helpers for HTTP TRACE logs.
 
-use std::sync::Arc;
-
 use http::{
     HeaderMap,
     HeaderValue,
@@ -28,7 +26,7 @@ use super::BodyPreview;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RedactedLogger {
     /// Unified redactor for URLs, headers, and bodies.
-    redactor: Arc<HttpRedactor>,
+    redactor: HttpRedactor,
     /// Maximum source bytes offered by the presentation layer.
     body_size_limit: usize,
 }
@@ -46,7 +44,7 @@ impl RedactedLogger {
     /// A safe TRACE rendering helper.
     #[inline]
     pub(crate) fn new(
-        log_redactor: Arc<HttpRedactor>,
+        log_redactor: HttpRedactor,
         body_size_limit: usize,
     ) -> Self {
         Self {
@@ -68,7 +66,7 @@ impl RedactedLogger {
     #[inline(always)]
     pub(crate) fn from_options_with_redactor(
         options: &HttpClientOptions,
-        log_redactor: Arc<HttpRedactor>,
+        log_redactor: HttpRedactor,
     ) -> Self {
         Self::new(log_redactor, options.logging.body_size_limit)
     }
