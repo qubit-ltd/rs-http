@@ -30,7 +30,7 @@ For full examples and advanced options, read the [User Guide](doc/user_guide.en.
 ```toml
 [dependencies]
 qubit-http = "0.11"
-qubit-redact = "0.5"
+qubit-redact = "0.6"
 http = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
