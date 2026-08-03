@@ -155,7 +155,7 @@ let client = HttpClientFactory::new()
 | `proxy.enabled` | 是否启用代理 |
 | `use_env_proxy` | 显式代理禁用时，是否继承环境变量代理 |
 | `logging.enabled` | 是否允许 TRACE HTTP 日志 |
-| `log_redaction.url_path_policy` | URL path 策略：默认 `redact`，也可显式设为 `preserve` |
+| `log_redaction.url_path_policy` | URL path 策略：默认 `preserve`，也可显式设为 `redact` |
 | `log_redaction.sensitive_headers` | 追加到默认集合的敏感 header 名称 |
 | `log_redaction.sensitive_query_params` | 追加到默认集合的敏感 query 参数名称 |
 | `log_redaction.sensitive_body_fields` | 追加到默认集合的敏感 JSON/form/multipart body 字段名称 |
@@ -826,7 +826,7 @@ while let Some(item) = events.next().await {
 | `pool_idle_timeout` | 连接池空闲超时 |
 | `pool_max_idle_per_host` | 每个 host 最大空闲连接数 |
 | `use_env_proxy` | 显式代理禁用时是否继承环境代理；默认 `false` |
-| `log_redaction.url_path_policy` | URL path 策略：默认 `redact`，也可显式设为 `preserve` |
+| `log_redaction.url_path_policy` | URL path 策略：默认 `preserve`，也可显式设为 `redact` |
 | `log_redaction.sensitive_headers` | 追加到默认敏感 header 集合的字符串列表 |
 | `log_redaction.sensitive_query_params` | 追加到默认敏感 query 参数集合的字符串列表 |
 | `log_redaction.sensitive_body_fields` | 追加到默认敏感 body 字段集合的字符串列表 |
