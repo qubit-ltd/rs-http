@@ -114,7 +114,7 @@ fn test_log_request_toggles_header_and_body() {
     let logs = capture_trace_logs(|| {
         logger.log_request(&request);
     });
-    assert!(logs.contains("--> POST https://example.com/%3Credacted%3E"));
+    assert!(logs.contains("--> POST https://example.com/api"));
     assert!(!logs.contains("application/json"));
     assert!(!logs.contains("Request body:"));
 }
@@ -178,7 +178,7 @@ fn test_log_response_masks_sensitive_response_url() {
     });
 
     assert!(logs.contains(
-        "<-- 200 https://example.com/%3Credacted%3E?password=%3Credacted%3E&access_token=****"
+        "<-- 200 https://example.com/data?password=%3Credacted%3E&access_token=****"
     ));
     assert!(!logs.contains("secret"));
 }
@@ -201,7 +201,7 @@ fn test_log_stream_response_headers_masks_sensitive_response_url() {
         logger.log_stream_response_headers(&response_meta);
     });
 
-    assert!(logs.contains("<-- 200 https://example.com/%3Credacted%3E?password=%3Credacted%3E&access_token=**** (stream)"));
+    assert!(logs.contains("<-- 200 https://example.com/stream?password=%3Credacted%3E&access_token=**** (stream)"));
     assert!(!logs.contains("secret"));
 }
 
@@ -255,7 +255,7 @@ fn test_log_stream_response_headers_respects_toggle() {
         logger.log_stream_response_headers(&response_meta);
     });
     assert!(
-        logs.contains("<-- 200 https://example.com/%3Credacted%3E (stream)")
+        logs.contains("<-- 200 https://example.com/stream (stream)")
     );
     assert!(!logs.contains("text/event-stream"));
 }
@@ -277,7 +277,7 @@ fn test_log_request_includes_builder_query_params() {
     });
 
     assert!(logs.contains(
-        "--> GET https://example.com/%3Credacted%3E?existing=1&added=two+words"
+        "--> GET https://example.com/api?existing=1&added=two+words"
     ));
 }
 
@@ -287,11 +287,11 @@ fn test_log_request_text_body() {
     let headers = HeaderMap::new();
     let mut client_options = HttpClientOptions::default();
     client_options.logging = options;
-    client_options.log_redaction_policy =
-        HttpRedactionPolicy::default().to_builder()
-            .text_body_policy(TextBodyPolicy::PassThrough)
-            .build()
-            .expect("log redaction policy should be valid");
+    client_options.log_redaction_policy = HttpRedactionPolicy::default()
+        .to_builder()
+        .text_body_policy(TextBodyPolicy::PassThrough)
+        .build()
+        .expect("log redaction policy should be valid");
     let logger = HttpLogger::new(&client_options);
 
     let request = logging_request(
@@ -303,7 +303,7 @@ fn test_log_request_text_body() {
     let logs = capture_trace_logs(|| {
         logger.log_request(&request);
     });
-    assert!(logs.contains("--> POST https://example.com/%3Credacted%3E"));
+    assert!(logs.contains("--> POST https://example.com/text"));
     assert!(logs.contains("Request body: hello body"));
 }
 
@@ -406,7 +406,7 @@ fn test_log_request_stream_body_logged_as_skipped() {
     let logs = capture_trace_logs(|| {
         logger.log_request(&request);
     });
-    assert!(logs.contains("--> POST https://example.com/%3Credacted%3E"));
+    assert!(logs.contains("--> POST https://example.com/stream-upload"));
     assert!(logs.contains("Request body: <skipped: streaming request body>"));
 }
 
@@ -433,7 +433,7 @@ fn test_log_request_streaming_body_logged_as_skipped() {
     let logs = capture_trace_logs(|| {
         logger.log_request(&request);
     });
-    assert!(logs.contains("--> POST https://example.com/%3Credacted%3E"));
+    assert!(logs.contains("--> POST https://example.com/streaming-upload"));
     assert!(logs.contains("Request body: <skipped: streaming request body>"));
     assert!(!logs.contains("secret-stream"));
 }
@@ -600,11 +600,11 @@ fn test_execute_logs_response_body_when_content_type_only_has_sse_prefix() {
             let mut options = HttpClientOptions::default();
             options.base_url = Some(server.base_url());
             options.logging.body_size_limit = 128;
-            options.log_redaction_policy =
-                HttpRedactionPolicy::default().to_builder()
-                    .text_body_policy(TextBodyPolicy::PassThrough)
-                    .build()
-                    .expect("log redaction policy should be valid");
+            options.log_redaction_policy = HttpRedactionPolicy::default()
+                .to_builder()
+                .text_body_policy(TextBodyPolicy::PassThrough)
+                .build()
+                .expect("log redaction policy should be valid");
             let client = HttpClientFactory::new()
                 .create(options)
                 .expect("client should be created");
@@ -677,7 +677,7 @@ fn test_log_stream_response_headers_logs_non_utf8_header_values() {
         logger.log_stream_response_headers(&response_meta);
     });
     assert!(
-        logs.contains("<-- 200 https://example.com/%3Credacted%3E (stream)")
+        logs.contains("<-- 200 https://example.com/stream-non-utf8 (stream)")
     );
     assert!(logs.contains("x-bin: [<non-utf8>]"));
 }

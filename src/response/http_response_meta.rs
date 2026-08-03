@@ -8,7 +8,6 @@
 //! Shared HTTP response metadata (status, headers, URL, request method).
 
 use std::fmt;
-use std::sync::Arc;
 use std::time::{
     Duration,
     SystemTime,
@@ -41,7 +40,7 @@ pub struct HttpResponseMeta {
     /// Originating request method.
     method: Method,
     /// Redaction policy snapshot used by standalone debug output.
-    log_redactor: Arc<HttpRedactor>,
+    log_redactor: HttpRedactor,
 }
 
 impl HttpResponseMeta {
@@ -58,7 +57,7 @@ impl HttpResponseMeta {
             headers,
             url,
             method,
-            log_redactor: Arc::new(HttpRedactor::default()),
+            log_redactor: HttpRedactor::default(),
         }
     }
 
@@ -71,10 +70,7 @@ impl HttpResponseMeta {
     /// # Returns
     /// Updated metadata.
     #[inline(always)]
-    pub fn with_log_redactor(
-        mut self,
-        log_redactor: Arc<HttpRedactor>,
-    ) -> Self {
+    pub fn with_log_redactor(mut self, log_redactor: HttpRedactor) -> Self {
         self.log_redactor = log_redactor;
         self
     }
@@ -91,7 +87,7 @@ impl HttpResponseMeta {
         mut self,
         policy: HttpRedactionPolicy,
     ) -> Self {
-        self.log_redactor = Arc::new(HttpRedactor::new(policy));
+        self.log_redactor = HttpRedactor::new(policy);
         self
     }
 
@@ -191,7 +187,7 @@ impl HttpResponseMeta {
     /// # Returns
     /// Borrowed policy snapshot.
     #[inline(always)]
-    pub(crate) fn log_redactor(&self) -> &Arc<HttpRedactor> {
+    pub(crate) fn log_redactor(&self) -> &HttpRedactor {
         &self.log_redactor
     }
 
@@ -203,7 +199,7 @@ impl HttpResponseMeta {
     /// # Returns
     /// Nothing.
     #[inline(always)]
-    pub(super) fn set_log_redactor(&mut self, log_redactor: Arc<HttpRedactor>) {
+    pub(super) fn set_log_redactor(&mut self, log_redactor: HttpRedactor) {
         self.log_redactor = log_redactor;
     }
 }
