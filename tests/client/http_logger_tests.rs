@@ -46,7 +46,7 @@ fn test_http_logger_logs_request_body_preview_with_truncation() {
 
     let logs = capture_trace_logs(|| logger.log_request(&request));
 
-    assert!(logs.contains("--> POST https://example.com/%3Credacted%3E"));
+    assert!(logs.contains("--> POST https://example.com/upload"));
     assert!(logs.contains("Request body: abcd<truncated>"));
 }
 
@@ -72,7 +72,7 @@ fn test_http_logger_redacts_request_url_query_and_json_body() {
     let logs = capture_trace_logs(|| logger.log_request(&request));
 
     assert!(logs.contains(
-        "--> POST https://example.com/%3Credacted%3E?access_token=****"
+        "--> POST https://example.com/login?access_token=****"
     ));
     assert!(logs.contains(r#""password":"<redacted>""#));
     assert!(!logs.contains("raw-token"));

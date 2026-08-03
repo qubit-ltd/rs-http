@@ -155,7 +155,7 @@ Common configuration keys:
 | `proxy.enabled` | Enables outbound proxying |
 | `use_env_proxy` | Whether to inherit environment proxies when explicit proxying is disabled |
 | `logging.enabled` | Allows TRACE HTTP logs |
-| `log_redaction.url_path_policy` | URL path policy: `redact` by default, or explicit `preserve` |
+| `log_redaction.url_path_policy` | URL path policy: `preserve` by default, or explicit `redact` |
 | `log_redaction.sensitive_headers` | Extra sensitive header names added to the default log-redaction set |
 | `log_redaction.sensitive_query_params` | Extra sensitive query-parameter names added to the default set |
 | `log_redaction.sensitive_body_fields` | Extra sensitive JSON/form/multipart body-field names added to the default set |
@@ -575,7 +575,7 @@ HTTP logs use `tracing::trace!`. Both conditions must be true:
 
 Request headers, request body, response headers, and response body can be toggled separately. Body logs include only the first `logging.body_size_limit` bytes and show a truncation marker for the remainder. Binary bodies are rendered as `<binary N bytes>`. Unsupported bodies without a structured or textual `Content-Type` are rendered as `<redacted: unsupported HTTP body>`. Request-body logging previews buffered body variants (`bytes_body`, `text_body`, `json_body`, `form_body`, `multipart_body`, and `ndjson_body`); `stream_body` and `streaming_body` are logged as `<skipped: streaming request body>` because the logger does not consume upload streams.
 
-Logs are redacted through the canonical `qubit_redact::http::HttpRedactor` and `HttpRedactionPolicy`. URL username, password, fragment, and sensitive query parameters are masked, and non-root URL paths are redacted by default. JSON/form/multipart body fields use their independent rule snapshots and floor state. Multipart file parts remain `<redacted: file part>`; malformed, missing-boundary, or truncated multipart bodies remain fail-closed.
+Logs are redacted through the canonical `qubit_redact::http::HttpRedactor` and `HttpRedactionPolicy`. URL username, password, fragment, and sensitive query parameters are masked; the standard policy preserves non-root URL paths for diagnostics, while `HttpRedactionPolicy::strict()` or explicit `UrlPathPolicy::Redact` hides them. JSON/form/multipart body fields use their independent rule snapshots and floor state. Multipart file parts remain `<redacted: file part>`; malformed, missing-boundary, or truncated multipart bodies remain fail-closed.
 
 For headers, `http::HeaderValue::is_sensitive()` is a value-level `Secret` declaration. Request, response, streaming-response, and `Debug` rendering honor it before header-name matching. An allow rule cannot expose a marked value; unmarked values continue to use the same immutable name policy snapshot.
 
@@ -828,7 +828,7 @@ The table below lists every configuration key supported by `HttpClientOptions::f
 | `pool_idle_timeout` | Connection pool idle timeout |
 | `pool_max_idle_per_host` | Max idle connections per host |
 | `use_env_proxy` | Whether to inherit environment proxies when explicit proxying is disabled; defaults to `false` |
-| `log_redaction.url_path_policy` | URL path policy: `redact` by default, or explicit `preserve` |
+| `log_redaction.url_path_policy` | URL path policy: `preserve` by default, or explicit `redact` |
 | `log_redaction.sensitive_headers` | String list added to the default sensitive-header set |
 | `log_redaction.sensitive_query_params` | String list added to the default sensitive-query-parameter set |
 | `log_redaction.sensitive_body_fields` | String list added to the default sensitive-body-field set |
