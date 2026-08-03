@@ -9,10 +9,17 @@
 use std::error::Error;
 
 use http::StatusCode;
-use qubit_http::{HttpError, HttpErrorKind, RetryHint};
+use qubit_http::{
+    HttpError,
+    HttpErrorKind,
+    RetryHint,
+};
 use qubit_redact::{
     http::UrlPathPolicy,
-    http::{HttpFieldContext, HttpRedactionPolicy},
+    http::{
+        HttpFieldContext,
+        HttpRedactionPolicy,
+    },
     Sensitivity,
 };
 

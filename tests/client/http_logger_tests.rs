@@ -30,7 +30,8 @@ fn test_http_logger_logs_request_body_preview_with_truncation() {
         body_size_limit: 4,
         ..HttpLoggingOptions::default()
     };
-    options.log_redaction_policy = HttpRedactionPolicy::default().to_builder()
+    options.log_redaction_policy = HttpRedactionPolicy::default()
+        .to_builder()
         .text_body_policy(TextBodyPolicy::PassThrough)
         .build()
         .expect("log redaction policy should be valid");
