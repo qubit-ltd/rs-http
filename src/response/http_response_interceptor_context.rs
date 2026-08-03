@@ -8,7 +8,6 @@
 //! Response interceptor context with controlled metadata mutation.
 
 use std::fmt;
-use std::sync::Arc;
 use std::time::Duration;
 
 use http::{
@@ -42,7 +41,7 @@ pub struct HttpResponseInterceptorContext {
     /// Originating request method captured before interceptor execution.
     method: Method,
     /// Redaction policy snapshot used by standalone debug output.
-    log_redactor: Arc<HttpRedactor>,
+    log_redactor: HttpRedactor,
 }
 
 impl HttpResponseInterceptorContext {
@@ -69,7 +68,7 @@ impl HttpResponseInterceptorContext {
             headers,
             url,
             method,
-            log_redactor: Arc::new(HttpRedactor::default()),
+            log_redactor: HttpRedactor::default(),
         }
     }
 
@@ -100,10 +99,7 @@ impl HttpResponseInterceptorContext {
     /// # Returns
     /// Updated context.
     #[inline(always)]
-    pub fn with_log_redactor(
-        mut self,
-        log_redactor: Arc<HttpRedactor>,
-    ) -> Self {
+    pub fn with_log_redactor(mut self, log_redactor: HttpRedactor) -> Self {
         self.log_redactor = log_redactor;
         self
     }
@@ -120,7 +116,7 @@ impl HttpResponseInterceptorContext {
         mut self,
         policy: HttpRedactionPolicy,
     ) -> Self {
-        self.log_redactor = Arc::new(HttpRedactor::new(policy));
+        self.log_redactor = HttpRedactor::new(policy);
         self
     }
 

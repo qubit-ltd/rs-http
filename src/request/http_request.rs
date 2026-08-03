@@ -9,7 +9,6 @@
 
 use std::fmt;
 use std::future::Future;
-use std::sync::Arc;
 use std::sync::RwLock;
 use std::time::Duration;
 
@@ -84,7 +83,7 @@ struct HttpRequestContext {
     async_injectors: Vec<AsyncHttpHeaderInjector>,
     /// Shared log redactor snapshot captured when this request builder was
     /// created.
-    log_redactor: Arc<HttpRedactor>,
+    log_redactor: HttpRedactor,
 }
 
 /// Immutable snapshot of a single HTTP call produced by
@@ -116,8 +115,7 @@ pub struct HttpRequest {
 
 impl fmt::Debug for HttpRequest {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let debugger =
-            RedactedDebugger::new(self.context.log_redactor.as_ref());
+        let debugger = RedactedDebugger::new(&self.context.log_redactor);
         let url = self.resolved_url().ok().map(|url| debugger.url(&url));
         let base_url =
             self.context.base_url.as_ref().map(|url| debugger.url(url));
@@ -615,7 +613,7 @@ impl HttpRequest {
     ///
     /// The immutable request policy snapshot.
     #[inline(always)]
-    pub(crate) fn log_redactor(&self) -> &Arc<HttpRedactor> {
+    pub(crate) fn log_redactor(&self) -> &HttpRedactor {
         &self.context.log_redactor
     }
 

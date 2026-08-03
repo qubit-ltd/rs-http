@@ -9,8 +9,6 @@
 //!
 //! Encapsulates request and response logging behavior.
 
-use std::sync::Arc;
-
 use http::header::CONTENT_TYPE;
 use qubit_redact::http::HttpRedactor;
 use tracing::callsite::DefaultCallsite;
@@ -73,7 +71,7 @@ impl<'a> HttpLogger<'a> {
     /// A logger that emits TRACE records according to the provided options.
     pub fn new(options: &'a HttpClientOptions) -> Self {
         let log_redactor =
-            Arc::new(HttpRedactor::new(options.log_redaction_policy.clone()));
+            HttpRedactor::new(options.log_redaction_policy.clone());
         Self::from_options_with_redactor(options, log_redactor)
     }
 
@@ -89,7 +87,7 @@ impl<'a> HttpLogger<'a> {
     /// A logger that shares the caller's immutable redactor snapshot.
     pub(crate) fn from_options_with_redactor(
         options: &'a HttpClientOptions,
-        log_redactor: Arc<HttpRedactor>,
+        log_redactor: HttpRedactor,
     ) -> Self {
         Self {
             options: &options.logging,

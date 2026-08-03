@@ -77,7 +77,7 @@ struct BodyReadFailure {
     /// Optional HTTP status context.
     status: Option<StatusCode>,
     /// Exact policy snapshot used by the originating response.
-    log_redactor: Arc<HttpRedactor>,
+    log_redactor: HttpRedactor,
 }
 
 impl BodyReadFailure {
@@ -141,7 +141,7 @@ fn map_response_read_error(
     method: Method,
     url: Url,
     status: StatusCode,
-    log_redactor: &Arc<HttpRedactor>,
+    log_redactor: &HttpRedactor,
 ) -> HttpError {
     if error.is_timeout() {
         return map_reqwest_error(
@@ -751,7 +751,7 @@ impl HttpResponse {
     /// Returns the shared log redactor used for response diagnostics and
     /// errors.
     #[inline(always)]
-    pub(crate) fn log_redactor(&self) -> &Arc<HttpRedactor> {
+    pub(crate) fn log_redactor(&self) -> &HttpRedactor {
         &self.options.log_redactor
     }
 

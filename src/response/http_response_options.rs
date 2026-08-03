@@ -18,8 +18,6 @@ use crate::sse::{
     SseJsonMode,
 };
 use qubit_redact::http::HttpRedactor;
-use std::sync::Arc;
-
 /// Decode/error-preview options bound to one response instance.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct HttpResponseOptions {
@@ -37,7 +35,7 @@ pub(crate) struct HttpResponseOptions {
     /// `data:` markers.
     pub sse_done_marker_policy: DoneMarkerPolicy,
     /// Shared redactor used for status-error body previews.
-    pub log_redactor: Arc<HttpRedactor>,
+    pub log_redactor: HttpRedactor,
 }
 
 impl Default for HttpResponseOptions {
@@ -50,7 +48,7 @@ impl Default for HttpResponseOptions {
             sse_max_line_bytes: DEFAULT_SSE_MAX_LINE_BYTES,
             sse_max_frame_bytes: DEFAULT_SSE_MAX_FRAME_BYTES,
             sse_done_marker_policy: DoneMarkerPolicy::default(),
-            log_redactor: Arc::new(HttpRedactor::default()),
+            log_redactor: HttpRedactor::default(),
         }
     }
 }
@@ -63,7 +61,7 @@ impl HttpResponseOptions {
         sse_max_line_bytes: usize,
         sse_max_frame_bytes: usize,
         sse_done_marker_policy: DoneMarkerPolicy,
-        log_redactor: Arc<HttpRedactor>,
+        log_redactor: HttpRedactor,
     ) -> Self {
         Self {
             error_response_preview_limit: error_response_preview_limit.max(1),
