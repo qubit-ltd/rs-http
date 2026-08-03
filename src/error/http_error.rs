@@ -9,7 +9,6 @@
 
 use std::error::Error;
 use std::fmt;
-use std::sync::Arc;
 use std::time::Duration;
 
 use http::{
@@ -52,12 +51,12 @@ pub struct HttpError {
     pub source: Option<BoxError>,
     /// Redactor used when rendering this error with [`Debug`](fmt::Debug) or
     /// [`Display`](fmt::Display).
-    pub log_redactor: Arc<HttpRedactor>,
+    pub log_redactor: HttpRedactor,
 }
 
 impl fmt::Display for HttpError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let debugger = RedactedDebugger::new(self.log_redactor.as_ref());
+        let debugger = RedactedDebugger::new(&self.log_redactor);
         let message = debugger.diagnostic_text(&self.message);
         fmt::Display::fmt(&message, formatter)
     }
@@ -73,7 +72,7 @@ impl Error for HttpError {
 
 impl fmt::Debug for HttpError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let debugger = RedactedDebugger::new(self.log_redactor.as_ref());
+        let debugger = RedactedDebugger::new(&self.log_redactor);
         let url = debugger.optional_url(self.url.as_ref());
         let message = debugger.diagnostic_text(&self.message);
         let response_body_preview_len =
@@ -113,7 +112,7 @@ impl HttpError {
             response_body_preview: None,
             retry_after: None,
             source: None,
-            log_redactor: Arc::new(HttpRedactor::default()),
+            log_redactor: HttpRedactor::default(),
         }
     }
 
@@ -204,10 +203,7 @@ impl HttpError {
     /// # Returns
     /// `self` for chaining.
     #[inline(always)]
-    pub fn with_log_redactor(
-        mut self,
-        log_redactor: Arc<HttpRedactor>,
-    ) -> Self {
+    pub fn with_log_redactor(mut self, log_redactor: HttpRedactor) -> Self {
         self.log_redactor = log_redactor;
         self
     }
@@ -225,7 +221,7 @@ impl HttpError {
         mut self,
         policy: HttpRedactionPolicy,
     ) -> Self {
-        self.log_redactor = Arc::new(HttpRedactor::new(policy));
+        self.log_redactor = HttpRedactor::new(policy);
         self
     }
 

@@ -12,7 +12,6 @@
 //! [`HttpClient::execute_once`]; retry policy comes from
 //! [`crate::HttpClientOptions::retry`] unless overridden per request.
 
-use std::sync::Arc;
 use std::time::{
     Duration,
     Instant,
@@ -68,7 +67,7 @@ pub struct HttpClient {
     pub(super) options: HttpClientOptions,
     /// Shared redactor for all request/response/error snapshots created by
     /// this client.
-    log_redactor: Arc<HttpRedactor>,
+    log_redactor: HttpRedactor,
     /// Header injectors applied to every outgoing request after default
     /// headers.
     pub(super) injectors: Vec<HttpHeaderInjector>,
@@ -97,7 +96,7 @@ impl HttpClient {
         options: HttpClientOptions,
     ) -> Self {
         let log_redactor =
-            Arc::new(HttpRedactor::new(options.log_redaction_policy.clone()));
+            HttpRedactor::new(options.log_redaction_policy.clone());
         Self {
             backend,
             options,
@@ -120,7 +119,7 @@ impl HttpClient {
     }
 
     /// Returns the shared [`HttpRedactor`] used by this client.
-    pub(crate) fn log_redactor(&self) -> &Arc<HttpRedactor> {
+    pub(crate) fn log_redactor(&self) -> &HttpRedactor {
         &self.log_redactor
     }
 
