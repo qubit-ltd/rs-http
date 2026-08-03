@@ -287,11 +287,11 @@ fn test_log_request_text_body() {
     let headers = HeaderMap::new();
     let mut client_options = HttpClientOptions::default();
     client_options.logging = options;
-    client_options.log_redaction_policy =
-        HttpRedactionPolicy::default().to_builder()
-            .text_body_policy(TextBodyPolicy::PassThrough)
-            .build()
-            .expect("log redaction policy should be valid");
+    client_options.log_redaction_policy = HttpRedactionPolicy::default()
+        .to_builder()
+        .text_body_policy(TextBodyPolicy::PassThrough)
+        .build()
+        .expect("log redaction policy should be valid");
     let logger = HttpLogger::new(&client_options);
 
     let request = logging_request(
@@ -600,11 +600,11 @@ fn test_execute_logs_response_body_when_content_type_only_has_sse_prefix() {
             let mut options = HttpClientOptions::default();
             options.base_url = Some(server.base_url());
             options.logging.body_size_limit = 128;
-            options.log_redaction_policy =
-                HttpRedactionPolicy::default().to_builder()
-                    .text_body_policy(TextBodyPolicy::PassThrough)
-                    .build()
-                    .expect("log redaction policy should be valid");
+            options.log_redaction_policy = HttpRedactionPolicy::default()
+                .to_builder()
+                .text_body_policy(TextBodyPolicy::PassThrough)
+                .build()
+                .expect("log redaction policy should be valid");
             let client = HttpClientFactory::new()
                 .create(options)
                 .expect("client should be created");

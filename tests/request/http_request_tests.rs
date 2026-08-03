@@ -10,15 +10,29 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use futures_util::stream;
-use http::{HeaderMap, HeaderName, HeaderValue, Method};
+use http::{
+    HeaderMap,
+    HeaderName,
+    HeaderValue,
+    Method,
+};
 use qubit_http::{
-    CancellationToken, HttpClientFactory, HttpClientOptions, HttpErrorKind, HttpRequestBody,
-    HttpRequestBodyByteStream, HttpRequestRetryOverride, HttpRequestStreamingBody,
+    CancellationToken,
+    HttpClientFactory,
+    HttpClientOptions,
+    HttpErrorKind,
+    HttpRequestBody,
+    HttpRequestBodyByteStream,
+    HttpRequestRetryOverride,
+    HttpRequestStreamingBody,
     HttpRetryMethodPolicy,
 };
 use qubit_redact::{
     http::UrlPathPolicy,
-    http::{HttpFieldContext, HttpRedactionPolicy},
+    http::{
+        HttpFieldContext,
+        HttpRedactionPolicy,
+    },
     Sensitivity,
 };
 use url::Url;
@@ -410,9 +424,11 @@ fn test_http_request_setters_update_resolved_url_for_base_url_and_ipv4_only() {
 }
 
 #[test]
-fn test_http_request_set_streaming_body_replaces_existing_body_and_has_safe_debug() {
+fn test_http_request_set_streaming_body_replaces_existing_body_and_has_safe_debug(
+) {
     let mut request = new_request(Method::POST, "/streaming-upload");
-    request.set_body(HttpRequestBody::Bytes(Bytes::from_static(b"legacy-body")));
+    request
+        .set_body(HttpRequestBody::Bytes(Bytes::from_static(b"legacy-body")));
 
     let streaming_body = HttpRequestStreamingBody::new(|| {
         Box::pin(async move {
