@@ -20,9 +20,9 @@ use http::{
     StatusCode,
 };
 use httpdate::parse_http_date;
-use qubit_redact::http::{
-    HttpRedactionPolicy,
-    HttpRedactor,
+use qubit_redact::{
+    http::HttpRedactor,
+    RedactionPolicy,
 };
 use url::Url;
 
@@ -85,7 +85,7 @@ impl HttpResponseMeta {
     #[inline(always)]
     pub fn with_log_redaction_policy(
         mut self,
-        policy: HttpRedactionPolicy,
+        policy: RedactionPolicy,
     ) -> Self {
         self.log_redactor = HttpRedactor::new(policy);
         self
@@ -207,11 +207,15 @@ impl HttpResponseMeta {
 impl fmt::Debug for HttpResponseMeta {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let debugger = RedactedDebugger::new(&self.log_redactor);
-        let url = debugger.url(&self.url);
+        let session = debugger.session();
+        let url = debugger.url_with_session(&self.url, &session);
         formatter
             .debug_struct("HttpResponseMeta")
             .field("status", &self.status)
-            .field("headers", &debugger.headers(&self.headers))
+            .field(
+                "headers",
+                &debugger.headers_with_session(&self.headers, &session),
+            )
             .field("url", &url)
             .field("method", &self.method)
             .finish()

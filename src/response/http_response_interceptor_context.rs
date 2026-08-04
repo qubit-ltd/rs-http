@@ -15,9 +15,9 @@ use http::{
     Method,
     StatusCode,
 };
-use qubit_redact::http::{
-    HttpRedactionPolicy,
-    HttpRedactor,
+use qubit_redact::{
+    http::HttpRedactor,
+    RedactionPolicy,
 };
 use url::Url;
 
@@ -114,7 +114,7 @@ impl HttpResponseInterceptorContext {
     #[inline(always)]
     pub fn with_log_redaction_policy(
         mut self,
-        policy: HttpRedactionPolicy,
+        policy: RedactionPolicy,
     ) -> Self {
         self.log_redactor = HttpRedactor::new(policy);
         self
@@ -210,11 +210,15 @@ impl HttpResponseInterceptorContext {
 impl fmt::Debug for HttpResponseInterceptorContext {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let debugger = RedactedDebugger::new(&self.log_redactor);
-        let url = debugger.url(&self.url);
+        let session = debugger.session();
+        let url = debugger.url_with_session(&self.url, &session);
         formatter
             .debug_struct("HttpResponseInterceptorContext")
             .field("status", &self.status)
-            .field("headers", &debugger.headers(&self.headers))
+            .field(
+                "headers",
+                &debugger.headers_with_session(&self.headers, &session),
+            )
             .field("url", &url)
             .field("method", &self.method)
             .finish()
