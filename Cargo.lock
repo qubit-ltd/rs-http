@@ -929,7 +929,6 @@ dependencies = [
  "qubit-datatype",
  "qubit-redact",
  "qubit-value",
- "regex",
  "serde",
  "serde_json",
  "thiserror",
@@ -1000,7 +999,7 @@ dependencies = [
 
 [[package]]
 name = "qubit-redact"
-version = "0.6.0"
+version = "0.4.0"
 dependencies = [
  "form_urlencoded",
  "http",
