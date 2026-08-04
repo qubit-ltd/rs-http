@@ -26,10 +26,8 @@ use qubit_http::{
     HttpResponse,
 };
 use qubit_redact::{
-    http::{
-        HttpFieldContext,
-        HttpRedactionPolicy,
-    },
+    http::HttpFieldContext,
+    RedactionPolicy,
     Sensitivity,
 };
 use tokio::time::timeout;
@@ -222,9 +220,9 @@ async fn test_execute_stream_decode_json_chunks_uses_client_default_strict_mode(
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.sse_json_mode = SseJsonMode::Strict;
-    let expected_policy = HttpRedactionPolicy::default()
+    let expected_policy = RedactionPolicy::default()
         .to_builder()
-        .raise(
+        .http_raise(
             HttpFieldContext::Body,
             "sse_decode_secret",
             Sensitivity::Secret,
@@ -299,9 +297,9 @@ async fn test_sse_decode_error_preserves_client_redactor_policy() {
     })
     .await;
 
-    let expected_policy = HttpRedactionPolicy::default()
+    let expected_policy = RedactionPolicy::default()
         .to_builder()
-        .raise(
+        .http_raise(
             HttpFieldContext::Query,
             "tenant_stream_secret",
             Sensitivity::Secret,

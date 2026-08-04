@@ -575,19 +575,19 @@ HTTP logs use `tracing::trace!`. Both conditions must be true:
 
 Request headers, request body, response headers, and response body can be toggled separately. Body logs include only the first `logging.body_size_limit` bytes and show a truncation marker for the remainder. Binary bodies are rendered as `<binary N bytes>`. Unsupported bodies without a structured or textual `Content-Type` are rendered as `<redacted: unsupported HTTP body>`. Request-body logging previews buffered body variants (`bytes_body`, `text_body`, `json_body`, `form_body`, `multipart_body`, and `ndjson_body`); `stream_body` and `streaming_body` are logged as `<skipped: streaming request body>` because the logger does not consume upload streams.
 
-Logs are redacted through the canonical `qubit_redact::http::HttpRedactor` and `HttpRedactionPolicy`. URL username, password, fragment, and sensitive query parameters are masked; the standard policy preserves non-root URL paths for diagnostics, while `HttpRedactionPolicy::strict()` or explicit `UrlPathPolicy::Redact` hides them. JSON/form/multipart body fields use their independent rule snapshots and floor state. Multipart file parts remain `<redacted: file part>`; malformed, missing-boundary, or truncated multipart bodies remain fail-closed.
+Logs are redacted through the canonical `qubit_redact::http::HttpRedactor` and one root `RedactionPolicy`. URL username, password, fragment, and sensitive query parameters are masked; the standard policy preserves non-root URL paths for diagnostics, while `RedactionPolicy::strict()` or explicit `UrlPathPolicy::Redact` hides them. JSON/form/multipart body fields use HTTP context views over the same base rules, masking table, and static limits. Multipart file parts remain `<redacted: file part>`; malformed, missing-boundary, or truncated multipart bodies remain fail-closed.
 
 For headers, `http::HeaderValue::is_sensitive()` is a value-level `Secret` declaration. Request, response, streaming-response, and `Debug` rendering honor it before header-name matching. An allow rule cannot expose a marked value; unmarked values continue to use the same immutable name policy snapshot.
 
-`HttpRedactionPolicy::builder()` has empty application rules and the standard floor for header, query, and body. Use `HttpRedactionPolicy::default().to_builder()` to extend a default snapshot. Application allow rules cannot bypass an enabled floor; `disable_all_floors()` is the explicit all-context escape hatch. Import these types from `qubit_redact::http`, never from `qubit_http`. `logging.body_size_limit` is a presentation bound, while `BodyBudget` remains a non-bypassable parser-input and rendered-output bound.
+`RedactionPolicy::builder()` has empty application rules and the standard floor. Use `RedactionPolicy::default().to_builder()` to extend a default snapshot. Application allow rules cannot bypass an enabled floor; `builder.http().disable_all_floors()` is the explicit HTTP-context escape hatch. Import `RedactionPolicy` from `qubit_redact` and `HttpRedactor` from `qubit_redact::http`, never from `qubit_http`. `logging.body_size_limit` is a presentation bound, while `BodyBudget` remains a non-bypassable parser-input and rendered-output bound.
 
-Global policy and floor defaults install once and affect only future snapshots.
+Install a global policy once with `RedactionPolicy::install_global()` during
+application startup. The first read of `RedactionPolicy::global()` or
+`default()` freezes the standard snapshot when no global policy was installed.
 The client creates one `Arc<HttpRedactor>` and preserves it through requests,
 responses, retries, interceptors, errors, and SSE diagnostics. For migration,
-replace the removed `LogRedactionPolicy`, `LogRedactionPolicyBuilder`, and
-`LogRedactor` façade types with `HttpRedactionPolicy`,
-`HttpRedactionPolicyBuilder`, and `HttpRedactor` imported directly from
-`qubit_redact::http`; `qubit_http` does not re-export them.
+configure one `RedactionPolicyBuilder` through `fields()`, `http()`, and
+`limits()`; `qubit_http` does not re-export these redaction types.
 
 Example:
 
@@ -597,18 +597,18 @@ use qubit_http::{
     HttpClientFactory,
     HttpClientOptions,
 };
-use qubit_redact::{Sensitivity, http::{HttpFieldContext, HttpRedactionPolicy}};
+use qubit_redact::{RedactionPolicy, Sensitivity};
 use serde_json::json;
 
 let mut options = HttpClientOptions::new();
 options.logging.enabled = true;
 options.logging.log_request_header = true;
 options.logging.log_request_body = true;
-options.log_redaction_policy = HttpRedactionPolicy::default().to_builder()
-    .raise(HttpFieldContext::Header, "x-api-key", Sensitivity::High)
-    .raise(HttpFieldContext::Query, "access_token", Sensitivity::High)
-    .raise(HttpFieldContext::Body, "password", Sensitivity::Secret)
-    .build()?;
+let mut builder = RedactionPolicy::default().to_builder();
+builder.http().header().raise("x-api-key", Sensitivity::High)?;
+builder.http().query().raise("access_token", Sensitivity::High)?;
+builder.http().body().raise("password", Sensitivity::Secret)?;
+options.log_redaction_policy = builder.build()?;
 
 let client = HttpClientFactory::new().create(options)?;
 let request = client

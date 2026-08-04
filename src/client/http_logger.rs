@@ -112,7 +112,8 @@ impl<'a> HttpLogger<'a> {
             return;
         }
 
-        let url = self.request_log_url(request);
+        let session = self.redacted_logger.session();
+        let url = self.request_log_url(request, &session);
         tracing::trace!("--> {} {}", request.method(), url);
 
         let headers = request
@@ -120,7 +121,10 @@ impl<'a> HttpLogger<'a> {
             .unwrap_or_else(|| request.headers());
 
         if self.options.log_request_header {
-            tracing::trace!("{}", self.redacted_logger.headers(headers));
+            tracing::trace!(
+                "{}",
+                self.redacted_logger.headers_with_session(headers, &session)
+            );
         }
 
         if self.options.log_request_body {
@@ -129,7 +133,11 @@ impl<'a> HttpLogger<'a> {
                     let content_type = Self::content_type(headers);
                     tracing::trace!(
                         "Request body: {}",
-                        self.redacted_logger.body(bytes, content_type)
+                        self.redacted_logger.body_with_session(
+                            bytes,
+                            content_type,
+                            &session
+                        )
                     );
                 }
                 RequestBodyLogPreview::Empty => {
@@ -162,16 +170,19 @@ impl<'a> HttpLogger<'a> {
             return Ok(());
         }
 
+        let session = self.redacted_logger.session();
         tracing::trace!(
             "<-- {} {}",
             response.status().as_u16(),
-            self.redacted_logger.url(response.url())
+            self.redacted_logger
+                .url_with_session(response.url(), &session)
         );
 
         if self.options.log_response_header {
             tracing::trace!(
                 "{}",
-                self.redacted_logger.headers(response.headers())
+                self.redacted_logger
+                    .headers_with_session(response.headers(), &session)
             );
         }
 
@@ -180,8 +191,11 @@ impl<'a> HttpLogger<'a> {
             if let Some(body) = response.buffered_body_for_logging() {
                 tracing::trace!(
                     "Response body: {}",
-                    self.redacted_logger
-                        .body(body.as_ref(), content_type.as_ref())
+                    self.redacted_logger.body_with_session(
+                        body.as_ref(),
+                        content_type.as_ref(),
+                        &session,
+                    )
                 );
             } else if response
                 .can_buffer_body_for_logging(self.options.body_size_limit)
@@ -189,8 +203,11 @@ impl<'a> HttpLogger<'a> {
                 let body = response.bytes().await?;
                 tracing::trace!(
                     "Response body: {}",
-                    self.redacted_logger
-                        .body(body.as_ref(), content_type.as_ref())
+                    self.redacted_logger.body_with_session(
+                        body.as_ref(),
+                        content_type.as_ref(),
+                        &session,
+                    )
                 );
             } else {
                 tracing::trace!(
@@ -217,16 +234,19 @@ impl<'a> HttpLogger<'a> {
             return;
         }
 
+        let session = self.redacted_logger.session();
         tracing::trace!(
             "<-- {} {} (stream)",
             response_meta.status().as_u16(),
-            self.redacted_logger.url(response_meta.url())
+            self.redacted_logger
+                .url_with_session(response_meta.url(), &session)
         );
 
         if self.options.log_response_header {
             tracing::trace!(
                 "{}",
-                self.redacted_logger.headers(response_meta.headers())
+                self.redacted_logger
+                    .headers_with_session(response_meta.headers(), &session)
             );
         }
     }
@@ -251,10 +271,14 @@ impl<'a> HttpLogger<'a> {
     /// # Returns
     /// Resolved URL including builder query parameters, or a fixed placeholder
     /// when URL resolution fails before send.
-    fn request_log_url(&self, request: &HttpRequest) -> String {
+    fn request_log_url(
+        &self,
+        request: &HttpRequest,
+        session: &qubit_redact::RedactionSession<'_>,
+    ) -> String {
         request
             .resolved_url()
-            .map(|url| self.redacted_logger.url(&url))
+            .map(|url| self.redacted_logger.url_with_session(&url, session))
             .map(|url| url.into_owned())
             .unwrap_or_else(|_| UNRESOLVED_REQUEST_URL.to_string())
     }

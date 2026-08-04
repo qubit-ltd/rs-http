@@ -13,6 +13,7 @@ use qubit_redact::http::{
     HttpRedactor,
     RedactedHeaders,
 };
+use qubit_redact::RedactionSession;
 use url::Url;
 
 /// Renders diagnostic fields with one immutable policy snapshot.
@@ -39,65 +40,50 @@ impl<'redactor> RedactedDebugger<'redactor> {
         }
     }
 
-    /// Returns a redacted URL representation.
-    ///
-    /// # Parameters
-    ///
-    /// * `url` - Parsed URL to redact.
-    ///
-    /// # Returns
-    ///
-    /// An owned log-safe URL.
+    /// Creates one diagnostic session for a complete debug representation.
     #[inline(always)]
-    pub(crate) fn url(&self, url: &Url) -> qubit_redact::LogSafeText<'static> {
-        self.redactor.redact_url(url)
+    pub(crate) fn session(&self) -> RedactionSession<'redactor> {
+        RedactionSession::diagnostic(self.redactor.policy())
     }
 
-    /// Returns a redacted URL when one is present.
-    ///
-    /// # Parameters
-    ///
-    /// * `url` - Optional parsed URL.
-    ///
-    /// # Returns
-    ///
-    /// `Some` with log-safe text when present, otherwise `None`.
+    /// Returns a redacted URL through a shared diagnostic session.
     #[inline(always)]
-    pub(crate) fn optional_url(
+    pub(crate) fn url_with_session(
+        &self,
+        url: &Url,
+        session: &RedactionSession<'_>,
+    ) -> qubit_redact::LogSafeText<'static> {
+        self.redactor.redact_url_with_session(url, session)
+    }
+
+    /// Returns an optional redacted URL through a shared session.
+    #[inline(always)]
+    pub(crate) fn optional_url_with_session(
         &self,
         url: Option<&Url>,
+        session: &RedactionSession<'_>,
     ) -> Option<qubit_redact::LogSafeText<'static>> {
-        url.map(|url| self.url(url))
+        url.map(|url| self.url_with_session(url, session))
     }
 
-    /// Returns an opaque safe rendering of all headers.
-    ///
-    /// # Parameters
-    ///
-    /// * `headers` - Header map to redact.
-    ///
-    /// # Returns
-    ///
-    /// A deterministic safe header rendering.
+    /// Returns redacted headers through a shared diagnostic session.
     #[inline(always)]
-    pub(crate) fn headers(&self, headers: &HeaderMap) -> RedactedHeaders {
-        self.redactor.redact_headers(headers)
+    pub(crate) fn headers_with_session(
+        &self,
+        headers: &HeaderMap,
+        session: &RedactionSession<'_>,
+    ) -> RedactedHeaders {
+        self.redactor.redact_headers_with_session(headers, session)
     }
 
-    /// Redacts URL-looking tokens inside diagnostic text.
-    ///
-    /// # Parameters
-    ///
-    /// * `text` - Diagnostic text to inspect.
-    ///
-    /// # Returns
-    ///
-    /// Text with recognized HTTP URLs redacted.
+    /// Redacts diagnostic text through a shared diagnostic session.
     #[inline(always)]
-    pub(crate) fn diagnostic_text(
+    pub(crate) fn diagnostic_text_with_session(
         &self,
         text: &str,
+        session: &RedactionSession<'_>,
     ) -> qubit_redact::LogSafeText<'static> {
-        self.redactor.redact_urls_in_text(text)
+        self.redactor
+            .redact_urls_in_text_with_session(text, session)
     }
 }

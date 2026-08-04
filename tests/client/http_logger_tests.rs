@@ -14,9 +14,9 @@ use qubit_http::{
     HttpLogger,
     HttpLoggingOptions,
 };
-use qubit_redact::http::{
-    HttpRedactionPolicy,
-    TextBodyPolicy,
+use qubit_redact::{
+    http::TextBodyPolicy,
+    RedactionPolicy,
 };
 
 use crate::common::capture_trace_logs;
@@ -30,7 +30,7 @@ fn test_http_logger_logs_request_body_preview_with_truncation() {
         body_size_limit: 4,
         ..HttpLoggingOptions::default()
     };
-    options.log_redaction_policy = HttpRedactionPolicy::default()
+    options.log_redaction_policy = RedactionPolicy::default()
         .to_builder()
         .text_body_policy(TextBodyPolicy::PassThrough)
         .build()
@@ -71,9 +71,9 @@ fn test_http_logger_redacts_request_url_query_and_json_body() {
 
     let logs = capture_trace_logs(|| logger.log_request(&request));
 
-    assert!(logs.contains(
-        "--> POST https://example.com/login?access_token=****"
-    ));
+    assert!(
+        logs.contains("--> POST https://example.com/login?access_token=****")
+    );
     assert!(logs.contains(r#""password":"<redacted>""#));
     assert!(!logs.contains("raw-token"));
     assert!(!logs.contains("secret"));
