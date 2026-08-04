@@ -67,41 +67,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## 日志脱敏
 
-所有 TRACE 与 `Debug` 路径共享从 `qubit_redact::http` 导入的不可变
-`HttpRedactionPolicy` 快照。规范 HTTP redactor 统一处理 URL 用户信息、fragment、query 字段、原生敏感
-header、结构化 body 和硬预算。非根 URL path、不透明文本和无键 JSON 值默认隐藏。
+所有 TRACE 与 `Debug` 路径共享一份不可变的根 `RedactionPolicy` 快照。
+其 `http()` 视图只保存 HTTP 上下文差异；基础字段规则、掩码和静态限制与其他 adapter
+共享。规范 `qubit_redact::http::HttpRedactor` 统一处理 URL 用户信息、fragment、query 字段、
+原生敏感 header、结构化 body 和硬预算。非根 URL path、不透明文本和无键 JSON 值默认隐藏。
 
-`HttpRedactionPolicy::builder()` 使用空应用规则和标准 floor。
-扩展保守默认快照时使用 `HttpRedactionPolicy::default().to_builder()`；
+`RedactionPolicy::builder()` 使用空应用规则和标准 floor。
+扩展保守默认快照时使用 `RedactionPolicy::default().to_builder()`；
 只有显式调用 `.disable_all_floors()` 才会关闭全部 floor 保护：
 
-全局 policy 与 floor 默认值只能安装一次，只影响未来快照；既有 client、request、response
-和 error 会保留原来的 redactor。迁移旧 façade 时，必须直接从
-`qubit_redact::http` 导入 `HttpRedactionPolicy` 与 `HttpRedactor`；`qubit_http`
-不再重导出它们，也不再提供 `LogRedactionPolicy`、`LogRedactionPolicyBuilder` 或
-`LogRedactor`。
+应用启动时使用 `RedactionPolicy::install_global()` 安装一次全局策略。如果尚未安装策略就
+先读取 `global()` 或 `default()`，标准快照会被冻结。既有 client、request、response 和
+error 会保留原来的 redactor；每个脱敏操作默认使用策略中的诊断预算，显式传入
+`RedactionSession` 时则共享同一个运行时预算。
 
 ```rust
 use qubit_http::{HttpClientFactory, HttpClientOptions};
-use qubit_redact::{Sensitivity, http::{
-    HttpFieldContext, HttpRedactionPolicy, UrlPathPolicy,
-}};
+use qubit_redact::{RedactionPolicy, Sensitivity};
+use qubit_redact::http::UrlPathPolicy;
 
 let mut options = HttpClientOptions::new();
-options.log_redaction_policy = HttpRedactionPolicy::default().to_builder()
-    .raise(HttpFieldContext::Header, "x-api-key", Sensitivity::High)
-    .raise(HttpFieldContext::Query, "access_token", Sensitivity::High)
-    .raise(HttpFieldContext::Body, "password", Sensitivity::Secret)
-    .allow_exact(HttpFieldContext::Query, "known_public_token")
-    .url_path_policy(UrlPathPolicy::Preserve)
-    .build()?;
+let mut builder = RedactionPolicy::default().to_builder();
+builder.http().header().raise("x-api-key", Sensitivity::High)?;
+builder.http().query().raise("access_token", Sensitivity::High)?;
+builder.http().body().raise("password", Sensitivity::Secret)?;
+builder.http().query().allow_exact("known_public_token")?;
+builder.http().url_path(UrlPathPolicy::Preserve);
+options.log_redaction_policy = builder.build()?;
 
 let client = HttpClientFactory::new().create(options)?;
 ```
 
 `logging.body_size_limit` 是展示限额；policy 中的 `BodyBudget` 是第二层不可绕过的输入与
 输出硬上限。截断 body 统一使用 `<truncated>` 标记；调用方知道源长度时，结果保留精确
-源长度元数据。配置只读取 `log_redaction` section，不兼容旧 key。
+源长度元数据。配置只读取 `log_redaction` section，不兼容旧 key。只有在应用明确接受
+移除 HTTP 上下文 floor 时，才使用 `builder.http().disable_all_floors()`。
 
 `HttpError` 的 `Debug` 与 `Display` 都会应用同一套日志脱敏策略，因此常规错误格式化不会
 暴露 URL 中的敏感值。
