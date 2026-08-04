@@ -30,7 +30,7 @@
 ```toml
 [dependencies]
 qubit-http = "0.11"
-qubit-redact = "0.6"
+qubit-redact = "0.4"
 http = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
@@ -76,9 +76,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 扩展保守默认快照时使用 `RedactionPolicy::default().to_builder()`；
 只有显式调用 `.disable_all_floors()` 才会关闭全部 floor 保护：
 
-应用启动时使用 `RedactionPolicy::install_global()` 安装一次全局策略。如果尚未安装策略就
-先读取 `global()` 或 `default()`，标准快照会被冻结。既有 client、request、response 和
-error 会保留原来的 redactor；每个脱敏操作默认使用策略中的诊断预算，显式传入
+应用启动时使用 `RedactionPolicy::install_global()` 安装一次全局策略。尚未安装时，
+`global()` 或 `default()` 会读取固定标准策略，但不会阻止后续安装。
+`HttpClientOptions::new()` 本身也使用固定标准策略；若 client 应使用应用已安装的快照，
+请赋值 `options.log_redaction_policy = RedactionPolicy::default()`。既有 client、request、
+response 和 error 会保留原来的 redactor；每个脱敏操作默认使用策略中的诊断预算，显式传入
 `RedactionSession` 时则共享同一个运行时预算。
 
 ```rust
