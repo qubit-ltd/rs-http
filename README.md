@@ -67,38 +67,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Logging Redaction
 
-Every TRACE and `Debug` path uses one immutable `HttpRedactionPolicy` snapshot
-from `qubit_redact::http`. The canonical HTTP redactor handles URL userinfo, fragments,
-query fields, native-sensitive headers, structured bodies, and hard body
-budgets. Non-root URL paths, opaque text, and unkeyed JSON values are redacted
-by default.
+Every TRACE and `Debug` path uses one immutable root `RedactionPolicy`
+snapshot. Its `http()` view contains only HTTP context differences; the base
+field rules, masking, and static limits are shared with every other adapter.
+The canonical `qubit_redact::http::HttpRedactor` handles URL userinfo,
+fragments, query fields, native-sensitive headers, structured bodies, and hard
+body budgets. Non-root URL paths, opaque text, and unkeyed JSON values are
+redacted by default.
 
-`HttpRedactionPolicy::builder()` starts with empty application rules and the
-standard floor. Use `HttpRedactionPolicy::default().to_builder()`
+`RedactionPolicy::builder()` starts with empty application rules and the
+standard floor. Use `RedactionPolicy::default().to_builder()`
 to extend the conservative runtime snapshot; `.disable_all_floors()` is the explicit
 escape hatch that removes all floor protection.
 
-Global policy and floor defaults install once and affect only future snapshots;
-existing clients, requests, responses, and errors retain their original
-redactor. Migrate from the previous façade by importing
-`HttpRedactionPolicy` and `HttpRedactor` directly from `qubit_redact::http`.
-`qubit_http` no longer re-exports them or provides `LogRedactionPolicy`,
-`LogRedactionPolicyBuilder`, or `LogRedactor`.
+Install the global policy once during application startup with
+`RedactionPolicy::install_global()`. The first read of `global()` or `default()`
+freezes the standard snapshot when no policy was installed. Existing clients,
+requests, responses, and errors retain their original redactor; each redaction
+operation uses the policy's diagnostic budget unless it receives an explicit
+shared `RedactionSession`.
 
 ```rust
 use qubit_http::{HttpClientFactory, HttpClientOptions};
-use qubit_redact::{Sensitivity, http::{
-    HttpFieldContext, HttpRedactionPolicy, UrlPathPolicy,
-}};
+use qubit_redact::{RedactionPolicy, Sensitivity};
+use qubit_redact::http::UrlPathPolicy;
 
 let mut options = HttpClientOptions::new();
-options.log_redaction_policy = HttpRedactionPolicy::default().to_builder()
-    .raise(HttpFieldContext::Header, "x-api-key", Sensitivity::High)
-    .raise(HttpFieldContext::Query, "access_token", Sensitivity::High)
-    .raise(HttpFieldContext::Body, "password", Sensitivity::Secret)
-    .allow_exact(HttpFieldContext::Query, "known_public_token")
-    .url_path_policy(UrlPathPolicy::Preserve)
-    .build()?;
+let mut builder = RedactionPolicy::default().to_builder();
+builder.http().header().raise("x-api-key", Sensitivity::High)?;
+builder.http().query().raise("access_token", Sensitivity::High)?;
+builder.http().body().raise("password", Sensitivity::Secret)?;
+builder.http().query().allow_exact("known_public_token")?;
+builder.http().url_path(UrlPathPolicy::Preserve);
+options.log_redaction_policy = builder.build()?;
 
 let client = HttpClientFactory::new().create(options)?;
 ```
@@ -107,7 +108,9 @@ let client = HttpClientFactory::new().create(options)?;
 `BodyBudget` remains a second, non-bypassable input/output bound. Truncated
 bodies use one generic `<truncated>` marker and retain exact source metadata
 when the caller knows it. Configuration uses only the `log_redaction` section;
-there is no compatibility path for the old key.
+there is no compatibility path for the old key. Use
+`builder.http().disable_all_floors()` only when the application explicitly
+accepts removing HTTP context floors.
 
 `HttpError` applies the same log-redaction policy to both `Debug` and
 `Display`, so ordinary error formatting does not expose sensitive URL values.
