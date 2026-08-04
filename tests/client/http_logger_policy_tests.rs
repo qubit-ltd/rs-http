@@ -34,9 +34,9 @@ use qubit_http::{
     HttpResponse,
     HttpResponseMeta,
 };
-use qubit_redact::http::{
-    HttpRedactionPolicy,
-    TextBodyPolicy,
+use qubit_redact::{
+    http::TextBodyPolicy,
+    RedactionPolicy,
 };
 use tokio::time::timeout;
 use url::Url;
@@ -177,9 +177,9 @@ fn test_log_response_masks_sensitive_response_url() {
             .expect("response logging should succeed");
     });
 
-    assert!(logs.contains(
-        "<-- 200 https://example.com/data?password=%3Credacted%3E&access_token=****"
-    ));
+    assert!(
+        logs.contains("<-- 200 https://example.com/data?password=%3Credacted%3E&access_token=****")
+    );
     assert!(!logs.contains("secret"));
 }
 
@@ -201,7 +201,9 @@ fn test_log_stream_response_headers_masks_sensitive_response_url() {
         logger.log_stream_response_headers(&response_meta);
     });
 
-    assert!(logs.contains("<-- 200 https://example.com/stream?password=%3Credacted%3E&access_token=**** (stream)"));
+    assert!(logs.contains(
+        "<-- 200 https://example.com/stream?password=%3Credacted%3E&access_token=**** (stream)"
+    ));
     assert!(!logs.contains("secret"));
 }
 
@@ -254,9 +256,7 @@ fn test_log_stream_response_headers_respects_toggle() {
         );
         logger.log_stream_response_headers(&response_meta);
     });
-    assert!(
-        logs.contains("<-- 200 https://example.com/stream (stream)")
-    );
+    assert!(logs.contains("<-- 200 https://example.com/stream (stream)"));
     assert!(!logs.contains("text/event-stream"));
 }
 
@@ -287,7 +287,7 @@ fn test_log_request_text_body() {
     let headers = HeaderMap::new();
     let mut client_options = HttpClientOptions::default();
     client_options.logging = options;
-    client_options.log_redaction_policy = HttpRedactionPolicy::default()
+    client_options.log_redaction_policy = RedactionPolicy::default()
         .to_builder()
         .text_body_policy(TextBodyPolicy::PassThrough)
         .build()
@@ -600,7 +600,7 @@ fn test_execute_logs_response_body_when_content_type_only_has_sse_prefix() {
             let mut options = HttpClientOptions::default();
             options.base_url = Some(server.base_url());
             options.logging.body_size_limit = 128;
-            options.log_redaction_policy = HttpRedactionPolicy::default()
+            options.log_redaction_policy = RedactionPolicy::default()
                 .to_builder()
                 .text_body_policy(TextBodyPolicy::PassThrough)
                 .build()

@@ -16,6 +16,7 @@ use qubit_redact::http::{
     HttpRedactor,
     RedactedHeaders,
 };
+use qubit_redact::RedactionSession;
 use url::Url;
 
 use crate::HttpClientOptions;
@@ -71,57 +72,48 @@ impl RedactedLogger {
         Self::new(log_redactor, options.logging.body_size_limit)
     }
 
-    /// Returns a redacted URL representation.
-    ///
-    /// # Parameters
-    ///
-    /// * `url` - Parsed URL to redact.
-    ///
-    /// # Returns
-    ///
-    /// An owned log-safe URL.
+    /// Creates one diagnostic session for a complete TRACE record.
     #[inline(always)]
-    pub(crate) fn url(&self, url: &Url) -> qubit_redact::LogSafeText<'static> {
-        self.redactor.redact_url(url)
+    pub(crate) fn session(&self) -> RedactionSession<'_> {
+        RedactionSession::diagnostic(self.redactor.policy())
     }
 
-    /// Returns an opaque safe rendering of all headers.
-    ///
-    /// # Parameters
-    ///
-    /// * `headers` - Header map to redact.
-    ///
-    /// # Returns
-    ///
-    /// A deterministic safe header rendering.
+    /// Returns a redacted URL through a shared diagnostic session.
     #[inline(always)]
-    pub(crate) fn headers(&self, headers: &HeaderMap) -> RedactedHeaders {
-        self.redactor.redact_headers(headers)
+    pub(crate) fn url_with_session(
+        &self,
+        url: &Url,
+        session: &RedactionSession<'_>,
+    ) -> qubit_redact::LogSafeText<'static> {
+        self.redactor.redact_url_with_session(url, session)
     }
 
-    /// Returns a bounded, redacted body preview.
-    ///
-    /// # Parameters
-    ///
-    /// * `body` - Complete body bytes.
-    /// * `content_type` - Optional native Content-Type value.
-    ///
-    /// # Returns
-    ///
-    /// `<empty>` for an empty body, otherwise bounded log-safe text.
+    /// Returns redacted headers through a shared diagnostic session.
+    #[inline(always)]
+    pub(crate) fn headers_with_session(
+        &self,
+        headers: &HeaderMap,
+        session: &RedactionSession<'_>,
+    ) -> RedactedHeaders {
+        self.redactor.redact_headers_with_session(headers, session)
+    }
+
+    /// Returns a redacted body preview through a shared diagnostic session.
     #[inline]
-    pub(crate) fn body(
+    pub(crate) fn body_with_session(
         &self,
         body: &[u8],
         content_type: Option<&HeaderValue>,
+        session: &RedactionSession<'_>,
     ) -> String {
         if body.is_empty() {
             return "<empty>".to_owned();
         }
         self.redactor
-            .redact_body(
+            .redact_body_with_session(
                 BodyPreview::new(body, self.body_size_limit).capture(),
                 content_type,
+                session,
             )
             .into_log_safe_text()
             .into_owned()

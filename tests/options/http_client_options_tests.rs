@@ -41,9 +41,9 @@ use qubit_http::{
 use qubit_redact::{
     http::{
         HttpFieldContext,
-        HttpRedactionPolicy,
         UrlPathPolicy,
     },
+    RedactionPolicy,
     Sensitivity,
 };
 use qubit_retry::RetryDelay;
@@ -215,9 +215,9 @@ fn test_http_client_options_debug_masks_sensitive_values() {
 #[test]
 fn test_http_client_options_debug_honors_explicit_sensitivity_override() {
     let mut options = HttpClientOptions::new();
-    options.log_redaction_policy = HttpRedactionPolicy::default()
+    options.log_redaction_policy = RedactionPolicy::default()
         .to_builder()
-        .override_level(
+        .http_override_level(
             HttpFieldContext::Header,
             "authorization",
             Sensitivity::Low,
@@ -566,7 +566,6 @@ fn test_http_client_options_log_redaction_section() {
         .is_some());
     assert!(opts
         .log_redaction_policy
-        .header_rules()
         .sensitivity_for("authorization")
         .is_some());
     assert!(opts
@@ -576,7 +575,6 @@ fn test_http_client_options_log_redaction_section() {
         .is_some());
     assert!(opts
         .log_redaction_policy
-        .query_rules()
         .sensitivity_for("access_token")
         .is_some());
     assert!(opts
@@ -586,17 +584,11 @@ fn test_http_client_options_log_redaction_section() {
         .is_some());
     assert!(opts
         .log_redaction_policy
-        .body_rules()
         .sensitivity_for("client_secret")
         .is_some());
+    assert!(opts.log_redaction_policy.sensitivity_for("sig").is_some());
     assert!(opts
         .log_redaction_policy
-        .query_rules()
-        .sensitivity_for("sig")
-        .is_some());
-    assert!(opts
-        .log_redaction_policy
-        .body_rules()
         .sensitivity_for("signature")
         .is_some());
     assert_eq!(

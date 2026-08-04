@@ -28,11 +28,9 @@ use qubit_http::{
     HttpRetryMethodPolicy,
 };
 use qubit_redact::{
+    http::HttpFieldContext,
     http::UrlPathPolicy,
-    http::{
-        HttpFieldContext,
-        HttpRedactionPolicy,
-    },
+    RedactionPolicy,
     Sensitivity,
 };
 use url::Url;
@@ -142,7 +140,7 @@ fn test_http_request_debug_masks_native_sensitive_header_value() {
 #[test]
 fn test_http_request_debug_honors_url_path_redaction_policy() {
     let mut options = HttpClientOptions::new();
-    options.log_redaction_policy = HttpRedactionPolicy::default()
+    options.log_redaction_policy = RedactionPolicy::default()
         .to_builder()
         .url_path_policy(UrlPathPolicy::Redact)
         .build()
@@ -170,9 +168,9 @@ fn test_http_request_debug_honors_url_path_redaction_policy() {
 #[test]
 fn test_http_request_debug_honors_explicit_default_field_exclusion() {
     let mut options = HttpClientOptions::new();
-    options.log_redaction_policy = HttpRedactionPolicy::default()
+    options.log_redaction_policy = RedactionPolicy::default()
         .to_builder()
-        .allow_exact(HttpFieldContext::Query, "SIG")
+        .http_allow_exact(HttpFieldContext::Query, "SIG")
         .expect("the test policy input should be valid")
         .build()
         .expect("log redaction policy should be valid");
@@ -194,9 +192,9 @@ fn test_http_request_debug_honors_explicit_default_field_exclusion() {
 #[test]
 fn test_http_request_debug_suffix_allow_wins_over_sensitive_suffix() {
     let mut options = HttpClientOptions::new();
-    options.log_redaction_policy = HttpRedactionPolicy::default()
+    options.log_redaction_policy = RedactionPolicy::default()
         .to_builder()
-        .allow_suffix(HttpFieldContext::Query, "access_token")
+        .http_allow_suffix(HttpFieldContext::Query, "access_token")
         .expect("the test policy input should be valid")
         .build()
         .expect("log redaction policy should be valid");
@@ -218,11 +216,11 @@ fn test_http_request_debug_suffix_allow_wins_over_sensitive_suffix() {
 #[test]
 fn test_http_request_debug_allow_rule_wins_independent_of_builder_order() {
     let mut options = HttpClientOptions::new();
-    options.log_redaction_policy = HttpRedactionPolicy::default()
+    options.log_redaction_policy = RedactionPolicy::default()
         .to_builder()
-        .allow_exact(HttpFieldContext::Query, "sig")
+        .http_allow_exact(HttpFieldContext::Query, "sig")
         .expect("the test policy input should be valid")
-        .raise(HttpFieldContext::Query, "SIG", Sensitivity::Secret)
+        .http_raise(HttpFieldContext::Query, "SIG", Sensitivity::Secret)
         .expect("the test policy input should be valid")
         .build()
         .expect("log redaction policy should be valid");

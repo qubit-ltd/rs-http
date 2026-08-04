@@ -210,12 +210,17 @@ pub struct HttpResponse {
 impl fmt::Debug for HttpResponse {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let debugger = RedactedDebugger::new(&self.options.log_redactor);
-        let url = debugger.url(self.meta.url());
-        let request_url = debugger.url(&self.runtime.request_url);
+        let session = debugger.session();
+        let url = debugger.url_with_session(self.meta.url(), &session);
+        let request_url =
+            debugger.url_with_session(&self.runtime.request_url, &session);
         formatter
             .debug_struct("HttpResponse")
             .field("status", &self.meta.status())
-            .field("headers", &debugger.headers(self.meta.headers()))
+            .field(
+                "headers",
+                &debugger.headers_with_session(self.meta.headers(), &session),
+            )
             .field("url", &url)
             .field("request_url", &request_url)
             .field("method", self.meta.method())
