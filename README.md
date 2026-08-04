@@ -83,9 +83,8 @@ escape hatch that removes all floor protection.
 Install the global policy once during application startup with
 `RedactionPolicy::install_global()`. Before installation, `global()` and
 `default()` use the fixed standard policy without blocking later installation.
-`HttpClientOptions::new()` itself starts with that fixed standard policy, so
-assign `options.log_redaction_policy = RedactionPolicy::default()` when a
-client should use the application's installed snapshot. Existing clients,
+`HttpClientOptions::new()` snapshots the current default policy, including an
+application policy installed before construction. Existing clients,
 requests, responses, and errors retain their original redactor; each redaction
 operation uses the policy's diagnostic budget unless it receives an explicit
 shared `RedactionSession`.

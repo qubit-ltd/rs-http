@@ -57,7 +57,7 @@ impl HttpResponseMeta {
             headers,
             url,
             method,
-            log_redactor: HttpRedactor::new(RedactionPolicy::standard()),
+            log_redactor: HttpRedactor::new(RedactionPolicy::default()),
         }
     }
 
