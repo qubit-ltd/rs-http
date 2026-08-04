@@ -131,7 +131,7 @@ impl Default for HttpClientOptions {
             pool_max_idle_per_host: None,
             use_env_proxy: false,
             retry: HttpRetryOptions::default(),
-            log_redaction_policy: RedactionPolicy::default(),
+            log_redaction_policy: RedactionPolicy::standard(),
             ipv4_only: false,
             sse_json_mode: SseJsonMode::Lenient,
             sse_done_marker_policy: DoneMarkerPolicy::default(),
@@ -465,7 +465,7 @@ impl HttpClientOptions {
                         ))
                     }
                 };
-            let mut policy_builder = RedactionPolicy::default().to_builder();
+            let mut policy_builder = opts.log_redaction_policy.to_builder();
             if let Some(value) = log_redaction.url_path_policy.as_deref() {
                 let policy = match Self::parse_url_path_policy(value) {
                     Ok(policy) => policy,

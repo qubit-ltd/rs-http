@@ -30,7 +30,7 @@ For full examples and advanced options, read the [User Guide](doc/user_guide.en.
 ```toml
 [dependencies]
 qubit-http = "0.11"
-qubit-redact = "0.6"
+qubit-redact = "0.4"
 http = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
@@ -81,8 +81,11 @@ to extend the conservative runtime snapshot; `.disable_all_floors()` is the expl
 escape hatch that removes all floor protection.
 
 Install the global policy once during application startup with
-`RedactionPolicy::install_global()`. The first read of `global()` or `default()`
-freezes the standard snapshot when no policy was installed. Existing clients,
+`RedactionPolicy::install_global()`. Before installation, `global()` and
+`default()` use the fixed standard policy without blocking later installation.
+`HttpClientOptions::new()` itself starts with that fixed standard policy, so
+assign `options.log_redaction_policy = RedactionPolicy::default()` when a
+client should use the application's installed snapshot. Existing clients,
 requests, responses, and errors retain their original redactor; each redaction
 operation uses the policy's diagnostic budget unless it receives an explicit
 shared `RedactionSession`.
