@@ -90,13 +90,22 @@ pub struct HttpRequestBuilder {
 impl fmt::Debug for HttpRequestBuilder {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let debugger = RedactedDebugger::new(&self.log_redactor);
-        let url = self.debug_resolved_url().map(|url| debugger.url(&url));
-        let base_url = self.base_url.as_ref().map(|url| debugger.url(url));
+        let session = debugger.session();
+        let url = self
+            .debug_resolved_url()
+            .map(|url| debugger.url_with_session(&url, &session));
+        let base_url = self
+            .base_url
+            .as_ref()
+            .map(|url| debugger.url_with_session(url, &session));
         formatter
             .debug_struct("HttpRequestBuilder")
             .field("method", &self.method)
             .field("url", &url)
-            .field("headers", &debugger.headers(&self.headers))
+            .field(
+                "headers",
+                &debugger.headers_with_session(&self.headers, &session),
+            )
             .field("body", &self.body)
             .field(
                 "streaming_body",
@@ -112,7 +121,10 @@ impl fmt::Debug for HttpRequestBuilder {
                 &self.cancellation_token.is_some(),
             )
             .field("retry_override", &self.retry_override)
-            .field("default_headers", &debugger.headers(&self.default_headers))
+            .field(
+                "default_headers",
+                &debugger.headers_with_session(&self.default_headers, &session),
+            )
             .field("injector_count", &self.injectors.len())
             .field("async_injector_count", &self.async_injectors.len())
             .finish()

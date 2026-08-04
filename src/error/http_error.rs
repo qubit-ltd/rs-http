@@ -15,9 +15,9 @@ use http::{
     Method,
     StatusCode,
 };
-use qubit_redact::http::{
-    HttpRedactionPolicy,
-    HttpRedactor,
+use qubit_redact::{
+    http::HttpRedactor,
+    RedactionPolicy,
 };
 use url::Url;
 
@@ -57,7 +57,9 @@ pub struct HttpError {
 impl fmt::Display for HttpError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let debugger = RedactedDebugger::new(&self.log_redactor);
-        let message = debugger.diagnostic_text(&self.message);
+        let session = debugger.session();
+        let message =
+            debugger.diagnostic_text_with_session(&self.message, &session);
         fmt::Display::fmt(&message, formatter)
     }
 }
@@ -73,8 +75,11 @@ impl Error for HttpError {
 impl fmt::Debug for HttpError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let debugger = RedactedDebugger::new(&self.log_redactor);
-        let url = debugger.optional_url(self.url.as_ref());
-        let message = debugger.diagnostic_text(&self.message);
+        let session = debugger.session();
+        let url =
+            debugger.optional_url_with_session(self.url.as_ref(), &session);
+        let message =
+            debugger.diagnostic_text_with_session(&self.message, &session);
         let response_body_preview_len =
             self.response_body_preview.as_ref().map(String::len);
         formatter
@@ -219,7 +224,7 @@ impl HttpError {
     #[inline(always)]
     pub fn with_log_redaction_policy(
         mut self,
-        policy: HttpRedactionPolicy,
+        policy: RedactionPolicy,
     ) -> Self {
         self.log_redactor = HttpRedactor::new(policy);
         self

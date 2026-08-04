@@ -116,14 +116,24 @@ pub struct HttpRequest {
 impl fmt::Debug for HttpRequest {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let debugger = RedactedDebugger::new(&self.context.log_redactor);
-        let url = self.resolved_url().ok().map(|url| debugger.url(&url));
-        let base_url =
-            self.context.base_url.as_ref().map(|url| debugger.url(url));
+        let session = debugger.session();
+        let url = self
+            .resolved_url()
+            .ok()
+            .map(|url| debugger.url_with_session(&url, &session));
+        let base_url = self
+            .context
+            .base_url
+            .as_ref()
+            .map(|url| debugger.url_with_session(url, &session));
         formatter
             .debug_struct("HttpRequest")
             .field("method", &self.method)
             .field("url", &url)
-            .field("headers", &debugger.headers(&self.headers))
+            .field(
+                "headers",
+                &debugger.headers_with_session(&self.headers, &session),
+            )
             .field("body", &self.body)
             .field(
                 "streaming_body",
