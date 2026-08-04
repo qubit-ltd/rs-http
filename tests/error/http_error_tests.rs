@@ -15,11 +15,9 @@ use qubit_http::{
     RetryHint,
 };
 use qubit_redact::{
+    http::HttpFieldContext,
     http::UrlPathPolicy,
-    http::{
-        HttpFieldContext,
-        HttpRedactionPolicy,
-    },
+    RedactionPolicy,
     Sensitivity,
 };
 
@@ -106,9 +104,9 @@ fn test_http_error_debug_redacts_uppercase_url_scheme_tokens() {
 
 #[test]
 fn test_http_error_debug_uses_custom_log_redaction_policy() {
-    let policy = HttpRedactionPolicy::default()
+    let policy = RedactionPolicy::default()
         .to_builder()
-        .raise(
+        .http_raise(
             HttpFieldContext::Query,
             "customer_secret",
             Sensitivity::High,
@@ -147,9 +145,9 @@ fn test_http_error_display_masks_sensitive_url_values() {
 
 #[test]
 fn test_http_error_display_uses_custom_log_redaction_policy() {
-    let policy = HttpRedactionPolicy::default()
+    let policy = RedactionPolicy::default()
         .to_builder()
-        .raise(
+        .http_raise(
             HttpFieldContext::Query,
             "customer_secret",
             Sensitivity::High,
@@ -175,7 +173,7 @@ fn test_http_error_debug_honors_url_path_redaction_policy() {
     let error = HttpError::transport(format!("transport failed for {raw_url}"))
         .with_url(&url)
         .with_log_redaction_policy(
-            HttpRedactionPolicy::default()
+            RedactionPolicy::default()
                 .to_builder()
                 .url_path_policy(UrlPathPolicy::Redact)
                 .build()

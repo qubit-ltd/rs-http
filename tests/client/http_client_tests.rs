@@ -40,9 +40,9 @@ use qubit_http::{
 use qubit_redact::{
     http::{
         HttpFieldContext,
-        HttpRedactionPolicy,
         TextBodyPolicy,
     },
+    RedactionPolicy,
     Sensitivity,
 };
 use qubit_retry::RetryDelay;
@@ -66,10 +66,10 @@ const CUSTOM_QUERY_SECRET: &str = "task12-custom-query-secret";
 /// # Returns
 ///
 /// A policy that treats [`CUSTOM_QUERY_FIELD`] as highly sensitive.
-fn custom_query_redaction_policy() -> HttpRedactionPolicy {
-    HttpRedactionPolicy::default()
+fn custom_query_redaction_policy() -> RedactionPolicy {
+    RedactionPolicy::default()
         .to_builder()
-        .raise(
+        .http_raise(
             HttpFieldContext::Query,
             CUSTOM_QUERY_FIELD,
             Sensitivity::High,
@@ -880,15 +880,15 @@ async fn test_execute_response_metadata_debug_uses_custom_log_policy() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    options.log_redaction_policy = HttpRedactionPolicy::default()
+    options.log_redaction_policy = RedactionPolicy::default()
         .to_builder()
-        .raise(
+        .http_raise(
             HttpFieldContext::Header,
             "x-tenant-secret",
             Sensitivity::High,
         )
         .expect("the test policy input should be valid")
-        .raise(HttpFieldContext::Query, "tenant_marker", Sensitivity::High)
+        .http_raise(HttpFieldContext::Query, "tenant_marker", Sensitivity::High)
         .expect("the test policy input should be valid")
         .build()
         .expect("log redaction policy should be valid");
@@ -993,10 +993,10 @@ async fn test_execute_non_success_text_body_pass_through_uses_same_policy_snapsh
         body: b"opt-in-status-text".to_vec(),
     })
     .await;
-    let policy = HttpRedactionPolicy::default()
+    let policy = RedactionPolicy::default()
         .to_builder()
         .text_body_policy(TextBodyPolicy::PassThrough)
-        .override_level(
+        .http_override_level(
             HttpFieldContext::Query,
             "accessToken",
             Sensitivity::Low,
