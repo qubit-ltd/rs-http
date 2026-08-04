@@ -18,7 +18,7 @@ This guide is based on the current source code and tests. It applies to crate `q
 ```toml
 [dependencies]
 qubit-http = "0.11"
-qubit-redact = "0.6"
+qubit-redact = "0.4"
 http = "1.4"
 qubit-config = { path = "../rs-config", version = "0.14", default-features = false }
 serde = { version = "1", features = ["derive"] }
@@ -582,12 +582,15 @@ For headers, `http::HeaderValue::is_sensitive()` is a value-level `Secret` decla
 `RedactionPolicy::builder()` has empty application rules and the standard floor. Use `RedactionPolicy::default().to_builder()` to extend a default snapshot. Application allow rules cannot bypass an enabled floor; `builder.http().disable_all_floors()` is the explicit HTTP-context escape hatch. Import `RedactionPolicy` from `qubit_redact` and `HttpRedactor` from `qubit_redact::http`, never from `qubit_http`. `logging.body_size_limit` is a presentation bound, while `BodyBudget` remains a non-bypassable parser-input and rendered-output bound.
 
 Install a global policy once with `RedactionPolicy::install_global()` during
-application startup. The first read of `RedactionPolicy::global()` or
-`default()` freezes the standard snapshot when no global policy was installed.
-The client creates one `Arc<HttpRedactor>` and preserves it through requests,
-responses, retries, interceptors, errors, and SSE diagnostics. For migration,
-configure one `RedactionPolicyBuilder` through `fields()`, `http()`, and
-`limits()`; `qubit_http` does not re-export these redaction types.
+application startup. Before installation, `RedactionPolicy::global()` and
+`default()` use the fixed standard policy without blocking later installation.
+`HttpClientOptions::new()` also starts with that fixed policy; assign
+`options.log_redaction_policy = RedactionPolicy::default()` when a client must
+use the application's installed snapshot. The client creates one
+`Arc<HttpRedactor>` and preserves it through requests, responses, retries,
+interceptors, errors, and SSE diagnostics. For migration, configure one
+`RedactionPolicyBuilder` through `fields()`, `http()`, and `limits()`;
+`qubit_http` does not re-export these redaction types.
 
 Example:
 

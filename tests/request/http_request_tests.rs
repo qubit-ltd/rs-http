@@ -28,7 +28,6 @@ use qubit_http::{
     HttpRetryMethodPolicy,
 };
 use qubit_redact::{
-    http::HttpFieldContext,
     http::UrlPathPolicy,
     RedactionPolicy,
     Sensitivity,
@@ -168,10 +167,13 @@ fn test_http_request_debug_honors_url_path_redaction_policy() {
 #[test]
 fn test_http_request_debug_honors_explicit_default_field_exclusion() {
     let mut options = HttpClientOptions::new();
-    options.log_redaction_policy = RedactionPolicy::default()
-        .to_builder()
-        .http_allow_exact(HttpFieldContext::Query, "SIG")
-        .expect("the test policy input should be valid")
+    let mut builder = RedactionPolicy::default().to_builder();
+    builder
+        .http()
+        .query()
+        .allow_exact("SIG")
+        .expect("the test policy input should be valid");
+    options.log_redaction_policy = builder
         .build()
         .expect("log redaction policy should be valid");
     let client = HttpClientFactory::new()
@@ -192,10 +194,13 @@ fn test_http_request_debug_honors_explicit_default_field_exclusion() {
 #[test]
 fn test_http_request_debug_suffix_allow_wins_over_sensitive_suffix() {
     let mut options = HttpClientOptions::new();
-    options.log_redaction_policy = RedactionPolicy::default()
-        .to_builder()
-        .http_allow_suffix(HttpFieldContext::Query, "access_token")
-        .expect("the test policy input should be valid")
+    let mut builder = RedactionPolicy::default().to_builder();
+    builder
+        .http()
+        .query()
+        .allow_suffix("access_token")
+        .expect("the test policy input should be valid");
+    options.log_redaction_policy = builder
         .build()
         .expect("log redaction policy should be valid");
     let client = HttpClientFactory::new()
@@ -216,12 +221,15 @@ fn test_http_request_debug_suffix_allow_wins_over_sensitive_suffix() {
 #[test]
 fn test_http_request_debug_allow_rule_wins_independent_of_builder_order() {
     let mut options = HttpClientOptions::new();
-    options.log_redaction_policy = RedactionPolicy::default()
-        .to_builder()
-        .http_allow_exact(HttpFieldContext::Query, "sig")
+    let mut builder = RedactionPolicy::default().to_builder();
+    builder
+        .http()
+        .query()
+        .allow_exact("sig")
         .expect("the test policy input should be valid")
-        .http_raise(HttpFieldContext::Query, "SIG", Sensitivity::Secret)
-        .expect("the test policy input should be valid")
+        .raise("SIG", Sensitivity::Secret)
+        .expect("the test policy input should be valid");
+    options.log_redaction_policy = builder
         .build()
         .expect("log redaction policy should be valid");
     let client = HttpClientFactory::new()
