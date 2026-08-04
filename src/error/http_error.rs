@@ -117,7 +117,7 @@ impl HttpError {
             response_body_preview: None,
             retry_after: None,
             source: None,
-            log_redactor: HttpRedactor::default(),
+            log_redactor: HttpRedactor::new(RedactionPolicy::standard()),
         }
     }
 
