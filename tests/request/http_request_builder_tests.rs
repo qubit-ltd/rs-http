@@ -26,11 +26,11 @@ use qubit_http::{
     HttpRequestBody,
     HttpRetryMethodPolicy,
 };
-use qubit_redact::http::{
-    HttpFieldContext,
-    HttpRedactionPolicy,
+use qubit_redact::{
+    http::HttpFieldContext,
+    RedactionPolicy,
+    Sensitivity,
 };
-use qubit_redact::Sensitivity;
 use serde::ser::{
     Error as _,
     Serializer,
@@ -60,15 +60,15 @@ fn test_request_builder_debug_masks_sensitive_values() {
     options
         .set_base_url("https://api.example.com/root/")
         .expect("base URL should be valid");
-    options.log_redaction_policy = HttpRedactionPolicy::default()
+    options.log_redaction_policy = RedactionPolicy::default()
         .to_builder()
-        .raise(
+        .http_raise(
             HttpFieldContext::Header,
             "x-debug-secret",
             Sensitivity::High,
         )
         .expect("the test policy input should be valid")
-        .raise(HttpFieldContext::Query, "debugToken", Sensitivity::High)
+        .http_raise(HttpFieldContext::Query, "debugToken", Sensitivity::High)
         .expect("the test policy input should be valid")
         .build()
         .expect("log redaction policy should be valid");
