@@ -39,9 +39,7 @@ use qubit_http::{
     ProxyType,
 };
 use qubit_redact::{
-    http::{
-        UrlPathPolicy,
-    },
+    http::UrlPathPolicy,
     RedactionPolicy,
     Sensitivity,
 };

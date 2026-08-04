@@ -78,8 +78,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 应用启动时使用 `RedactionPolicy::install_global()` 安装一次全局策略。尚未安装时，
 `global()` 或 `default()` 会读取固定标准策略，但不会阻止后续安装。
-`HttpClientOptions::new()` 本身也使用固定标准策略；若 client 应使用应用已安装的快照，
-请赋值 `options.log_redaction_policy = RedactionPolicy::default()`。既有 client、request、
+`HttpClientOptions::new()` 会取得构造时全局默认策略的快照，包括此前已安装的应用策略。既有 client、request、
 response 和 error 会保留原来的 redactor；每个脱敏操作默认使用策略中的诊断预算，显式传入
 `RedactionSession` 时则共享同一个运行时预算。
 

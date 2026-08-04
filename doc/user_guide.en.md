@@ -584,9 +584,8 @@ For headers, `http::HeaderValue::is_sensitive()` is a value-level `Secret` decla
 Install a global policy once with `RedactionPolicy::install_global()` during
 application startup. Before installation, `RedactionPolicy::global()` and
 `default()` use the fixed standard policy without blocking later installation.
-`HttpClientOptions::new()` also starts with that fixed policy; assign
-`options.log_redaction_policy = RedactionPolicy::default()` when a client must
-use the application's installed snapshot. The client creates one
+`HttpClientOptions::new()` snapshots the current default, including an
+application policy installed before construction. The client creates one
 `Arc<HttpRedactor>` and preserves it through requests, responses, retries,
 interceptors, errors, and SSE diagnostics. For migration, configure one
 `RedactionPolicyBuilder` through `fields()`, `http()`, and `limits()`;

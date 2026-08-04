@@ -583,8 +583,7 @@ HTTP 日志使用 `tracing::trace!`。必须同时满足：
 
 应用启动时使用 `RedactionPolicy::install_global()` 安装一次全局策略。尚未安装时，
 `RedactionPolicy::global()` 或 `default()` 会读取固定标准策略，但不会阻止后续安装。
-`HttpClientOptions::new()` 也从固定策略开始；若 client 必须使用应用已安装的快照，赋值
-`options.log_redaction_policy = RedactionPolicy::default()`。client 创建一份
+`HttpClientOptions::new()` 会取得构造时全局默认策略的快照，包括此前已安装的应用策略。client 创建一份
 `Arc<HttpRedactor>`，并在 request、response、retry、interceptor、error 和 SSE 诊断中
 保持该快照。使用 `fields()`、`http()` 和 `limits()` 配置统一的
 `RedactionPolicyBuilder`；`qubit_http` 不再重导出这些脱敏类型。

@@ -131,7 +131,7 @@ impl Default for HttpClientOptions {
             pool_max_idle_per_host: None,
             use_env_proxy: false,
             retry: HttpRetryOptions::default(),
-            log_redaction_policy: RedactionPolicy::standard(),
+            log_redaction_policy: RedactionPolicy::default(),
             ipv4_only: false,
             sse_json_mode: SseJsonMode::Lenient,
             sse_done_marker_policy: DoneMarkerPolicy::default(),

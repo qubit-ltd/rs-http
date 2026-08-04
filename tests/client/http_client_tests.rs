@@ -38,9 +38,7 @@ use qubit_http::{
     HttpRetryMethodPolicy,
 };
 use qubit_redact::{
-    http::{
-        TextBodyPolicy,
-    },
+    http::TextBodyPolicy,
     RedactionPolicy,
     Sensitivity,
 };

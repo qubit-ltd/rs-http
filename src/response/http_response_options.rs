@@ -51,7 +51,7 @@ impl Default for HttpResponseOptions {
             sse_max_line_bytes: DEFAULT_SSE_MAX_LINE_BYTES,
             sse_max_frame_bytes: DEFAULT_SSE_MAX_FRAME_BYTES,
             sse_done_marker_policy: DoneMarkerPolicy::default(),
-            log_redactor: HttpRedactor::new(RedactionPolicy::standard()),
+            log_redactor: HttpRedactor::new(RedactionPolicy::default()),
         }
     }
 }
