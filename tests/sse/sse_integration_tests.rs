@@ -26,7 +26,6 @@ use qubit_http::{
     HttpResponse,
 };
 use qubit_redact::{
-    http::HttpFieldContext,
     RedactionPolicy,
     Sensitivity,
 };
@@ -220,14 +219,13 @@ async fn test_execute_stream_decode_json_chunks_uses_client_default_strict_mode(
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.sse_json_mode = SseJsonMode::Strict;
-    let expected_policy = RedactionPolicy::default()
-        .to_builder()
-        .http_raise(
-            HttpFieldContext::Body,
-            "sse_decode_secret",
-            Sensitivity::Secret,
-        )
-        .expect("the test policy input should be valid")
+    let mut builder = RedactionPolicy::default().to_builder();
+    builder
+        .http()
+        .body()
+        .raise("sse_decode_secret", Sensitivity::Secret)
+        .expect("the test policy input should be valid");
+    let expected_policy = builder
         .build()
         .expect("the custom HTTP policy should be valid");
     options.log_redaction_policy = expected_policy.clone();
@@ -297,14 +295,13 @@ async fn test_sse_decode_error_preserves_client_redactor_policy() {
     })
     .await;
 
-    let expected_policy = RedactionPolicy::default()
-        .to_builder()
-        .http_raise(
-            HttpFieldContext::Query,
-            "tenant_stream_secret",
-            Sensitivity::Secret,
-        )
-        .expect("the test policy input should be valid")
+    let mut builder = RedactionPolicy::default().to_builder();
+    builder
+        .http()
+        .query()
+        .raise("tenant_stream_secret", Sensitivity::Secret)
+        .expect("the test policy input should be valid");
+    let expected_policy = builder
         .build()
         .expect("the custom HTTP policy should be valid");
     let mut options = HttpClientOptions::default();

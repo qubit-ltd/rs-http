@@ -39,7 +39,6 @@ use qubit_http::{
 };
 use qubit_redact::{
     http::{
-        HttpFieldContext,
         TextBodyPolicy,
     },
     RedactionPolicy,
@@ -67,14 +66,13 @@ const CUSTOM_QUERY_SECRET: &str = "task12-custom-query-secret";
 ///
 /// A policy that treats [`CUSTOM_QUERY_FIELD`] as highly sensitive.
 fn custom_query_redaction_policy() -> RedactionPolicy {
-    RedactionPolicy::default()
-        .to_builder()
-        .http_raise(
-            HttpFieldContext::Query,
-            CUSTOM_QUERY_FIELD,
-            Sensitivity::High,
-        )
-        .expect("the test policy input should be valid")
+    let mut builder = RedactionPolicy::default().to_builder();
+    builder
+        .http()
+        .query()
+        .raise(CUSTOM_QUERY_FIELD, Sensitivity::High)
+        .expect("the test policy input should be valid");
+    builder
         .build()
         .expect("custom query policy should be valid")
 }
@@ -880,16 +878,18 @@ async fn test_execute_response_metadata_debug_uses_custom_log_policy() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    options.log_redaction_policy = RedactionPolicy::default()
-        .to_builder()
-        .http_raise(
-            HttpFieldContext::Header,
-            "x-tenant-secret",
-            Sensitivity::High,
-        )
-        .expect("the test policy input should be valid")
-        .http_raise(HttpFieldContext::Query, "tenant_marker", Sensitivity::High)
-        .expect("the test policy input should be valid")
+    let mut policy_builder = RedactionPolicy::default().to_builder();
+    policy_builder
+        .http()
+        .header()
+        .raise("x-tenant-secret", Sensitivity::High)
+        .expect("the test policy input should be valid");
+    policy_builder
+        .http()
+        .query()
+        .raise("tenant_marker", Sensitivity::High)
+        .expect("the test policy input should be valid");
+    options.log_redaction_policy = policy_builder
         .build()
         .expect("log redaction policy should be valid");
 
@@ -993,15 +993,14 @@ async fn test_execute_non_success_text_body_pass_through_uses_same_policy_snapsh
         body: b"opt-in-status-text".to_vec(),
     })
     .await;
-    let policy = RedactionPolicy::default()
-        .to_builder()
-        .text_body_policy(TextBodyPolicy::PassThrough)
-        .http_override_level(
-            HttpFieldContext::Query,
-            "accessToken",
-            Sensitivity::Low,
-        )
-        .expect("the test policy input should be valid")
+    let mut policy_builder = RedactionPolicy::default().to_builder();
+    policy_builder
+        .http()
+        .text_body(TextBodyPolicy::PassThrough)
+        .query()
+        .override_level("accessToken", Sensitivity::Low)
+        .expect("the test policy input should be valid");
+    let policy = policy_builder
         .build()
         .expect("log redaction policy should be valid");
     let mut options = HttpClientOptions::default();

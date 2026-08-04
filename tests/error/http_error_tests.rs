@@ -15,7 +15,6 @@ use qubit_http::{
     RetryHint,
 };
 use qubit_redact::{
-    http::HttpFieldContext,
     http::UrlPathPolicy,
     RedactionPolicy,
     Sensitivity,
@@ -104,14 +103,13 @@ fn test_http_error_debug_redacts_uppercase_url_scheme_tokens() {
 
 #[test]
 fn test_http_error_debug_uses_custom_log_redaction_policy() {
-    let policy = RedactionPolicy::default()
-        .to_builder()
-        .http_raise(
-            HttpFieldContext::Query,
-            "customer_secret",
-            Sensitivity::High,
-        )
-        .expect("the test policy input should be valid")
+    let mut builder = RedactionPolicy::default().to_builder();
+    builder
+        .http()
+        .query()
+        .raise("customer_secret", Sensitivity::High)
+        .expect("the test policy input should be valid");
+    let policy = builder
         .build()
         .expect("log redaction policy should be valid");
     let url =
@@ -145,14 +143,13 @@ fn test_http_error_display_masks_sensitive_url_values() {
 
 #[test]
 fn test_http_error_display_uses_custom_log_redaction_policy() {
-    let policy = RedactionPolicy::default()
-        .to_builder()
-        .http_raise(
-            HttpFieldContext::Query,
-            "customer_secret",
-            Sensitivity::High,
-        )
-        .expect("the test policy input should be valid")
+    let mut builder = RedactionPolicy::default().to_builder();
+    builder
+        .http()
+        .query()
+        .raise("customer_secret", Sensitivity::High)
+        .expect("the test policy input should be valid");
+    let policy = builder
         .build()
         .expect("log redaction policy should be valid");
     let error = HttpError::transport(
