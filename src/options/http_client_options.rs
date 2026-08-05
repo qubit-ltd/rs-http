@@ -308,12 +308,10 @@ impl HttpClientOptions {
         }
 
         // timeouts
-        if config
-            .contains_section("timeouts")
+        if let Some(timeouts_config) = config
+            .section_if_present("timeouts")
             .map_err(HttpConfigError::from)?
         {
-            let timeouts_config =
-                config.section("timeouts").map_err(HttpConfigError::from)?;
             opts.timeouts =
                 match HttpTimeoutOptions::from_config(&timeouts_config) {
                     Ok(timeouts) => timeouts,
@@ -327,12 +325,10 @@ impl HttpClientOptions {
         }
 
         // proxy
-        if config
-            .contains_section("proxy")
+        if let Some(proxy_config) = config
+            .section_if_present("proxy")
             .map_err(HttpConfigError::from)?
         {
-            let proxy_config =
-                config.section("proxy").map_err(HttpConfigError::from)?;
             opts.proxy = match ProxyOptions::from_config(&proxy_config) {
                 Ok(proxy) => proxy,
                 Err(error) => {
@@ -345,12 +341,10 @@ impl HttpClientOptions {
         }
 
         // logging
-        if config
-            .contains_section("logging")
+        if let Some(logging_config) = config
+            .section_if_present("logging")
             .map_err(HttpConfigError::from)?
         {
-            let logging_config =
-                config.section("logging").map_err(HttpConfigError::from)?;
             opts.logging =
                 match HttpLoggingOptions::from_config(&logging_config) {
                     Ok(logging) => logging,
@@ -363,12 +357,10 @@ impl HttpClientOptions {
                 };
         }
 
-        if config
-            .contains_section("retry")
+        if let Some(retry_config) = config
+            .section_if_present("retry")
             .map_err(HttpConfigError::from)?
         {
-            let retry_config =
-                config.section("retry").map_err(HttpConfigError::from)?;
             opts.retry = match HttpRetryOptions::from_config(&retry_config) {
                 Ok(retry) => retry,
                 Err(error) => {
@@ -380,12 +372,10 @@ impl HttpClientOptions {
             };
         }
 
-        if config
-            .contains_section("sse")
+        if let Some(sse_config) = config
+            .section_if_present("sse")
             .map_err(HttpConfigError::from)?
         {
-            let sse_config =
-                config.section("sse").map_err(HttpConfigError::from)?;
             let sse = match Self::read_sse_config(&sse_config) {
                 Ok(sse) => sse,
                 Err(error) => {
@@ -448,13 +438,10 @@ impl HttpClientOptions {
             }
         }
 
-        if config
-            .contains_section("log_redaction")
+        if let Some(log_redaction_config) = config
+            .section_if_present("log_redaction")
             .map_err(HttpConfigError::from)?
         {
-            let log_redaction_config = config
-                .section("log_redaction")
-                .map_err(HttpConfigError::from)?;
             let log_redaction =
                 match Self::read_log_redaction_config(&log_redaction_config) {
                     Ok(log_redaction) => log_redaction,
