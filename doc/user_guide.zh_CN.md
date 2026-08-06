@@ -20,7 +20,7 @@
 qubit-http = "0.11"
 qubit-redact = "0.4"
 http = "1.4"
-qubit-config = { path = "../rs-config", version = "0.14", default-features = false }
+qubit-config = { path = "../rs-config", version = "0.15", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
