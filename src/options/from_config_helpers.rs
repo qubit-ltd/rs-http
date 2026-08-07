@@ -43,7 +43,6 @@ use http::{
     HeaderName,
     HeaderValue,
 };
-#[cfg(not(target_pointer_width = "64"))]
 use qubit_config::ConfigError;
 use qubit_config::{
     ConfigReader,
@@ -66,19 +65,15 @@ where
     let Some(value) = config.get_optional::<u64>(key)? else {
         return Ok(None);
     };
-    #[cfg(target_pointer_width = "64")]
-    {
-        Ok(Some(value as usize))
-    }
-    #[cfg(not(target_pointer_width = "64"))]
-    usize::try_from(value).map(Some).map_err(|_| {
-        ConfigError::DeserializeError {
-            path: config.resolve_key(key),
+    match usize::try_from(value) {
+        Ok(value) => Ok(Some(value)),
+        Err(_) => Err(ConfigError::DeserializeError {
+            path: config.resolve_key(key)?,
             message: "configuration value exceeds the platform usize range"
                 .to_string(),
             source: None,
-        }
-    })
+        }),
+    }
 }
 
 /// Converts a map of header names to values into an [`HeaderMap`].
