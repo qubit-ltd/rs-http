@@ -746,29 +746,12 @@ impl HttpClientOptions {
 
     fn resolve_config_error<R>(
         config: &R,
-        mut error: HttpConfigError,
+        error: HttpConfigError,
     ) -> HttpConfigError
     where
         R: ConfigReader + ?Sized,
     {
-        let section_path = config.scope_path().to_owned();
-        error.path = if error.path.is_empty() {
-            section_path
-        } else if section_path.is_empty()
-            || error.path == section_path
-            || error
-                .path
-                .strip_prefix(&section_path)
-                .is_some_and(|suffix| suffix.starts_with('.'))
-        {
-            error.path
-        } else {
-            match config.resolve_key(&error.path) {
-                Ok(path) => path,
-                Err(error) => return HttpConfigError::from(error),
-            }
-        };
-        error
+        super::from_config_helpers::resolve_config_error(config, error)
     }
 
     fn read_config<R>(config: &R) -> ConfigResult<HttpClientRootConfigInput>

@@ -180,10 +180,10 @@ impl HttpClientFactory {
         R: ConfigReader + ?Sized,
     {
         let options = HttpClientOptions::from_config(config)
-            .map_err(|e| resolve_config_error(config, e))?;
+            .map_err(|e| crate::options::resolve_config_error(config, e))?;
         options
             .validate()
-            .map_err(|e| resolve_config_error(config, e))?;
+            .map_err(|e| crate::options::resolve_config_error(config, e))?;
         self.create(options).map_err(|e| {
             HttpConfigError::new(
                 crate::HttpConfigErrorKind::InvalidValue,
@@ -192,33 +192,6 @@ impl HttpClientFactory {
             )
         })
     }
-}
-
-fn resolve_config_error<R>(
-    config: &R,
-    mut error: HttpConfigError,
-) -> HttpConfigError
-where
-    R: ConfigReader + ?Sized,
-{
-    let section_path = config.scope_path().to_owned();
-    error.path = if error.path.is_empty() {
-        section_path
-    } else if section_path.is_empty()
-        || error.path == section_path
-        || error
-            .path
-            .strip_prefix(&section_path)
-            .is_some_and(|suffix| suffix.starts_with('.'))
-    {
-        error.path
-    } else {
-        match config.resolve_key(&error.path) {
-            Ok(path) => path,
-            Err(error) => return HttpConfigError::from(error),
-        }
-    };
-    error
 }
 
 /// Filters resolved socket addresses down to IPv4 addresses.
