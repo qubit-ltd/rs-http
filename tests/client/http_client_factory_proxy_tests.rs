@@ -9,20 +9,16 @@
 use std::time::Duration;
 
 use http::Method;
-use qubit_http::{
-    HttpClientFactory,
-    HttpClientOptions,
-    HttpErrorKind,
-    ProxyType,
-};
+use qubit_http::HttpClientFactory;
+use qubit_http::HttpClientOptions;
+use qubit_http::HttpErrorKind;
+use qubit_http::ProxyType;
 use tokio::time::timeout;
 
-use crate::common::{
-    spawn_one_shot_server,
-    spawn_simple_proxy_server,
-    ProxyBehavior,
-    ResponsePlan,
-};
+use crate::common::ProxyBehavior;
+use crate::common::ResponsePlan;
+use crate::common::spawn_one_shot_server;
+use crate::common::spawn_simple_proxy_server;
 
 #[tokio::test]
 async fn test_http_proxy_forwards_request_and_sends_proxy_auth() {

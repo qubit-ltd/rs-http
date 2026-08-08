@@ -25,22 +25,18 @@ mod sse_reconnect_runner;
 mod sse_record;
 mod sse_record_stream;
 
-pub(crate) use message_decoder::{
-    decode_messages_from_stream_with_limits,
-    decode_records_from_stream_with_limits,
-};
-pub(crate) use sse_reconnect_runner::SseReconnectRunner;
-
 pub use done_marker_policy::DoneMarkerPolicy;
+pub(crate) use json_decoder::decode_json_chunks_from_stream_with_limits;
+pub(crate) use message_decoder::decode_messages_from_stream_with_limits;
+pub(crate) use message_decoder::decode_records_from_stream_with_limits;
 pub use sse_chunk::SseChunk;
 pub use sse_chunk_stream::SseChunkStream;
+pub(crate) use sse_control::SseControl;
 pub use sse_json_mode::SseJsonMode;
 pub use sse_message::SseMessage;
 pub use sse_message_stream::SseMessageStream;
-pub use sse_reconnect_options::SseReconnectOptions;
-
-pub(crate) use json_decoder::decode_json_chunks_from_stream_with_limits;
-pub(crate) use sse_control::SseControl;
 pub(crate) use sse_reconnect_options::DEFAULT_SSE_MAX_RECONNECT_DELAY;
+pub use sse_reconnect_options::SseReconnectOptions;
+pub(crate) use sse_reconnect_runner::SseReconnectRunner;
 pub(crate) use sse_record::SseRecord;
 pub(crate) use sse_record_stream::SseRecordStream;

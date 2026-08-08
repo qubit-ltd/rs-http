@@ -10,15 +10,11 @@
 use std::fmt;
 use std::time::Duration;
 
-use http::{
-    HeaderMap,
-    Method,
-    StatusCode,
-};
-use qubit_redact::{
-    http::HttpRedactor,
-    RedactionPolicy,
-};
+use http::HeaderMap;
+use http::Method;
+use http::StatusCode;
+use qubit_redact::RedactionPolicy;
+use qubit_redact::http::HttpRedactor;
 use url::Url;
 
 use super::HttpResponseMeta;

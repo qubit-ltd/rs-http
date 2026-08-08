@@ -9,12 +9,11 @@
 //!
 //! Defines how stream completion markers are recognized.
 
-use serde::{
-    Deserialize,
-    Serialize,
-};
 use std::fmt;
 use std::str::FromStr;
+
+use serde::Deserialize;
+use serde::Serialize;
 
 /// Policy for stream completion marker matching.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]

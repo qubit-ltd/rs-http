@@ -10,26 +10,18 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use http::StatusCode;
-use qubit_argument::{
-    require_that,
-    ArgumentResult,
-};
-use qubit_config::{
-    ConfigReader,
-    ConfigResult,
-};
-use qubit_retry::{
-    RetryDelay,
-    RetryJitter,
-    RetryOptions,
-};
+use qubit_argument::ArgumentResult;
+use qubit_argument::require_that;
+use qubit_config::ConfigReader;
+use qubit_config::ConfigResult;
+use qubit_retry::RetryDelay;
+use qubit_retry::RetryJitter;
+use qubit_retry::RetryOptions;
 
-use super::http_retry_method_policy::HttpRetryMethodPolicy;
 use super::HttpConfigError;
-use crate::{
-    HttpErrorKind,
-    HttpRequest,
-};
+use super::http_retry_method_policy::HttpRetryMethodPolicy;
+use crate::HttpErrorKind;
+use crate::HttpRequest;
 
 const DEFAULT_RETRY_MAX_ATTEMPTS: u32 = 3;
 const DEFAULT_RETRY_INITIAL_DELAY: Duration = Duration::from_millis(200);
@@ -401,7 +393,9 @@ fn parse_retry_status_codes(
         if !(100..=599).contains(&raw_code) {
             return Err(HttpConfigError::invalid_value(
                 "status_codes",
-                format!("Retry status code must be in range 100..=599, got {raw_code}"),
+                format!(
+                    "Retry status code must be in range 100..=599, got {raw_code}"
+                ),
             ));
         }
         let status = StatusCode::from_u16(raw_code)

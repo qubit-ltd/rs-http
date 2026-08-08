@@ -6,16 +6,12 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use qubit_argument::{
-    NumericArgument,
-    OptionArgument,
-};
+use qubit_argument::NumericArgument;
+use qubit_argument::OptionArgument;
 use qubit_config::Config;
 use qubit_datatype::DataType;
-use qubit_http::{
-    HttpConfigError,
-    HttpConfigErrorKind,
-};
+use qubit_http::HttpConfigError;
+use qubit_http::HttpConfigErrorKind;
 
 #[test]
 fn test_http_config_error_display() {
@@ -107,8 +103,8 @@ fn test_http_config_error_from_property_has_no_value_maps_to_type_error() {
 }
 
 #[test]
-fn test_http_config_error_from_property_not_found_maps_to_config_error_with_path(
-) {
+fn test_http_config_error_from_property_not_found_maps_to_config_error_with_path()
+ {
     let error = HttpConfigError::from(
         qubit_config::ConfigError::PropertyNotFound("svc.base_url".to_string()),
     );
@@ -137,8 +133,8 @@ fn test_http_config_error_from_conversion_error_maps_to_type_error() {
 }
 
 #[test]
-fn test_http_config_error_from_other_config_error_maps_to_config_error_without_path(
-) {
+fn test_http_config_error_from_other_config_error_maps_to_config_error_without_path()
+ {
     let error = HttpConfigError::from(qubit_config::ConfigError::Other(
         "boom".to_string(),
     ));

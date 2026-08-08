@@ -19,7 +19,9 @@ fn test_http_retry_method_policy_parses_aliases_and_checks_methods() {
         HttpRetryMethodPolicy::IdempotentOnly
     );
     assert!(HttpRetryMethodPolicy::IdempotentOnly.allows_method(&Method::GET));
-    assert!(!HttpRetryMethodPolicy::IdempotentOnly.allows_method(&Method::POST));
+    assert!(
+        !HttpRetryMethodPolicy::IdempotentOnly.allows_method(&Method::POST)
+    );
     assert!(HttpRetryMethodPolicy::AllMethods.allows_method(&Method::PATCH));
     assert!(!HttpRetryMethodPolicy::None.allows_method(&Method::DELETE));
 }

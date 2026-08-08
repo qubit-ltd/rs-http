@@ -9,17 +9,13 @@
 //!
 //! One EventSource-style message dispatch after frame reassembly.
 
-use qubit_json::{
-    JsonDecodeOptions,
-    LenientJsonDecoder,
-};
+use qubit_json::JsonDecodeOptions;
+use qubit_json::LenientJsonDecoder;
 use serde::de::DeserializeOwned;
 
 use super::SseJsonMode;
-use crate::{
-    HttpError,
-    HttpResult,
-};
+use crate::HttpError;
+use crate::HttpResult;
 
 /// One EventSource-style message dispatch after `data:` line reassembly.
 #[derive(Debug, Clone, PartialEq, Eq)]

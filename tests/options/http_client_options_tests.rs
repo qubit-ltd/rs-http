@@ -8,41 +8,29 @@
 
 use std::time::Duration;
 
-use qubit_config::{
-    options::{
-        InterpolationSources,
-        ReadPolicy,
-    },
-    Config,
-};
+use qubit_config::Config;
+use qubit_config::options::InterpolationSources;
+use qubit_config::options::ReadPolicy;
 use qubit_datatype::DataType;
-use qubit_http::{
-    constants::{
-        DEFAULT_CONNECT_TIMEOUT_SECS,
-        DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES,
-        DEFAULT_LOG_BODY_SIZE_LIMIT_BYTES,
-        DEFAULT_READ_TIMEOUT_SECS,
-        DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES,
-        DEFAULT_SSE_MAX_FRAME_BYTES,
-        DEFAULT_SSE_MAX_LINE_BYTES,
-        DEFAULT_WRITE_TIMEOUT_SECS,
-    },
-    sse::{
-        DoneMarkerPolicy,
-        SseJsonMode,
-    },
-    HttpClientOptions,
-    HttpConfigErrorKind,
-    HttpErrorKind,
-    HttpRetryMethodPolicy,
-    HttpRetryOptions,
-    ProxyType,
-};
-use qubit_redact::{
-    http::UrlPathPolicy,
-    RedactionPolicy,
-    Sensitivity,
-};
+use qubit_http::HttpClientOptions;
+use qubit_http::HttpConfigErrorKind;
+use qubit_http::HttpErrorKind;
+use qubit_http::HttpRetryMethodPolicy;
+use qubit_http::HttpRetryOptions;
+use qubit_http::ProxyType;
+use qubit_http::constants::DEFAULT_CONNECT_TIMEOUT_SECS;
+use qubit_http::constants::DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES;
+use qubit_http::constants::DEFAULT_LOG_BODY_SIZE_LIMIT_BYTES;
+use qubit_http::constants::DEFAULT_READ_TIMEOUT_SECS;
+use qubit_http::constants::DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES;
+use qubit_http::constants::DEFAULT_SSE_MAX_FRAME_BYTES;
+use qubit_http::constants::DEFAULT_SSE_MAX_LINE_BYTES;
+use qubit_http::constants::DEFAULT_WRITE_TIMEOUT_SECS;
+use qubit_http::sse::DoneMarkerPolicy;
+use qubit_http::sse::SseJsonMode;
+use qubit_redact::RedactionPolicy;
+use qubit_redact::Sensitivity;
+use qubit_redact::http::UrlPathPolicy;
 use qubit_retry::RetryDelay;
 
 /// Verifies HTTP option parsing only reads process environment placeholders
@@ -420,9 +408,11 @@ fn test_http_client_options_default_headers_json_form_rejects_markdown_fence() {
                 "strict default_headers JSON must reject Markdown fences",
             );
     assert_eq!(error.kind, HttpConfigErrorKind::TypeError);
-    assert!(error
-        .message
-        .starts_with("Failed to parse default_headers JSON:"));
+    assert!(
+        error
+            .message
+            .starts_with("Failed to parse default_headers JSON:")
+    );
 }
 
 #[test]
@@ -550,43 +540,51 @@ fn test_http_client_options_log_redaction_section() {
 
     let opts = HttpClientOptions::from_config(&config.section("http").unwrap())
         .unwrap();
-    assert!(opts
-        .log_redaction_policy
-        .header_rules()
-        .sensitivity_for("x-custom-secret")
-        .is_some());
-    assert!(opts
-        .log_redaction_policy
-        .header_rules()
-        .sensitivity_for("x-api-token")
-        .is_some());
-    assert!(opts
-        .log_redaction_policy
-        .sensitivity_for("authorization")
-        .is_some());
-    assert!(opts
-        .log_redaction_policy
-        .query_rules()
-        .sensitivity_for("session_token")
-        .is_some());
-    assert!(opts
-        .log_redaction_policy
-        .sensitivity_for("access_token")
-        .is_some());
-    assert!(opts
-        .log_redaction_policy
-        .body_rules()
-        .sensitivity_for("customer_secret")
-        .is_some());
-    assert!(opts
-        .log_redaction_policy
-        .sensitivity_for("client_secret")
-        .is_some());
+    assert!(
+        opts.log_redaction_policy
+            .header_rules()
+            .sensitivity_for("x-custom-secret")
+            .is_some()
+    );
+    assert!(
+        opts.log_redaction_policy
+            .header_rules()
+            .sensitivity_for("x-api-token")
+            .is_some()
+    );
+    assert!(
+        opts.log_redaction_policy
+            .sensitivity_for("authorization")
+            .is_some()
+    );
+    assert!(
+        opts.log_redaction_policy
+            .query_rules()
+            .sensitivity_for("session_token")
+            .is_some()
+    );
+    assert!(
+        opts.log_redaction_policy
+            .sensitivity_for("access_token")
+            .is_some()
+    );
+    assert!(
+        opts.log_redaction_policy
+            .body_rules()
+            .sensitivity_for("customer_secret")
+            .is_some()
+    );
+    assert!(
+        opts.log_redaction_policy
+            .sensitivity_for("client_secret")
+            .is_some()
+    );
     assert!(opts.log_redaction_policy.sensitivity_for("sig").is_some());
-    assert!(opts
-        .log_redaction_policy
-        .sensitivity_for("signature")
-        .is_some());
+    assert!(
+        opts.log_redaction_policy
+            .sensitivity_for("signature")
+            .is_some()
+    );
     assert_eq!(
         opts.log_redaction_policy.url_path_policy(),
         UrlPathPolicy::Preserve,
@@ -627,8 +625,8 @@ fn test_http_client_options_rejects_invalid_url_path_policy() {
 }
 
 #[test]
-fn test_http_client_options_rejects_invalid_redaction_list_fields_with_resolved_path(
-) {
+fn test_http_client_options_rejects_invalid_redaction_list_fields_with_resolved_path()
+ {
     for (field, policy_location) in [
         ("sensitive_headers", "http header"),
         ("sensitive_query_params", "http query"),
@@ -669,11 +667,12 @@ fn test_http_client_options_root_sensitive_headers_is_not_supported() {
     let opts = HttpClientOptions::from_config(&config.section("http").unwrap())
         .unwrap();
 
-    assert!(opts
-        .log_redaction_policy
-        .header_rules()
-        .sensitivity_for("xlegacysecret")
-        .is_none());
+    assert!(
+        opts.log_redaction_policy
+            .header_rules()
+            .sensitivity_for("xlegacysecret")
+            .is_none()
+    );
 }
 
 #[test]
@@ -1118,10 +1117,14 @@ fn test_http_retry_method_policy_allows_methods() {
     assert!(
         HttpRetryMethodPolicy::IdempotentOnly.allows_method(&http::Method::GET)
     );
-    assert!(HttpRetryMethodPolicy::IdempotentOnly
-        .allows_method(&http::Method::DELETE));
-    assert!(!HttpRetryMethodPolicy::IdempotentOnly
-        .allows_method(&http::Method::POST));
+    assert!(
+        HttpRetryMethodPolicy::IdempotentOnly
+            .allows_method(&http::Method::DELETE)
+    );
+    assert!(
+        !HttpRetryMethodPolicy::IdempotentOnly
+            .allows_method(&http::Method::POST)
+    );
     assert!(
         HttpRetryMethodPolicy::AllMethods.allows_method(&http::Method::POST)
     );
@@ -1389,21 +1392,24 @@ fn test_http_client_options_from_root_config_all_sections() {
     assert_eq!(opts.pool_max_idle_per_host, Some(9));
     assert!(opts.use_env_proxy);
     assert!(opts.default_headers.contains_key("x-root"));
-    assert!(opts
-        .log_redaction_policy
-        .header_rules()
-        .sensitivity_for("x-root-secret")
-        .is_some());
-    assert!(opts
-        .log_redaction_policy
-        .query_rules()
-        .sensitivity_for("root_token")
-        .is_some());
-    assert!(opts
-        .log_redaction_policy
-        .body_rules()
-        .sensitivity_for("root_password")
-        .is_some());
+    assert!(
+        opts.log_redaction_policy
+            .header_rules()
+            .sensitivity_for("x-root-secret")
+            .is_some()
+    );
+    assert!(
+        opts.log_redaction_policy
+            .query_rules()
+            .sensitivity_for("root_token")
+            .is_some()
+    );
+    assert!(
+        opts.log_redaction_policy
+            .body_rules()
+            .sensitivity_for("root_password")
+            .is_some()
+    );
     assert_eq!(opts.timeouts.connect_timeout, Duration::from_secs(3));
     assert_eq!(opts.timeouts.request_timeout, Some(Duration::from_secs(6)));
     assert!(opts.proxy.enabled);
@@ -1585,11 +1591,13 @@ fn test_http_client_options_interpolates_string_configuration_values() {
         options.log_redaction_policy.url_path_policy(),
         UrlPathPolicy::Preserve,
     );
-    assert!(options
-        .log_redaction_policy
-        .header_rules()
-        .sensitivity_for("x-interpolated-secret")
-        .is_some());
+    assert!(
+        options
+            .log_redaction_policy
+            .header_rules()
+            .sensitivity_for("x-interpolated-secret")
+            .is_some()
+    );
     assert_eq!(
         options.retry.retry_status_codes,
         Some(vec![http::StatusCode::SERVICE_UNAVAILABLE]),
@@ -1601,8 +1609,8 @@ fn test_http_client_options_interpolates_string_configuration_values() {
 }
 
 #[test]
-fn test_http_client_options_log_redaction_header_number_from_config_is_converted(
-) {
+fn test_http_client_options_log_redaction_header_number_from_config_is_converted()
+ {
     let mut config = Config::new();
     config
         .set("http.log_redaction.sensitive_headers", 123_i32)
@@ -1611,11 +1619,12 @@ fn test_http_client_options_log_redaction_header_number_from_config_is_converted
     let opts = HttpClientOptions::from_config(&config.section("http").unwrap())
         .unwrap();
 
-    assert!(opts
-        .log_redaction_policy
-        .header_rules()
-        .sensitivity_for("123")
-        .is_some());
+    assert!(
+        opts.log_redaction_policy
+            .header_rules()
+            .sensitivity_for("123")
+            .is_some()
+    );
 }
 
 #[test]

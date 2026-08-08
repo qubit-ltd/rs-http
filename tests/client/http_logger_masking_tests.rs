@@ -6,22 +6,16 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use http::header::{
-    HeaderName,
-    HeaderValue,
-    AUTHORIZATION,
-    CONTENT_TYPE,
-};
-use http::{
-    HeaderMap,
-    Method,
-};
-use qubit_http::{
-    HttpClientFactory,
-    HttpClientOptions,
-    HttpLogger,
-    HttpLoggingOptions,
-};
+use http::HeaderMap;
+use http::Method;
+use http::header::AUTHORIZATION;
+use http::header::CONTENT_TYPE;
+use http::header::HeaderName;
+use http::header::HeaderValue;
+use qubit_http::HttpClientFactory;
+use qubit_http::HttpClientOptions;
+use qubit_http::HttpLogger;
+use qubit_http::HttpLoggingOptions;
 
 use crate::common::capture_trace_logs;
 

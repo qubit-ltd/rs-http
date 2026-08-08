@@ -7,14 +7,10 @@
 // =============================================================================
 //! Decoded JSON chunk or explicit SSE stream end marker.
 
-use serde::{
-    Deserialize,
-    Serialize,
-};
-use strum::{
-    Display,
-    EnumString,
-};
+use serde::Deserialize;
+use serde::Serialize;
+use strum::Display;
+use strum::EnumString;
 
 /// Either a decoded JSON value from one SSE data payload or an explicit end
 /// marker.

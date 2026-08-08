@@ -12,14 +12,10 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use tokio::io::{
-    AsyncReadExt,
-    AsyncWriteExt,
-};
-use tokio::net::{
-    TcpListener,
-    TcpStream,
-};
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
+use tokio::net::TcpListener;
+use tokio::net::TcpStream;
 use tokio::sync::oneshot;
 use url::Url;
 
@@ -235,7 +231,9 @@ pub async fn spawn_multi_shot_server(
             let accept_result = listener.accept().await;
             let (mut stream, _) = match accept_result {
                 Ok(result) => result,
-                Err(error) => panic!("multi-shot test server failed to accept connection: {error}"),
+                Err(error) => panic!(
+                    "multi-shot test server failed to accept connection: {error}"
+                ),
             };
 
             handles.push(tokio::spawn(async move {

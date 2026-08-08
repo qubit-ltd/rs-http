@@ -8,10 +8,8 @@
 
 use std::time::Duration;
 
-use qubit_http::{
-    HttpConfigErrorKind,
-    HttpTimeoutOptions,
-};
+use qubit_http::HttpConfigErrorKind;
+use qubit_http::HttpTimeoutOptions;
 
 #[test]
 fn test_http_timeout_options_validate_rejects_zero_read_timeout() {

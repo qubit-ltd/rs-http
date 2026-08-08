@@ -7,10 +7,8 @@
 // =============================================================================
 
 use qubit_config::Config;
-use qubit_http::{
-    HttpClientOptions,
-    HttpConfigErrorKind,
-};
+use qubit_http::HttpClientOptions;
+use qubit_http::HttpConfigErrorKind;
 
 #[test]
 fn test_from_config_helpers_reports_invalid_header_value_path() {
@@ -57,7 +55,9 @@ fn test_from_config_helpers_rejects_usize_overflow() {
 
     assert_eq!(error.kind, HttpConfigErrorKind::ConfigError);
     assert_eq!(error.path, "http.max_redirects");
-    assert!(error
-        .message
-        .contains("configuration value exceeds the platform usize range"));
+    assert!(
+        error
+            .message
+            .contains("configuration value exceeds the platform usize range")
+    );
 }

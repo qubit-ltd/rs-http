@@ -9,26 +9,18 @@
 use std::time::Duration;
 
 use http::Method;
-use qubit_http::{
-    HttpClientFactory,
-    HttpClientOptions,
-    ProxyType,
-};
-use tokio::io::{
-    AsyncReadExt,
-    AsyncWriteExt,
-};
-use tokio::net::{
-    TcpListener,
-    TcpStream,
-};
+use qubit_http::HttpClientFactory;
+use qubit_http::HttpClientOptions;
+use qubit_http::ProxyType;
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
+use tokio::net::TcpListener;
+use tokio::net::TcpStream;
 use tokio::sync::oneshot;
 use tokio::time::timeout;
 
-use crate::common::{
-    spawn_one_shot_server,
-    ResponsePlan,
-};
+use crate::common::ResponsePlan;
+use crate::common::spawn_one_shot_server;
 
 #[derive(Debug)]
 struct SocksServer {

@@ -7,10 +7,8 @@
 // =============================================================================
 
 use parse_display::FromStr as DeriveFromStr;
-use serde::{
-    Deserialize,
-    Serialize,
-};
+use serde::Deserialize;
+use serde::Serialize;
 
 /// URL scheme selector used when constructing the proxy URL for reqwest.
 #[derive(

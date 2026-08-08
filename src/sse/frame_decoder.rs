@@ -12,13 +12,11 @@
 use async_stream::stream;
 use futures_util::StreamExt;
 
+use super::SseControl;
+use super::SseMessage;
+use super::SseRecord;
+use super::SseRecordStream;
 use super::line_decoder::SseLineStream;
-use super::{
-    SseControl,
-    SseMessage,
-    SseRecord,
-    SseRecordStream,
-};
 
 /// Groups newline-delimited SSE fields into internal [`SseRecord`] values.
 ///

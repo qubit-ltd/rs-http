@@ -8,22 +8,16 @@
 //! Shared HTTP response metadata (status, headers, URL, request method).
 
 use std::fmt;
-use std::time::{
-    Duration,
-    SystemTime,
-};
+use std::time::Duration;
+use std::time::SystemTime;
 
+use http::HeaderMap;
+use http::Method;
+use http::StatusCode;
 use http::header::RETRY_AFTER;
-use http::{
-    HeaderMap,
-    Method,
-    StatusCode,
-};
 use httpdate::parse_http_date;
-use qubit_redact::{
-    http::HttpRedactor,
-    RedactionPolicy,
-};
+use qubit_redact::RedactionPolicy;
+use qubit_redact::http::HttpRedactor;
 use url::Url;
 
 use crate::redact::RedactedDebugger;

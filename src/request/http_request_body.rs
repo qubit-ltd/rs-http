@@ -10,14 +10,10 @@
 use std::fmt;
 
 use bytes::Bytes;
-use serde::{
-    Deserialize,
-    Serialize,
-};
-use strum::{
-    Display,
-    EnumString,
-};
+use serde::Deserialize;
+use serde::Serialize;
+use strum::Display;
+use strum::EnumString;
 
 /// Encodes how the outbound body is represented before sending via reqwest.
 #[derive(

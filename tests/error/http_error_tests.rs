@@ -9,16 +9,12 @@
 use std::error::Error;
 
 use http::StatusCode;
-use qubit_http::{
-    HttpError,
-    HttpErrorKind,
-    RetryHint,
-};
-use qubit_redact::{
-    http::UrlPathPolicy,
-    RedactionPolicy,
-    Sensitivity,
-};
+use qubit_http::HttpError;
+use qubit_http::HttpErrorKind;
+use qubit_http::RetryHint;
+use qubit_redact::RedactionPolicy;
+use qubit_redact::Sensitivity;
+use qubit_redact::http::UrlPathPolicy;
 
 #[test]
 fn test_http_error_builder_methods() {

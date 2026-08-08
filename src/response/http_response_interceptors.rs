@@ -7,10 +7,8 @@
 // =============================================================================
 //! Response interceptor abstraction for successful HTTP responses.
 
-use qubit_function::{
-    ArcMutatingFunction,
-    MutatingFunction,
-};
+use qubit_function::ArcMutatingFunction;
+use qubit_function::MutatingFunction;
 
 use super::HttpResponseInterceptorContext;
 use super::HttpResponseMeta;

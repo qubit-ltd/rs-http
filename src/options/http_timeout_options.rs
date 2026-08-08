@@ -8,22 +8,16 @@
 
 use std::time::Duration;
 
-use qubit_argument::{
-    require_that,
-    ArgumentResult,
-    OptionArgument,
-};
-use qubit_config::{
-    ConfigReader,
-    ConfigResult,
-};
+use qubit_argument::ArgumentResult;
+use qubit_argument::OptionArgument;
+use qubit_argument::require_that;
+use qubit_config::ConfigReader;
+use qubit_config::ConfigResult;
 
 use super::HttpConfigError;
-use crate::constants::{
-    DEFAULT_CONNECT_TIMEOUT_SECS,
-    DEFAULT_READ_TIMEOUT_SECS,
-    DEFAULT_WRITE_TIMEOUT_SECS,
-};
+use crate::constants::DEFAULT_CONNECT_TIMEOUT_SECS;
+use crate::constants::DEFAULT_READ_TIMEOUT_SECS;
+use crate::constants::DEFAULT_WRITE_TIMEOUT_SECS;
 
 /// Connect, read, write, and optional whole-request timeouts for HTTP I/O.
 #[derive(Debug, Clone, PartialEq, Eq)]

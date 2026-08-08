@@ -6,16 +6,12 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use http::{
-    HeaderMap,
-    Method,
-    StatusCode,
-};
-use qubit_http::{
-    HttpResponseInterceptor,
-    HttpResponseInterceptors,
-    HttpResponseMeta,
-};
+use http::HeaderMap;
+use http::Method;
+use http::StatusCode;
+use qubit_http::HttpResponseInterceptor;
+use qubit_http::HttpResponseInterceptors;
+use qubit_http::HttpResponseMeta;
 use url::Url;
 
 #[test]

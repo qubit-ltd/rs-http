@@ -8,11 +8,9 @@
 
 use bytes::Bytes;
 use futures_util::StreamExt;
-use http::{
-    HeaderMap,
-    Method,
-    StatusCode,
-};
+use http::HeaderMap;
+use http::Method;
+use http::StatusCode;
 use qubit_http::HttpResponse;
 use url::Url;
 

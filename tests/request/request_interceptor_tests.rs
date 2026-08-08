@@ -7,18 +7,16 @@
 // =============================================================================
 
 use http::Method;
-use qubit_http::{
-    HttpClientFactory,
-    HttpError,
-    HttpErrorKind,
-    HttpRequestInterceptor,
-    HttpRequestInterceptors,
-};
+use qubit_http::HttpClientFactory;
+use qubit_http::HttpError;
+use qubit_http::HttpErrorKind;
+use qubit_http::HttpRequestInterceptor;
+use qubit_http::HttpRequestInterceptors;
 use url::Url;
 
 #[test]
-fn test_request_interceptors_apply_uses_parsed_path_when_resolved_url_cache_missing(
-) {
+fn test_request_interceptors_apply_uses_parsed_path_when_resolved_url_cache_missing()
+ {
     let client = HttpClientFactory::new()
         .create_default()
         .expect("default options should create client");

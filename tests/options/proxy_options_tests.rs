@@ -7,11 +7,9 @@
 // =============================================================================
 
 use qubit_config::Config;
-use qubit_http::{
-    HttpConfigErrorKind,
-    ProxyOptions,
-    ProxyType,
-};
+use qubit_http::HttpConfigErrorKind;
+use qubit_http::ProxyOptions;
+use qubit_http::ProxyType;
 
 #[test]
 fn test_proxy_options_default_values() {

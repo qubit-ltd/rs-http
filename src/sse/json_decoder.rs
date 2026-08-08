@@ -13,15 +13,12 @@ use async_stream::stream;
 use futures_util::StreamExt;
 use serde::de::DeserializeOwned;
 
+use super::DoneMarkerPolicy;
+use super::SseChunk;
+use super::SseChunkStream;
+use super::SseJsonMode;
+use super::decode_messages_from_stream_with_limits;
 use crate::HttpByteStream;
-
-use super::{
-    decode_messages_from_stream_with_limits,
-    DoneMarkerPolicy,
-    SseChunk,
-    SseChunkStream,
-    SseJsonMode,
-};
 
 /// Parses SSE JSON payloads with selectable strictness and explicit line/frame
 /// size limits.

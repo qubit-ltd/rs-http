@@ -9,11 +9,9 @@
 //! Safe rendering helpers for `Debug` implementations.
 
 use http::HeaderMap;
-use qubit_redact::http::{
-    HttpRedactor,
-    RedactedHeaders,
-};
 use qubit_redact::RedactionSession;
+use qubit_redact::http::HttpRedactor;
+use qubit_redact::http::RedactedHeaders;
 use url::Url;
 
 /// Renders diagnostic fields with one immutable policy snapshot.

@@ -6,19 +6,15 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
+use http::HeaderMap;
+use http::HeaderValue;
+use http::Method;
+use http::StatusCode;
 use http::header::RETRY_AFTER;
 use http::header::SET_COOKIE;
-use http::{
-    HeaderMap,
-    HeaderValue,
-    Method,
-    StatusCode,
-};
 use qubit_http::HttpResponseMeta;
-use qubit_redact::{
-    http::UrlPathPolicy,
-    RedactionPolicy,
-};
+use qubit_redact::RedactionPolicy;
+use qubit_redact::http::UrlPathPolicy;
 use url::Url;
 
 #[test]

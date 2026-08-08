@@ -7,9 +7,9 @@
 // =============================================================================
 //! Tests for `src/sse/done_marker_policy.rs`.
 
-use qubit_http::sse::DoneMarkerPolicy;
-
 use std::str::FromStr;
+
+use qubit_http::sse::DoneMarkerPolicy;
 
 #[test]
 fn test_done_marker_policy_basic_behavior() {

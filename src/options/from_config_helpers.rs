@@ -38,16 +38,12 @@
 
 use std::collections::HashMap;
 
-use http::{
-    HeaderMap,
-    HeaderName,
-    HeaderValue,
-};
+use http::HeaderMap;
+use http::HeaderName;
+use http::HeaderValue;
 use qubit_config::ConfigError;
-use qubit_config::{
-    ConfigReader,
-    ConfigResult,
-};
+use qubit_config::ConfigReader;
+use qubit_config::ConfigResult;
 
 use super::HttpConfigError;
 

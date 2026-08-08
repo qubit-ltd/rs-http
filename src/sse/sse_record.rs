@@ -7,10 +7,8 @@
 // =============================================================================
 // qubit-style: allow source-test-pair
 
-use super::{
-    SseControl,
-    SseMessage,
-};
+use super::SseControl;
+use super::SseMessage;
 
 /// Internal SSE record stream item before public message filtering.
 #[derive(Debug, Clone, PartialEq, Eq)]

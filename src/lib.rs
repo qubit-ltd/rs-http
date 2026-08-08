@@ -32,44 +32,36 @@ mod request;
 mod response;
 pub mod sse;
 
-pub use client::http_logger::HttpLogger;
 pub use client::HttpClient;
 pub use client::HttpClientFactory;
-pub use error::{
-    HttpError,
-    HttpErrorKind,
-    HttpResult,
-    RetryHint,
-};
-pub use options::{
-    HttpClientOptions,
-    HttpConfigError,
-    HttpConfigErrorKind,
-    HttpLoggingOptions,
-    HttpRetryMethodPolicy,
-    HttpRetryOptions,
-    HttpTimeoutOptions,
-    ProxyOptions,
-    ProxyType,
-};
-pub use request::{
-    AsyncHttpHeaderInjector,
-    HttpHeaderInjector,
-    HttpRequest,
-    HttpRequestBody,
-    HttpRequestBodyByteStream,
-    HttpRequestBuilder,
-    HttpRequestInterceptor,
-    HttpRequestInterceptors,
-    HttpRequestRetryOverride,
-    HttpRequestStreamingBody,
-};
-pub use response::{
-    HttpByteStream,
-    HttpResponse,
-    HttpResponseInterceptor,
-    HttpResponseInterceptorContext,
-    HttpResponseInterceptors,
-    HttpResponseMeta,
-};
+pub use client::http_logger::HttpLogger;
+pub use error::HttpError;
+pub use error::HttpErrorKind;
+pub use error::HttpResult;
+pub use error::RetryHint;
+pub use options::HttpClientOptions;
+pub use options::HttpConfigError;
+pub use options::HttpConfigErrorKind;
+pub use options::HttpLoggingOptions;
+pub use options::HttpRetryMethodPolicy;
+pub use options::HttpRetryOptions;
+pub use options::HttpTimeoutOptions;
+pub use options::ProxyOptions;
+pub use options::ProxyType;
+pub use request::AsyncHttpHeaderInjector;
+pub use request::HttpHeaderInjector;
+pub use request::HttpRequest;
+pub use request::HttpRequestBody;
+pub use request::HttpRequestBodyByteStream;
+pub use request::HttpRequestBuilder;
+pub use request::HttpRequestInterceptor;
+pub use request::HttpRequestInterceptors;
+pub use request::HttpRequestRetryOverride;
+pub use request::HttpRequestStreamingBody;
+pub use response::HttpByteStream;
+pub use response::HttpResponse;
+pub use response::HttpResponseInterceptor;
+pub use response::HttpResponseInterceptorContext;
+pub use response::HttpResponseInterceptors;
+pub use response::HttpResponseMeta;
 pub use tokio_util::sync::CancellationToken;

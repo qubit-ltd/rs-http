@@ -6,10 +6,8 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use std::{
-    fs,
-    path::Path,
-};
+use std::fs;
+use std::path::Path;
 
 fn declared_module_name(line: &str) -> Option<&str> {
     let line = line.trim();

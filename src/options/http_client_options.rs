@@ -8,58 +8,40 @@
 
 use std::collections::HashMap;
 use std::fmt;
+use std::str::FromStr;
 use std::time::Duration;
 
 use http::HeaderMap;
 use http::HeaderValue;
-use qubit_argument::{
-    require_that,
-    ArgumentResultExt,
-};
-use qubit_config::{
-    ConfigReader,
-    ConfigResult,
-};
-use qubit_json::{
-    JsonDecodeOptions,
-    LenientJsonDecoder,
-};
-use qubit_redact::{
-    http::{
-        HttpRedactor,
-        UrlPathPolicy,
-    },
-    RedactionPolicy,
-    Sensitivity,
-};
-use std::str::FromStr;
+use qubit_argument::ArgumentResultExt;
+use qubit_argument::require_that;
+use qubit_config::ConfigReader;
+use qubit_config::ConfigResult;
+use qubit_json::JsonDecodeOptions;
+use qubit_json::LenientJsonDecoder;
+use qubit_redact::RedactionPolicy;
+use qubit_redact::Sensitivity;
+use qubit_redact::http::HttpRedactor;
+use qubit_redact::http::UrlPathPolicy;
 use url::Url;
 
-use super::from_config_helpers::{
-    get_optional_usize,
-    hashmap_to_headermap,
-};
+use super::HttpConfigError;
+use super::from_config_helpers::get_optional_usize;
+use super::from_config_helpers::hashmap_to_headermap;
 use super::http_logging_options::HttpLoggingOptions;
 use super::http_retry_options::HttpRetryOptions;
 use super::http_timeout_options::HttpTimeoutOptions;
 use super::internal::HttpClientLogRedactionConfigInput;
 use super::proxy_options::ProxyOptions;
-use super::HttpConfigError;
-use crate::{
-    constants::{
-        DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES,
-        DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES,
-        DEFAULT_SSE_MAX_FRAME_BYTES,
-        DEFAULT_SSE_MAX_LINE_BYTES,
-    },
-    redact::RedactedDebugger,
-    request::parse_header,
-    sse::{
-        DoneMarkerPolicy,
-        SseJsonMode,
-    },
-    HttpResult,
-};
+use crate::HttpResult;
+use crate::constants::DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES;
+use crate::constants::DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES;
+use crate::constants::DEFAULT_SSE_MAX_FRAME_BYTES;
+use crate::constants::DEFAULT_SSE_MAX_LINE_BYTES;
+use crate::redact::RedactedDebugger;
+use crate::request::parse_header;
+use crate::sse::DoneMarkerPolicy;
+use crate::sse::SseJsonMode;
 
 /// Aggregated settings for [`crate::HttpClient`] and
 /// [`crate::HttpClientFactory`].
@@ -255,7 +237,7 @@ impl HttpClientOptions {
                 return Err(Self::resolve_config_error(
                     config,
                     HttpConfigError::from(error),
-                ))
+                ));
             }
         };
 
@@ -276,7 +258,7 @@ impl HttpClientOptions {
                 ) {
                     Ok(limit) => limit,
                     Err(error) => {
-                        return Err(Self::resolve_config_error(config, error))
+                        return Err(Self::resolve_config_error(config, error));
                     }
                 };
         }
@@ -287,7 +269,7 @@ impl HttpClientOptions {
             ) {
                 Ok(limit) => limit,
                 Err(error) => {
-                    return Err(Self::resolve_config_error(config, error))
+                    return Err(Self::resolve_config_error(config, error));
                 }
             };
         }
@@ -319,7 +301,7 @@ impl HttpClientOptions {
                         return Err(Self::resolve_config_error(
                             &timeouts_config,
                             error,
-                        ))
+                        ));
                     }
                 };
         }
@@ -335,7 +317,7 @@ impl HttpClientOptions {
                     return Err(Self::resolve_config_error(
                         &proxy_config,
                         error,
-                    ))
+                    ));
                 }
             };
         }
@@ -352,7 +334,7 @@ impl HttpClientOptions {
                         return Err(Self::resolve_config_error(
                             &logging_config,
                             error,
-                        ))
+                        ));
                     }
                 };
         }
@@ -367,7 +349,7 @@ impl HttpClientOptions {
                     return Err(Self::resolve_config_error(
                         &retry_config,
                         error,
-                    ))
+                    ));
                 }
             };
         }
@@ -382,7 +364,7 @@ impl HttpClientOptions {
                     return Err(Self::resolve_config_error(
                         &sse_config,
                         HttpConfigError::from(error),
-                    ))
+                    ));
                 }
             };
             if let Some(mode) = sse.json_mode.as_deref() {
@@ -392,7 +374,7 @@ impl HttpClientOptions {
                         return Err(Self::resolve_config_error(
                             &sse_config,
                             error,
-                        ))
+                        ));
                     }
                 };
             }
@@ -404,7 +386,7 @@ impl HttpClientOptions {
                             return Err(Self::resolve_config_error(
                                 &sse_config,
                                 error,
-                            ))
+                            ));
                         }
                     };
             }
@@ -418,7 +400,7 @@ impl HttpClientOptions {
                         return Err(Self::resolve_config_error(
                             &sse_config,
                             error,
-                        ))
+                        ));
                     }
                 };
             }
@@ -432,7 +414,7 @@ impl HttpClientOptions {
                         return Err(Self::resolve_config_error(
                             &sse_config,
                             error,
-                        ))
+                        ));
                     }
                 };
             }
@@ -449,7 +431,7 @@ impl HttpClientOptions {
                         return Err(Self::resolve_config_error(
                             &log_redaction_config,
                             HttpConfigError::from(error),
-                        ))
+                        ));
                     }
                 };
             let mut policy_builder = opts.log_redaction_policy.to_builder();
@@ -460,7 +442,7 @@ impl HttpClientOptions {
                         return Err(Self::resolve_config_error(
                             &log_redaction_config,
                             error,
-                        ))
+                        ));
                     }
                 };
                 policy_builder.http().url_path(policy);
@@ -585,7 +567,7 @@ impl HttpClientOptions {
                     return Err(HttpConfigError::config_error(
                         config.resolve_key(k).map_err(HttpConfigError::from)?,
                         error.to_string(),
-                    ))
+                    ));
                 }
             };
             header_map.insert(header_name.to_string(), value);
@@ -598,7 +580,7 @@ impl HttpClientOptions {
                     return Err(Self::resolve_config_error(
                         config,
                         HttpConfigError::from(error),
-                    ))
+                    ));
                 }
             };
         if !header_map.is_empty() && json_headers.is_some() {
@@ -623,7 +605,7 @@ impl HttpClientOptions {
                             format!(
                                 "Failed to parse default_headers JSON: {error}"
                             ),
-                        ))
+                        ));
                     }
                 };
             header_map = parsed;

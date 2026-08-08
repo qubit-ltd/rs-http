@@ -9,19 +9,13 @@
 
 use bytes::Bytes;
 use futures_util::StreamExt;
-use http::{
-    HeaderMap,
-    Method,
-};
-use qubit_http::sse::{
-    DoneMarkerPolicy,
-    SseChunk,
-    SseJsonMode,
-};
-use qubit_http::{
-    HttpResponse,
-    HttpResult,
-};
+use http::HeaderMap;
+use http::Method;
+use qubit_http::HttpResponse;
+use qubit_http::HttpResult;
+use qubit_http::sse::DoneMarkerPolicy;
+use qubit_http::sse::SseChunk;
+use qubit_http::sse::SseJsonMode;
 
 #[derive(Debug, serde::Deserialize, PartialEq, Eq)]
 struct TestChunk {

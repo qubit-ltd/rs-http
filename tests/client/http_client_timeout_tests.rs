@@ -10,19 +10,15 @@ use std::time::Duration;
 
 use futures_util::StreamExt;
 use http::Method;
-use qubit_http::{
-    HttpClientFactory,
-    HttpClientOptions,
-    HttpErrorKind,
-    RetryHint,
-};
+use qubit_http::HttpClientFactory;
+use qubit_http::HttpClientOptions;
+use qubit_http::HttpErrorKind;
+use qubit_http::RetryHint;
 use tokio::time::timeout;
 
-use crate::common::{
-    spawn_one_shot_server,
-    ResponseChunk,
-    ResponsePlan,
-};
+use crate::common::ResponseChunk;
+use crate::common::ResponsePlan;
+use crate::common::spawn_one_shot_server;
 
 #[tokio::test]
 async fn test_client_level_request_timeout_triggers_timeout_classification() {
@@ -244,8 +240,8 @@ async fn test_reqwest_timeout_during_body_chunk_is_classified_as_read_timeout()
 }
 
 #[tokio::test]
-async fn test_request_level_read_timeout_overrides_client_level_for_buffered_execute(
-) {
+async fn test_request_level_read_timeout_overrides_client_level_for_buffered_execute()
+ {
     let server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
         status: 200,
         headers: vec![],
@@ -277,8 +273,8 @@ async fn test_request_level_read_timeout_overrides_client_level_for_buffered_exe
 }
 
 #[tokio::test]
-async fn test_request_level_read_timeout_overrides_client_level_for_stream_body(
-) {
+async fn test_request_level_read_timeout_overrides_client_level_for_stream_body()
+ {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
         headers: vec![("Content-Type".to_string(), "text/plain".to_string())],

@@ -7,13 +7,11 @@
 // =============================================================================
 //! Integration tests for `src/error/retry_hint.rs`.
 
-use http::StatusCode;
-use qubit_http::{
-    HttpError,
-    RetryHint,
-};
-
 use std::str::FromStr;
+
+use http::StatusCode;
+use qubit_http::HttpError;
+use qubit_http::RetryHint;
 
 #[test]
 fn test_retry_hint_retryable_for_timeout_and_transport_errors() {

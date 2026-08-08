@@ -9,17 +9,13 @@
 use std::time::Duration;
 
 use http::Method;
-use qubit_http::{
-    HttpClientFactory,
-    HttpClientOptions,
-    HttpErrorKind,
-};
+use qubit_http::HttpClientFactory;
+use qubit_http::HttpClientOptions;
+use qubit_http::HttpErrorKind;
 use tokio::time::timeout;
 
-use crate::common::{
-    spawn_one_shot_server,
-    ResponsePlan,
-};
+use crate::common::ResponsePlan;
+use crate::common::spawn_one_shot_server;
 
 #[test]
 fn test_ipv4_only_option_is_preserved_in_client_options() {

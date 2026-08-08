@@ -6,16 +6,14 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use qubit_http::constants::{
-    DEFAULT_CONNECT_TIMEOUT_SECS,
-    DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES,
-    DEFAULT_LOG_BODY_SIZE_LIMIT_BYTES,
-    DEFAULT_READ_TIMEOUT_SECS,
-    DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES,
-    DEFAULT_SSE_MAX_FRAME_BYTES,
-    DEFAULT_SSE_MAX_LINE_BYTES,
-    DEFAULT_WRITE_TIMEOUT_SECS,
-};
+use qubit_http::constants::DEFAULT_CONNECT_TIMEOUT_SECS;
+use qubit_http::constants::DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES;
+use qubit_http::constants::DEFAULT_LOG_BODY_SIZE_LIMIT_BYTES;
+use qubit_http::constants::DEFAULT_READ_TIMEOUT_SECS;
+use qubit_http::constants::DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES;
+use qubit_http::constants::DEFAULT_SSE_MAX_FRAME_BYTES;
+use qubit_http::constants::DEFAULT_SSE_MAX_LINE_BYTES;
+use qubit_http::constants::DEFAULT_WRITE_TIMEOUT_SECS;
 
 #[test]
 fn test_constants_keep_expected_http_defaults() {

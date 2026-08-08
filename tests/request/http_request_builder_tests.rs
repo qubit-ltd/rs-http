@@ -6,34 +6,24 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use std::{
-    error::Error as _,
-    time::Duration,
-};
+use std::error::Error as _;
+use std::time::Duration;
 
 use bytes::Bytes;
+use http::HeaderMap;
+use http::HeaderValue;
+use http::Method;
 use http::header::CONTENT_TYPE;
-use http::{
-    HeaderMap,
-    HeaderValue,
-    Method,
-};
-use qubit_http::{
-    CancellationToken,
-    HttpClientFactory,
-    HttpClientOptions,
-    HttpErrorKind,
-    HttpRequestBody,
-    HttpRetryMethodPolicy,
-};
-use qubit_redact::{
-    RedactionPolicy,
-    Sensitivity,
-};
-use serde::ser::{
-    Error as _,
-    Serializer,
-};
+use qubit_http::CancellationToken;
+use qubit_http::HttpClientFactory;
+use qubit_http::HttpClientOptions;
+use qubit_http::HttpErrorKind;
+use qubit_http::HttpRequestBody;
+use qubit_http::HttpRetryMethodPolicy;
+use qubit_redact::RedactionPolicy;
+use qubit_redact::Sensitivity;
+use serde::ser::Error as _;
+use serde::ser::Serializer;
 
 struct FailingSerialize;
 
@@ -395,8 +385,8 @@ fn test_request_builder_stream_body_preserves_chunk_order() {
 }
 
 #[test]
-fn test_request_builder_query_params_headers_and_text_body_preserve_existing_content_type(
-) {
+fn test_request_builder_query_params_headers_and_text_body_preserve_existing_content_type()
+ {
     let mut headers = HeaderMap::new();
     headers.insert(
         CONTENT_TYPE,
@@ -475,9 +465,11 @@ fn test_request_builder_json_body_serialization_failure_returns_decode_error() {
     assert_eq!(error.kind, HttpErrorKind::Decode);
     assert!(error.message.contains("Failed to encode JSON body"));
     assert!(!error.to_string().contains("boom"));
-    assert!(error
-        .source()
-        .is_some_and(|source| source.to_string().contains("boom")));
+    assert!(
+        error
+            .source()
+            .is_some_and(|source| source.to_string().contains("boom"))
+    );
 }
 
 #[test]
@@ -517,10 +509,12 @@ fn test_request_builder_sets_cancellation_token() {
         .build();
 
     assert!(request.cancellation_token().is_some());
-    assert!(!request
-        .cancellation_token()
-        .expect("cancellation token should exist")
-        .is_cancelled());
+    assert!(
+        !request
+            .cancellation_token()
+            .expect("cancellation token should exist")
+            .is_cancelled()
+    );
 }
 
 #[test]
@@ -630,8 +624,8 @@ fn test_request_builder_multipart_body_rejects_boundary_with_space() {
 }
 
 #[test]
-fn test_request_builder_multipart_body_rejects_boundary_with_unquoted_parameter_chars(
-) {
+fn test_request_builder_multipart_body_rejects_boundary_with_unquoted_parameter_chars()
+ {
     for boundary in [
         "bad/boundary",
         "bad:boundary",
@@ -654,8 +648,8 @@ fn test_request_builder_multipart_body_rejects_boundary_with_unquoted_parameter_
 }
 
 #[test]
-fn test_request_builder_multipart_body_adds_boundary_to_existing_multipart_content_type(
-) {
+fn test_request_builder_multipart_body_adds_boundary_to_existing_multipart_content_type()
+ {
     let request = new_builder(Method::POST, "/v1/multipart")
         .header(CONTENT_TYPE.as_str(), "multipart/mixed")
         .expect("custom content-type header should be valid")
@@ -691,8 +685,8 @@ fn test_request_builder_multipart_body_preserves_matching_existing_boundary() {
 }
 
 #[test]
-fn test_request_builder_multipart_body_preserves_matching_quoted_existing_boundary(
-) {
+fn test_request_builder_multipart_body_preserves_matching_quoted_existing_boundary()
+ {
     let request = new_builder(Method::POST, "/v1/multipart")
         .header(CONTENT_TYPE.as_str(), "multipart/mixed; boundary=\"abc\"")
         .expect("custom content-type header should be valid")
@@ -710,8 +704,8 @@ fn test_request_builder_multipart_body_preserves_matching_quoted_existing_bounda
 }
 
 #[test]
-fn test_request_builder_multipart_body_preserves_matching_escaped_existing_boundary(
-) {
+fn test_request_builder_multipart_body_preserves_matching_escaped_existing_boundary()
+ {
     let request = new_builder(Method::POST, "/v1/multipart")
         .header(CONTENT_TYPE.as_str(), "multipart/mixed; boundary=\"ab\\c\"")
         .expect("custom content-type header should be valid")
@@ -729,8 +723,8 @@ fn test_request_builder_multipart_body_preserves_matching_escaped_existing_bound
 }
 
 #[test]
-fn test_request_builder_multipart_body_ignores_quoted_boundary_text_in_other_parameters(
-) {
+fn test_request_builder_multipart_body_ignores_quoted_boundary_text_in_other_parameters()
+ {
     let request = new_builder(Method::POST, "/v1/multipart")
         .header(
             CONTENT_TYPE.as_str(),
@@ -751,8 +745,8 @@ fn test_request_builder_multipart_body_ignores_quoted_boundary_text_in_other_par
 }
 
 #[test]
-fn test_request_builder_multipart_body_ignores_escaped_separator_in_other_parameters(
-) {
+fn test_request_builder_multipart_body_ignores_escaped_separator_in_other_parameters()
+ {
     let request = new_builder(Method::POST, "/v1/multipart")
         .header(
             CONTENT_TYPE.as_str(),
@@ -773,8 +767,8 @@ fn test_request_builder_multipart_body_ignores_escaped_separator_in_other_parame
 }
 
 #[test]
-fn test_request_builder_multipart_body_skips_parameter_without_value_before_boundary(
-) {
+fn test_request_builder_multipart_body_skips_parameter_without_value_before_boundary()
+ {
     let request = new_builder(Method::POST, "/v1/multipart")
         .header(
             CONTENT_TYPE.as_str(),
@@ -795,8 +789,8 @@ fn test_request_builder_multipart_body_skips_parameter_without_value_before_boun
 }
 
 #[test]
-fn test_request_builder_multipart_body_rejects_boundary_parameter_without_value(
-) {
+fn test_request_builder_multipart_body_rejects_boundary_parameter_without_value()
+ {
     let error = new_builder(Method::POST, "/v1/multipart")
         .header(CONTENT_TYPE.as_str(), "multipart/mixed; boundary")
         .expect("custom content-type header should be valid")
@@ -835,8 +829,8 @@ fn test_request_builder_multipart_body_rejects_malformed_existing_boundary() {
 }
 
 #[test]
-fn test_request_builder_multipart_body_rejects_boundary_with_trailing_text_after_quote(
-) {
+fn test_request_builder_multipart_body_rejects_boundary_with_trailing_text_after_quote()
+ {
     let error = new_builder(Method::POST, "/v1/multipart")
         .header(CONTENT_TYPE.as_str(), "multipart/mixed; boundary=\"abc\"x")
         .expect("custom content-type header should be valid")
@@ -849,8 +843,8 @@ fn test_request_builder_multipart_body_rejects_boundary_with_trailing_text_after
 }
 
 #[test]
-fn test_request_builder_multipart_body_rejects_existing_non_multipart_content_type(
-) {
+fn test_request_builder_multipart_body_rejects_existing_non_multipart_content_type()
+ {
     let error = new_builder(Method::POST, "/v1/multipart")
         .header(CONTENT_TYPE.as_str(), "application/octet-stream")
         .expect("custom content-type header should be valid")
@@ -923,9 +917,11 @@ fn test_request_builder_ndjson_body_serialization_failure_returns_decode_error()
     assert_eq!(error.kind, HttpErrorKind::Decode);
     assert!(error.message.contains("Failed to encode NDJSON record"));
     assert!(!error.to_string().contains("boom"));
-    assert!(error
-        .source()
-        .is_some_and(|source| source.to_string().contains("boom")));
+    assert!(
+        error
+            .source()
+            .is_some_and(|source| source.to_string().contains("boom"))
+    );
 }
 
 #[test]

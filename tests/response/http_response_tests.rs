@@ -7,17 +7,13 @@
 // =============================================================================
 
 use bytes::Bytes;
+use http::HeaderMap;
+use http::HeaderValue;
+use http::Method;
+use http::StatusCode;
 use http::header::RETRY_AFTER;
-use http::{
-    HeaderMap,
-    HeaderValue,
-    Method,
-    StatusCode,
-};
-use qubit_http::{
-    HttpErrorKind,
-    HttpResponse,
-};
+use qubit_http::HttpErrorKind;
+use qubit_http::HttpResponse;
 use url::Url;
 
 use crate::common::SensitiveChoice;
@@ -100,14 +96,16 @@ fn test_http_response_is_success_reports_status_class() {
     );
 
     assert!(response.is_success());
-    assert!(!HttpResponse::new(
-        StatusCode::BAD_REQUEST,
-        HeaderMap::new(),
-        Bytes::new(),
-        Url::parse("https://example.com/bad").unwrap(),
-        Method::GET,
-    )
-    .is_success());
+    assert!(
+        !HttpResponse::new(
+            StatusCode::BAD_REQUEST,
+            HeaderMap::new(),
+            Bytes::new(),
+            Url::parse("https://example.com/bad").unwrap(),
+            Method::GET,
+        )
+        .is_success()
+    );
 }
 
 #[test]
