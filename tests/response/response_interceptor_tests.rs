@@ -6,26 +6,20 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use std::sync::{
-    Arc,
-    Mutex,
-};
+use std::sync::Arc;
+use std::sync::Mutex;
 
-use http::{
-    HeaderMap,
-    HeaderValue,
-    Method,
-    StatusCode,
-};
+use http::HeaderMap;
+use http::HeaderValue;
+use http::Method;
+use http::StatusCode;
 use qubit_function::MutatingFunction;
-use qubit_http::{
-    HttpError,
-    HttpErrorKind,
-    HttpResponseInterceptor,
-    HttpResponseInterceptorContext,
-    HttpResponseInterceptors,
-    HttpResponseMeta,
-};
+use qubit_http::HttpError;
+use qubit_http::HttpErrorKind;
+use qubit_http::HttpResponseInterceptor;
+use qubit_http::HttpResponseInterceptorContext;
+use qubit_http::HttpResponseInterceptors;
+use qubit_http::HttpResponseMeta;
 use url::Url;
 
 #[test]
@@ -88,8 +82,8 @@ fn test_response_interceptor_apply_receives_context() {
 }
 
 #[test]
-fn test_response_interceptor_context_allows_header_mutation_without_status_mutation(
-) {
+fn test_response_interceptor_context_allows_header_mutation_without_status_mutation()
+ {
     let interceptor = HttpResponseInterceptor::new(
         |context: &mut qubit_http::HttpResponseInterceptorContext| {
             context

@@ -12,45 +12,37 @@
 //! [`HttpClient::execute_once`]; retry policy comes from
 //! [`crate::HttpClientOptions::retry`] unless overridden per request.
 
-use std::time::{
-    Duration,
-    Instant,
-};
+use std::time::Duration;
+use std::time::Instant;
 
-use qubit_retry::{
-    AttemptFailure,
-    AttemptFailureDecision,
-    Retry,
-    RetryAfterPolicy,
-    RetryContext,
-    RetryError,
-    RetryErrorReason,
-};
-
-use crate::sse::SseReconnectRunner;
-use crate::{
-    response::HttpResponseOptions,
-    sse::{
-        SseMessageStream,
-        SseReconnectOptions,
-    },
-    AsyncHttpHeaderInjector,
-    HttpClientOptions,
-    HttpError,
-    HttpHeaderInjector,
-    HttpLogger,
-    HttpRequest,
-    HttpRequestBuilder,
-    HttpRequestInterceptor,
-    HttpRequestInterceptors,
-    HttpResponse,
-    HttpResponseInterceptor,
-    HttpResponseInterceptors,
-    HttpResponseMeta,
-    HttpResult,
-    HttpRetryOptions,
-};
 use qubit_redact::http::HttpRedactor;
+use qubit_retry::AttemptFailure;
+use qubit_retry::AttemptFailureDecision;
+use qubit_retry::Retry;
+use qubit_retry::RetryAfterPolicy;
+use qubit_retry::RetryContext;
+use qubit_retry::RetryError;
+use qubit_retry::RetryErrorReason;
+
+use crate::AsyncHttpHeaderInjector;
+use crate::HttpClientOptions;
+use crate::HttpError;
+use crate::HttpHeaderInjector;
+use crate::HttpLogger;
+use crate::HttpRequest;
+use crate::HttpRequestBuilder;
+use crate::HttpRequestInterceptor;
+use crate::HttpRequestInterceptors;
+use crate::HttpResponse;
+use crate::HttpResponseInterceptor;
+use crate::HttpResponseInterceptors;
+use crate::HttpResponseMeta;
+use crate::HttpResult;
+use crate::HttpRetryOptions;
+use crate::response::HttpResponseOptions;
+use crate::sse::SseMessageStream;
+use crate::sse::SseReconnectOptions;
+use crate::sse::SseReconnectRunner;
 
 /// High-level HTTP client: default headers, injectors, interceptors, logging,
 /// timeouts, and optional per-request retry.
@@ -658,18 +650,28 @@ impl HttpClient {
 
         match reason {
             RetryErrorReason::AttemptsExceeded => {
-                let error =
-                    last_error.expect("HTTP retry attempts exceeded should preserve last error");
-                Self::map_retry_attempts_exhausted(error, attempts, max_attempts)
+                let error = last_error.expect(
+                    "HTTP retry attempts exceeded should preserve last error",
+                );
+                Self::map_retry_attempts_exhausted(
+                    error,
+                    attempts,
+                    max_attempts,
+                )
             }
             RetryErrorReason::MaxOperationElapsedExceeded
             | RetryErrorReason::MaxTotalElapsedExceeded => {
-                let max_duration =
-                    max_duration.expect("HTTP retry elapsed limit requires max_duration");
-                Self::map_retry_max_duration_exceeded(started_at, max_duration, last_error)
+                let max_duration = max_duration
+                    .expect("HTTP retry elapsed limit requires max_duration");
+                Self::map_retry_max_duration_exceeded(
+                    started_at,
+                    max_duration,
+                    last_error,
+                )
             }
             RetryErrorReason::Aborted => {
-                let error = last_error.expect("HTTP retry abort should preserve last error");
+                let error = last_error
+                    .expect("HTTP retry abort should preserve last error");
                 if error.kind == crate::HttpErrorKind::Cancelled {
                     error
                 } else {
@@ -678,9 +680,11 @@ impl HttpClient {
             }
             RetryErrorReason::UnsupportedOperation
             | RetryErrorReason::SleeperFailed
-            | RetryErrorReason::WorkerStillRunning => HttpError::other(format!(
-                "HTTP retry executor failed after {attempts} attempt(s): {reason:?}"
-            )),
+            | RetryErrorReason::WorkerStillRunning => {
+                HttpError::other(format!(
+                    "HTTP retry executor failed after {attempts} attempt(s): {reason:?}"
+                ))
+            }
         }
     }
 

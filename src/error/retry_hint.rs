@@ -9,14 +9,10 @@
 //!
 //! Provides lightweight retryability classification for HTTP errors.
 
-use parse_display::{
-    Display,
-    FromStr as DeriveFromStr,
-};
-use serde::{
-    Deserialize,
-    Serialize,
-};
+use parse_display::Display;
+use parse_display::FromStr as DeriveFromStr;
+use serde::Deserialize;
+use serde::Serialize;
 
 /// High-level classification from [`crate::HttpError::retry_hint`] for backoff
 /// policies.

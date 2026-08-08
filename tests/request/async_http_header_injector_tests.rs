@@ -6,10 +6,8 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use http::{
-    HeaderMap,
-    HeaderValue,
-};
+use http::HeaderMap;
+use http::HeaderValue;
 use qubit_http::AsyncHttpHeaderInjector;
 
 #[tokio::test]

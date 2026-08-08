@@ -12,19 +12,13 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use futures_util::StreamExt as _;
-use http::{
-    HeaderMap,
-    Method,
-};
-use qubit_http::{
-    sse::SseReconnectOptions,
-    HttpResponse,
-    HttpResult,
-};
-use qubit_retry::{
-    RetryDelay,
-    RetryJitter,
-};
+use http::HeaderMap;
+use http::Method;
+use qubit_http::HttpResponse;
+use qubit_http::HttpResult;
+use qubit_http::sse::SseReconnectOptions;
+use qubit_retry::RetryDelay;
+use qubit_retry::RetryJitter;
 
 async fn collect_results<T>(
     stream: impl futures_util::Stream<Item = HttpResult<T>>,

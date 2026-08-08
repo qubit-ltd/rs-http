@@ -9,10 +9,8 @@
 use std::time::Duration;
 
 use qubit_config::Config;
-use qubit_http::{
-    HttpConfigErrorKind,
-    HttpTimeoutOptions,
-};
+use qubit_http::HttpConfigErrorKind;
+use qubit_http::HttpTimeoutOptions;
 
 #[test]
 fn test_timeout_options_defaults_when_no_keys() {

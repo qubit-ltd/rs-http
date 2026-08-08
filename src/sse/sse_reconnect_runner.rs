@@ -15,35 +15,27 @@ use std::time::Instant;
 
 use async_stream::stream;
 use futures_util::StreamExt;
-use http::header::{
-    HeaderName,
-    HeaderValue,
-    CONTENT_TYPE,
-};
+use http::header::CONTENT_TYPE;
+use http::header::HeaderName;
+use http::header::HeaderValue;
 use qubit_redact::http::HttpRedactor;
+use qubit_retry::RetryDelay;
+use qubit_retry::RetryOptions;
 use tokio_util::sync::CancellationToken;
 
-use super::{
-    SseControl,
-    SseMessageStream,
-    SseReconnectOptions,
-    SseRecord,
-    DEFAULT_SSE_MAX_RECONNECT_DELAY,
-};
-use crate::{
-    content_type,
-    HttpClient,
-    HttpError,
-    HttpErrorKind,
-    HttpRequest,
-    HttpResponse,
-    HttpResult,
-    RetryHint,
-};
-use qubit_retry::{
-    RetryDelay,
-    RetryOptions,
-};
+use super::DEFAULT_SSE_MAX_RECONNECT_DELAY;
+use super::SseControl;
+use super::SseMessageStream;
+use super::SseReconnectOptions;
+use super::SseRecord;
+use crate::HttpClient;
+use crate::HttpError;
+use crate::HttpErrorKind;
+use crate::HttpRequest;
+use crate::HttpResponse;
+use crate::HttpResult;
+use crate::RetryHint;
+use crate::content_type;
 
 /// Header name used for SSE resume token propagation.
 const LAST_EVENT_ID_HEADER: &str = "last-event-id";

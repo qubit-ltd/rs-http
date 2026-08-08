@@ -7,11 +7,9 @@
 // =============================================================================
 
 use http::Method;
-use qubit_http::{
-    HttpClientFactory,
-    HttpRequestInterceptor,
-    HttpRequestInterceptors,
-};
+use qubit_http::HttpClientFactory;
+use qubit_http::HttpRequestInterceptor;
+use qubit_http::HttpRequestInterceptors;
 
 #[test]
 fn test_http_request_interceptors_apply_in_insertion_order() {

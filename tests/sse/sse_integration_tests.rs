@@ -10,32 +10,22 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use futures_util::StreamExt;
-use http::{
-    HeaderMap,
-    Method,
-    StatusCode,
-};
-use qubit_http::{
-    sse::{
-        SseChunk,
-        SseJsonMode,
-    },
-    HttpClientFactory,
-    HttpClientOptions,
-    HttpErrorKind,
-    HttpResponse,
-};
-use qubit_redact::{
-    RedactionPolicy,
-    Sensitivity,
-};
+use http::HeaderMap;
+use http::Method;
+use http::StatusCode;
+use qubit_http::HttpClientFactory;
+use qubit_http::HttpClientOptions;
+use qubit_http::HttpErrorKind;
+use qubit_http::HttpResponse;
+use qubit_http::sse::SseChunk;
+use qubit_http::sse::SseJsonMode;
+use qubit_redact::RedactionPolicy;
+use qubit_redact::Sensitivity;
 use tokio::time::timeout;
 
-use crate::common::{
-    spawn_one_shot_server,
-    ResponseChunk,
-    ResponsePlan,
-};
+use crate::common::ResponseChunk;
+use crate::common::ResponsePlan;
+use crate::common::spawn_one_shot_server;
 
 #[derive(Debug, serde::Deserialize, PartialEq, Eq)]
 struct TestChunk {
@@ -154,8 +144,8 @@ async fn test_execute_stream_with_decode_events_end_to_end() {
 }
 
 #[tokio::test]
-async fn test_execute_stream_decode_events_reports_read_timeout_when_interrupted(
-) {
+async fn test_execute_stream_decode_events_reports_read_timeout_when_interrupted()
+ {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
         headers: vec![(
@@ -194,8 +184,8 @@ async fn test_execute_stream_decode_events_reports_read_timeout_when_interrupted
 }
 
 #[tokio::test]
-async fn test_execute_stream_decode_json_chunks_uses_client_default_strict_mode(
-) {
+async fn test_execute_stream_decode_json_chunks_uses_client_default_strict_mode()
+ {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
         headers: vec![(

@@ -6,9 +6,9 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use qubit_http::ProxyType;
-
 use std::str::FromStr;
+
+use qubit_http::ProxyType;
 
 #[test]
 fn test_proxy_type_scheme() {

@@ -5,21 +5,15 @@
 // =============================================================================
 //! Tests that standalone HTTP defaults snapshot the application policy.
 
-use http::{
-    HeaderMap,
-    Method,
-    StatusCode,
-};
-use qubit_http::{
-    HttpClientOptions,
-    HttpError,
-    HttpErrorKind,
-    HttpResponseMeta,
-};
-use qubit_redact::{
-    RedactionPolicy,
-    Sensitivity,
-};
+use http::HeaderMap;
+use http::Method;
+use http::StatusCode;
+use qubit_http::HttpClientOptions;
+use qubit_http::HttpError;
+use qubit_http::HttpErrorKind;
+use qubit_http::HttpResponseMeta;
+use qubit_redact::RedactionPolicy;
+use qubit_redact::Sensitivity;
 use url::Url;
 
 #[test]

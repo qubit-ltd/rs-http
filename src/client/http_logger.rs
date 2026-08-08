@@ -11,19 +11,17 @@
 
 use http::header::CONTENT_TYPE;
 use qubit_redact::http::HttpRedactor;
+use tracing::Metadata;
 use tracing::callsite::DefaultCallsite;
 use tracing::metadata::Kind;
-use tracing::Metadata;
 
+use crate::HttpClientOptions;
+use crate::HttpLoggingOptions;
+use crate::HttpRequest;
+use crate::HttpRequestBody;
+use crate::HttpResponse;
+use crate::HttpResponseMeta;
 use crate::redact::RedactedLogger;
-use crate::{
-    HttpClientOptions,
-    HttpLoggingOptions,
-    HttpRequest,
-    HttpRequestBody,
-    HttpResponse,
-    HttpResponseMeta,
-};
 
 const UNRESOLVED_REQUEST_URL: &str = "<unresolved request URL>";
 const STREAMING_REQUEST_BODY_SKIPPED: &str =

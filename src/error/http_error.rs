@@ -11,21 +11,16 @@ use std::error::Error;
 use std::fmt;
 use std::time::Duration;
 
-use http::{
-    Method,
-    StatusCode,
-};
-use qubit_redact::{
-    http::HttpRedactor,
-    RedactionPolicy,
-};
+use http::Method;
+use http::StatusCode;
+use qubit_error::BoxError;
+use qubit_redact::RedactionPolicy;
+use qubit_redact::http::HttpRedactor;
 use url::Url;
 
+use super::HttpErrorKind;
 use super::RetryHint;
 use crate::redact::RedactedDebugger;
-use qubit_error::BoxError;
-
-use super::HttpErrorKind;
 
 /// Unified HTTP error type.
 pub struct HttpError {

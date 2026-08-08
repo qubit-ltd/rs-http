@@ -9,13 +9,11 @@
 use std::time::Duration;
 
 use qubit_config::Config;
-use qubit_http::{
-    HttpClientFactory,
-    HttpClientOptions,
-    HttpConfigErrorKind,
-    HttpErrorKind,
-    ProxyType,
-};
+use qubit_http::HttpClientFactory;
+use qubit_http::HttpClientOptions;
+use qubit_http::HttpConfigErrorKind;
+use qubit_http::HttpErrorKind;
+use qubit_http::ProxyType;
 
 #[test]
 fn test_factory_create_uses_default_options() {

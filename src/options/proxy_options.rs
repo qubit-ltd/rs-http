@@ -9,17 +9,12 @@
 use std::fmt;
 use std::str::FromStr;
 
-use qubit_argument::{
-    require_that,
-    ArgumentResult,
-};
-use qubit_config::{
-    ConfigReader,
-    ConfigResult,
-};
+use qubit_argument::ArgumentResult;
+use qubit_argument::require_that;
+use qubit_config::ConfigReader;
+use qubit_config::ConfigResult;
 
 use super::HttpConfigError;
-
 use super::proxy_type::ProxyType;
 
 /// Outbound proxy configuration applied when building the reqwest client.

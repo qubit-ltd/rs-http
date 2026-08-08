@@ -6,41 +6,29 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use std::sync::{
-    atomic::{
-        AtomicUsize,
-        Ordering,
-    },
-    Arc,
-};
-use std::time::{
-    Duration,
-    Instant,
-};
+use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+use std::time::Duration;
+use std::time::Instant;
 
 use futures_util::StreamExt;
-use http::{
-    Method,
-    StatusCode,
-};
-use qubit_http::{
-    AsyncHttpHeaderInjector,
-    CancellationToken,
-    HttpClientFactory,
-    HttpClientOptions,
-    HttpError,
-    HttpErrorKind,
-    RetryHint,
-};
+use http::Method;
+use http::StatusCode;
+use qubit_http::AsyncHttpHeaderInjector;
+use qubit_http::CancellationToken;
+use qubit_http::HttpClientFactory;
+use qubit_http::HttpClientOptions;
+use qubit_http::HttpError;
+use qubit_http::HttpErrorKind;
+use qubit_http::RetryHint;
 use qubit_retry::RetryDelay;
 use tokio::time::timeout;
 
-use crate::common::{
-    spawn_multi_shot_server,
-    spawn_one_shot_server,
-    ResponseChunk,
-    ResponsePlan,
-};
+use crate::common::ResponseChunk;
+use crate::common::ResponsePlan;
+use crate::common::spawn_multi_shot_server;
+use crate::common::spawn_one_shot_server;
 
 #[test]
 fn test_cancelled_error_semantics() {
@@ -81,8 +69,8 @@ async fn test_execute_request_with_pre_cancelled_token_returns_cancelled_error()
 }
 
 #[tokio::test]
-async fn test_execute_request_with_pre_cancelled_token_skips_request_interceptors(
-) {
+async fn test_execute_request_with_pre_cancelled_token_skips_request_interceptors()
+ {
     let server = spawn_multi_shot_server(vec![]).await;
 
     let mut options = HttpClientOptions::default();
@@ -264,8 +252,8 @@ async fn test_execute_request_can_be_cancelled_while_reading_response_body() {
 }
 
 #[tokio::test]
-async fn test_execute_request_can_be_cancelled_while_reading_status_error_preview(
-) {
+async fn test_execute_request_can_be_cancelled_while_reading_status_error_preview()
+ {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 503,
         headers: vec![],

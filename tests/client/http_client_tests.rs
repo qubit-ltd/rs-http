@@ -10,47 +10,35 @@
 //! Covers request execution, stream execution, and timeout/error behavior.
 
 use std::error::Error as StdError;
-use std::sync::{
-    Arc,
-    Mutex,
-};
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Duration;
 
 use bytes::Bytes;
 use futures_util::StreamExt;
-use http::header::{
-    HeaderName,
-    AUTHORIZATION,
-    CONTENT_TYPE,
-};
-use http::{
-    HeaderValue,
-    Method,
-    StatusCode,
-};
-use qubit_http::{
-    HttpClientFactory,
-    HttpClientOptions,
-    HttpError,
-    HttpErrorKind,
-    HttpHeaderInjector,
-    HttpResponseInterceptor,
-    HttpRetryMethodPolicy,
-};
-use qubit_redact::{
-    http::TextBodyPolicy,
-    RedactionPolicy,
-    Sensitivity,
-};
+use http::HeaderValue;
+use http::Method;
+use http::StatusCode;
+use http::header::AUTHORIZATION;
+use http::header::CONTENT_TYPE;
+use http::header::HeaderName;
+use qubit_http::HttpClientFactory;
+use qubit_http::HttpClientOptions;
+use qubit_http::HttpError;
+use qubit_http::HttpErrorKind;
+use qubit_http::HttpHeaderInjector;
+use qubit_http::HttpResponseInterceptor;
+use qubit_http::HttpRetryMethodPolicy;
+use qubit_redact::RedactionPolicy;
+use qubit_redact::Sensitivity;
+use qubit_redact::http::TextBodyPolicy;
 use qubit_retry::RetryDelay;
 use tokio::time::timeout;
 
-use crate::common::{
-    spawn_multi_shot_server,
-    spawn_one_shot_server,
-    ResponseChunk,
-    ResponsePlan,
-};
+use crate::common::ResponseChunk;
+use crate::common::ResponsePlan;
+use crate::common::spawn_multi_shot_server;
+use crate::common::spawn_one_shot_server;
 
 /// Query field used to verify custom policy propagation across error paths.
 const CUSTOM_QUERY_FIELD: &str = "tenant_marker";
@@ -257,11 +245,13 @@ async fn test_execute_maps_non_success_status_to_http_error() {
         Some("<redacted: unsupported HTTP body>")
     );
     assert!(error.message.contains("response body preview"));
-    assert!(error
-        .url
-        .unwrap()
-        .as_str()
-        .starts_with(&server.base_url().to_string()));
+    assert!(
+        error
+            .url
+            .unwrap()
+            .as_str()
+            .starts_with(&server.base_url().to_string())
+    );
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
@@ -835,8 +825,8 @@ async fn test_execute_truncated_binary_error_preview_has_unknown_total_length()
 }
 
 #[tokio::test]
-async fn test_execute_non_success_error_body_preview_is_not_truncated_at_exact_limit(
-) {
+async fn test_execute_non_success_error_body_preview_is_not_truncated_at_exact_limit()
+ {
     let body = "abcdefgh";
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 500,
@@ -983,8 +973,8 @@ async fn test_execute_non_success_text_body_preview_redacts_by_default() {
 }
 
 #[tokio::test]
-async fn test_execute_non_success_text_body_pass_through_uses_same_policy_snapshot(
-) {
+async fn test_execute_non_success_text_body_pass_through_uses_same_policy_snapshot()
+ {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 400,
         headers: vec![("Content-Type".to_string(), "text/plain".to_string())],
@@ -1066,8 +1056,8 @@ async fn test_execute_status_error_message_redacts_sensitive_url_parts() {
 }
 
 #[tokio::test]
-async fn test_execute_non_success_error_body_preview_truncates_when_limit_reached_before_next_chunk(
-) {
+async fn test_execute_non_success_error_body_preview_truncates_when_limit_reached_before_next_chunk()
+ {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 500,
         headers: vec![],
@@ -1196,11 +1186,13 @@ async fn test_execute_non_success_error_body_preview_timeout_placeholder() {
     let error = client.execute(request).await.unwrap_err();
 
     assert_eq!(error.kind, HttpErrorKind::Status);
-    assert!(error
-        .response_body_preview
-        .as_deref()
-        .unwrap_or_default()
-        .contains("error body unavailable: read timeout"));
+    assert!(
+        error
+            .response_body_preview
+            .as_deref()
+            .unwrap_or_default()
+            .contains("error body unavailable: read timeout")
+    );
 }
 
 #[tokio::test]
@@ -1226,11 +1218,13 @@ async fn test_execute_maps_truncated_response_body_to_transport_error() {
 
     assert_eq!(error.kind, HttpErrorKind::Transport);
     assert_eq!(error.method, Some(Method::GET));
-    assert!(error
-        .url
-        .unwrap()
-        .as_str()
-        .starts_with(&server.base_url().to_string()));
+    assert!(
+        error
+            .url
+            .unwrap()
+            .as_str()
+            .starts_with(&server.base_url().to_string())
+    );
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
@@ -1306,11 +1300,13 @@ async fn test_execute_maps_truncated_response_stream_to_transport_error() {
 
     assert_eq!(error.kind, HttpErrorKind::Transport);
     assert_eq!(error.method, Some(Method::GET));
-    assert!(error
-        .url
-        .unwrap()
-        .as_str()
-        .starts_with(&server.base_url().to_string()));
+    assert!(
+        error
+            .url
+            .unwrap()
+            .as_str()
+            .starts_with(&server.base_url().to_string())
+    );
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
@@ -1396,9 +1392,11 @@ async fn test_remembered_body_read_error_restores_custom_query_policy() {
         .expect_err("repeated read should restore the original failure");
 
     assert_eq!(remembered.kind, HttpErrorKind::Transport);
-    assert!(remembered
-        .message
-        .contains("previous response body read failed"));
+    assert!(
+        remembered
+            .message
+            .contains("previous response body read failed")
+    );
     assert_custom_query_is_redacted(&remembered);
     let captured = server.finish().await;
     assert_eq!(captured.target, path);
@@ -1633,9 +1631,11 @@ async fn test_execute_retry_max_duration_zero_reports_no_retryable_failure() {
         .unwrap_err();
 
     assert_eq!(error.kind, HttpErrorKind::RetryMaxElapsedExceeded);
-    assert!(error
-        .message
-        .contains("before a retryable error was captured"));
+    assert!(
+        error
+            .message
+            .contains("before a retryable error was captured")
+    );
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await

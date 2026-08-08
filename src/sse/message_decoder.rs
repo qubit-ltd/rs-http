@@ -10,15 +10,12 @@
 use async_stream::stream;
 use futures_util::StreamExt;
 
+use super::SseMessageStream;
+use super::SseRecord;
+use super::SseRecordStream;
+use super::frame_decoder;
+use super::line_decoder;
 use crate::HttpByteStream;
-
-use super::{
-    frame_decoder,
-    line_decoder,
-    SseMessageStream,
-    SseRecord,
-    SseRecordStream,
-};
 
 /// Parses internal SSE records from a body byte stream with explicit size
 /// limits.

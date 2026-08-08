@@ -7,38 +7,28 @@
 // =============================================================================
 
 use std::error::Error as StdError;
-use std::sync::{
-    atomic::{
-        AtomicUsize,
-        Ordering,
-    },
-    Arc,
-    Mutex,
-};
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use http::{
-    HeaderMap,
-    HeaderName,
-    HeaderValue,
-    Method,
-    StatusCode,
-};
-use qubit_http::{
-    HttpClientFactory,
-    HttpClientOptions,
-    HttpError,
-    HttpErrorKind,
-    HttpHeaderInjector,
-    HttpRequestInterceptor,
-    HttpResponseInterceptor,
-};
+use http::HeaderMap;
+use http::HeaderName;
+use http::HeaderValue;
+use http::Method;
+use http::StatusCode;
+use qubit_http::HttpClientFactory;
+use qubit_http::HttpClientOptions;
+use qubit_http::HttpError;
+use qubit_http::HttpErrorKind;
+use qubit_http::HttpHeaderInjector;
+use qubit_http::HttpRequestInterceptor;
+use qubit_http::HttpResponseInterceptor;
 use tokio::time::timeout;
 
-use crate::common::{
-    spawn_one_shot_server,
-    ResponsePlan,
-};
+use crate::common::ResponsePlan;
+use crate::common::spawn_one_shot_server;
 
 fn retry_abort_inner_http(error: &HttpError) -> &HttpError {
     let boxed = error
@@ -113,9 +103,11 @@ async fn test_execute_returns_invalid_url_for_bad_relative_path() {
         .expect_err("invalid relative path should fail before request is sent");
 
     assert_eq!(error.kind, HttpErrorKind::InvalidUrl);
-    assert!(error
-        .message
-        .contains("Failed to resolve path 'http://[::1'"));
+    assert!(
+        error
+            .message
+            .contains("Failed to resolve path 'http://[::1'")
+    );
 }
 
 #[tokio::test]

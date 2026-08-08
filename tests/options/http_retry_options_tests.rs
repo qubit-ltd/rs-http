@@ -10,16 +10,14 @@ use std::time::Duration;
 
 use http::StatusCode;
 use qubit_config::Config;
-use qubit_http::{
-    HttpConfigErrorKind,
-    HttpErrorKind,
-    HttpRetryMethodPolicy,
-    HttpRetryOptions,
-};
+use qubit_http::HttpConfigErrorKind;
+use qubit_http::HttpErrorKind;
+use qubit_http::HttpRetryMethodPolicy;
+use qubit_http::HttpRetryOptions;
 
 #[test]
-fn test_http_retry_options_alias_exponential_dash_normalizes_to_exponential_backoff(
-) {
+fn test_http_retry_options_alias_exponential_dash_normalizes_to_exponential_backoff()
+ {
     let mut config = Config::new();
     config.set("retry.delay_strategy", "exponential").unwrap();
     config

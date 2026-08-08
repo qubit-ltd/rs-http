@@ -7,14 +7,10 @@
 // =============================================================================
 //! Reqwest transport phase markers used for error classification.
 
-use parse_display::{
-    Display,
-    FromStr as DeriveFromStr,
-};
-use serde::{
-    Deserialize,
-    Serialize,
-};
+use parse_display::Display;
+use parse_display::FromStr as DeriveFromStr;
+use serde::Deserialize;
+use serde::Serialize;
 
 /// Phase where a [`reqwest::Error`] happened.
 #[derive(

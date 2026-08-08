@@ -7,44 +7,37 @@
 // =============================================================================
 //! Builder for [`super::http_request::HttpRequest`].
 
+use std::fmt;
+use std::future::Future;
+use std::pin::Pin;
 use std::time::Duration;
-use std::{
-    fmt,
-    future::Future,
-    pin::Pin,
-};
 
 use bytes::Bytes;
+use http::HeaderMap;
+use http::HeaderValue;
+use http::Method;
 use http::header::CONTENT_TYPE;
-use http::{
-    HeaderMap,
-    HeaderValue,
-    Method,
-};
 use qubit_redact::http::HttpRedactor;
 use serde::Serialize;
 use tokio_util::sync::CancellationToken;
-use url::form_urlencoded;
 use url::Url;
-
-use crate::content_type;
-use crate::redact::RedactedDebugger;
-use crate::{
-    AsyncHttpHeaderInjector,
-    HttpClient,
-    HttpError,
-    HttpHeaderInjector,
-    HttpRequestBodyByteStream,
-    HttpRequestStreamingBody,
-    HttpResult,
-    HttpRetryMethodPolicy,
-};
+use url::form_urlencoded;
 
 use super::http_request::HttpRequest;
 use super::http_request_body::HttpRequestBody;
 use super::http_request_retry_override::HttpRequestRetryOverride;
 use super::parse_header;
 use super::validate_positive_timeout;
+use crate::AsyncHttpHeaderInjector;
+use crate::HttpClient;
+use crate::HttpError;
+use crate::HttpHeaderInjector;
+use crate::HttpRequestBodyByteStream;
+use crate::HttpRequestStreamingBody;
+use crate::HttpResult;
+use crate::HttpRetryMethodPolicy;
+use crate::content_type;
+use crate::redact::RedactedDebugger;
 
 /// Builder for [`HttpRequest`](super::http_request::HttpRequest).
 #[derive(Clone)]

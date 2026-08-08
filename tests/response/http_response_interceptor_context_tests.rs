@@ -8,18 +8,14 @@
 
 use std::time::Duration;
 
+use http::HeaderMap;
+use http::HeaderValue;
+use http::Method;
+use http::StatusCode;
 use http::header::RETRY_AFTER;
 use http::header::SET_COOKIE;
-use http::{
-    HeaderMap,
-    HeaderValue,
-    Method,
-    StatusCode,
-};
-use qubit_http::{
-    HttpResponseInterceptorContext,
-    HttpResponseMeta,
-};
+use qubit_http::HttpResponseInterceptorContext;
+use qubit_http::HttpResponseMeta;
 use url::Url;
 
 #[test]

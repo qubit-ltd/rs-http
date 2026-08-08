@@ -9,12 +9,10 @@
 use bytes::Bytes;
 use futures_util::stream;
 use http::Method;
-use qubit_http::{
-    HttpClientFactory,
-    HttpRequestBody,
-    HttpRequestBodyByteStream,
-    HttpRequestStreamingBody,
-};
+use qubit_http::HttpClientFactory;
+use qubit_http::HttpRequestBody;
+use qubit_http::HttpRequestBodyByteStream;
+use qubit_http::HttpRequestStreamingBody;
 
 #[test]
 fn test_http_request_streaming_body_sets_request_body_to_empty_placeholder() {

@@ -11,9 +11,8 @@ use std::pin::Pin;
 
 use futures_util::Stream;
 
-use crate::HttpResult;
-
 use super::sse_message::SseMessage;
+use crate::HttpResult;
 
 /// Pin-boxed stream of parsed [`SseMessage`] values or
 /// [`HttpError`](crate::HttpError).

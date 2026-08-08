@@ -8,20 +8,15 @@
 // qubit-style: allow source-test-pair
 //! Safe rendering helpers for HTTP TRACE logs.
 
-use http::{
-    HeaderMap,
-    HeaderValue,
-};
-use qubit_redact::http::{
-    HttpRedactor,
-    RedactedHeaders,
-};
+use http::HeaderMap;
+use http::HeaderValue;
 use qubit_redact::RedactionSession;
+use qubit_redact::http::HttpRedactor;
+use qubit_redact::http::RedactedHeaders;
 use url::Url;
 
-use crate::HttpClientOptions;
-
 use super::BodyPreview;
+use crate::HttpClientOptions;
 
 /// Applies one policy snapshot and one presentation body limit to TRACE data.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -7,20 +7,15 @@
 // =============================================================================
 //! Decode and error-preview options bound to one response instance.
 
-use crate::constants::{
-    DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES,
-    DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES,
-    DEFAULT_SSE_MAX_FRAME_BYTES,
-    DEFAULT_SSE_MAX_LINE_BYTES,
-};
-use crate::sse::{
-    DoneMarkerPolicy,
-    SseJsonMode,
-};
-use qubit_redact::{
-    http::HttpRedactor,
-    RedactionPolicy,
-};
+use qubit_redact::RedactionPolicy;
+use qubit_redact::http::HttpRedactor;
+
+use crate::constants::DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES;
+use crate::constants::DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES;
+use crate::constants::DEFAULT_SSE_MAX_FRAME_BYTES;
+use crate::constants::DEFAULT_SSE_MAX_LINE_BYTES;
+use crate::sse::DoneMarkerPolicy;
+use crate::sse::SseJsonMode;
 /// Decode/error-preview options bound to one response instance.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct HttpResponseOptions {

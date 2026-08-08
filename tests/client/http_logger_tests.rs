@@ -8,16 +8,12 @@
 
 use bytes::Bytes;
 use http::Method;
-use qubit_http::{
-    HttpClientFactory,
-    HttpClientOptions,
-    HttpLogger,
-    HttpLoggingOptions,
-};
-use qubit_redact::{
-    http::TextBodyPolicy,
-    RedactionPolicy,
-};
+use qubit_http::HttpClientFactory;
+use qubit_http::HttpClientOptions;
+use qubit_http::HttpLogger;
+use qubit_http::HttpLoggingOptions;
+use qubit_redact::RedactionPolicy;
+use qubit_redact::http::TextBodyPolicy;
 
 use crate::common::capture_trace_logs;
 

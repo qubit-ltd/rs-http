@@ -11,9 +11,8 @@ use std::pin::Pin;
 
 use futures_util::Stream;
 
-use crate::HttpResult;
-
 use super::sse_record::SseRecord;
+use crate::HttpResult;
 
 /// Pin-boxed stream of internal SSE records or [`HttpError`](crate::HttpError).
 pub(crate) type SseRecordStream =

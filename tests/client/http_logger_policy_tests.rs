@@ -7,46 +7,34 @@
 // =============================================================================
 
 use bytes::Bytes;
-use futures_util::{
-    stream,
-    StreamExt,
-};
-use http::header::{
-    AUTHORIZATION,
-    CONTENT_TYPE,
-    SET_COOKIE,
-};
-use http::{
-    HeaderMap,
-    HeaderValue,
-    Method,
-    StatusCode,
-};
-use qubit_http::{
-    HttpClientFactory,
-    HttpClientOptions,
-    HttpErrorKind,
-    HttpLogger,
-    HttpLoggingOptions,
-    HttpRequest,
-    HttpRequestBody,
-    HttpRequestBodyByteStream,
-    HttpResponse,
-    HttpResponseMeta,
-};
-use qubit_redact::{
-    http::TextBodyPolicy,
-    RedactionPolicy,
-};
+use futures_util::StreamExt;
+use futures_util::stream;
+use http::HeaderMap;
+use http::HeaderValue;
+use http::Method;
+use http::StatusCode;
+use http::header::AUTHORIZATION;
+use http::header::CONTENT_TYPE;
+use http::header::SET_COOKIE;
+use qubit_http::HttpClientFactory;
+use qubit_http::HttpClientOptions;
+use qubit_http::HttpErrorKind;
+use qubit_http::HttpLogger;
+use qubit_http::HttpLoggingOptions;
+use qubit_http::HttpRequest;
+use qubit_http::HttpRequestBody;
+use qubit_http::HttpRequestBodyByteStream;
+use qubit_http::HttpResponse;
+use qubit_http::HttpResponseMeta;
+use qubit_redact::RedactionPolicy;
+use qubit_redact::http::TextBodyPolicy;
 use tokio::time::timeout;
 use url::Url;
 
-use crate::common::{
-    capture_trace_logs,
-    spawn_one_shot_server,
-    ResponseChunk,
-    ResponsePlan,
-};
+use crate::common::ResponseChunk;
+use crate::common::ResponsePlan;
+use crate::common::capture_trace_logs;
+use crate::common::spawn_one_shot_server;
 
 fn logging_request(
     method: Method,
@@ -495,10 +483,12 @@ fn test_execute_returns_body_read_error_from_response_logging() {
             .expect_err("response logging should surface body read failure");
             assert_eq!(error.kind, HttpErrorKind::Transport);
             assert_eq!(error.method, Some(Method::GET));
-            assert!(error
-                .url
-                .as_ref()
-                .is_some_and(|url| url.path() == "/trace-body-read-error"));
+            assert!(
+                error
+                    .url
+                    .as_ref()
+                    .is_some_and(|url| url.path() == "/trace-body-read-error")
+            );
 
             let captured =
                 timeout(std::time::Duration::from_secs(3), server.finish())
@@ -575,8 +565,11 @@ fn test_execute_skips_trace_response_body_for_streaming_or_unknown_size_body() {
                 .expect("server finish timed out");
         });
     });
-    assert!(logs
-        .contains("Response body: <skipped: streaming or unknown-size body>"));
+    assert!(
+        logs.contains(
+            "Response body: <skipped: streaming or unknown-size body>"
+        )
+    );
 }
 
 #[test]
@@ -912,8 +905,11 @@ fn test_log_response_skips_body_when_backend_already_consumed() {
             assert_eq!(captured.target, "/consumed-backend");
         });
     });
-    assert!(logs
-        .contains("Response body: <skipped: streaming or unknown-size body>"));
+    assert!(
+        logs.contains(
+            "Response body: <skipped: streaming or unknown-size body>"
+        )
+    );
 }
 
 #[test]
@@ -959,6 +955,9 @@ fn test_log_response_skips_body_for_sse_content_type() {
             assert_eq!(captured.target, "/sse-log-skip");
         });
     });
-    assert!(logs
-        .contains("Response body: <skipped: streaming or unknown-size body>"));
+    assert!(
+        logs.contains(
+            "Response body: <skipped: streaming or unknown-size body>"
+        )
+    );
 }

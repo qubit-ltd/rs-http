@@ -8,60 +8,41 @@
 //! Unified HTTP response type and helpers.
 
 use std::fmt;
-use std::sync::{
-    Arc,
-    Mutex,
-};
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Duration;
 
 use async_stream::stream;
 use bytes::Bytes;
-use futures_util::{
-    stream as futures_stream,
-    StreamExt,
-};
-use http::header::{
-    CONTENT_LENGTH,
-    CONTENT_TYPE,
-};
-use http::{
-    HeaderMap,
-    HeaderValue,
-    Method,
-    StatusCode,
-};
-use qubit_json::{
-    JsonDecodeOptions,
-    LenientJsonDecoder,
-};
+use futures_util::StreamExt;
+use futures_util::stream as futures_stream;
+use http::HeaderMap;
+use http::HeaderValue;
+use http::Method;
+use http::StatusCode;
+use http::header::CONTENT_LENGTH;
+use http::header::CONTENT_TYPE;
+use qubit_json::JsonDecodeOptions;
+use qubit_json::LenientJsonDecoder;
 use qubit_redact::http::HttpRedactor;
 use serde::de::DeserializeOwned;
 use tokio_util::sync::CancellationToken;
 use url::Url;
 
+use super::HttpResponseMeta;
+use super::HttpResponseOptions;
+use crate::HttpByteStream;
+use crate::HttpError;
+use crate::HttpErrorKind;
+use crate::HttpResult;
 use crate::content_type;
-use crate::error::{
-    backend_error_mapper::map_reqwest_error,
-    ReqwestErrorPhase,
-};
+use crate::error::ReqwestErrorPhase;
+use crate::error::backend_error_mapper::map_reqwest_error;
 use crate::redact::RedactedDebugger;
-use crate::sse::{
-    DoneMarkerPolicy,
-    SseChunkStream,
-    SseJsonMode,
-    SseMessageStream,
-};
-use crate::{
-    HttpByteStream,
-    HttpError,
-    HttpErrorKind,
-    HttpResult,
-};
-
-use super::{
-    HttpResponseMeta,
-    HttpResponseOptions,
-};
+use crate::sse::DoneMarkerPolicy;
+use crate::sse::SseChunkStream;
+use crate::sse::SseJsonMode;
+use crate::sse::SseMessageStream;
 
 /// Snapshot of a body read failure retained after the backend body is consumed.
 #[derive(Debug, Clone)]

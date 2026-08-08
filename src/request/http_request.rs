@@ -14,12 +14,10 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use futures_util::stream as futures_stream;
-use http::{
-    HeaderMap,
-    HeaderName,
-    HeaderValue,
-    Method,
-};
+use http::HeaderMap;
+use http::HeaderName;
+use http::HeaderValue;
+use http::Method;
 use qubit_function::MutatingFunction;
 use qubit_redact::http::HttpRedactor;
 use reqwest::Response;
@@ -27,26 +25,21 @@ use tokio_util::sync::CancellationToken;
 use url::Host;
 use url::Url;
 
-use crate::error::{
-    backend_error_mapper::map_reqwest_error,
-    ReqwestErrorPhase,
-};
-use crate::redact::RedactedDebugger;
-use crate::{
-    AsyncHttpHeaderInjector,
-    HttpError,
-    HttpErrorKind,
-    HttpHeaderInjector,
-    HttpLogger,
-    HttpRequestStreamingBody,
-    HttpResult,
-};
-
 use super::http_request_body::HttpRequestBody;
 use super::http_request_builder::HttpRequestBuilder;
 use super::http_request_retry_override::HttpRequestRetryOverride;
 use super::parse_header;
 use super::validate_positive_timeout;
+use crate::AsyncHttpHeaderInjector;
+use crate::HttpError;
+use crate::HttpErrorKind;
+use crate::HttpHeaderInjector;
+use crate::HttpLogger;
+use crate::HttpRequestStreamingBody;
+use crate::HttpResult;
+use crate::error::ReqwestErrorPhase;
+use crate::error::backend_error_mapper::map_reqwest_error;
+use crate::redact::RedactedDebugger;
 
 /// Request execution options (timeouts, cancellation, and retry override).
 #[derive(Debug, Clone)]
@@ -882,7 +875,7 @@ impl HttpRequest {
             Err(_) => {
                 return Err(self.with_log_redactor(HttpError::other(
                     "Resolved URL cache read lock poisoned",
-                )))
+                )));
             }
         };
         if let Some(url) = cached.as_ref() {
@@ -896,7 +889,7 @@ impl HttpRequest {
             Err(_) => {
                 return Err(self.with_log_redactor(HttpError::other(
                     "Resolved URL cache write lock poisoned",
-                )))
+                )));
             }
         }
         Ok(resolved)

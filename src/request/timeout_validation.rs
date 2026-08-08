@@ -10,10 +10,8 @@
 
 use std::time::Duration;
 
-use crate::{
-    HttpError,
-    HttpResult,
-};
+use crate::HttpError;
+use crate::HttpResult;
 
 /// Validates a request-level timeout duration.
 ///

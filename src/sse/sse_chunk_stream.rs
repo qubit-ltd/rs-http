@@ -11,9 +11,8 @@ use std::pin::Pin;
 
 use futures_util::Stream;
 
-use crate::HttpResult;
-
 use super::sse_chunk::SseChunk;
+use crate::HttpResult;
 
 /// Pin-boxed stream of [`SseChunk`] or [`HttpError`](crate::HttpError).
 pub type SseChunkStream<T> =

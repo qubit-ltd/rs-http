@@ -7,11 +7,9 @@
 // =============================================================================
 
 use qubit_config::Config;
+use qubit_http::HttpConfigErrorKind;
+use qubit_http::HttpLoggingOptions;
 use qubit_http::constants::DEFAULT_LOG_BODY_SIZE_LIMIT_BYTES;
-use qubit_http::{
-    HttpConfigErrorKind,
-    HttpLoggingOptions,
-};
 
 #[test]
 fn test_logging_options_default_values() {
