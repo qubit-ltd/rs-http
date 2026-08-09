@@ -83,7 +83,13 @@ pub(crate) fn decode_records(
                 continue;
             }
 
-            let observed = current_frame_bytes.saturating_add(line.len());
+            let Some(observed) = current_frame_bytes.checked_add(line.len()) else {
+                yield Err(crate::HttpError::sse_protocol(format!(
+                    "SSE frame exceeds max_frame_bytes ({})",
+                    max_frame_bytes,
+                )));
+                return;
+            };
             if observed > max_frame_bytes {
                 yield Err(crate::HttpError::sse_protocol(format!(
                     "SSE frame exceeds max_frame_bytes ({})",

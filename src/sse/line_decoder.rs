@@ -133,7 +133,12 @@ fn append_line_bytes(
     bytes: &[u8],
     max_line_bytes: usize,
 ) -> HttpResult<()> {
-    let observed = buffer.len().saturating_add(bytes.len());
+    let Some(observed) = buffer.len().checked_add(bytes.len()) else {
+        return Err(HttpError::sse_protocol(format!(
+            "SSE line exceeds max_line_bytes ({})",
+            max_line_bytes,
+        )));
+    };
     if observed > max_line_bytes {
         return Err(HttpError::sse_protocol(format!(
             "SSE line exceeds max_line_bytes ({})",
