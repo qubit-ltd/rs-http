@@ -49,6 +49,8 @@ async-stream = "0.3"
 futures-util = "0.3"
 
 qubit-config = { path = "../rs-config", version = "0.16", default-features = false }
+qubit-budget = "0.4"
+qubit-clock = "0.12"
 qubit-argument = "0.4"
 qubit-error = "0.2"
 qubit-function = "0.16"
