@@ -22,6 +22,8 @@ use http::Method;
 use http::StatusCode;
 use http::header::CONTENT_LENGTH;
 use http::header::CONTENT_TYPE;
+use qubit_budget::ResourceBudget;
+use qubit_budget::ResourceLimit;
 use qubit_json::JsonDecodeOptions;
 use qubit_json::LenientJsonDecoder;
 use qubit_redact::http::HttpRedactor;
@@ -403,10 +405,14 @@ impl HttpResponse {
     /// Returns [`HttpErrorKind::Other`](crate::HttpErrorKind::Other) when the
     /// response body exceeds the configured aggregation limit.
     pub async fn bytes(&mut self) -> HttpResult<Bytes> {
+        let body_limit =
+            ResourceLimit::new(self.options.response_body_size_limit as u64);
         if let Some(body) = &self.buffered_body {
-            if body.len() > self.options.response_body_size_limit {
+            if let Err(error) =
+                body_limit.check("response body", body.len() as u64)
+            {
                 return Err(
-                    self.response_body_size_limit_error(body.len() as u64)
+                    self.response_body_size_limit_error(error.observed())
                 );
             }
             return Ok(body.clone());
@@ -425,13 +431,17 @@ impl HttpResponse {
         let read_timeout = self.runtime.read_timeout;
         let cancellation_token = self.runtime.cancellation_token.clone();
         if let Some(content_length) = self.content_length_hint() {
-            if content_length > self.options.response_body_size_limit as u64 {
-                let error = self.response_body_size_limit_error(content_length);
+            if let Err(error) =
+                body_limit.check("response body", content_length)
+            {
+                let error =
+                    self.response_body_size_limit_error(error.observed());
                 self.remember_body_read_failure(&error);
                 return Err(error);
             }
         }
         let mut body = bytes::BytesMut::new();
+        let mut body_budget = ResourceBudget::new("response body", body_limit);
 
         loop {
             let next = if let Some(token) = &cancellation_token {
@@ -455,11 +465,11 @@ impl HttpResponse {
 
             match next {
                 Ok(Ok(Some(chunk))) => {
-                    let observed_size =
-                        (body.len() as u64).saturating_add(chunk.len() as u64);
-                    if observed_size
-                        > self.options.response_body_size_limit as u64
+                    if let Err(error) =
+                        body_budget.try_consume(chunk.len() as u64)
                     {
+                        let observed_size =
+                            error.checked_attempted().unwrap_or(u64::MAX);
                         let error =
                             self.response_body_size_limit_error(observed_size);
                         self.remember_body_read_failure(&error);
@@ -799,6 +809,10 @@ impl HttpResponse {
         let mut preview = Vec::new();
         let mut truncated = false;
         let capture_limit = limit.saturating_add(1);
+        let mut capture_budget = ResourceBudget::new(
+            "status error response body preview",
+            ResourceLimit::new(capture_limit as u64),
+        );
 
         loop {
             let next = if let Some(token) = cancellation_token.as_ref() {
@@ -821,13 +835,14 @@ impl HttpResponse {
             };
             match next {
                 Ok(Ok(Some(chunk))) => {
-                    let remaining = capture_limit.saturating_sub(preview.len());
-                    if chunk.len() > remaining {
-                        preview.extend_from_slice(&chunk[..remaining]);
+                    let captured = capture_budget
+                        .consume_available(chunk.len() as u64)
+                        as usize;
+                    preview.extend_from_slice(&chunk[..captured]);
+                    if captured < chunk.len() {
                         truncated = true;
                         break;
                     }
-                    preview.extend_from_slice(&chunk);
                     if preview.len() > limit {
                         truncated = true;
                         break;
