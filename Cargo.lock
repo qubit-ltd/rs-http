@@ -841,15 +841,11 @@ checksum = "caf9edf4c37fcd532e92ef1cea6611f36cdbe4b08ec8f8ed72b2f01425563858"
 
 [[package]]
 name = "qubit-budget"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "838905f7003616e6576c78506a3c4702153c5b3cd316a6d0b170b290e6079437"
+version = "0.4.0"
 
 [[package]]
 name = "qubit-clock"
 version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11d57ead76f106a1c5b2eac4e859bacd2ed8f1e13024fe8c03c9f829fc30fa65"
 dependencies = [
  "pin-project-lite",
  "qubit-collections",
@@ -915,6 +911,8 @@ dependencies = [
  "httpdate",
  "parse-display",
  "qubit-argument",
+ "qubit-budget",
+ "qubit-clock",
  "qubit-config",
  "qubit-datatype",
  "qubit-error",
@@ -962,6 +960,7 @@ version = "0.18.0"
 dependencies = [
  "parse-display",
  "qubit-argument",
+ "qubit-budget",
  "qubit-clock",
  "qubit-datatype",
  "qubit-error",
