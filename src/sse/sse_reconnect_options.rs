@@ -9,9 +9,8 @@
 
 use std::time::Duration;
 
-use qubit_retry::RetryDelay;
-use qubit_retry::RetryJitter;
-use qubit_retry::RetryOptions;
+use qubit_retry::BackoffPolicy;
+use qubit_retry::RetryPolicy;
 
 /// Default upper bound for SSE reconnect delay backoff.
 pub(crate) const DEFAULT_SSE_MAX_RECONNECT_DELAY: Duration =
@@ -27,19 +26,20 @@ pub(crate) const DEFAULT_SSE_MAX_RECONNECTS: u32 = 3;
 ///
 /// # Returns
 /// Retry options matching SSE reconnect defaults.
-fn default_sse_retry_options() -> RetryOptions {
-    RetryOptions::new(
-        DEFAULT_SSE_MAX_RECONNECTS + 1,
-        None,
-        None,
-        RetryDelay::exponential(
-            Duration::from_secs(1),
-            DEFAULT_SSE_MAX_RECONNECT_DELAY,
-            DEFAULT_SSE_RECONNECT_BACKOFF_MULTIPLIER,
-        ),
-        RetryJitter::None,
-    )
-    .expect("SSE default retry options must be valid")
+fn default_sse_retry_options() -> RetryPolicy {
+    RetryPolicy::builder()
+        .max_attempts(DEFAULT_SSE_MAX_RECONNECTS + 1)
+        .backoff(
+            BackoffPolicy::exponential(
+                Duration::from_secs(1),
+                DEFAULT_SSE_RECONNECT_BACKOFF_MULTIPLIER,
+                DEFAULT_SSE_MAX_RECONNECT_DELAY,
+            )
+            .expect("SSE default retry policy backoff must be valid")
+            .prefer_retry_after(),
+        )
+        .build()
+        .expect("SSE default retry policy must be valid")
 }
 
 /// Reconnect behavior options for
@@ -50,7 +50,7 @@ pub struct SseReconnectOptions {
     ///
     /// `max_attempts` includes the initial stream-open attempt, so if callers
     /// want at most `N` reconnects they should pass `max_attempts = N + 1`.
-    pub retry: RetryOptions,
+    pub retry: RetryPolicy,
     /// Whether to reconnect when the SSE stream ends without an explicit
     /// error.
     pub reconnect_on_eof: bool,

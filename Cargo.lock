@@ -840,6 +840,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "caf9edf4c37fcd532e92ef1cea6611f36cdbe4b08ec8f8ed72b2f01425563858"
 
 [[package]]
+name = "qubit-budget"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "838905f7003616e6576c78506a3c4702153c5b3cd316a6d0b170b290e6079437"
+
+[[package]]
 name = "qubit-clock"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -864,6 +870,7 @@ dependencies = [
 name = "qubit-config"
 version = "0.16.0"
 dependencies = [
+ "qubit-budget",
  "qubit-datatype",
  "qubit-redact",
  "qubit-utils",
@@ -899,7 +906,7 @@ checksum = "59f10e916324739b811520fbfb24746f4822ad9ea1adb53c79fc04b7c090e5ed"
 
 [[package]]
 name = "qubit-http"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "async-stream",
  "bytes",
@@ -951,7 +958,7 @@ dependencies = [
 
 [[package]]
 name = "qubit-retry"
-version = "0.17.0"
+version = "0.18.0"
 dependencies = [
  "parse-display",
  "qubit-argument",

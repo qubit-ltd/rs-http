@@ -27,9 +27,10 @@ use qubit_http::HttpErrorKind;
 use qubit_http::HttpRequestInterceptor;
 use qubit_http::HttpResponseInterceptor;
 use qubit_http::sse::SseReconnectOptions;
+use qubit_retry::BackoffPolicy;
 use qubit_retry::RetryDelay;
 use qubit_retry::RetryJitter;
-use qubit_retry::RetryOptions;
+use qubit_retry::RetryPolicy;
 use tokio::time::timeout;
 
 use crate::common::ResponseChunk;
@@ -50,9 +51,8 @@ fn build_retry_options(
     max_reconnects: u32,
     delay: RetryDelay,
     jitter: RetryJitter,
-) -> RetryOptions {
-    RetryOptions::new(max_reconnects + 1, None, None, delay, jitter)
-        .expect("SSE reconnect test retry options should be valid")
+) -> RetryPolicy {
+    build_retry_policy(max_reconnects, None, delay, jitter)
 }
 
 /// Builds retry options for SSE reconnect tests with max elapsed-time limit.
@@ -70,15 +70,41 @@ fn build_retry_options_with_max_elapsed(
     max_elapsed: Duration,
     delay: RetryDelay,
     jitter: RetryJitter,
-) -> RetryOptions {
-    RetryOptions::new(
-        max_reconnects + 1,
-        None,
-        Some(max_elapsed),
-        delay,
-        jitter,
-    )
-    .expect("SSE reconnect test retry options should be valid")
+) -> RetryPolicy {
+    build_retry_policy(max_reconnects, Some(max_elapsed), delay, jitter)
+}
+
+fn build_retry_policy(
+    max_reconnects: u32,
+    max_elapsed: Option<Duration>,
+    delay: RetryDelay,
+    jitter: RetryJitter,
+) -> RetryPolicy {
+    let backoff = match delay {
+        RetryDelay::None => BackoffPolicy::immediate(),
+        RetryDelay::Fixed(delay) => BackoffPolicy::fixed(delay),
+        RetryDelay::Random { min, max } => {
+            BackoffPolicy::uniform(min, max).unwrap()
+        }
+        RetryDelay::Exponential {
+            initial,
+            max,
+            multiplier,
+        } => BackoffPolicy::exponential(initial, multiplier, max).unwrap(),
+    };
+    let backoff = match jitter {
+        RetryJitter::None => backoff,
+        RetryJitter::Factor(ratio) => {
+            backoff.with_bounded_jitter(ratio).unwrap()
+        }
+    };
+    let mut builder = RetryPolicy::builder()
+        .max_attempts(max_reconnects + 1)
+        .backoff(backoff);
+    if let Some(max_elapsed) = max_elapsed {
+        builder = builder.max_total_elapsed(max_elapsed);
+    }
+    builder.build().unwrap()
 }
 
 #[tokio::test]

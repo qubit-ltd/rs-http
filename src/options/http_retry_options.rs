@@ -14,9 +14,9 @@ use qubit_argument::ArgumentResult;
 use qubit_argument::require_that;
 use qubit_config::ConfigReader;
 use qubit_config::ConfigResult;
+use qubit_retry::BackoffPolicy;
 use qubit_retry::RetryDelay;
-use qubit_retry::RetryJitter;
-use qubit_retry::RetryOptions;
+use qubit_retry::RetryPolicy;
 
 use super::HttpConfigError;
 use super::http_retry_method_policy::HttpRetryMethodPolicy;
@@ -271,7 +271,7 @@ impl HttpRetryOptions {
         is_retryable_error_kind(kind, self.retry_error_kinds.as_deref())
     }
 
-    /// Converts these options into [`RetryOptions`] for the built-in retry
+    /// Converts these options into [`RetryPolicy`] for the built-in retry
     /// executor.
     ///
     /// HTTP retry has one externally visible duration budget:
@@ -283,15 +283,39 @@ impl HttpRetryOptions {
     /// # Panics
     /// Panics only if options that already passed [`Self::validate`] cannot be
     /// represented by `qubit-retry`.
-    pub(crate) fn to_executor_options(&self) -> RetryOptions {
-        RetryOptions::new(
-            self.max_attempts,
-            None,
-            self.max_duration,
-            self.delay_strategy.clone(),
-            RetryJitter::factor(self.jitter_factor),
+    pub(crate) fn to_executor_policy(&self) -> RetryPolicy {
+        let backoff = match &self.delay_strategy {
+            RetryDelay::None => BackoffPolicy::immediate(),
+            RetryDelay::Fixed(delay) => BackoffPolicy::fixed(*delay),
+            RetryDelay::Random { min, max } => {
+                BackoffPolicy::uniform(*min, *max)
+                    .expect("validated HTTP retry delay range should be valid")
+            }
+            RetryDelay::Exponential {
+                initial,
+                max,
+                multiplier,
+            } => BackoffPolicy::exponential(*initial, *multiplier, *max)
+                .expect(
+                    "validated HTTP exponential retry delay should be valid",
+                ),
+        };
+        let backoff = if self.jitter_factor == 0.0 {
+            backoff
+        } else {
+            backoff
+                .with_bounded_jitter(self.jitter_factor)
+                .expect("validated HTTP retry jitter should be valid")
+        };
+        let mut builder = RetryPolicy::builder()
+            .max_attempts(self.max_attempts)
+            .backoff(backoff);
+        if let Some(max_duration) = self.max_duration {
+            builder = builder.max_total_elapsed(max_duration);
+        }
+        builder.build().expect(
+            "validated HTTP retry options should convert to retry policy",
         )
-        .expect("validated HTTP retry options should convert to retry executor options")
     }
 }
 

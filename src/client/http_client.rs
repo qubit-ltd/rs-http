@@ -17,12 +17,11 @@ use std::time::Instant;
 
 use qubit_redact::http::HttpRedactor;
 use qubit_retry::AttemptFailure;
-use qubit_retry::AttemptFailureDecision;
 use qubit_retry::Retry;
-use qubit_retry::RetryAfterPolicy;
-use qubit_retry::RetryContext;
+use qubit_retry::RetryDecision;
 use qubit_retry::RetryError;
 use qubit_retry::RetryErrorReason;
+use qubit_retry::RetryRule;
 
 use crate::AsyncHttpHeaderInjector;
 use crate::HttpClientOptions;
@@ -70,6 +69,32 @@ pub struct HttpClient {
     request_interceptors: HttpRequestInterceptors,
     /// Response interceptors applied on successful responses before return.
     response_interceptors: HttpResponseInterceptors,
+}
+
+struct HttpRetryRule {
+    options: HttpRetryOptions,
+    honor_retry_after: bool,
+}
+
+impl RetryRule<HttpError> for HttpRetryRule {
+    fn decide(
+        &self,
+        failure: &AttemptFailure<HttpError>,
+        _context: &qubit_retry::RetryContext,
+    ) -> RetryDecision {
+        let AttemptFailure::Error(error) = failure else {
+            return RetryDecision::UseDefault;
+        };
+        if !HttpClient::is_retryable_error(error, &self.options) {
+            return RetryDecision::Abort;
+        }
+        if self.honor_retry_after {
+            if let Some(delay) = error.retry_after {
+                return RetryDecision::RetryAfter(delay);
+            }
+        }
+        RetryDecision::Retry
+    }
 }
 
 impl HttpClient {
@@ -447,34 +472,22 @@ impl HttpClient {
     ) -> HttpResult<HttpResponse> {
         let honor_retry_after =
             request.retry_override().should_honor_retry_after();
-        let retry_options = options.to_executor_options();
+        let retry_policy = options.to_executor_policy();
         let started_at = Instant::now();
 
-        let retry_policy_options = options.clone();
-        let retry_policy = Retry::<HttpError>::builder()
-            .options(retry_options)
-            .retry_after_policy(RetryAfterPolicy::AtLeastConfiguredDelay)
-            .retry_after_from_error(move |error| {
-                honor_retry_after.then_some(error.retry_after).flatten()
+        let retry_policy = Retry::<HttpError>::builder(retry_policy)
+            .rule(HttpRetryRule {
+                options: options.clone(),
+                honor_retry_after,
             })
-            .on_failure(
-                move |failure: &AttemptFailure<HttpError>,
-                      context: &RetryContext| {
-                    Self::retry_failure_decision(
-                        failure,
-                        context,
-                        &retry_policy_options,
-                    )
-                },
-            )
-            .build()
-            .expect("validated HTTP retry options should build retry policy");
+            .build();
 
         let cancellation_token = request.cancellation_token().cloned();
         let request_method = request.method().clone();
         let request_url = request.resolved_url().ok();
         let retry_request = request.clone();
-        let retry_future = retry_policy.run_async(|| {
+        let async_retry = retry_policy.asynchronous();
+        let retry_future = async_retry.run(|| {
             let attempt_request = retry_request.clone();
             async move { self.execute_once(attempt_request).await }
         });
@@ -524,32 +537,6 @@ impl HttpClient {
         } else {
             options.is_retryable_error_kind(error.kind)
         }
-    }
-
-    /// Decides how HTTP retry should handle one failed attempt.
-    ///
-    /// # Parameters
-    /// - `failure`: Failed attempt reported by `qubit-retry`.
-    /// - `context`: Retry context for the failed attempt.
-    /// - `policy_options`: HTTP retry allowlists and method policy.
-    ///
-    /// # Returns
-    /// Decision for `qubit-retry`: abort non-retryable HTTP errors, otherwise
-    /// retry using the retry executor default. Non-HTTP runtime failures fall
-    /// back to the retry executor default.
-    fn retry_failure_decision(
-        failure: &AttemptFailure<HttpError>,
-        _context: &RetryContext,
-        policy_options: &HttpRetryOptions,
-    ) -> AttemptFailureDecision {
-        let AttemptFailure::Error(error) = failure else {
-            return AttemptFailureDecision::UseDefault;
-        };
-        if !Self::is_retryable_error(error, policy_options) {
-            return AttemptFailureDecision::Abort;
-        }
-
-        AttemptFailureDecision::UseDefault
     }
 
     /// Adds retry-attempt exhaustion context to the last attempt error.
@@ -649,7 +636,7 @@ impl HttpClient {
         let last_error = last_failure.and_then(AttemptFailure::into_error);
 
         match reason {
-            RetryErrorReason::AttemptsExceeded => {
+            RetryErrorReason::AttemptsExhausted => {
                 let error = last_error.expect(
                     "HTTP retry attempts exceeded should preserve last error",
                 );
@@ -659,8 +646,8 @@ impl HttpClient {
                     max_attempts,
                 )
             }
-            RetryErrorReason::MaxOperationElapsedExceeded
-            | RetryErrorReason::MaxTotalElapsedExceeded => {
+            RetryErrorReason::OperationBudgetExhausted
+            | RetryErrorReason::TotalBudgetExhausted => {
                 let max_duration = max_duration
                     .expect("HTTP retry elapsed limit requires max_duration");
                 Self::map_retry_max_duration_exceeded(
@@ -678,13 +665,17 @@ impl HttpClient {
                     Self::map_retry_aborted(error, attempts, started_at)
                 }
             }
-            RetryErrorReason::UnsupportedOperation
-            | RetryErrorReason::SleeperFailed
+            RetryErrorReason::AttemptTimedOut
+            | RetryErrorReason::FlowTimedOut
+            | RetryErrorReason::TimerFailed
             | RetryErrorReason::WorkerStillRunning => {
                 HttpError::other(format!(
                     "HTTP retry executor failed after {attempts} attempt(s): {reason:?}"
                 ))
             }
+            _ => HttpError::other(format!(
+                "HTTP retry stopped after {attempts} attempt(s): {reason:?}"
+            )),
         }
     }
 
