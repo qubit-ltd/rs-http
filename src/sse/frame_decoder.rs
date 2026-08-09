@@ -11,7 +11,6 @@
 
 use async_stream::stream;
 use futures_util::StreamExt;
-use qubit_budget::ResourceLimit;
 
 use super::SseControl;
 use super::SseMessage;
@@ -34,7 +33,6 @@ pub(crate) fn decode_records(
 ) -> SseRecordStream {
     let output = stream! {
         let max_frame_bytes = max_frame_bytes.max(1);
-        let frame_limit = ResourceLimit::new(max_frame_bytes as u64);
         let mut current_event: Option<String> = None;
         let mut current_id: Option<String> = None;
         let mut current_retry: Option<u64> = None;
@@ -86,12 +84,10 @@ pub(crate) fn decode_records(
             }
 
             let observed = current_frame_bytes.saturating_add(line.len());
-            if let Err(error) =
-                frame_limit.check("SSE frame", observed as u64)
-            {
+            if observed > max_frame_bytes {
                 yield Err(crate::HttpError::sse_protocol(format!(
                     "SSE frame exceeds max_frame_bytes ({})",
-                    error.limit().maximum(),
+                    max_frame_bytes,
                 )));
                 return;
             }

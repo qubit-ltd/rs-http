@@ -23,7 +23,6 @@ use http::StatusCode;
 use http::header::CONTENT_LENGTH;
 use http::header::CONTENT_TYPE;
 use qubit_budget::ResourceBudget;
-use qubit_budget::ResourceLimit;
 use qubit_json::JsonDecodeOptions;
 use qubit_json::LenientJsonDecoder;
 use qubit_redact::http::HttpRedactor;
@@ -405,15 +404,10 @@ impl HttpResponse {
     /// Returns [`HttpErrorKind::Other`](crate::HttpErrorKind::Other) when the
     /// response body exceeds the configured aggregation limit.
     pub async fn bytes(&mut self) -> HttpResult<Bytes> {
-        let body_limit =
-            ResourceLimit::new(self.options.response_body_size_limit as u64);
+        let body_limit = self.options.response_body_size_limit;
         if let Some(body) = &self.buffered_body {
-            if let Err(error) =
-                body_limit.check("response body", body.len() as u64)
-            {
-                return Err(
-                    self.response_body_size_limit_error(error.observed())
-                );
+            if body.len() > body_limit {
+                return Err(self.response_body_size_limit_error(body.len()));
             }
             return Ok(body.clone());
         }
@@ -431,11 +425,14 @@ impl HttpResponse {
         let read_timeout = self.runtime.read_timeout;
         let cancellation_token = self.runtime.cancellation_token.clone();
         if let Some(content_length) = self.content_length_hint() {
-            if let Err(error) =
-                body_limit.check("response body", content_length)
-            {
-                let error =
-                    self.response_body_size_limit_error(error.observed());
+            let exceeds_limit = match usize::try_from(content_length) {
+                Ok(observed_size) => observed_size > body_limit,
+                Err(_) => true,
+            };
+            if exceeds_limit {
+                let observed_size =
+                    usize::try_from(content_length).unwrap_or(usize::MAX);
+                let error = self.response_body_size_limit_error(observed_size);
                 self.remember_body_read_failure(&error);
                 return Err(error);
             }
@@ -465,11 +462,9 @@ impl HttpResponse {
 
             match next {
                 Ok(Ok(Some(chunk))) => {
-                    if let Err(error) =
-                        body_budget.try_consume(chunk.len() as u64)
-                    {
+                    if let Err(error) = body_budget.try_consume(chunk.len()) {
                         let observed_size =
-                            error.checked_attempted().unwrap_or(u64::MAX);
+                            error.checked_attempted().unwrap_or(usize::MAX);
                         let error =
                             self.response_body_size_limit_error(observed_size);
                         self.remember_body_read_failure(&error);
@@ -811,7 +806,7 @@ impl HttpResponse {
         let capture_limit = limit.saturating_add(1);
         let mut capture_budget = ResourceBudget::new(
             "status error response body preview",
-            ResourceLimit::new(capture_limit as u64),
+            capture_limit,
         );
 
         loop {
@@ -835,9 +830,8 @@ impl HttpResponse {
             };
             match next {
                 Ok(Ok(Some(chunk))) => {
-                    let captured = capture_budget
-                        .consume_available(chunk.len() as u64)
-                        as usize;
+                    let captured =
+                        capture_budget.consume_available(chunk.len());
                     preview.extend_from_slice(&chunk[..captured]);
                     if captured < chunk.len() {
                         truncated = true;
@@ -915,7 +909,10 @@ impl HttpResponse {
     }
 
     /// Returns a response-body aggregation limit error with request context.
-    fn response_body_size_limit_error(&self, observed_size: u64) -> HttpError {
+    fn response_body_size_limit_error(
+        &self,
+        observed_size: usize,
+    ) -> HttpError {
         let limit = self.options.response_body_size_limit;
         HttpError::other(format!(
             "Response body exceeds configured limit of {limit} bytes (observed {observed_size} bytes)"

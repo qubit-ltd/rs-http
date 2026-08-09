@@ -219,6 +219,35 @@ async fn test_execute_bytes_rejects_response_body_larger_than_configured_limit()
 }
 
 #[tokio::test]
+async fn test_execute_bytes_accepts_response_body_at_configured_limit() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 200,
+        headers: vec![],
+        body: b"123".to_vec(),
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.response_body_size_limit = 3;
+
+    let client = HttpClientFactory::new()
+        .create(options)
+        .expect("client should be created");
+    let request = client.request(Method::GET, "/body-at-limit").build();
+    let mut response = client.execute(request).await.expect("request succeeds");
+
+    let body = response
+        .bytes()
+        .await
+        .expect("body at configured limit should be accepted");
+
+    assert_eq!(body, Bytes::from_static(b"123"));
+    let captured = server.finish().await;
+    assert_eq!(captured.target, "/body-at-limit");
+}
+
+#[tokio::test]
 async fn test_execute_maps_non_success_status_to_http_error() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 503,

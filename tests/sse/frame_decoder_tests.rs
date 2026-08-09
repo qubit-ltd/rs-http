@@ -112,6 +112,24 @@ async fn test_decode_frames_rejects_frame_exceeding_max_bytes() {
 }
 
 #[tokio::test]
+async fn test_decode_frames_accepts_frame_at_max_bytes() {
+    let response = stream_response_from_chunks(vec!["data: value\n", "\n"]);
+    let mut events = response
+        .sse_max_line_bytes(128)
+        .sse_max_frame_bytes("data: value".len())
+        .sse_messages();
+
+    let event = events
+        .next()
+        .await
+        .expect("SSE stream should yield the event")
+        .expect("frame at configured limit should be accepted");
+
+    assert_eq!(event.data, "value");
+    assert!(events.next().await.is_none());
+}
+
+#[tokio::test]
 async fn test_decode_frames_ignores_comment_lines() {
     let response = stream_response_from_chunks(vec![
         ": heartbeat\n",

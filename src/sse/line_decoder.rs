@@ -15,7 +15,6 @@ use async_stream::stream;
 use bytes::BytesMut;
 use futures_util::Stream;
 use futures_util::StreamExt;
-use qubit_budget::ResourceLimit;
 
 use crate::HttpByteStream;
 use crate::HttpError;
@@ -57,7 +56,6 @@ pub fn decode_lines(
 ) -> SseLineStream {
     let output = stream! {
         let max_line_bytes = max_line_bytes.max(1);
-        let line_limit = ResourceLimit::new(max_line_bytes as u64);
         let mut buffer = BytesMut::new();
         let mut pending_cr = false;
 
@@ -69,7 +67,7 @@ pub fn decode_lines(
                         let Some(index) = remaining.iter().position(|byte| is_line_terminator(*byte)) else {
                             pending_cr = false;
                             if let Err(error) =
-                                append_line_bytes(&mut buffer, remaining, line_limit)
+                                append_line_bytes(&mut buffer, remaining, max_line_bytes)
                             {
                                 yield Err(error);
                                 return;
@@ -81,7 +79,7 @@ pub fn decode_lines(
                         if !segment.is_empty() {
                             pending_cr = false;
                         }
-                        if let Err(error) = append_line_bytes(&mut buffer, segment, line_limit) {
+                        if let Err(error) = append_line_bytes(&mut buffer, segment, max_line_bytes) {
                             yield Err(error);
                             return;
                         }
@@ -126,20 +124,20 @@ pub fn decode_lines(
 /// # Parameters
 /// - `buffer`: Current line buffer.
 /// - `bytes`: Bytes before the next line terminator.
-/// - `line_limit`: Inclusive size limit for one line.
+/// - `max_line_bytes`: Inclusive size limit for one line.
 ///
 /// # Returns
 /// `Ok(())` when appended, or [`HttpError`] when the line is too large.
 fn append_line_bytes(
     buffer: &mut BytesMut,
     bytes: &[u8],
-    line_limit: ResourceLimit,
+    max_line_bytes: usize,
 ) -> HttpResult<()> {
-    let observed = (buffer.len() as u64).saturating_add(bytes.len() as u64);
-    if let Err(error) = line_limit.check("SSE line", observed) {
+    let observed = buffer.len().saturating_add(bytes.len());
+    if observed > max_line_bytes {
         return Err(HttpError::sse_protocol(format!(
             "SSE line exceeds max_line_bytes ({})",
-            error.limit().maximum(),
+            max_line_bytes,
         )));
     }
     buffer.extend_from_slice(bytes);
