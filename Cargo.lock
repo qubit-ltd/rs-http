@@ -973,6 +973,7 @@ dependencies = [
  "qubit-function",
  "rand",
  "serde",
+ "thiserror",
  "tokio",
 ]
 

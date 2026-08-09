@@ -11,16 +11,18 @@
 use std::error::Error as StdError;
 use std::io::ErrorKind;
 use std::time::Duration;
-use std::time::Instant;
 
 use async_stream::stream;
 use futures_util::StreamExt;
 use http::header::CONTENT_TYPE;
 use http::header::HeaderName;
 use http::header::HeaderValue;
+use qubit_clock::StdMonotonicClock;
 use qubit_redact::http::HttpRedactor;
 use qubit_retry::BackoffRequest;
 use qubit_retry::BackoffState;
+use qubit_retry::RetryBudget;
+use qubit_retry::RetryBudgetExhausted;
 use qubit_retry::RetryPolicy;
 use tokio_util::sync::CancellationToken;
 
@@ -41,32 +43,12 @@ use crate::content_type;
 /// Header name used for SSE resume token propagation.
 const LAST_EVENT_ID_HEADER: &str = "last-event-id";
 
-/// Reconnect gate decision before scheduling one more reconnect attempt.
-enum ReconnectDecision {
-    /// Reconnect is allowed by both attempt count and elapsed-time budget.
-    Allowed,
-    /// Reconnect is blocked because maximum reconnect count is reached.
-    MaxReconnectsReached,
-    /// Reconnect is blocked because elapsed-time budget is exhausted.
-    MaxElapsedExceeded {
-        /// Monotonic elapsed time since runner start.
-        elapsed: Duration,
-        /// Configured maximum elapsed time.
-        max_elapsed: Duration,
-    },
-}
-
 /// Runtime references shared by one reconnect scheduling decision.
 struct ReconnectRuntime<'a> {
-    /// Retry options used to derive count, elapsed, delay, and jitter
-    /// behavior.
+    /// Retry policy used to derive delay and jitter behavior.
     retry_policy: &'a RetryPolicy,
     /// SSE reconnect options controlling server retry and EOF behavior.
     options: &'a SseReconnectOptions,
-    /// Maximum reconnect attempts allowed after the first stream attempt.
-    max_reconnects: u32,
-    /// Runner start time used for elapsed-budget checks.
-    started_at: Instant,
     /// Optional cancellation token checked while sleeping before reconnect.
     cancellation_token: Option<&'a CancellationToken>,
     /// Request method used in reconnect cancellation and max-elapsed errors.
@@ -87,10 +69,8 @@ enum ReconnectAction {
     Fail(Box<HttpError>),
 }
 
-/// Mutable reconnect counters and pending retry delay state.
+/// Mutable reconnect backoff and pending retry delay state.
 struct ReconnectState {
-    /// Number of reconnect sleeps already consumed.
-    count: u32,
     /// Current local backoff delay before jitter/server override.
     backoff: BackoffState,
     /// Optional one-shot server-provided retry delay from an SSE `retry:`
@@ -99,16 +79,15 @@ struct ReconnectState {
 }
 
 impl ReconnectState {
-    /// Creates reconnect state from retry options.
+    /// Creates reconnect state from retry policy backoff configuration.
     ///
     /// # Parameters
-    /// - `retry_options`: Retry options used to derive the initial delay.
+    /// - `retry_policy`: Retry policy used to derive the initial delay.
     ///
     /// # Returns
-    /// New reconnect state with zero consumed reconnects.
+    /// New reconnect state with no pending server-provided delay.
     fn new(retry_policy: &RetryPolicy) -> Self {
         Self {
-            count: 0,
             backoff: retry_policy.backoff().start(),
             pending_server_retry_delay: None,
         }
@@ -139,34 +118,40 @@ impl ReconnectState {
     async fn after_error(
         &mut self,
         error: HttpError,
+        budget: &RetryBudget<'_>,
         runtime: &ReconnectRuntime<'_>,
     ) -> ReconnectAction {
         let sleep_delay = self.sleep_delay(runtime);
-        match reconnect_decision(
-            self.count,
-            runtime.max_reconnects,
-            runtime.started_at,
-            runtime.retry_policy,
-            sleep_delay,
-        ) {
-            ReconnectDecision::Allowed => {
-                self.sleep_and_advance(sleep_delay, runtime).await
-            }
-            ReconnectDecision::MaxElapsedExceeded {
-                elapsed,
-                max_elapsed,
-            } => ReconnectAction::Fail(Box::new(
-                max_elapsed_exceeded_error_with_last_error(
-                    error,
-                    elapsed,
-                    max_elapsed,
-                    runtime.request_method,
-                    runtime.request_url,
-                    runtime.log_redactor,
-                ),
-            )),
-            ReconnectDecision::MaxReconnectsReached => {
+        match budget.check_retry_after(sleep_delay) {
+            Ok(()) => self.sleep_and_advance(sleep_delay, runtime).await,
+            Err(RetryBudgetExhausted::Attempts) => {
                 ReconnectAction::Fail(Box::new(error))
+            }
+            Err(RetryBudgetExhausted::OperationElapsed) => {
+                ReconnectAction::Fail(Box::new(
+                    operation_elapsed_exceeded_error_with_last_error(
+                        error,
+                        budget.snapshot().operation_elapsed(),
+                        runtime.retry_policy.limits().max_operation_elapsed(),
+                        runtime.request_method,
+                        runtime.request_url,
+                        runtime.log_redactor,
+                    ),
+                ))
+            }
+            Err(RetryBudgetExhausted::TotalElapsed) => {
+                ReconnectAction::Fail(Box::new(
+                    max_elapsed_exceeded_error_with_last_error(
+                        error,
+                        budget.snapshot().total_elapsed(),
+                        runtime.retry_policy.limits().max_total_elapsed().expect(
+                            "total budget exhaustion requires a configured total limit",
+                        ),
+                        runtime.request_method,
+                        runtime.request_url,
+                        runtime.log_redactor,
+                    ),
+                ))
             }
         }
     }
@@ -183,30 +168,33 @@ impl ReconnectState {
     /// Sleeps asynchronously when another reconnect is allowed.
     async fn after_eof(
         &mut self,
+        budget: &RetryBudget<'_>,
         runtime: &ReconnectRuntime<'_>,
     ) -> ReconnectAction {
         let sleep_delay = self.sleep_delay(runtime);
-        match reconnect_decision(
-            self.count,
-            runtime.max_reconnects,
-            runtime.started_at,
-            runtime.retry_policy,
-            sleep_delay,
-        ) {
-            ReconnectDecision::Allowed => {
-                self.sleep_and_advance(sleep_delay, runtime).await
+        match budget.check_retry_after(sleep_delay) {
+            Ok(()) => self.sleep_and_advance(sleep_delay, runtime).await,
+            Err(RetryBudgetExhausted::Attempts) => ReconnectAction::Stop,
+            Err(RetryBudgetExhausted::OperationElapsed) => {
+                ReconnectAction::Fail(Box::new(operation_elapsed_exceeded_error(
+                    budget.snapshot().operation_elapsed(),
+                    runtime.retry_policy.limits().max_operation_elapsed(),
+                    runtime.request_method,
+                    runtime.request_url,
+                    runtime.log_redactor,
+                )))
             }
-            ReconnectDecision::MaxElapsedExceeded {
-                elapsed,
-                max_elapsed,
-            } => ReconnectAction::Fail(Box::new(max_elapsed_exceeded_error(
-                elapsed,
-                max_elapsed,
-                runtime.request_method,
-                runtime.request_url,
-                runtime.log_redactor,
-            ))),
-            ReconnectDecision::MaxReconnectsReached => ReconnectAction::Stop,
+            Err(RetryBudgetExhausted::TotalElapsed) => {
+                ReconnectAction::Fail(Box::new(max_elapsed_exceeded_error(
+                    budget.snapshot().total_elapsed(),
+                    runtime.retry_policy.limits().max_total_elapsed().expect(
+                        "total budget exhaustion requires a configured total limit",
+                    ),
+                    runtime.request_method,
+                    runtime.request_url,
+                    runtime.log_redactor,
+                )))
+            }
         }
     }
 
@@ -231,7 +219,7 @@ impl ReconnectState {
             .max(Duration::from_millis(1))
     }
 
-    /// Sleeps before reconnect and advances local reconnect state.
+    /// Sleeps before reconnect and clears one-shot reconnect state.
     ///
     /// # Parameters
     /// - `sleep_delay`: Effective reconnect delay to wait.
@@ -242,13 +230,12 @@ impl ReconnectState {
     /// [`ReconnectAction::Fail`] when cancellation interrupts the sleep.
     ///
     /// # Side effects
-    /// Sleeps asynchronously and mutates reconnect counters/backoff state.
+    /// Sleeps asynchronously and clears the one-shot server retry delay.
     async fn sleep_and_advance(
         &mut self,
         sleep_delay: Duration,
         runtime: &ReconnectRuntime<'_>,
     ) -> ReconnectAction {
-        self.count += 1;
         if let Err(error) = sleep_reconnect_delay(
             sleep_delay,
             runtime.cancellation_token,
@@ -309,25 +296,63 @@ impl SseReconnectRunner {
         let options = self.options;
         let output = stream! {
             let retry_policy = options.retry.clone();
-            let max_reconnects = retry_policy.limits().max_attempts().get().saturating_sub(1);
             let request_url = request_template.resolved_url().ok();
             let request_method = request_template.method().clone();
             let cancellation_token = request_template.cancellation_token().cloned();
             let log_redactor = request_template.log_redactor().clone();
-            let started_at = Instant::now();
             let runtime = ReconnectRuntime {
                 retry_policy: &retry_policy,
                 options: &options,
-                max_reconnects,
-                started_at,
                 cancellation_token: cancellation_token.as_ref(),
                 request_method: &request_method,
                 request_url: request_url.as_ref(),
                 log_redactor: &log_redactor,
             };
             let mut reconnect_state = ReconnectState::new(&retry_policy);
+            let clock = StdMonotonicClock::new();
+            let mut retry_budget = match RetryBudget::new(&clock, *retry_policy.limits()) {
+                Ok(budget) => budget,
+                Err(error) => {
+                    let mut mapped = HttpError::other(format!(
+                        "Failed to create SSE reconnect budget: {error}",
+                    ))
+                    .with_method(&request_method)
+                    .with_log_redactor(log_redactor.clone());
+                    if let Some(url) = request_url.as_ref() {
+                        mapped = mapped.with_url(url);
+                    }
+                    yield Err(mapped);
+                    return;
+                }
+            };
             let mut last_event_id: Option<String> = None;
             loop {
+                let attempt = match retry_budget.begin_attempt() {
+                    Ok(attempt) => attempt,
+                    Err(RetryBudgetExhausted::Attempts) => return,
+                    Err(RetryBudgetExhausted::OperationElapsed) => {
+                        yield Err(operation_elapsed_exceeded_error(
+                            retry_budget.snapshot().operation_elapsed(),
+                            retry_policy.limits().max_operation_elapsed(),
+                            runtime.request_method,
+                            runtime.request_url,
+                            runtime.log_redactor,
+                        ));
+                        return;
+                    }
+                    Err(RetryBudgetExhausted::TotalElapsed) => {
+                        yield Err(max_elapsed_exceeded_error(
+                            retry_budget.snapshot().total_elapsed(),
+                            retry_policy.limits().max_total_elapsed().expect(
+                                "total budget exhaustion requires a configured total limit",
+                            ),
+                            runtime.request_method,
+                            runtime.request_url,
+                            runtime.log_redactor,
+                        ));
+                        return;
+                    }
+                };
                 let mut request = request_template.clone();
                 // SSE reconnect loop already retries at stream level. Disable
                 // inner HTTP retry to avoid multiplicative retry attempts.
@@ -339,6 +364,7 @@ impl SseReconnectRunner {
                         last_event_id,
                         runtime.log_redactor,
                     ) {
+                        let _ = retry_budget.finish_attempt(attempt);
                         yield Err(error);
                         return;
                     }
@@ -347,8 +373,9 @@ impl SseReconnectRunner {
                 let response = match client.execute_once(request).await {
                     Ok(response) => response,
                     Err(error) => {
+                        let _ = retry_budget.finish_attempt(attempt);
                         if should_reconnect_sse_error(&error) {
-                            match reconnect_state.after_error(error, &runtime).await {
+                            match reconnect_state.after_error(error, &retry_budget, &runtime).await {
                                 ReconnectAction::Continue => continue,
                                 ReconnectAction::Stop => return,
                                 ReconnectAction::Fail(error) => {
@@ -364,9 +391,11 @@ impl SseReconnectRunner {
                 if let Err(error) =
                     validate_sse_response_content_type(&response, runtime.log_redactor)
                 {
+                    let _ = retry_budget.finish_attempt(attempt);
                     yield Err(error);
                     return;
                 }
+                let _ = retry_budget.finish_attempt(attempt);
 
                 let mut records = response.sse_records();
                 let mut stream_error: Option<HttpError> = None;
@@ -399,7 +428,7 @@ impl SseReconnectRunner {
 
                 if let Some(error) = stream_error {
                     if should_reconnect_sse_error(&error) {
-                        match reconnect_state.after_error(error, &runtime).await {
+                        match reconnect_state.after_error(error, &retry_budget, &runtime).await {
                             ReconnectAction::Continue => continue,
                             ReconnectAction::Stop => return,
                             ReconnectAction::Fail(error) => {
@@ -413,7 +442,7 @@ impl SseReconnectRunner {
                 }
 
                 if options.reconnect_on_eof {
-                    match reconnect_state.after_eof(&runtime).await {
+                    match reconnect_state.after_eof(&retry_budget, &runtime).await {
                         ReconnectAction::Continue => continue,
                         ReconnectAction::Stop => return,
                         ReconnectAction::Fail(error) => {
@@ -474,63 +503,6 @@ fn should_reconnect_sse_error(error: &HttpError) -> bool {
     }
     matches!(error.retry_hint(), RetryHint::Retryable)
         || is_unexpected_eof_error(error)
-}
-
-/// Returns one reconnect decision by checking reconnect count and elapsed-time
-/// budget.
-///
-/// # Parameters
-/// - `count`: Current reconnect count already consumed.
-/// - `max_reconnects`: Maximum reconnect count.
-/// - `started_at`: Runner start time.
-/// - `retry_options`: Retry options containing optional elapsed-time budget.
-/// - `sleep_delay`: Planned reconnect sleep duration for the next attempt.
-///
-/// # Returns
-/// Reconnect decision for the next reconnect attempt.
-fn reconnect_decision(
-    count: u32,
-    max_reconnects: u32,
-    started_at: Instant,
-    retry_policy: &RetryPolicy,
-    sleep_delay: Duration,
-) -> ReconnectDecision {
-    if count >= max_reconnects {
-        return ReconnectDecision::MaxReconnectsReached;
-    }
-    if let Some(max_elapsed) = retry_policy.limits().max_total_elapsed() {
-        let elapsed = started_at.elapsed();
-        if (elapsed >= max_elapsed)
-            || will_exceed_elapsed(elapsed, sleep_delay, max_elapsed)
-        {
-            return ReconnectDecision::MaxElapsedExceeded {
-                elapsed,
-                max_elapsed,
-            };
-        }
-    }
-    ReconnectDecision::Allowed
-}
-
-/// Returns whether sleeping one more reconnect delay would exceed the elapsed
-/// budget.
-///
-/// # Parameters
-/// - `elapsed`: Already-consumed elapsed duration.
-/// - `sleep_delay`: Planned reconnect sleep duration.
-/// - `max_elapsed`: Total elapsed budget.
-///
-/// # Returns
-/// `true` when `elapsed + sleep_delay` is greater than or equal to
-/// `max_elapsed`, or when the addition overflows.
-fn will_exceed_elapsed(
-    elapsed: Duration,
-    sleep_delay: Duration,
-    max_elapsed: Duration,
-) -> bool {
-    elapsed
-        .checked_add(sleep_delay)
-        .is_none_or(|next_elapsed| next_elapsed >= max_elapsed)
 }
 
 /// Sleeps before reconnect, while honoring cancellation token when provided.
@@ -626,7 +598,7 @@ fn default_server_retry_max_delay(retry_policy: &RetryPolicy) -> Duration {
     }
 }
 
-/// Builds one reconnect max-elapsed error for reconnect-on-EOF path.
+/// Builds one reconnect total-elapsed error for reconnect-on-EOF path.
 ///
 /// # Parameters
 /// - `elapsed`: Current elapsed reconnect duration.
@@ -675,13 +647,89 @@ fn max_elapsed_exceeded_error_with_last_error(
     request_url: Option<&url::Url>,
     log_redactor: &HttpRedactor,
 ) -> HttpError {
-    let mut error = max_elapsed_exceeded_error(
+    let error = max_elapsed_exceeded_error(
         elapsed,
         max_elapsed,
         request_method,
         request_url,
         log_redactor,
     );
+    attach_last_retryable_error(error, last_error)
+}
+
+/// Builds one reconnect operation-elapsed error.
+///
+/// # Parameters
+/// - `elapsed`: Current accumulated connection-attempt duration.
+/// - `max_elapsed`: Configured operation duration limit.
+/// - `request_method`: Request method for diagnostics.
+/// - `request_url`: Optional request URL for diagnostics.
+/// - `log_redactor`: Shared request redactor attached to the returned error.
+///
+/// # Returns
+/// Reconnect operation-elapsed error with method/url context when available.
+fn operation_elapsed_exceeded_error(
+    elapsed: Duration,
+    max_elapsed: Option<Duration>,
+    request_method: &http::Method,
+    request_url: Option<&url::Url>,
+    log_redactor: &HttpRedactor,
+) -> HttpError {
+    let max_elapsed = max_elapsed.expect(
+        "operation budget exhaustion requires a configured operation limit",
+    );
+    let mut error = HttpError::retry_max_elapsed_exceeded(format!(
+        "SSE reconnect max operation duration exceeded: {elapsed:?}/{max_elapsed:?}"
+    ))
+    .with_method(request_method);
+    if let Some(url) = request_url {
+        error = error.with_url(url);
+    }
+    error.with_log_redactor(log_redactor.clone())
+}
+
+/// Builds one reconnect operation-elapsed error with the last retryable error.
+///
+/// # Parameters
+/// - `last_error`: Last reconnect-triggering retryable error.
+/// - `elapsed`: Current accumulated connection-attempt duration.
+/// - `max_elapsed`: Configured operation duration limit.
+/// - `request_method`: Request method for diagnostics fallback.
+/// - `request_url`: Optional request URL for diagnostics fallback.
+/// - `log_redactor`: Shared request redactor attached to the returned error.
+///
+/// # Returns
+/// Reconnect operation-elapsed error with the original error as its source.
+fn operation_elapsed_exceeded_error_with_last_error(
+    last_error: HttpError,
+    elapsed: Duration,
+    max_elapsed: Option<Duration>,
+    request_method: &http::Method,
+    request_url: Option<&url::Url>,
+    log_redactor: &HttpRedactor,
+) -> HttpError {
+    let error = operation_elapsed_exceeded_error(
+        elapsed,
+        max_elapsed,
+        request_method,
+        request_url,
+        log_redactor,
+    );
+    attach_last_retryable_error(error, last_error)
+}
+
+/// Preserves one retryable error as diagnostic context on a budget failure.
+///
+/// # Parameters
+/// - `error`: Budget error that receives request context and a source.
+/// - `last_error`: Last retryable HTTP/SSE error.
+///
+/// # Returns
+/// The updated budget error with the last error in its source chain.
+fn attach_last_retryable_error(
+    mut error: HttpError,
+    last_error: HttpError,
+) -> HttpError {
     if let Some(method) = last_error.method.as_ref() {
         error = error.with_method(method);
     }
