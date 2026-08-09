@@ -130,3 +130,22 @@ async fn test_decode_events_with_limits_accepts_line_within_max_bytes() {
     assert_eq!(event.data, "ok");
     assert!(events.next().await.is_none());
 }
+
+#[tokio::test]
+async fn test_decode_events_with_limits_accepts_line_at_max_bytes() {
+    let response =
+        stream_response_from_chunks(vec!["data: ok\n\n".to_string()]);
+    let mut events = response
+        .sse_max_line_bytes("data: ok".len())
+        .sse_max_frame_bytes(1024)
+        .sse_messages();
+
+    let event = events
+        .next()
+        .await
+        .expect("SSE stream should yield the event")
+        .expect("line at configured limit should be accepted");
+
+    assert_eq!(event.data, "ok");
+    assert!(events.next().await.is_none());
+}
