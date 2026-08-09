@@ -1598,13 +1598,11 @@ async fn test_execute_retry_in_flight_max_duration_does_not_panic() {
         }
     }
 
-    let error = timeout(Duration::from_secs(3), &mut execution)
+    let response = timeout(Duration::from_secs(3), &mut execution)
         .await
         .expect("execute timed out")
-        .expect_err("max duration should terminate the in-flight request");
-
-    assert_eq!(error.kind, HttpErrorKind::RetryMaxElapsedExceeded);
-    assert!(error.message.contains("retry max duration exceeded"));
+        .expect("successful attempt may cross the retry budget");
+    assert_eq!(response.status(), StatusCode::OK);
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await

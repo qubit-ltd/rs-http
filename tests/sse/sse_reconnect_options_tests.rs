@@ -12,7 +12,7 @@ use qubit_http::sse::SseReconnectOptions;
 fn test_sse_reconnect_options_default_enables_expected_reconnect_behavior() {
     let options = SseReconnectOptions::new();
 
-    assert_eq!(options.retry.max_attempts(), 4);
+    assert_eq!(options.retry.limits().max_attempts().get(), 4);
     assert!(options.reconnect_on_eof);
     assert!(options.honor_server_retry);
     assert_eq!(options.server_retry_max_delay, None);
