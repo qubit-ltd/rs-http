@@ -464,7 +464,7 @@ impl HttpResponse {
                 Ok(Ok(Some(chunk))) => {
                     if let Err(error) = body_budget.try_consume(chunk.len()) {
                         let observed_size =
-                            error.checked_attempted().unwrap_or(usize::MAX);
+                            error.requested().unwrap_or(usize::MAX);
                         let error =
                             self.response_body_size_limit_error(observed_size);
                         self.remember_body_read_failure(&error);
