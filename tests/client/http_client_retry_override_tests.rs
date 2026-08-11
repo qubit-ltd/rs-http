@@ -6,10 +6,10 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -23,10 +23,10 @@ use qubit_http::HttpRetryMethodPolicy;
 use qubit_retry::RetryDelay;
 use tokio::time::timeout;
 
-use crate::common::ResponseChunk;
-use crate::common::ResponsePlan;
 use crate::common::spawn_multi_shot_server;
 use crate::common::spawn_one_shot_server;
+use crate::common::ResponseChunk;
+use crate::common::ResponsePlan;
 
 #[tokio::test]
 async fn test_request_retry_override_force_enable_and_all_methods_for_post() {
@@ -108,8 +108,7 @@ async fn test_request_retry_override_disable_retry_skips_client_retry_policy() {
 }
 
 #[tokio::test]
-async fn test_request_retry_override_method_policy_allows_post_without_global_override()
- {
+async fn test_request_retry_override_method_policy_allows_post_without_global_override() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Immediate {
             status: 500,
@@ -198,8 +197,7 @@ async fn test_request_retry_override_honor_retry_after_waits_before_retrying() {
 }
 
 #[tokio::test]
-async fn test_request_retry_override_honor_retry_after_waits_before_retrying_on_503()
- {
+async fn test_request_retry_override_honor_retry_after_waits_before_retrying_on_503() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Immediate {
             status: 503,
@@ -246,8 +244,7 @@ async fn test_request_retry_override_honor_retry_after_waits_before_retrying_on_
 }
 
 #[tokio::test]
-async fn test_request_retry_override_honor_retry_after_waits_before_body_stream_retrying()
- {
+async fn test_request_retry_override_honor_retry_after_waits_before_body_stream_retrying() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Immediate {
             status: 429,
@@ -256,10 +253,7 @@ async fn test_request_retry_override_honor_retry_after_waits_before_body_stream_
         },
         ResponsePlan::Chunked {
             status: 200,
-            headers: vec![(
-                "Content-Type".to_string(),
-                "text/plain".to_string(),
-            )],
+            headers: vec![("Content-Type".to_string(), "text/plain".to_string())],
             chunks: vec![ResponseChunk {
                 delay: Duration::ZERO,
                 bytes: b"stream-ok".to_vec(),
@@ -309,8 +303,7 @@ async fn test_request_retry_override_honor_retry_after_waits_before_body_stream_
 }
 
 #[tokio::test]
-async fn test_request_retry_override_honor_retry_after_without_header_does_not_add_delay()
- {
+async fn test_request_retry_override_honor_retry_after_without_header_does_not_add_delay() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Immediate {
             status: 503,
@@ -357,8 +350,7 @@ async fn test_request_retry_override_honor_retry_after_without_header_does_not_a
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn test_request_retry_override_honor_retry_after_does_not_block_runtime_thread()
- {
+async fn test_request_retry_override_honor_retry_after_does_not_block_runtime_thread() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Immediate {
             status: 429,

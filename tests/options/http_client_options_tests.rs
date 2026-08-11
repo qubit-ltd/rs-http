@@ -8,16 +8,10 @@
 
 use std::time::Duration;
 
-use qubit_config::Config;
 use qubit_config::options::InterpolationSources;
 use qubit_config::options::ReadPolicy;
+use qubit_config::Config;
 use qubit_datatype::DataType;
-use qubit_http::HttpClientOptions;
-use qubit_http::HttpConfigErrorKind;
-use qubit_http::HttpErrorKind;
-use qubit_http::HttpRetryMethodPolicy;
-use qubit_http::HttpRetryOptions;
-use qubit_http::ProxyType;
 use qubit_http::constants::DEFAULT_CONNECT_TIMEOUT_SECS;
 use qubit_http::constants::DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES;
 use qubit_http::constants::DEFAULT_LOG_BODY_SIZE_LIMIT_BYTES;
@@ -28,9 +22,15 @@ use qubit_http::constants::DEFAULT_SSE_MAX_LINE_BYTES;
 use qubit_http::constants::DEFAULT_WRITE_TIMEOUT_SECS;
 use qubit_http::sse::DoneMarkerPolicy;
 use qubit_http::sse::SseJsonMode;
+use qubit_http::HttpClientOptions;
+use qubit_http::HttpConfigErrorKind;
+use qubit_http::HttpErrorKind;
+use qubit_http::HttpRetryMethodPolicy;
+use qubit_http::HttpRetryOptions;
+use qubit_http::ProxyType;
+use qubit_redact::http::UrlPathPolicy;
 use qubit_redact::RedactionPolicy;
 use qubit_redact::Sensitivity;
-use qubit_redact::http::UrlPathPolicy;
 use qubit_retry::RetryDelay;
 
 /// Verifies HTTP option parsing only reads process environment placeholders
@@ -55,8 +55,8 @@ fn test_http_client_options_requires_explicit_environment_fallback() {
         .expect("the HTTP section path should be canonical");
 
     let default_result = HttpClientOptions::from_config(&section);
-    let read_policy = ReadPolicy::env_friendly()
-        .with_interpolation_sources(InterpolationSources::ConfigThenEnv);
+    let read_policy =
+        ReadPolicy::env_friendly().with_interpolation_sources(InterpolationSources::ConfigThenEnv);
     let env_view = section.read_with(&read_policy);
     let explicit_result = HttpClientOptions::from_config(&env_view);
 
@@ -68,8 +68,8 @@ fn test_http_client_options_requires_explicit_environment_fallback() {
         default_result.is_err(),
         "default HTTP configuration must not read process environment"
     );
-    let options = explicit_result
-        .expect("explicit environment fallback should resolve the placeholder");
+    let options =
+        explicit_result.expect("explicit environment fallback should resolve the placeholder");
     assert_eq!(
         options.default_headers["authorization"],
         "Bearer test-token"
@@ -294,8 +294,7 @@ fn test_http_client_options_invalid_ipv4_only_type_is_prefixed() {
     let mut config = Config::new();
     config.set("http.ipv4_only", "maybe".to_string()).unwrap();
 
-    let err = HttpClientOptions::from_config(&config.section("http").unwrap())
-        .unwrap_err();
+    let err = HttpClientOptions::from_config(&config.section("http").unwrap()).unwrap_err();
 
     assert_eq!(err.kind, HttpConfigErrorKind::TypeError);
     assert_eq!(err.path, "http.ipv4_only");
@@ -314,8 +313,7 @@ fn test_http_client_options_reqwest_extra_fields_from_config() {
     config.set("http.pool_max_idle_per_host", 32u64).unwrap();
     config.set("http.use_env_proxy", true).unwrap();
 
-    let opts = HttpClientOptions::from_config(&config.section("http").unwrap())
-        .unwrap();
+    let opts = HttpClientOptions::from_config(&config.section("http").unwrap()).unwrap();
     assert_eq!(opts.user_agent.as_deref(), Some("qubit-http-tests/1.0"));
     assert_eq!(opts.max_redirects, Some(7));
     assert_eq!(opts.pool_idle_timeout, Some(Duration::from_secs(15)));
@@ -334,8 +332,7 @@ fn test_http_client_options_with_prefix() {
         .set("http.timeouts.connect_timeout", Duration::from_secs(5))
         .unwrap();
 
-    let opts = HttpClientOptions::from_config(&config.section("http").unwrap())
-        .unwrap();
+    let opts = HttpClientOptions::from_config(&config.section("http").unwrap()).unwrap();
     assert!(opts.base_url.is_some());
     assert!(opts.ipv4_only);
     assert_eq!(opts.timeouts.connect_timeout, Duration::from_secs(5));
@@ -354,8 +351,7 @@ fn test_http_client_options_default_headers_subkey_form() {
         .set("http.default_headers.x-request-id", "abc-123".to_string())
         .unwrap();
 
-    let opts = HttpClientOptions::from_config(&config.section("http").unwrap())
-        .unwrap();
+    let opts = HttpClientOptions::from_config(&config.section("http").unwrap()).unwrap();
     assert_eq!(opts.default_headers.len(), 2);
     assert!(opts.default_headers.contains_key("authorization"));
     assert!(opts.default_headers.contains_key("x-request-id"));
@@ -371,8 +367,7 @@ fn test_http_client_options_default_headers_json_form() {
         )
         .unwrap();
 
-    let opts = HttpClientOptions::from_config(&config.section("http").unwrap())
-        .unwrap();
+    let opts = HttpClientOptions::from_config(&config.section("http").unwrap()).unwrap();
     assert_eq!(opts.default_headers.len(), 2);
 }
 
@@ -383,8 +378,7 @@ fn test_http_client_options_default_headers_invalid_json() {
         .set("http.default_headers", "not-json".to_string())
         .unwrap();
 
-    let err = HttpClientOptions::from_config(&config.section("http").unwrap())
-        .unwrap_err();
+    let err = HttpClientOptions::from_config(&config.section("http").unwrap()).unwrap_err();
     assert_eq!(err.kind, HttpConfigErrorKind::TypeError);
     assert_eq!(
         err.message,
@@ -402,17 +396,12 @@ fn test_http_client_options_default_headers_json_form_rejects_markdown_fence() {
         )
         .unwrap();
 
-    let error =
-        HttpClientOptions::from_config(&config.section("http").unwrap())
-            .expect_err(
-                "strict default_headers JSON must reject Markdown fences",
-            );
+    let error = HttpClientOptions::from_config(&config.section("http").unwrap())
+        .expect_err("strict default_headers JSON must reject Markdown fences");
     assert_eq!(error.kind, HttpConfigErrorKind::TypeError);
-    assert!(
-        error
-            .message
-            .starts_with("Failed to parse default_headers JSON:")
-    );
+    assert!(error
+        .message
+        .starts_with("Failed to parse default_headers JSON:"));
 }
 
 #[test]
@@ -422,8 +411,7 @@ fn test_http_client_options_invalid_header_name() {
         .set("http.default_headers.invalid header", "value".to_string())
         .unwrap();
 
-    let err = HttpClientOptions::from_config(&config.section("http").unwrap())
-        .unwrap_err();
+    let err = HttpClientOptions::from_config(&config.section("http").unwrap()).unwrap_err();
     assert_eq!(err.kind, HttpConfigErrorKind::InvalidHeader);
     assert_eq!(err.path, "http.default_headers.invalid header");
 }
@@ -435,8 +423,7 @@ fn test_http_client_options_invalid_header_value_from_config() {
         .set("http.default_headers.x-bad", "line1\nline2".to_string())
         .unwrap();
 
-    let err = HttpClientOptions::from_config(&config.section("http").unwrap())
-        .unwrap_err();
+    let err = HttpClientOptions::from_config(&config.section("http").unwrap()).unwrap_err();
 
     assert_eq!(err.kind, HttpConfigErrorKind::InvalidHeader);
     assert_eq!(err.path, "http.default_headers.x-bad");
@@ -447,8 +434,7 @@ fn test_http_client_options_numeric_header_value_from_config_is_converted() {
     let mut config = Config::new();
     config.set("http.default_headers.x-number", 42_i32).unwrap();
 
-    let opts = HttpClientOptions::from_config(&config.section("http").unwrap())
-        .unwrap();
+    let opts = HttpClientOptions::from_config(&config.section("http").unwrap()).unwrap();
 
     assert_eq!(opts.default_headers.get("x-number").unwrap(), "42");
 }
@@ -460,8 +446,7 @@ fn test_http_client_options_empty_header_value_from_config_is_prefixed() {
         .set_null("http.default_headers.x-empty", DataType::String)
         .unwrap();
 
-    let err = HttpClientOptions::from_config(&config.section("http").unwrap())
-        .unwrap_err();
+    let err = HttpClientOptions::from_config(&config.section("http").unwrap()).unwrap_err();
 
     assert_eq!(err.kind, HttpConfigErrorKind::ConfigError);
     assert_eq!(err.path, "http.default_headers.x-empty");
@@ -538,53 +523,44 @@ fn test_http_client_options_log_redaction_section() {
         .set("http.log_redaction.url_path_policy", "preserve".to_string())
         .unwrap();
 
-    let opts = HttpClientOptions::from_config(&config.section("http").unwrap())
-        .unwrap();
-    assert!(
-        opts.log_redaction_policy
-            .header_rules()
-            .sensitivity_for("x-custom-secret")
-            .is_some()
-    );
-    assert!(
-        opts.log_redaction_policy
-            .header_rules()
-            .sensitivity_for("x-api-token")
-            .is_some()
-    );
-    assert!(
-        opts.log_redaction_policy
-            .sensitivity_for("authorization")
-            .is_some()
-    );
-    assert!(
-        opts.log_redaction_policy
-            .query_rules()
-            .sensitivity_for("session_token")
-            .is_some()
-    );
-    assert!(
-        opts.log_redaction_policy
-            .sensitivity_for("access_token")
-            .is_some()
-    );
-    assert!(
-        opts.log_redaction_policy
-            .body_rules()
-            .sensitivity_for("customer_secret")
-            .is_some()
-    );
-    assert!(
-        opts.log_redaction_policy
-            .sensitivity_for("client_secret")
-            .is_some()
-    );
+    let opts = HttpClientOptions::from_config(&config.section("http").unwrap()).unwrap();
+    assert!(opts
+        .log_redaction_policy
+        .header_rules()
+        .sensitivity_for("x-custom-secret")
+        .is_some());
+    assert!(opts
+        .log_redaction_policy
+        .header_rules()
+        .sensitivity_for("x-api-token")
+        .is_some());
+    assert!(opts
+        .log_redaction_policy
+        .sensitivity_for("authorization")
+        .is_some());
+    assert!(opts
+        .log_redaction_policy
+        .query_rules()
+        .sensitivity_for("session_token")
+        .is_some());
+    assert!(opts
+        .log_redaction_policy
+        .sensitivity_for("access_token")
+        .is_some());
+    assert!(opts
+        .log_redaction_policy
+        .body_rules()
+        .sensitivity_for("customer_secret")
+        .is_some());
+    assert!(opts
+        .log_redaction_policy
+        .sensitivity_for("client_secret")
+        .is_some());
     assert!(opts.log_redaction_policy.sensitivity_for("sig").is_some());
-    assert!(
-        opts.log_redaction_policy
-            .sensitivity_for("signature")
-            .is_some()
-    );
+    assert!(opts
+        .log_redaction_policy
+        .sensitivity_for("signature")
+        .is_some());
     assert_eq!(
         opts.log_redaction_policy.url_path_policy(),
         UrlPathPolicy::Preserve,
@@ -599,9 +575,8 @@ fn test_http_client_options_parses_redact_url_path_policy() {
         .set("http.log_redaction.url_path_policy", "redact".to_string())
         .expect("test configuration should accept URL path policy text");
 
-    let options =
-        HttpClientOptions::from_config(&config.section("http").unwrap())
-            .expect("redact URL path policy should parse");
+    let options = HttpClientOptions::from_config(&config.section("http").unwrap())
+        .expect("redact URL path policy should parse");
 
     assert_eq!(
         options.log_redaction_policy.url_path_policy(),
@@ -616,17 +591,14 @@ fn test_http_client_options_rejects_invalid_url_path_policy() {
         .set("http.log_redaction.url_path_policy", "visible".to_string())
         .unwrap();
 
-    let error =
-        HttpClientOptions::from_config(&config.section("http").unwrap())
-            .unwrap_err();
+    let error = HttpClientOptions::from_config(&config.section("http").unwrap()).unwrap_err();
 
     assert_eq!(error.kind, HttpConfigErrorKind::InvalidValue);
     assert_eq!(error.path, "http.log_redaction.url_path_policy");
 }
 
 #[test]
-fn test_http_client_options_rejects_invalid_redaction_list_fields_with_resolved_path()
- {
+fn test_http_client_options_rejects_invalid_redaction_list_fields_with_resolved_path() {
     for (field, policy_location) in [
         ("sensitive_headers", "http header"),
         ("sensitive_query_params", "http query"),
@@ -641,9 +613,8 @@ fn test_http_client_options_rejects_invalid_redaction_list_fields_with_resolved_
             .set(&path, vec!["---".to_owned()])
             .expect("test configuration should accept a string list");
 
-        let error =
-            HttpClientOptions::from_config(&config.section("http").unwrap())
-                .expect_err("separator-only names must be rejected");
+        let error = HttpClientOptions::from_config(&config.section("http").unwrap())
+            .expect_err("separator-only names must be rejected");
 
         assert_eq!(error.path, path);
         assert_eq!(error.kind, HttpConfigErrorKind::InvalidValue);
@@ -664,15 +635,13 @@ fn test_http_client_options_root_sensitive_headers_is_not_supported() {
         )
         .unwrap();
 
-    let opts = HttpClientOptions::from_config(&config.section("http").unwrap())
-        .unwrap();
+    let opts = HttpClientOptions::from_config(&config.section("http").unwrap()).unwrap();
 
-    assert!(
-        opts.log_redaction_policy
-            .header_rules()
-            .sensitivity_for("xlegacysecret")
-            .is_none()
-    );
+    assert!(opts
+        .log_redaction_policy
+        .header_rules()
+        .sensitivity_for("xlegacysecret")
+        .is_none());
 }
 
 #[test]
@@ -684,8 +653,7 @@ fn test_http_client_options_proxy_section() {
         .unwrap();
     config.set("http.proxy.port", 3128u16).unwrap();
 
-    let opts = HttpClientOptions::from_config(&config.section("http").unwrap())
-        .unwrap();
+    let opts = HttpClientOptions::from_config(&config.section("http").unwrap()).unwrap();
     assert!(opts.proxy.enabled);
     assert_eq!(opts.proxy.host, Some("proxy.corp.example.com".to_string()));
     assert_eq!(opts.proxy.port, Some(3128));
@@ -698,8 +666,7 @@ fn test_http_client_options_proxy_section_invalid_type_is_prefixed() {
         .set("http.proxy.proxy_type", "bad-proxy".to_string())
         .unwrap();
 
-    let err = HttpClientOptions::from_config(&config.section("http").unwrap())
-        .unwrap_err();
+    let err = HttpClientOptions::from_config(&config.section("http").unwrap()).unwrap_err();
 
     assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
     assert_eq!(err.path, "http.proxy.proxy_type");
@@ -711,8 +678,7 @@ fn test_http_client_options_logging_section() {
     config.set("http.logging.enabled", false).unwrap();
     config.set("http.logging.body_size_limit", 8192u64).unwrap();
 
-    let opts = HttpClientOptions::from_config(&config.section("http").unwrap())
-        .unwrap();
+    let opts = HttpClientOptions::from_config(&config.section("http").unwrap()).unwrap();
     assert!(!opts.logging.enabled);
     assert_eq!(opts.logging.body_size_limit, 8192);
 }
@@ -724,8 +690,7 @@ fn test_http_client_options_error_response_preview_limit_from_config() {
         .set("http.error_response_preview_limit", 512u64)
         .expect("test config should set error_response_preview_limit");
 
-    let opts = HttpClientOptions::from_config(&config.section("http").unwrap())
-        .unwrap();
+    let opts = HttpClientOptions::from_config(&config.section("http").unwrap()).unwrap();
     assert_eq!(opts.error_response_preview_limit, 512);
 }
 
@@ -736,8 +701,7 @@ fn test_http_client_options_response_body_size_limit_from_config() {
         .set("http.response_body_size_limit", 512u64)
         .expect("test config should set response_body_size_limit");
 
-    let opts = HttpClientOptions::from_config(&config.section("http").unwrap())
-        .unwrap();
+    let opts = HttpClientOptions::from_config(&config.section("http").unwrap()).unwrap();
     assert_eq!(opts.response_body_size_limit, 512);
 }
 
@@ -748,8 +712,7 @@ fn test_http_client_options_logging_section_type_error_is_prefixed() {
         .set("http.logging.enabled", "not-bool".to_string())
         .unwrap();
 
-    let err = HttpClientOptions::from_config(&config.section("http").unwrap())
-        .unwrap_err();
+    let err = HttpClientOptions::from_config(&config.section("http").unwrap()).unwrap_err();
 
     assert_eq!(err.kind, HttpConfigErrorKind::TypeError);
     assert_eq!(err.path, "http.logging.enabled");
@@ -786,8 +749,7 @@ fn test_http_client_options_retry_section() {
         .set("http.retry.method_policy", "ALL_METHODS".to_string())
         .unwrap();
 
-    let opts = HttpClientOptions::from_config(&config.section("http").unwrap())
-        .unwrap();
+    let opts = HttpClientOptions::from_config(&config.section("http").unwrap()).unwrap();
 
     assert!(opts.retry.enabled);
     assert_eq!(opts.retry.max_attempts, 4);
@@ -813,9 +775,7 @@ fn test_http_retry_options_delay_strategies_from_config() {
     fixed_config
         .set("retry.fixed_delay", Duration::from_millis(250))
         .unwrap();
-    let fixed =
-        HttpRetryOptions::from_config(&fixed_config.section("retry").unwrap())
-            .unwrap();
+    let fixed = HttpRetryOptions::from_config(&fixed_config.section("retry").unwrap()).unwrap();
     assert_eq!(
         fixed.delay_strategy,
         RetryDelay::Fixed(Duration::from_millis(250))
@@ -831,9 +791,7 @@ fn test_http_retry_options_delay_strategies_from_config() {
     random_config
         .set("retry.random_max_delay", Duration::from_millis(20))
         .unwrap();
-    let random =
-        HttpRetryOptions::from_config(&random_config.section("retry").unwrap())
-            .unwrap();
+    let random = HttpRetryOptions::from_config(&random_config.section("retry").unwrap()).unwrap();
     assert_eq!(
         random.delay_strategy,
         RetryDelay::Random {
@@ -846,9 +804,7 @@ fn test_http_retry_options_delay_strategies_from_config() {
     none_config
         .set("retry.delay_strategy", "NONE".to_string())
         .unwrap();
-    let none =
-        HttpRetryOptions::from_config(&none_config.section("retry").unwrap())
-            .unwrap();
+    let none = HttpRetryOptions::from_config(&none_config.section("retry").unwrap()).unwrap();
     assert_eq!(none.delay_strategy, RetryDelay::None);
 }
 
@@ -858,10 +814,8 @@ fn test_http_retry_options_method_policy_aliases_from_config() {
     idempotent_config
         .set("retry.method_policy", "idempotent".to_string())
         .unwrap();
-    let idempotent = HttpRetryOptions::from_config(
-        &idempotent_config.section("retry").unwrap(),
-    )
-    .expect("idempotent alias should parse");
+    let idempotent = HttpRetryOptions::from_config(&idempotent_config.section("retry").unwrap())
+        .expect("idempotent alias should parse");
     assert_eq!(
         idempotent.method_policy,
         HttpRetryMethodPolicy::IdempotentOnly
@@ -871,9 +825,8 @@ fn test_http_retry_options_method_policy_aliases_from_config() {
     none_config
         .set("retry.method_policy", "disabled".to_string())
         .unwrap();
-    let none =
-        HttpRetryOptions::from_config(&none_config.section("retry").unwrap())
-            .expect("disabled alias should parse");
+    let none = HttpRetryOptions::from_config(&none_config.section("retry").unwrap())
+        .expect("disabled alias should parse");
     assert_eq!(none.method_policy, HttpRetryMethodPolicy::None);
 }
 
@@ -884,8 +837,7 @@ fn test_http_retry_options_invalid_method_policy_from_config() {
         .set("retry.method_policy", "unsafe-only".to_string())
         .unwrap();
 
-    let err = HttpRetryOptions::from_config(&config.section("retry").unwrap())
-        .unwrap_err();
+    let err = HttpRetryOptions::from_config(&config.section("retry").unwrap()).unwrap_err();
 
     assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
     assert_eq!(err.path, "method_policy");
@@ -898,8 +850,7 @@ fn test_http_client_options_retry_section_invalid_value_is_prefixed() {
         .set("http.retry.delay_strategy", "bad-strategy".to_string())
         .unwrap();
 
-    let err = HttpClientOptions::from_config(&config.section("http").unwrap())
-        .unwrap_err();
+    let err = HttpClientOptions::from_config(&config.section("http").unwrap()).unwrap_err();
 
     assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
     assert_eq!(err.path, "http.retry.delay_strategy");
@@ -917,8 +868,7 @@ fn test_http_client_options_sse_section() {
         .set("http.sse.done_marker", "disabled".to_string())
         .unwrap();
 
-    let opts = HttpClientOptions::from_config(&config.section("http").unwrap())
-        .unwrap();
+    let opts = HttpClientOptions::from_config(&config.section("http").unwrap()).unwrap();
 
     assert_eq!(opts.sse_json_mode, SseJsonMode::Strict);
     assert_eq!(opts.sse_done_marker_policy, DoneMarkerPolicy::Disabled);
@@ -933,8 +883,7 @@ fn test_http_client_options_sse_json_mode_invalid_value_is_prefixed() {
         .set("http.sse.json_mode", "fail-fast".to_string())
         .unwrap();
 
-    let err = HttpClientOptions::from_config(&config.section("http").unwrap())
-        .unwrap_err();
+    let err = HttpClientOptions::from_config(&config.section("http").unwrap()).unwrap_err();
 
     assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
     assert_eq!(err.path, "http.sse.json_mode");
@@ -947,10 +896,8 @@ fn test_http_client_options_sse_done_marker_default_alias_and_custom_value() {
         .set("http.sse.done_marker", " default ".to_string())
         .unwrap();
 
-    let default_opts = HttpClientOptions::from_config(
-        &default_config.section("http").unwrap(),
-    )
-    .unwrap();
+    let default_opts =
+        HttpClientOptions::from_config(&default_config.section("http").unwrap()).unwrap();
     assert_eq!(
         default_opts.sse_done_marker_policy,
         DoneMarkerPolicy::DefaultDone
@@ -962,8 +909,7 @@ fn test_http_client_options_sse_done_marker_default_alias_and_custom_value() {
         .unwrap();
 
     let custom_opts =
-        HttpClientOptions::from_config(&custom_config.section("http").unwrap())
-            .unwrap();
+        HttpClientOptions::from_config(&custom_config.section("http").unwrap()).unwrap();
     assert_eq!(
         custom_opts.sse_done_marker_policy,
         DoneMarkerPolicy::Custom("[FIN]".to_string())
@@ -977,8 +923,7 @@ fn test_http_client_options_sse_done_marker_empty_value_is_prefixed() {
         .set("http.sse.done_marker", "   ".to_string())
         .unwrap();
 
-    let err = HttpClientOptions::from_config(&config.section("http").unwrap())
-        .unwrap_err();
+    let err = HttpClientOptions::from_config(&config.section("http").unwrap()).unwrap_err();
 
     assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
     assert_eq!(err.path, "http.sse.done_marker");
@@ -989,8 +934,7 @@ fn test_http_client_options_sse_limits_zero_is_prefixed() {
     let mut config = Config::new();
     config.set("http.sse.max_line_bytes", 0u64).unwrap();
 
-    let err = HttpClientOptions::from_config(&config.section("http").unwrap())
-        .unwrap_err();
+    let err = HttpClientOptions::from_config(&config.section("http").unwrap()).unwrap_err();
 
     assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
     assert_eq!(err.path, "http.sse.max_line_bytes");
@@ -1001,8 +945,7 @@ fn test_http_client_options_sse_max_frame_zero_is_prefixed() {
     let mut config = Config::new();
     config.set("http.sse.max_frame_bytes", 0u64).unwrap();
 
-    let err = HttpClientOptions::from_config(&config.section("http").unwrap())
-        .unwrap_err();
+    let err = HttpClientOptions::from_config(&config.section("http").unwrap()).unwrap_err();
 
     assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
     assert_eq!(err.path, "http.sse.max_frame_bytes");
@@ -1015,8 +958,7 @@ fn test_http_client_options_sse_max_frame_invalid_type_is_prefixed() {
         .set("http.sse.max_frame_bytes", "large".to_string())
         .unwrap();
 
-    let err = HttpClientOptions::from_config(&config.section("http").unwrap())
-        .unwrap_err();
+    let err = HttpClientOptions::from_config(&config.section("http").unwrap()).unwrap_err();
 
     assert_eq!(err.kind, HttpConfigErrorKind::TypeError);
     assert_eq!(err.path, "http.sse.max_frame_bytes");
@@ -1027,16 +969,14 @@ fn test_http_client_options_default_headers_map_invalid_type_is_prefixed() {
     let mut config = Config::new();
     config.set("http.default_headers", 42_i32).unwrap();
 
-    let err = HttpClientOptions::from_config(&config.section("http").unwrap())
-        .unwrap_err();
+    let err = HttpClientOptions::from_config(&config.section("http").unwrap()).unwrap_err();
 
     assert_eq!(err.kind, HttpConfigErrorKind::TypeError);
     assert_eq!(err.path, "http.default_headers");
 }
 
 #[test]
-fn test_http_client_options_default_headers_map_substitution_error_is_prefixed()
-{
+fn test_http_client_options_default_headers_map_substitution_error_is_prefixed() {
     let mut config = Config::new();
     config
         .set(
@@ -1045,8 +985,7 @@ fn test_http_client_options_default_headers_map_substitution_error_is_prefixed()
         )
         .unwrap();
 
-    let err = HttpClientOptions::from_config(&config.section("http").unwrap())
-        .unwrap_err();
+    let err = HttpClientOptions::from_config(&config.section("http").unwrap()).unwrap_err();
 
     assert_eq!(err.kind, HttpConfigErrorKind::ConfigError);
     assert_eq!(err.path, "http.default_headers");
@@ -1114,20 +1053,10 @@ fn test_http_retry_options_validate_reports_first_invalid_field() {
 
 #[test]
 fn test_http_retry_method_policy_allows_methods() {
-    assert!(
-        HttpRetryMethodPolicy::IdempotentOnly.allows_method(&http::Method::GET)
-    );
-    assert!(
-        HttpRetryMethodPolicy::IdempotentOnly
-            .allows_method(&http::Method::DELETE)
-    );
-    assert!(
-        !HttpRetryMethodPolicy::IdempotentOnly
-            .allows_method(&http::Method::POST)
-    );
-    assert!(
-        HttpRetryMethodPolicy::AllMethods.allows_method(&http::Method::POST)
-    );
+    assert!(HttpRetryMethodPolicy::IdempotentOnly.allows_method(&http::Method::GET));
+    assert!(HttpRetryMethodPolicy::IdempotentOnly.allows_method(&http::Method::DELETE));
+    assert!(!HttpRetryMethodPolicy::IdempotentOnly.allows_method(&http::Method::POST));
+    assert!(HttpRetryMethodPolicy::AllMethods.allows_method(&http::Method::POST));
     assert!(!HttpRetryMethodPolicy::None.allows_method(&http::Method::GET));
 }
 
@@ -1172,8 +1101,7 @@ fn test_http_client_options_validate_propagates_retry_error() {
 }
 
 #[test]
-fn test_http_client_options_validate_rejects_zero_error_response_preview_limit()
-{
+fn test_http_client_options_validate_rejects_zero_error_response_preview_limit() {
     let mut opts = HttpClientOptions::default();
     opts.error_response_preview_limit = 0;
 
@@ -1240,8 +1168,7 @@ fn test_http_client_options_timeout_section_zero_value_is_prefixed() {
         .set("http.timeouts.connect_timeout", Duration::ZERO)
         .expect("test config should set connect_timeout");
 
-    let err = HttpClientOptions::from_config(&config.section("http").unwrap())
-        .unwrap_err();
+    let err = HttpClientOptions::from_config(&config.section("http").unwrap()).unwrap_err();
     assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
     assert_eq!(err.path, "http.timeouts.connect_timeout");
 }
@@ -1273,8 +1200,7 @@ fn test_http_client_options_error_response_preview_limit_zero_is_prefixed() {
         .set("http.error_response_preview_limit", 0u64)
         .expect("test config should set error_response_preview_limit");
 
-    let err = HttpClientOptions::from_config(&config.section("http").unwrap())
-        .unwrap_err();
+    let err = HttpClientOptions::from_config(&config.section("http").unwrap()).unwrap_err();
     assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
     assert_eq!(err.path, "http.error_response_preview_limit");
 }
@@ -1392,24 +1318,21 @@ fn test_http_client_options_from_root_config_all_sections() {
     assert_eq!(opts.pool_max_idle_per_host, Some(9));
     assert!(opts.use_env_proxy);
     assert!(opts.default_headers.contains_key("x-root"));
-    assert!(
-        opts.log_redaction_policy
-            .header_rules()
-            .sensitivity_for("x-root-secret")
-            .is_some()
-    );
-    assert!(
-        opts.log_redaction_policy
-            .query_rules()
-            .sensitivity_for("root_token")
-            .is_some()
-    );
-    assert!(
-        opts.log_redaction_policy
-            .body_rules()
-            .sensitivity_for("root_password")
-            .is_some()
-    );
+    assert!(opts
+        .log_redaction_policy
+        .header_rules()
+        .sensitivity_for("x-root-secret")
+        .is_some());
+    assert!(opts
+        .log_redaction_policy
+        .query_rules()
+        .sensitivity_for("root_token")
+        .is_some());
+    assert!(opts
+        .log_redaction_policy
+        .body_rules()
+        .sensitivity_for("root_password")
+        .is_some());
     assert_eq!(opts.timeouts.connect_timeout, Duration::from_secs(3));
     assert_eq!(opts.timeouts.request_timeout, Some(Duration::from_secs(6)));
     assert!(opts.proxy.enabled);
@@ -1549,9 +1472,8 @@ fn test_http_client_options_interpolates_string_configuration_values() {
         .set("http.retry.error_kinds", vec!["${shared.retry_error_kind}"])
         .expect("test config should set interpolated retry error kinds");
 
-    let options =
-        HttpClientOptions::from_config(&config.section("http").unwrap())
-            .expect("interpolated HTTP options should be valid");
+    let options = HttpClientOptions::from_config(&config.section("http").unwrap())
+        .expect("interpolated HTTP options should be valid");
 
     assert_eq!(
         options
@@ -1591,13 +1513,11 @@ fn test_http_client_options_interpolates_string_configuration_values() {
         options.log_redaction_policy.url_path_policy(),
         UrlPathPolicy::Preserve,
     );
-    assert!(
-        options
-            .log_redaction_policy
-            .header_rules()
-            .sensitivity_for("x-interpolated-secret")
-            .is_some()
-    );
+    assert!(options
+        .log_redaction_policy
+        .header_rules()
+        .sensitivity_for("x-interpolated-secret")
+        .is_some());
     assert_eq!(
         options.retry.retry_status_codes,
         Some(vec![http::StatusCode::SERVICE_UNAVAILABLE]),
@@ -1609,22 +1529,19 @@ fn test_http_client_options_interpolates_string_configuration_values() {
 }
 
 #[test]
-fn test_http_client_options_log_redaction_header_number_from_config_is_converted()
- {
+fn test_http_client_options_log_redaction_header_number_from_config_is_converted() {
     let mut config = Config::new();
     config
         .set("http.log_redaction.sensitive_headers", 123_i32)
         .unwrap();
 
-    let opts = HttpClientOptions::from_config(&config.section("http").unwrap())
-        .unwrap();
+    let opts = HttpClientOptions::from_config(&config.section("http").unwrap()).unwrap();
 
-    assert!(
-        opts.log_redaction_policy
-            .header_rules()
-            .sensitivity_for("123")
-            .is_some()
-    );
+    assert!(opts
+        .log_redaction_policy
+        .header_rules()
+        .sensitivity_for("123")
+        .is_some());
 }
 
 #[test]
@@ -1637,8 +1554,7 @@ fn test_http_client_options_default_headers_conflicting_forms_are_rejected() {
         .set("http.default_headers.x-api-key", "from-subkey".to_string())
         .unwrap();
 
-    let err = HttpClientOptions::from_config(&config.section("http").unwrap())
-        .unwrap_err();
+    let err = HttpClientOptions::from_config(&config.section("http").unwrap()).unwrap_err();
     assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
     assert_eq!(err.path, "http.default_headers");
     assert!(err.message.contains("cannot be used at the same time"));
