@@ -13,8 +13,8 @@ use std::time::Duration;
 use http::HeaderMap;
 use http::Method;
 use http::StatusCode;
-use qubit_redact::http::HttpRedactor;
 use qubit_redact::RedactionPolicy;
+use qubit_redact::http::HttpRedactor;
 use url::Url;
 
 use super::HttpResponseMeta;
@@ -53,7 +53,12 @@ impl HttpResponseInterceptorContext {
     /// # Returns
     /// New interceptor context.
     #[inline]
-    pub fn new(status: StatusCode, headers: HeaderMap, url: Url, method: Method) -> Self {
+    pub fn new(
+        status: StatusCode,
+        headers: HeaderMap,
+        url: Url,
+        method: Method,
+    ) -> Self {
         Self {
             status,
             headers,
@@ -103,7 +108,10 @@ impl HttpResponseInterceptorContext {
     /// # Returns
     /// Updated context.
     #[inline(always)]
-    pub fn with_log_redaction_policy(mut self, policy: RedactionPolicy) -> Self {
+    pub fn with_log_redaction_policy(
+        mut self,
+        policy: RedactionPolicy,
+    ) -> Self {
         self.log_redactor = HttpRedactor::new(policy);
         self
     }
@@ -174,7 +182,10 @@ impl HttpResponseInterceptorContext {
     /// otherwise `None`.
     #[inline(always)]
     pub fn retry_after_hint(&self) -> Option<Duration> {
-        HttpResponseMeta::retry_after_hint_from_parts(self.status, &self.headers)
+        HttpResponseMeta::retry_after_hint_from_parts(
+            self.status,
+            &self.headers,
+        )
     }
 
     /// Applies mutable context fields back into response metadata.
