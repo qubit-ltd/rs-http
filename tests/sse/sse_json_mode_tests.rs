@@ -21,8 +21,7 @@ fn test_sse_json_mode_parses_case_insensitive_and_serializes_snake_case() {
         SseJsonMode::Strict
     );
     assert_eq!(
-        serde_json::to_string(&SseJsonMode::Strict)
-            .expect("mode should serialize"),
+        serde_json::to_string(&SseJsonMode::Strict).expect("mode should serialize"),
         "\"strict\""
     );
 }

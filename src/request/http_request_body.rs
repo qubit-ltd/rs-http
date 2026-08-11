@@ -16,9 +16,7 @@ use strum::Display;
 use strum::EnumString;
 
 /// Encodes how the outbound body is represented before sending via reqwest.
-#[derive(
-    Clone, PartialEq, Eq, Default, Serialize, Deserialize, Display, EnumString,
-)]
+#[derive(Clone, PartialEq, Eq, Default, Serialize, Deserialize, Display, EnumString)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub enum HttpRequestBody {
