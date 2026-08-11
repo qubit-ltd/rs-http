@@ -15,19 +15,16 @@ use qubit_http::HttpErrorKind;
 use qubit_http::ProxyType;
 use tokio::time::timeout;
 
-use crate::common::ProxyBehavior;
-use crate::common::ResponsePlan;
 use crate::common::spawn_one_shot_server;
 use crate::common::spawn_simple_proxy_server;
+use crate::common::ProxyBehavior;
+use crate::common::ResponsePlan;
 
 #[tokio::test]
 async fn test_http_proxy_forwards_request_and_sends_proxy_auth() {
     let backend = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
-        headers: vec![(
-            "Content-Type".to_string(),
-            "application/json".to_string(),
-        )],
+        headers: vec![("Content-Type".to_string(), "application/json".to_string())],
         body: br#"{"ok":true}"#.to_vec(),
     })
     .await;
