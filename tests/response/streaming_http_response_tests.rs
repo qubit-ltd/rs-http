@@ -20,8 +20,8 @@ use qubit_http::HttpResponse;
 use tokio::time::timeout;
 use url::Url;
 
-use crate::common::spawn_one_shot_server;
 use crate::common::ResponsePlan;
+use crate::common::spawn_one_shot_server;
 
 #[test]
 fn test_http_stream_response_is_success_and_new() {
@@ -51,7 +51,8 @@ async fn test_http_stream_response_into_stream_consumes_body() {
         Method::GET,
     );
 
-    let mut stream = response.stream().expect("stream body should be available");
+    let mut stream =
+        response.stream().expect("stream body should be available");
     let mut chunks = Vec::new();
     while let Some(item) = stream.next().await {
         chunks.push(item.expect("stream item should decode"));
@@ -61,7 +62,8 @@ async fn test_http_stream_response_into_stream_consumes_body() {
 }
 
 #[tokio::test]
-async fn test_http_stream_response_backend_taken_then_stream_and_bytes_are_empty() {
+async fn test_http_stream_response_backend_taken_then_stream_and_bytes_are_empty()
+ {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
         headers: vec![("Content-Type".to_string(), "text/plain".to_string())],
@@ -150,9 +152,11 @@ async fn test_http_response_bytes_remembers_read_failure() {
         .expect_err("second read should preserve the prior body read failure");
     assert_eq!(second_error.kind, HttpErrorKind::Transport);
     assert_eq!(second_error.status, Some(StatusCode::OK));
-    assert!(second_error
-        .message
-        .contains("previous response body read failed"));
+    assert!(
+        second_error
+            .message
+            .contains("previous response body read failed")
+    );
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
@@ -183,7 +187,8 @@ async fn test_http_response_stream_remembers_read_failure() {
         .await
         .expect("execute timed out")
         .expect("request should start");
-    let mut stream = response.stream().expect("stream body should be available");
+    let mut stream =
+        response.stream().expect("stream body should be available");
 
     let first = stream
         .next()
@@ -200,15 +205,16 @@ async fn test_http_response_stream_remembers_read_failure() {
     assert_eq!(stream_error.status, Some(StatusCode::OK));
     drop(stream);
 
-    let second_error = response
-        .bytes()
-        .await
-        .expect_err("bytes after stream failure should preserve the read failure");
+    let second_error = response.bytes().await.expect_err(
+        "bytes after stream failure should preserve the read failure",
+    );
     assert_eq!(second_error.kind, HttpErrorKind::Transport);
     assert_eq!(second_error.status, Some(StatusCode::OK));
-    assert!(second_error
-        .message
-        .contains("previous response body read failed"));
+    assert!(
+        second_error
+            .message
+            .contains("previous response body read failed")
+    );
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
@@ -253,9 +259,11 @@ async fn test_http_response_stream_reports_prior_bytes_read_failure() {
     };
     assert_eq!(stream_error.kind, HttpErrorKind::Transport);
     assert_eq!(stream_error.status, Some(StatusCode::OK));
-    assert!(stream_error
-        .message
-        .contains("previous response body read failed"));
+    assert!(
+        stream_error
+            .message
+            .contains("previous response body read failed")
+    );
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
