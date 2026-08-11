@@ -11,13 +11,13 @@ use std::fmt;
 use std::time::Duration;
 use std::time::SystemTime;
 
+use http::header::RETRY_AFTER;
 use http::HeaderMap;
 use http::Method;
 use http::StatusCode;
-use http::header::RETRY_AFTER;
 use httpdate::parse_http_date;
-use qubit_redact::RedactionPolicy;
 use qubit_redact::http::HttpRedactor;
+use qubit_redact::RedactionPolicy;
 use url::Url;
 
 use crate::redact::RedactedDebugger;
@@ -40,12 +40,7 @@ pub struct HttpResponseMeta {
 impl HttpResponseMeta {
     /// Creates response metadata from status/headers/url/method parts.
     #[inline]
-    pub fn new(
-        status: StatusCode,
-        headers: HeaderMap,
-        url: Url,
-        method: Method,
-    ) -> Self {
+    pub fn new(status: StatusCode, headers: HeaderMap, url: Url, method: Method) -> Self {
         Self {
             status,
             headers,
@@ -77,10 +72,7 @@ impl HttpResponseMeta {
     /// # Returns
     /// Updated metadata.
     #[inline(always)]
-    pub fn with_log_redaction_policy(
-        mut self,
-        policy: RedactionPolicy,
-    ) -> Self {
+    pub fn with_log_redaction_policy(mut self, policy: RedactionPolicy) -> Self {
         self.log_redactor = HttpRedactor::new(policy);
         self
     }

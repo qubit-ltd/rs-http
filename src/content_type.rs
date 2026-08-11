@@ -107,10 +107,7 @@ pub(crate) fn parameter(value: &str, parameter_name: &str) -> Option<String> {
 /// `Some(true)` when a `name=value` segment uses `parameter_name`,
 /// `Some(false)` when no such parameter exists, or `None` when parameter
 /// quoting is malformed.
-pub(crate) fn has_parameter_name(
-    value: &str,
-    parameter_name: &str,
-) -> Option<bool> {
+pub(crate) fn has_parameter_name(value: &str, parameter_name: &str) -> Option<bool> {
     for parameter in header_parameter_segments(value)?.into_iter().skip(1) {
         let Some((name, _)) = parameter.split_once('=') else {
             if parameter.trim().eq_ignore_ascii_case(parameter_name) {
