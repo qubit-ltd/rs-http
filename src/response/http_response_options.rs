@@ -7,8 +7,8 @@
 // =============================================================================
 //! Decode and error-preview options bound to one response instance.
 
-use qubit_redact::http::HttpRedactor;
 use qubit_redact::RedactionPolicy;
+use qubit_redact::http::HttpRedactor;
 
 use crate::constants::DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES;
 use crate::constants::DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES;
@@ -39,7 +39,8 @@ pub(crate) struct HttpResponseOptions {
 impl Default for HttpResponseOptions {
     fn default() -> Self {
         Self {
-            error_response_preview_limit: DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES,
+            error_response_preview_limit:
+                DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES,
             response_body_size_limit: DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES,
             sse_json_mode: SseJsonMode::Lenient,
             sse_max_line_bytes: DEFAULT_SSE_MAX_LINE_BYTES,

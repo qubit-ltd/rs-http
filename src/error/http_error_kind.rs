@@ -13,7 +13,17 @@ use serde::Deserialize;
 use serde::Serialize;
 
 /// Category of HTTP errors.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Display, DeriveFromStr)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    Display,
+    DeriveFromStr,
+)]
 #[serde(rename_all = "snake_case")]
 #[display(style = "snake_case")]
 pub enum HttpErrorKind {

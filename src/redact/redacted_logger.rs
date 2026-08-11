@@ -10,9 +10,9 @@
 
 use http::HeaderMap;
 use http::HeaderValue;
+use qubit_redact::RedactionSession;
 use qubit_redact::http::HttpRedactor;
 use qubit_redact::http::RedactedHeaders;
-use qubit_redact::RedactionSession;
 use url::Url;
 
 use super::BodyPreview;
@@ -39,7 +39,10 @@ impl RedactedLogger {
     ///
     /// A safe TRACE rendering helper.
     #[inline]
-    pub(crate) fn new(log_redactor: HttpRedactor, body_size_limit: usize) -> Self {
+    pub(crate) fn new(
+        log_redactor: HttpRedactor,
+        body_size_limit: usize,
+    ) -> Self {
         Self {
             redactor: log_redactor,
             body_size_limit,

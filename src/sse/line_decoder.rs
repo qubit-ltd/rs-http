@@ -50,7 +50,10 @@ fn take_buffered_line(buffer: &mut BytesMut) -> HttpResult<String> {
 ///
 /// # Returns
 /// Stream of lines or [`HttpError::sse_protocol`] on invalid UTF-8.
-pub fn decode_lines(mut stream: HttpByteStream, max_line_bytes: usize) -> SseLineStream {
+pub fn decode_lines(
+    mut stream: HttpByteStream,
+    max_line_bytes: usize,
+) -> SseLineStream {
     let output = stream! {
         let max_line_bytes = max_line_bytes.max(1);
         let mut buffer = BytesMut::new();
@@ -125,7 +128,11 @@ pub fn decode_lines(mut stream: HttpByteStream, max_line_bytes: usize) -> SseLin
 ///
 /// # Returns
 /// `Ok(())` when appended, or [`HttpError`] when the line is too large.
-fn append_line_bytes(buffer: &mut BytesMut, bytes: &[u8], max_line_bytes: usize) -> HttpResult<()> {
+fn append_line_bytes(
+    buffer: &mut BytesMut,
+    bytes: &[u8],
+    max_line_bytes: usize,
+) -> HttpResult<()> {
     let Some(observed) = buffer.len().checked_add(bytes.len()) else {
         return Err(HttpError::sse_protocol(format!(
             "SSE line exceeds max_line_bytes ({})",

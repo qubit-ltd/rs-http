@@ -11,7 +11,17 @@ use serde::Deserialize;
 use serde::Serialize;
 
 /// URL scheme selector used when constructing the proxy URL for reqwest.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, DeriveFromStr)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Default,
+    Serialize,
+    Deserialize,
+    DeriveFromStr,
+)]
 #[serde(rename_all = "snake_case")]
 #[display(style = "snake_case")]
 pub enum ProxyType {

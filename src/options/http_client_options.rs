@@ -13,18 +13,19 @@ use std::time::Duration;
 
 use http::HeaderMap;
 use http::HeaderValue;
-use qubit_argument::require_that;
 use qubit_argument::ArgumentResultExt;
+use qubit_argument::require_that;
 use qubit_config::ConfigReader;
 use qubit_config::ConfigResult;
 use qubit_json::JsonDecodeOptions;
 use qubit_json::LenientJsonDecoder;
-use qubit_redact::http::HttpRedactor;
-use qubit_redact::http::UrlPathPolicy;
 use qubit_redact::RedactionPolicy;
 use qubit_redact::Sensitivity;
+use qubit_redact::http::HttpRedactor;
+use qubit_redact::http::UrlPathPolicy;
 use url::Url;
 
+use super::HttpConfigError;
 use super::from_config_helpers::get_optional_usize;
 use super::from_config_helpers::hashmap_to_headermap;
 use super::http_logging_options::HttpLoggingOptions;
@@ -32,7 +33,7 @@ use super::http_retry_options::HttpRetryOptions;
 use super::http_timeout_options::HttpTimeoutOptions;
 use super::internal::HttpClientLogRedactionConfigInput;
 use super::proxy_options::ProxyOptions;
-use super::HttpConfigError;
+use crate::HttpResult;
 use crate::constants::DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES;
 use crate::constants::DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES;
 use crate::constants::DEFAULT_SSE_MAX_FRAME_BYTES;
@@ -41,7 +42,6 @@ use crate::redact::RedactedDebugger;
 use crate::request::parse_header;
 use crate::sse::DoneMarkerPolicy;
 use crate::sse::SseJsonMode;
-use crate::HttpResult;
 
 /// Aggregated settings for [`crate::HttpClient`] and
 /// [`crate::HttpClientFactory`].
@@ -104,7 +104,8 @@ impl Default for HttpClientOptions {
             timeouts: HttpTimeoutOptions::default(),
             proxy: ProxyOptions::default(),
             logging: HttpLoggingOptions::default(),
-            error_response_preview_limit: DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES,
+            error_response_preview_limit:
+                DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES,
             response_body_size_limit: DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES,
             user_agent: None,
             max_redirects: None,
@@ -127,7 +128,8 @@ impl fmt::Debug for HttpClientOptions {
         let redactor = HttpRedactor::new(self.log_redaction_policy.clone());
         let debugger = RedactedDebugger::new(&redactor);
         let session = debugger.session();
-        let base_url = debugger.optional_url_with_session(self.base_url.as_ref(), &session);
+        let base_url = debugger
+            .optional_url_with_session(self.base_url.as_ref(), &session);
         formatter
             .debug_struct("HttpClientOptions")
             .field("base_url", &base_url)
@@ -250,7 +252,10 @@ impl HttpClientOptions {
         }
         if let Some(limit) = root.error_response_preview_limit {
             opts.error_response_preview_limit =
-                match Self::validate_positive_limit("error_response_preview_limit", limit) {
+                match Self::validate_positive_limit(
+                    "error_response_preview_limit",
+                    limit,
+                ) {
                     Ok(limit) => limit,
                     Err(error) => {
                         return Err(Self::resolve_config_error(config, error));
@@ -258,13 +263,15 @@ impl HttpClientOptions {
                 };
         }
         if let Some(limit) = root.response_body_size_limit {
-            opts.response_body_size_limit =
-                match Self::validate_positive_limit("response_body_size_limit", limit) {
-                    Ok(limit) => limit,
-                    Err(error) => {
-                        return Err(Self::resolve_config_error(config, error));
-                    }
-                };
+            opts.response_body_size_limit = match Self::validate_positive_limit(
+                "response_body_size_limit",
+                limit,
+            ) {
+                Ok(limit) => limit,
+                Err(error) => {
+                    return Err(Self::resolve_config_error(config, error));
+                }
+            };
         }
         if let Some(user_agent) = root.user_agent {
             opts.user_agent = Some(user_agent.trim().to_string());
@@ -287,12 +294,16 @@ impl HttpClientOptions {
             .section_if_present("timeouts")
             .map_err(HttpConfigError::from)?
         {
-            opts.timeouts = match HttpTimeoutOptions::from_config(&timeouts_config) {
-                Ok(timeouts) => timeouts,
-                Err(error) => {
-                    return Err(Self::resolve_config_error(&timeouts_config, error));
-                }
-            };
+            opts.timeouts =
+                match HttpTimeoutOptions::from_config(&timeouts_config) {
+                    Ok(timeouts) => timeouts,
+                    Err(error) => {
+                        return Err(Self::resolve_config_error(
+                            &timeouts_config,
+                            error,
+                        ));
+                    }
+                };
         }
 
         // proxy
@@ -303,7 +314,10 @@ impl HttpClientOptions {
             opts.proxy = match ProxyOptions::from_config(&proxy_config) {
                 Ok(proxy) => proxy,
                 Err(error) => {
-                    return Err(Self::resolve_config_error(&proxy_config, error));
+                    return Err(Self::resolve_config_error(
+                        &proxy_config,
+                        error,
+                    ));
                 }
             };
         }
@@ -313,12 +327,16 @@ impl HttpClientOptions {
             .section_if_present("logging")
             .map_err(HttpConfigError::from)?
         {
-            opts.logging = match HttpLoggingOptions::from_config(&logging_config) {
-                Ok(logging) => logging,
-                Err(error) => {
-                    return Err(Self::resolve_config_error(&logging_config, error));
-                }
-            };
+            opts.logging =
+                match HttpLoggingOptions::from_config(&logging_config) {
+                    Ok(logging) => logging,
+                    Err(error) => {
+                        return Err(Self::resolve_config_error(
+                            &logging_config,
+                            error,
+                        ));
+                    }
+                };
         }
 
         if let Some(retry_config) = config
@@ -328,7 +346,10 @@ impl HttpClientOptions {
             opts.retry = match HttpRetryOptions::from_config(&retry_config) {
                 Ok(retry) => retry,
                 Err(error) => {
-                    return Err(Self::resolve_config_error(&retry_config, error));
+                    return Err(Self::resolve_config_error(
+                        &retry_config,
+                        error,
+                    ));
                 }
             };
         }
@@ -350,35 +371,52 @@ impl HttpClientOptions {
                 opts.sse_json_mode = match Self::parse_sse_json_mode(mode) {
                     Ok(mode) => mode,
                     Err(error) => {
-                        return Err(Self::resolve_config_error(&sse_config, error));
+                        return Err(Self::resolve_config_error(
+                            &sse_config,
+                            error,
+                        ));
                     }
                 };
             }
             if let Some(marker) = sse.done_marker.as_deref() {
-                opts.sse_done_marker_policy = match Self::parse_sse_done_marker_policy(marker) {
-                    Ok(marker) => marker,
+                opts.sse_done_marker_policy =
+                    match Self::parse_sse_done_marker_policy(marker) {
+                        Ok(marker) => marker,
+                        Err(error) => {
+                            return Err(Self::resolve_config_error(
+                                &sse_config,
+                                error,
+                            ));
+                        }
+                    };
+            }
+            if let Some(max_line_bytes) = sse.max_line_bytes {
+                opts.sse_max_line_bytes = match Self::validate_positive_limit(
+                    "max_line_bytes",
+                    max_line_bytes,
+                ) {
+                    Ok(limit) => limit,
                     Err(error) => {
-                        return Err(Self::resolve_config_error(&sse_config, error));
+                        return Err(Self::resolve_config_error(
+                            &sse_config,
+                            error,
+                        ));
                     }
                 };
             }
-            if let Some(max_line_bytes) = sse.max_line_bytes {
-                opts.sse_max_line_bytes =
-                    match Self::validate_positive_limit("max_line_bytes", max_line_bytes) {
-                        Ok(limit) => limit,
-                        Err(error) => {
-                            return Err(Self::resolve_config_error(&sse_config, error));
-                        }
-                    };
-            }
             if let Some(max_frame_bytes) = sse.max_frame_bytes {
-                opts.sse_max_frame_bytes =
-                    match Self::validate_positive_limit("max_frame_bytes", max_frame_bytes) {
-                        Ok(limit) => limit,
-                        Err(error) => {
-                            return Err(Self::resolve_config_error(&sse_config, error));
-                        }
-                    };
+                opts.sse_max_frame_bytes = match Self::validate_positive_limit(
+                    "max_frame_bytes",
+                    max_frame_bytes,
+                ) {
+                    Ok(limit) => limit,
+                    Err(error) => {
+                        return Err(Self::resolve_config_error(
+                            &sse_config,
+                            error,
+                        ));
+                    }
+                };
             }
         }
 
@@ -386,21 +424,25 @@ impl HttpClientOptions {
             .section_if_present("log_redaction")
             .map_err(HttpConfigError::from)?
         {
-            let log_redaction = match Self::read_log_redaction_config(&log_redaction_config) {
-                Ok(log_redaction) => log_redaction,
-                Err(error) => {
-                    return Err(Self::resolve_config_error(
-                        &log_redaction_config,
-                        HttpConfigError::from(error),
-                    ));
-                }
-            };
+            let log_redaction =
+                match Self::read_log_redaction_config(&log_redaction_config) {
+                    Ok(log_redaction) => log_redaction,
+                    Err(error) => {
+                        return Err(Self::resolve_config_error(
+                            &log_redaction_config,
+                            HttpConfigError::from(error),
+                        ));
+                    }
+                };
             let mut policy_builder = opts.log_redaction_policy.to_builder();
             if let Some(value) = log_redaction.url_path_policy.as_deref() {
                 let policy = match Self::parse_url_path_policy(value) {
                     Ok(policy) => policy,
                     Err(error) => {
-                        return Err(Self::resolve_config_error(&log_redaction_config, error));
+                        return Err(Self::resolve_config_error(
+                            &log_redaction_config,
+                            error,
+                        ));
                     }
                 };
                 policy_builder.http().url_path(policy);
@@ -458,11 +500,8 @@ impl HttpClientOptions {
             }
             if let Some(names) = log_redaction.excluded_sensitive_headers {
                 for name in names {
-                    policy_builder
-                        .http()
-                        .header()
-                        .allow_exact(&name)
-                        .map_err(|error| {
+                    policy_builder.http().header().allow_exact(&name).map_err(
+                        |error| {
                             Self::resolve_config_error(
                                 &log_redaction_config,
                                 HttpConfigError::invalid_value(
@@ -470,16 +509,14 @@ impl HttpClientOptions {
                                     error.to_string(),
                                 ),
                             )
-                        })?;
+                        },
+                    )?;
                 }
             }
             if let Some(names) = log_redaction.excluded_sensitive_query_params {
                 for name in names {
-                    policy_builder
-                        .http()
-                        .query()
-                        .allow_exact(&name)
-                        .map_err(|error| {
+                    policy_builder.http().query().allow_exact(&name).map_err(
+                        |error| {
                             Self::resolve_config_error(
                                 &log_redaction_config,
                                 HttpConfigError::invalid_value(
@@ -487,16 +524,14 @@ impl HttpClientOptions {
                                     error.to_string(),
                                 ),
                             )
-                        })?;
+                        },
+                    )?;
                 }
             }
             if let Some(names) = log_redaction.excluded_sensitive_body_fields {
                 for name in names {
-                    policy_builder
-                        .http()
-                        .body()
-                        .allow_exact(&name)
-                        .map_err(|error| {
+                    policy_builder.http().body().allow_exact(&name).map_err(
+                        |error| {
                             Self::resolve_config_error(
                                 &log_redaction_config,
                                 HttpConfigError::invalid_value(
@@ -504,15 +539,20 @@ impl HttpClientOptions {
                                     error.to_string(),
                                 ),
                             )
-                        })?;
+                        },
+                    )?;
                 }
             }
-            opts.log_redaction_policy = policy_builder.build().map_err(|error| {
-                Self::resolve_config_error(
-                    &log_redaction_config,
-                    HttpConfigError::invalid_value("log_redaction", error.to_string()),
-                )
-            })?;
+            opts.log_redaction_policy =
+                policy_builder.build().map_err(|error| {
+                    Self::resolve_config_error(
+                        &log_redaction_config,
+                        HttpConfigError::invalid_value(
+                            "log_redaction",
+                            error.to_string(),
+                        ),
+                    )
+                })?;
         }
 
         // default_headers – sub-key form: default_headers.<name> = <value>
@@ -533,15 +573,16 @@ impl HttpClientOptions {
             header_map.insert(header_name.to_string(), value);
         }
         // Also support JSON map form stored at the exact key `default_headers`.
-        let json_headers = match config.get_optional_interpolated::<String>(headers_prefix) {
-            Ok(json_headers) => json_headers,
-            Err(error) => {
-                return Err(Self::resolve_config_error(
-                    config,
-                    HttpConfigError::from(error),
-                ));
-            }
-        };
+        let json_headers =
+            match config.get_optional_interpolated::<String>(headers_prefix) {
+                Ok(json_headers) => json_headers,
+                Err(error) => {
+                    return Err(Self::resolve_config_error(
+                        config,
+                        HttpConfigError::from(error),
+                    ));
+                }
+            };
         if !header_map.is_empty() && json_headers.is_some() {
             return Err(HttpConfigError::invalid_value(
                 config
@@ -552,14 +593,18 @@ impl HttpClientOptions {
         }
         if let Some(json_str) = json_headers {
             let parsed: HashMap<String, String> =
-                match LenientJsonDecoder::new(JsonDecodeOptions::strict()).decode(&json_str) {
+                match LenientJsonDecoder::new(JsonDecodeOptions::strict())
+                    .decode(&json_str)
+                {
                     Ok(parsed) => parsed,
                     Err(error) => {
                         return Err(HttpConfigError::type_error(
                             config
                                 .resolve_key(headers_prefix)
                                 .map_err(HttpConfigError::from)?,
-                            format!("Failed to parse default_headers JSON: {error}"),
+                            format!(
+                                "Failed to parse default_headers JSON: {error}"
+                            ),
                         ));
                     }
                 };
@@ -585,7 +630,10 @@ impl HttpClientOptions {
     /// # Returns
     /// `Ok(self)` or [`HttpConfigError`] if the URL is invalid.
     #[inline]
-    pub fn set_base_url(&mut self, base_url: &str) -> Result<&mut Self, HttpConfigError> {
+    pub fn set_base_url(
+        &mut self,
+        base_url: &str,
+    ) -> Result<&mut Self, HttpConfigError> {
         let parsed = Self::parse_base_url(base_url)?;
         self.base_url = Some(parsed);
         Ok(self)
@@ -600,7 +648,11 @@ impl HttpClientOptions {
     /// # Returns
     /// `Ok(self)` or an error if name/value are invalid.
     #[inline]
-    pub fn add_header(&mut self, name: &str, value: &str) -> HttpResult<&mut Self> {
+    pub fn add_header(
+        &mut self,
+        name: &str,
+        value: &str,
+    ) -> HttpResult<&mut Self> {
         let (header_name, header_value) = parse_header(name, value)?;
         self.default_headers.insert(header_name, header_value);
         Ok(self)
@@ -615,7 +667,10 @@ impl HttpClientOptions {
     ///
     /// # Returns
     /// `Ok(self)` or an error if any pair is invalid.
-    pub fn add_headers(&mut self, headers: &[(&str, &str)]) -> HttpResult<&mut Self> {
+    pub fn add_headers(
+        &mut self,
+        headers: &[(&str, &str)],
+    ) -> HttpResult<&mut Self> {
         let mut parsed_headers = HeaderMap::new();
         for &(name, value) in headers {
             let (header_name, header_value) = parse_header(name, value)?;
@@ -641,7 +696,10 @@ impl HttpClientOptions {
             "error_response_preview_limit",
             self.error_response_preview_limit,
         )?;
-        Self::validate_positive_limit("response_body_size_limit", self.response_body_size_limit)?;
+        Self::validate_positive_limit(
+            "response_body_size_limit",
+            self.response_body_size_limit,
+        )?;
         if let Some(user_agent) = self.user_agent.as_deref() {
             require_that(
                 user_agent,
@@ -657,12 +715,21 @@ impl HttpClientOptions {
                 )
             })?;
         }
-        Self::validate_positive_limit("sse.max_line_bytes", self.sse_max_line_bytes)?;
-        Self::validate_positive_limit("sse.max_frame_bytes", self.sse_max_frame_bytes)?;
+        Self::validate_positive_limit(
+            "sse.max_line_bytes",
+            self.sse_max_line_bytes,
+        )?;
+        Self::validate_positive_limit(
+            "sse.max_frame_bytes",
+            self.sse_max_frame_bytes,
+        )?;
         Ok(())
     }
 
-    fn resolve_config_error<R>(config: &R, error: HttpConfigError) -> HttpConfigError
+    fn resolve_config_error<R>(
+        config: &R,
+        error: HttpConfigError,
+    ) -> HttpConfigError
     where
         R: ConfigReader + ?Sized,
     {
@@ -680,11 +747,18 @@ impl HttpClientOptions {
                 config,
                 "error_response_preview_limit",
             )?,
-            response_body_size_limit: get_optional_usize(config, "response_body_size_limit")?,
-            user_agent: config.get_optional_interpolated::<String>("user_agent")?,
+            response_body_size_limit: get_optional_usize(
+                config,
+                "response_body_size_limit",
+            )?,
+            user_agent: config
+                .get_optional_interpolated::<String>("user_agent")?,
             max_redirects: get_optional_usize(config, "max_redirects")?,
             pool_idle_timeout: config.get_optional("pool_idle_timeout")?,
-            pool_max_idle_per_host: get_optional_usize(config, "pool_max_idle_per_host")?,
+            pool_max_idle_per_host: get_optional_usize(
+                config,
+                "pool_max_idle_per_host",
+            )?,
             use_env_proxy: config.get_optional("use_env_proxy")?,
         })
     }
@@ -694,8 +768,10 @@ impl HttpClientOptions {
         R: ConfigReader + ?Sized,
     {
         Ok(HttpClientSseConfigInput {
-            json_mode: config.get_optional_interpolated::<String>("json_mode")?,
-            done_marker: config.get_optional_interpolated::<String>("done_marker")?,
+            json_mode: config
+                .get_optional_interpolated::<String>("json_mode")?,
+            done_marker: config
+                .get_optional_interpolated::<String>("done_marker")?,
             max_line_bytes: get_optional_usize(config, "max_line_bytes")?,
             max_frame_bytes: get_optional_usize(config, "max_frame_bytes")?,
         })
@@ -715,28 +791,45 @@ impl HttpClientOptions {
     ///
     /// Returns the first [`qubit_config::ConfigError`] produced while reading
     /// or interpolating a configured value.
-    fn read_log_redaction_config<R>(config: &R) -> ConfigResult<HttpClientLogRedactionConfigInput>
+    fn read_log_redaction_config<R>(
+        config: &R,
+    ) -> ConfigResult<HttpClientLogRedactionConfigInput>
     where
         R: ConfigReader + ?Sized,
     {
         Ok(HttpClientLogRedactionConfigInput {
-            url_path_policy: config.get_optional_interpolated::<String>("url_path_policy")?,
+            url_path_policy: config
+                .get_optional_interpolated::<String>("url_path_policy")?,
             sensitive_headers: config
-                .get_optional_interpolated::<Vec<String>>("sensitive_headers")?,
+                .get_optional_interpolated::<Vec<String>>(
+                    "sensitive_headers",
+                )?,
             sensitive_query_params: config
-                .get_optional_interpolated::<Vec<String>>("sensitive_query_params")?,
+                .get_optional_interpolated::<Vec<String>>(
+                    "sensitive_query_params",
+                )?,
             sensitive_body_fields: config
-                .get_optional_interpolated::<Vec<String>>("sensitive_body_fields")?,
+                .get_optional_interpolated::<Vec<String>>(
+                    "sensitive_body_fields",
+                )?,
             excluded_sensitive_headers: config
-                .get_optional_interpolated::<Vec<String>>("excluded_sensitive_headers")?,
+                .get_optional_interpolated::<Vec<String>>(
+                    "excluded_sensitive_headers",
+                )?,
             excluded_sensitive_query_params: config
-                .get_optional_interpolated::<Vec<String>>("excluded_sensitive_query_params")?,
+                .get_optional_interpolated::<Vec<String>>(
+                    "excluded_sensitive_query_params",
+                )?,
             excluded_sensitive_body_fields: config
-                .get_optional_interpolated::<Vec<String>>("excluded_sensitive_body_fields")?,
+                .get_optional_interpolated::<Vec<String>>(
+                    "excluded_sensitive_body_fields",
+                )?,
         })
     }
 
-    fn parse_sse_done_marker_policy(value: &str) -> Result<DoneMarkerPolicy, HttpConfigError> {
+    fn parse_sse_done_marker_policy(
+        value: &str,
+    ) -> Result<DoneMarkerPolicy, HttpConfigError> {
         let trimmed = value.trim();
         if trimmed.is_empty() {
             return Err(HttpConfigError::invalid_value(
@@ -744,17 +837,23 @@ impl HttpClientOptions {
                 "Value must not be empty",
             ));
         }
-        Ok(DoneMarkerPolicy::from_str(trimmed)
-            .expect("DoneMarkerPolicy::from_str accepts arbitrary custom markers"))
+        Ok(DoneMarkerPolicy::from_str(trimmed).expect(
+            "DoneMarkerPolicy::from_str accepts arbitrary custom markers",
+        ))
     }
 
     fn parse_base_url(base_url: &str) -> Result<Url, HttpConfigError> {
         Url::parse(base_url).map_err(|error| {
-            HttpConfigError::invalid_value("base_url", format!("Invalid URL: {error}"))
+            HttpConfigError::invalid_value(
+                "base_url",
+                format!("Invalid URL: {error}"),
+            )
         })
     }
 
-    fn parse_sse_json_mode(value: &str) -> Result<SseJsonMode, HttpConfigError> {
+    fn parse_sse_json_mode(
+        value: &str,
+    ) -> Result<SseJsonMode, HttpConfigError> {
         SseJsonMode::from_str(value.trim()).map_err(|_| {
             HttpConfigError::invalid_value(
                 "json_mode",
@@ -776,7 +875,9 @@ impl HttpClientOptions {
     /// # Errors
     ///
     /// Returns [`HttpConfigError`] when the value is unsupported.
-    fn parse_url_path_policy(value: &str) -> Result<UrlPathPolicy, HttpConfigError> {
+    fn parse_url_path_policy(
+        value: &str,
+    ) -> Result<UrlPathPolicy, HttpConfigError> {
         match value.trim().to_ascii_lowercase().as_str() {
             "redact" => Ok(UrlPathPolicy::Redact),
             "preserve" => Ok(UrlPathPolicy::Preserve),
@@ -787,7 +888,10 @@ impl HttpClientOptions {
         }
     }
 
-    fn validate_positive_limit(path: &str, value: usize) -> Result<usize, HttpConfigError> {
+    fn validate_positive_limit(
+        path: &str,
+        value: usize,
+    ) -> Result<usize, HttpConfigError> {
         Ok(require_that(
             value,
             path,
