@@ -12,13 +12,14 @@ use qubit_http::AsyncHttpHeaderInjector;
 
 #[tokio::test]
 async fn test_async_http_header_injector_runs_async_mutation() {
-    let injector = AsyncHttpHeaderInjector::new(|headers: &mut http::HeaderMap| {
-        Box::pin(async move {
-            tokio::task::yield_now().await;
-            headers.insert("x-token", HeaderValue::from_static("fresh"));
-            Ok(())
-        })
-    });
+    let injector =
+        AsyncHttpHeaderInjector::new(|headers: &mut http::HeaderMap| {
+            Box::pin(async move {
+                tokio::task::yield_now().await;
+                headers.insert("x-token", HeaderValue::from_static("fresh"));
+                Ok(())
+            })
+        });
 
     let mut headers = HeaderMap::new();
     injector

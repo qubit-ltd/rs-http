@@ -25,7 +25,9 @@ fn test_proxy_options_default_values() {
 #[test]
 fn test_proxy_options_defaults_when_no_keys() {
     let config = Config::new();
-    let opts = ProxyOptions::from_config(&config.section("http.proxy").unwrap()).unwrap();
+    let opts =
+        ProxyOptions::from_config(&config.section("http.proxy").unwrap())
+            .unwrap();
     assert_eq!(opts, ProxyOptions::default());
 }
 
@@ -37,7 +39,8 @@ fn test_proxy_options_http_type() {
     config.set("p.host", "127.0.0.1".to_string()).unwrap();
     config.set("p.port", 8080u16).unwrap();
 
-    let opts = ProxyOptions::from_config(&config.section("p").unwrap()).unwrap();
+    let opts =
+        ProxyOptions::from_config(&config.section("p").unwrap()).unwrap();
     assert!(opts.enabled);
     assert_eq!(opts.proxy_type, ProxyType::Http);
     assert_eq!(opts.host, Some("127.0.0.1".to_string()));
@@ -48,7 +51,8 @@ fn test_proxy_options_http_type() {
 fn test_proxy_options_https_type() {
     let mut config = Config::new();
     config.set("p.proxy_type", "https".to_string()).unwrap();
-    let opts = ProxyOptions::from_config(&config.section("p").unwrap()).unwrap();
+    let opts =
+        ProxyOptions::from_config(&config.section("p").unwrap()).unwrap();
     assert_eq!(opts.proxy_type, ProxyType::Https);
 }
 
@@ -56,7 +60,8 @@ fn test_proxy_options_https_type() {
 fn test_proxy_options_socks5_type() {
     let mut config = Config::new();
     config.set("p.proxy_type", "socks5".to_string()).unwrap();
-    let opts = ProxyOptions::from_config(&config.section("p").unwrap()).unwrap();
+    let opts =
+        ProxyOptions::from_config(&config.section("p").unwrap()).unwrap();
     assert_eq!(opts.proxy_type, ProxyType::Socks5);
 }
 
@@ -64,7 +69,8 @@ fn test_proxy_options_socks5_type() {
 fn test_proxy_options_socks5h_type() {
     let mut config = Config::new();
     config.set("p.proxy_type", "socks5h".to_string()).unwrap();
-    let opts = ProxyOptions::from_config(&config.section("p").unwrap()).unwrap();
+    let opts =
+        ProxyOptions::from_config(&config.section("p").unwrap()).unwrap();
     assert_eq!(opts.proxy_type, ProxyType::Socks5);
 }
 
@@ -72,7 +78,8 @@ fn test_proxy_options_socks5h_type() {
 fn test_proxy_options_proxy_type_case_insensitive() {
     let mut config = Config::new();
     config.set("p.proxy_type", "HtTp".to_string()).unwrap();
-    let opts = ProxyOptions::from_config(&config.section("p").unwrap()).unwrap();
+    let opts =
+        ProxyOptions::from_config(&config.section("p").unwrap()).unwrap();
     assert_eq!(opts.proxy_type, ProxyType::Http);
 }
 
@@ -80,7 +87,8 @@ fn test_proxy_options_proxy_type_case_insensitive() {
 fn test_proxy_options_unknown_type_returns_error() {
     let mut config = Config::new();
     config.set("p.proxy_type", "ftp".to_string()).unwrap();
-    let err = ProxyOptions::from_config(&config.section("p").unwrap()).unwrap_err();
+    let err =
+        ProxyOptions::from_config(&config.section("p").unwrap()).unwrap_err();
     assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
     assert!(err.message.contains("ftp"));
 }
@@ -90,7 +98,8 @@ fn test_proxy_options_invalid_enabled_type_is_prefixed() {
     let mut config = Config::new();
     config.set("p.enabled", "not-bool").unwrap();
 
-    let err = ProxyOptions::from_config(&config.section("p").unwrap()).unwrap_err();
+    let err =
+        ProxyOptions::from_config(&config.section("p").unwrap()).unwrap_err();
 
     assert_eq!(err.kind, HttpConfigErrorKind::TypeError);
     assert_eq!(err.path, "p.enabled");
@@ -101,7 +110,8 @@ fn test_proxy_options_invalid_port_type_is_prefixed() {
     let mut config = Config::new();
     config.set("p.port", "not-port").unwrap();
 
-    let err = ProxyOptions::from_config(&config.section("p").unwrap()).unwrap_err();
+    let err =
+        ProxyOptions::from_config(&config.section("p").unwrap()).unwrap_err();
 
     assert_eq!(err.kind, HttpConfigErrorKind::TypeError);
     assert_eq!(err.path, "p.port");
@@ -118,7 +128,8 @@ fn test_proxy_options_with_auth() {
     config.set("p.username", "user".to_string()).unwrap();
     config.set("p.password", "pass".to_string()).unwrap();
 
-    let opts = ProxyOptions::from_config(&config.section("p").unwrap()).unwrap();
+    let opts =
+        ProxyOptions::from_config(&config.section("p").unwrap()).unwrap();
     assert_eq!(opts.username, Some("user".to_string()));
     assert_eq!(opts.password, Some("pass".to_string()));
 }
@@ -225,7 +236,8 @@ fn test_proxy_options_no_auth() {
         .unwrap();
     config.set("p.port", 8080u16).unwrap();
 
-    let opts = ProxyOptions::from_config(&config.section("p").unwrap()).unwrap();
+    let opts =
+        ProxyOptions::from_config(&config.section("p").unwrap()).unwrap();
     assert!(opts.username.is_none());
     assert!(opts.password.is_none());
     assert!(opts.validate().is_ok());

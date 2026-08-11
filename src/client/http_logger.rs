@@ -11,20 +11,21 @@
 
 use http::header::CONTENT_TYPE;
 use qubit_redact::http::HttpRedactor;
+use tracing::Metadata;
 use tracing::callsite::DefaultCallsite;
 use tracing::metadata::Kind;
-use tracing::Metadata;
 
-use crate::redact::RedactedLogger;
 use crate::HttpClientOptions;
 use crate::HttpLoggingOptions;
 use crate::HttpRequest;
 use crate::HttpRequestBody;
 use crate::HttpResponse;
 use crate::HttpResponseMeta;
+use crate::redact::RedactedLogger;
 
 const UNRESOLVED_REQUEST_URL: &str = "<unresolved request URL>";
-const STREAMING_REQUEST_BODY_SKIPPED: &str = "<skipped: streaming request body>";
+const STREAMING_REQUEST_BODY_SKIPPED: &str =
+    "<skipped: streaming request body>";
 
 /// Callsite metadata used to query the current dispatcher directly, bypassing
 /// shared interest caching that can change while thread-local subscribers are
@@ -67,7 +68,8 @@ impl<'a> HttpLogger<'a> {
     /// # Returns
     /// A logger that emits TRACE records according to the provided options.
     pub fn new(options: &'a HttpClientOptions) -> Self {
-        let log_redactor = HttpRedactor::new(options.log_redaction_policy.clone());
+        let log_redactor =
+            HttpRedactor::new(options.log_redaction_policy.clone());
         Self::from_options_with_redactor(options, log_redactor)
     }
 
@@ -87,7 +89,10 @@ impl<'a> HttpLogger<'a> {
     ) -> Self {
         Self {
             options: &options.logging,
-            redacted_logger: RedactedLogger::from_options_with_redactor(options, log_redactor),
+            redacted_logger: RedactedLogger::from_options_with_redactor(
+                options,
+                log_redactor,
+            ),
         }
     }
 
@@ -126,8 +131,11 @@ impl<'a> HttpLogger<'a> {
                     let content_type = Self::content_type(headers);
                     tracing::trace!(
                         "Request body: {}",
-                        self.redacted_logger
-                            .body_with_session(bytes, content_type, &session)
+                        self.redacted_logger.body_with_session(
+                            bytes,
+                            content_type,
+                            &session
+                        )
                     );
                 }
                 RequestBodyLogPreview::Empty => {
@@ -152,7 +160,10 @@ impl<'a> HttpLogger<'a> {
     /// # Errors
     /// Returns [`crate::HttpError`] when reading the response body for logging
     /// fails.
-    pub async fn log_response(&self, response: &mut HttpResponse) -> crate::HttpResult<()> {
+    pub async fn log_response(
+        &self,
+        response: &mut HttpResponse,
+    ) -> crate::HttpResult<()> {
         if !self.is_trace_enabled() {
             return Ok(());
         }
@@ -184,7 +195,9 @@ impl<'a> HttpLogger<'a> {
                         &session,
                     )
                 );
-            } else if response.can_buffer_body_for_logging(self.options.body_size_limit) {
+            } else if response
+                .can_buffer_body_for_logging(self.options.body_size_limit)
+            {
                 let body = response.bytes().await?;
                 tracing::trace!(
                     "Response body: {}",
@@ -195,7 +208,9 @@ impl<'a> HttpLogger<'a> {
                     )
                 );
             } else {
-                tracing::trace!("Response body: <skipped: streaming or unknown-size body>");
+                tracing::trace!(
+                    "Response body: <skipped: streaming or unknown-size body>"
+                );
             }
         }
         Ok(())
@@ -209,7 +224,10 @@ impl<'a> HttpLogger<'a> {
     ///
     /// # Returns
     /// Nothing; no-op when disabled or TRACE off.
-    pub fn log_stream_response_headers(&self, response_meta: &HttpResponseMeta) {
+    pub fn log_stream_response_headers(
+        &self,
+        response_meta: &HttpResponseMeta,
+    ) {
         if !self.is_trace_enabled() {
             return;
         }
@@ -270,17 +288,25 @@ impl<'a> HttpLogger<'a> {
     ///
     /// # Returns
     /// Body preview category for logger rendering.
-    fn request_body_for_log(request: &HttpRequest) -> RequestBodyLogPreview<'_> {
+    fn request_body_for_log(
+        request: &HttpRequest,
+    ) -> RequestBodyLogPreview<'_> {
         if request.has_streaming_body() {
-            return RequestBodyLogPreview::Skipped(STREAMING_REQUEST_BODY_SKIPPED);
+            return RequestBodyLogPreview::Skipped(
+                STREAMING_REQUEST_BODY_SKIPPED,
+            );
         }
         match request.body() {
             HttpRequestBody::Bytes(bytes)
             | HttpRequestBody::Json(bytes)
             | HttpRequestBody::Form(bytes)
             | HttpRequestBody::Multipart(bytes)
-            | HttpRequestBody::Ndjson(bytes) => RequestBodyLogPreview::Bytes(bytes.as_ref()),
-            HttpRequestBody::Text(text) => RequestBodyLogPreview::Bytes(text.as_bytes()),
+            | HttpRequestBody::Ndjson(bytes) => {
+                RequestBodyLogPreview::Bytes(bytes.as_ref())
+            }
+            HttpRequestBody::Text(text) => {
+                RequestBodyLogPreview::Bytes(text.as_bytes())
+            }
             HttpRequestBody::Stream(_) => {
                 RequestBodyLogPreview::Skipped(STREAMING_REQUEST_BODY_SKIPPED)
             }

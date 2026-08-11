@@ -14,9 +14,9 @@ use std::time::Duration;
 
 use async_stream::stream;
 use futures_util::StreamExt;
+use http::header::CONTENT_TYPE;
 use http::header::HeaderName;
 use http::header::HeaderValue;
-use http::header::CONTENT_TYPE;
 use qubit_clock::StdMonotonicClock;
 use qubit_redact::http::HttpRedactor;
 use qubit_retry::BackoffRequest;
@@ -26,12 +26,11 @@ use qubit_retry::RetryBudgetExhausted;
 use qubit_retry::RetryPolicy;
 use tokio_util::sync::CancellationToken;
 
+use super::DEFAULT_SSE_MAX_RECONNECT_DELAY;
 use super::SseControl;
 use super::SseMessageStream;
 use super::SseReconnectOptions;
 use super::SseRecord;
-use super::DEFAULT_SSE_MAX_RECONNECT_DELAY;
-use crate::content_type;
 use crate::HttpClient;
 use crate::HttpError;
 use crate::HttpErrorKind;
@@ -39,6 +38,7 @@ use crate::HttpRequest;
 use crate::HttpResponse;
 use crate::HttpResult;
 use crate::RetryHint;
+use crate::content_type;
 
 /// Header name used for SSE resume token propagation.
 const LAST_EVENT_ID_HEADER: &str = "last-event-id";
@@ -473,14 +473,18 @@ fn apply_last_event_id_header(
     last_event_id: &str,
     log_redactor: &HttpRedactor,
 ) -> HttpResult<()> {
-    let header_value = HeaderValue::from_str(last_event_id).map_err(|error| {
-        HttpError::other(format!(
-            "Invalid Last-Event-ID header value ({} bytes): {error}",
-            last_event_id.len()
-        ))
-        .with_log_redactor(log_redactor.clone())
-    })?;
-    request.set_typed_header(HeaderName::from_static(LAST_EVENT_ID_HEADER), header_value);
+    let header_value =
+        HeaderValue::from_str(last_event_id).map_err(|error| {
+            HttpError::other(format!(
+                "Invalid Last-Event-ID header value ({} bytes): {error}",
+                last_event_id.len()
+            ))
+            .with_log_redactor(log_redactor.clone())
+        })?;
+    request.set_typed_header(
+        HeaderName::from_static(LAST_EVENT_ID_HEADER),
+        header_value,
+    );
     Ok(())
 }
 
@@ -495,7 +499,8 @@ fn should_reconnect_sse_error(error: &HttpError) -> bool {
     if error.kind == HttpErrorKind::Cancelled {
         return false;
     }
-    matches!(error.retry_hint(), RetryHint::Retryable) || is_unexpected_eof_error(error)
+    matches!(error.retry_hint(), RetryHint::Retryable)
+        || is_unexpected_eof_error(error)
 }
 
 /// Sleeps before reconnect, while honoring cancellation token when provided.
@@ -567,7 +572,10 @@ fn server_retry_delay(
 ///
 /// # Returns
 /// Maximum server retry delay.
-fn server_retry_max_delay(retry_policy: &RetryPolicy, options: &SseReconnectOptions) -> Duration {
+fn server_retry_max_delay(
+    retry_policy: &RetryPolicy,
+    options: &SseReconnectOptions,
+) -> Duration {
     options
         .server_retry_max_delay
         .unwrap_or_else(|| default_server_retry_max_delay(retry_policy))
@@ -665,8 +673,9 @@ fn operation_elapsed_exceeded_error(
     request_url: Option<&url::Url>,
     log_redactor: &HttpRedactor,
 ) -> HttpError {
-    let max_elapsed =
-        max_elapsed.expect("operation budget exhaustion requires a configured operation limit");
+    let max_elapsed = max_elapsed.expect(
+        "operation budget exhaustion requires a configured operation limit",
+    );
     let mut error = HttpError::retry_max_elapsed_exceeded(format!(
         "SSE reconnect max operation duration exceeded: {elapsed:?}/{max_elapsed:?}"
     ))
@@ -715,7 +724,10 @@ fn operation_elapsed_exceeded_error_with_last_error(
 ///
 /// # Returns
 /// The updated budget error with the last error in its source chain.
-fn attach_last_retryable_error(mut error: HttpError, last_error: HttpError) -> HttpError {
+fn attach_last_retryable_error(
+    mut error: HttpError,
+    last_error: HttpError,
+) -> HttpError {
     if let Some(method) = last_error.method.as_ref() {
         error = error.with_method(method);
     }
@@ -755,20 +767,22 @@ fn validate_sse_response_content_type(
     let method = response.meta().method().clone();
     let url = response.request_url().clone();
     let Some(value) = response.headers().get(CONTENT_TYPE) else {
-        return Err(
-            HttpError::sse_protocol("Missing Content-Type header for SSE response")
-                .with_status(response.status())
-                .with_method(&method)
-                .with_url(&url)
-                .with_log_redactor(log_redactor.clone()),
-        );
+        return Err(HttpError::sse_protocol(
+            "Missing Content-Type header for SSE response",
+        )
+        .with_status(response.status())
+        .with_method(&method)
+        .with_url(&url)
+        .with_log_redactor(log_redactor.clone()));
     };
     let content_type = value.to_str().map_err(|_| {
-        HttpError::sse_protocol("Invalid non-UTF8 Content-Type header for SSE response")
-            .with_status(response.status())
-            .with_method(&method)
-            .with_url(&url)
-            .with_log_redactor(log_redactor.clone())
+        HttpError::sse_protocol(
+            "Invalid non-UTF8 Content-Type header for SSE response",
+        )
+        .with_status(response.status())
+        .with_method(&method)
+        .with_url(&url)
+        .with_log_redactor(log_redactor.clone())
     })?;
     if content_type::is_sse(content_type) {
         return Ok(());
@@ -791,7 +805,8 @@ fn validate_sse_response_content_type(
 /// # Returns
 /// `true` when message/source indicates unexpected EOF during stream decoding.
 fn is_unexpected_eof_error(error: &HttpError) -> bool {
-    let contains_unexpected_eof = |text: &str| text.to_ascii_lowercase().contains("unexpected eof");
+    let contains_unexpected_eof =
+        |text: &str| text.to_ascii_lowercase().contains("unexpected eof");
     if contains_unexpected_eof(&error.message) {
         return true;
     }
