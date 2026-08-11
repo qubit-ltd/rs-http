@@ -6,9 +6,9 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
+use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -21,9 +21,9 @@ use qubit_http::HttpRetryMethodPolicy;
 use qubit_retry::RetryDelay;
 use tokio::time::timeout;
 
+use crate::common::ResponsePlan;
 use crate::common::spawn_multi_shot_server;
 use crate::common::spawn_one_shot_server;
-use crate::common::ResponsePlan;
 
 #[tokio::test]
 async fn test_execute_with_form_body_and_query_headers_timeout() {
@@ -214,7 +214,8 @@ async fn test_execute_with_stream_body_uses_chunked_transfer_encoding() {
 }
 
 #[tokio::test]
-async fn test_execute_with_stream_body_uses_chunked_transfer_encoding_without_eager_read() {
+async fn test_execute_with_stream_body_uses_chunked_transfer_encoding_without_eager_read()
+ {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
         headers: vec![],
@@ -282,7 +283,8 @@ async fn test_execute_with_streaming_body_factory_supports_retry_rebuild() {
     let request = client
         .request(Method::POST, "/streaming-body-factory")
         .streaming_body(move || {
-            let stream_factory_calls_for_future = Arc::clone(&stream_factory_calls_for_builder);
+            let stream_factory_calls_for_future =
+                Arc::clone(&stream_factory_calls_for_builder);
             Box::pin(async move {
                 stream_factory_calls_for_future.fetch_add(1, Ordering::Relaxed);
                 Box::pin(stream::iter(vec![
