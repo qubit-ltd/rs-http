@@ -8,9 +8,9 @@
 
 use std::time::Duration;
 
+use qubit_argument::require_that;
 use qubit_argument::ArgumentResult;
 use qubit_argument::OptionArgument;
-use qubit_argument::require_that;
 use qubit_config::ConfigReader;
 use qubit_config::ConfigResult;
 
@@ -129,10 +129,7 @@ impl HttpTimeoutOptions {
 
 /// Returns `value` when it is nonzero while preserving the public domain
 /// diagnostic on failure.
-fn validate_positive_duration(
-    path: &str,
-    value: Duration,
-) -> ArgumentResult<Duration> {
+fn validate_positive_duration(path: &str, value: Duration) -> ArgumentResult<Duration> {
     require_that(
         value,
         path,

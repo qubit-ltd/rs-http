@@ -18,8 +18,7 @@ use crate::HttpResult;
 /// before URL resolution, header merge, and network I/O.
 ///
 /// Returning `Err` short-circuits execution for the current attempt.
-pub type HttpRequestInterceptor =
-    ArcMutatingFunction<HttpRequest, HttpResult<()>>;
+pub type HttpRequestInterceptor = ArcMutatingFunction<HttpRequest, HttpResult<()>>;
 
 /// Ordered request interceptor list with unified application behavior.
 #[derive(Debug, Clone, Default)]

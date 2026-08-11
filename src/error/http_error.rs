@@ -14,8 +14,8 @@ use std::time::Duration;
 use http::Method;
 use http::StatusCode;
 use qubit_error::BoxError;
-use qubit_redact::RedactionPolicy;
 use qubit_redact::http::HttpRedactor;
+use qubit_redact::RedactionPolicy;
 use url::Url;
 
 use super::HttpErrorKind;
@@ -53,8 +53,7 @@ impl fmt::Display for HttpError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let debugger = RedactedDebugger::new(&self.log_redactor);
         let session = debugger.session();
-        let message =
-            debugger.diagnostic_text_with_session(&self.message, &session);
+        let message = debugger.diagnostic_text_with_session(&self.message, &session);
         fmt::Display::fmt(&message, formatter)
     }
 }
@@ -71,12 +70,9 @@ impl fmt::Debug for HttpError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let debugger = RedactedDebugger::new(&self.log_redactor);
         let session = debugger.session();
-        let url =
-            debugger.optional_url_with_session(self.url.as_ref(), &session);
-        let message =
-            debugger.diagnostic_text_with_session(&self.message, &session);
-        let response_body_preview_len =
-            self.response_body_preview.as_ref().map(String::len);
+        let url = debugger.optional_url_with_session(self.url.as_ref(), &session);
+        let message = debugger.diagnostic_text_with_session(&self.message, &session);
+        let response_body_preview_len = self.response_body_preview.as_ref().map(String::len);
         formatter
             .debug_struct("HttpError")
             .field("kind", &self.kind)
@@ -174,10 +170,7 @@ impl HttpError {
     ///
     /// # Returns
     /// `self` for chaining.
-    pub fn with_response_body_preview(
-        mut self,
-        preview: impl Into<String>,
-    ) -> Self {
+    pub fn with_response_body_preview(mut self, preview: impl Into<String>) -> Self {
         self.response_body_preview = Some(preview.into());
         self
     }
@@ -217,10 +210,7 @@ impl HttpError {
     /// # Returns
     /// `self` for chaining.
     #[inline(always)]
-    pub fn with_log_redaction_policy(
-        mut self,
-        policy: RedactionPolicy,
-    ) -> Self {
+    pub fn with_log_redaction_policy(mut self, policy: RedactionPolicy) -> Self {
         self.log_redactor = HttpRedactor::new(policy);
         self
     }
@@ -427,9 +417,7 @@ impl HttpError {
             | HttpErrorKind::Transport => RetryHint::Retryable,
             HttpErrorKind::Status => {
                 if let Some(status) = self.status {
-                    if status == StatusCode::TOO_MANY_REQUESTS
-                        || status.is_server_error()
-                    {
+                    if status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error() {
                         RetryHint::Retryable
                     } else {
                         RetryHint::NonRetryable
@@ -468,7 +456,6 @@ impl From<reqwest::Error> for HttpError {
     /// Wrapped [`HttpError`].
     fn from(error: reqwest::Error) -> Self {
         let error = error.without_url();
-        Self::build_client(format!("Failed to build reqwest client: {}", error))
-            .with_source(error)
+        Self::build_client(format!("Failed to build reqwest client: {}", error)).with_source(error)
     }
 }

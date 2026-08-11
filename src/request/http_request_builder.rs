@@ -13,21 +13,23 @@ use std::pin::Pin;
 use std::time::Duration;
 
 use bytes::Bytes;
+use http::header::CONTENT_TYPE;
 use http::HeaderMap;
 use http::HeaderValue;
 use http::Method;
-use http::header::CONTENT_TYPE;
 use qubit_redact::http::HttpRedactor;
 use serde::Serialize;
 use tokio_util::sync::CancellationToken;
-use url::Url;
 use url::form_urlencoded;
+use url::Url;
 
 use super::http_request::HttpRequest;
 use super::http_request_body::HttpRequestBody;
 use super::http_request_retry_override::HttpRequestRetryOverride;
 use super::parse_header;
 use super::validate_positive_timeout;
+use crate::content_type;
+use crate::redact::RedactedDebugger;
 use crate::AsyncHttpHeaderInjector;
 use crate::HttpClient;
 use crate::HttpError;
@@ -36,8 +38,6 @@ use crate::HttpRequestBodyByteStream;
 use crate::HttpRequestStreamingBody;
 use crate::HttpResult;
 use crate::HttpRetryMethodPolicy;
-use crate::content_type;
-use crate::redact::RedactedDebugger;
 
 /// Builder for [`HttpRequest`](super::http_request::HttpRequest).
 #[derive(Clone)]
@@ -243,9 +243,7 @@ impl HttpRequestBuilder {
         I: IntoIterator<Item = B>,
         B: Into<Bytes>,
     {
-        self.body = HttpRequestBody::Stream(
-            chunks.into_iter().map(Into::into).collect(),
-        );
+        self.body = HttpRequestBody::Stream(chunks.into_iter().map(Into::into).collect());
         self.streaming_body = None;
         self
     }
@@ -262,13 +260,8 @@ impl HttpRequestBuilder {
     /// `self` for chaining.
     pub fn streaming_body<F>(mut self, factory: F) -> Self
     where
-        F: Fn() -> Pin<
-                Box<
-                    dyn Future<Output = HttpRequestBodyByteStream>
-                        + Send
-                        + 'static,
-                >,
-            > + Send
+        F: Fn() -> Pin<Box<dyn Future<Output = HttpRequestBodyByteStream> + Send + 'static>>
+            + Send
             + Sync
             + 'static,
     {
@@ -309,14 +302,11 @@ impl HttpRequestBuilder {
     where
         T: Serialize,
     {
-        let bytes = serde_json::to_vec(value).map_err(|error| {
-            HttpError::decode("Failed to encode JSON body").with_source(error)
-        })?;
+        let bytes = serde_json::to_vec(value)
+            .map_err(|error| HttpError::decode("Failed to encode JSON body").with_source(error))?;
         if !self.headers.contains_key(CONTENT_TYPE) {
-            self.headers.insert(
-                CONTENT_TYPE,
-                HeaderValue::from_static("application/json"),
-            );
+            self.headers
+                .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         }
         self.body = HttpRequestBody::Json(Bytes::from(bytes));
         self.streaming_body = None;
@@ -363,11 +353,7 @@ impl HttpRequestBuilder {
     /// Returns [`HttpError`] when `boundary` is not a 1 to 70 character
     /// ASCII token-safe multipart boundary, or when an existing `Content-Type`
     /// is not UTF-8 multipart content with a valid matching boundary.
-    pub fn multipart_body(
-        mut self,
-        body: impl Into<Bytes>,
-        boundary: &str,
-    ) -> HttpResult<Self> {
+    pub fn multipart_body(mut self, body: impl Into<Bytes>, boundary: &str) -> HttpResult<Self> {
         if !content_type::is_valid_multipart_boundary(boundary) {
             return Err(HttpError::other(
                 "Invalid multipart boundary for multipart_body: expected 1 to 70 token-safe ASCII characters",
@@ -390,12 +376,8 @@ impl HttpRequestBuilder {
                         "Existing multipart Content-Type boundary is malformed or invalid",
                     )
                 })?;
-            if let Some(existing_boundary) =
-                content_type::parameter(existing, "boundary")
-            {
-                if !content_type::is_valid_multipart_boundary(
-                    &existing_boundary,
-                ) {
+            if let Some(existing_boundary) = content_type::parameter(existing, "boundary") {
+                if !content_type::is_valid_multipart_boundary(&existing_boundary) {
                     return Err(HttpError::other(
                         "Existing multipart Content-Type boundary is malformed or invalid",
                     ));
@@ -442,8 +424,7 @@ impl HttpRequestBuilder {
         let mut payload = String::new();
         for record in records {
             let line = serde_json::to_string(record).map_err(|error| {
-                HttpError::decode("Failed to encode NDJSON record")
-                    .with_source(error)
+                HttpError::decode("Failed to encode NDJSON record").with_source(error)
             })?;
             payload.push_str(&line);
             payload.push('\n');
@@ -584,10 +565,7 @@ impl HttpRequestBuilder {
     ///
     /// # Returns
     /// `self` for chaining.
-    pub fn retry_method_policy(
-        mut self,
-        policy: HttpRetryMethodPolicy,
-    ) -> Self {
+    pub fn retry_method_policy(mut self, policy: HttpRetryMethodPolicy) -> Self {
         self.retry_override = self.retry_override.with_method_policy(policy);
         self
     }
@@ -601,8 +579,7 @@ impl HttpRequestBuilder {
     /// # Returns
     /// `self` for chaining.
     pub fn honor_retry_after(mut self, enabled: bool) -> Self {
-        self.retry_override =
-            self.retry_override.with_honor_retry_after(enabled);
+        self.retry_override = self.retry_override.with_honor_retry_after(enabled);
         self
     }
 
