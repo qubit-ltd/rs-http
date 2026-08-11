@@ -23,6 +23,10 @@ use qubit_retry::RetryError;
 use qubit_retry::RetryErrorReason;
 use qubit_retry::RetryRule;
 
+use crate::response::HttpResponseOptions;
+use crate::sse::SseMessageStream;
+use crate::sse::SseReconnectOptions;
+use crate::sse::SseReconnectRunner;
 use crate::AsyncHttpHeaderInjector;
 use crate::HttpClientOptions;
 use crate::HttpError;
@@ -38,10 +42,6 @@ use crate::HttpResponseInterceptors;
 use crate::HttpResponseMeta;
 use crate::HttpResult;
 use crate::HttpRetryOptions;
-use crate::response::HttpResponseOptions;
-use crate::sse::SseMessageStream;
-use crate::sse::SseReconnectOptions;
-use crate::sse::SseReconnectRunner;
 
 /// High-level HTTP client: default headers, injectors, interceptors, logging,
 /// timeouts, and optional per-request retry.
@@ -108,12 +108,8 @@ impl HttpClient {
     /// # Returns
     /// A new [`HttpClient`] with no injectors until
     /// [`HttpClient::add_header_injector`] is called.
-    pub(crate) fn new(
-        backend: reqwest::Client,
-        options: HttpClientOptions,
-    ) -> Self {
-        let log_redactor =
-            HttpRedactor::new(options.log_redaction_policy.clone());
+    pub(crate) fn new(backend: reqwest::Client, options: HttpClientOptions) -> Self {
+        let log_redactor = HttpRedactor::new(options.log_redaction_policy.clone());
         Self {
             backend,
             options,
@@ -154,10 +150,7 @@ impl HttpClient {
     ///
     /// # Parameters
     /// - `injector`: Async injector to append (order is preserved).
-    pub fn add_async_header_injector(
-        &mut self,
-        injector: AsyncHttpHeaderInjector,
-    ) {
+    pub fn add_async_header_injector(&mut self, injector: AsyncHttpHeaderInjector) {
         self.async_injectors.push(injector);
     }
 
@@ -166,10 +159,7 @@ impl HttpClient {
     ///
     /// # Parameters
     /// - `interceptor`: Request interceptor to append (order is preserved).
-    pub fn add_request_interceptor(
-        &mut self,
-        interceptor: HttpRequestInterceptor,
-    ) {
+    pub fn add_request_interceptor(&mut self, interceptor: HttpRequestInterceptor) {
         self.request_interceptors.push(interceptor);
     }
 
@@ -179,10 +169,7 @@ impl HttpClient {
     ///
     /// # Parameters
     /// - `interceptor`: Response interceptor to append (order is preserved).
-    pub fn add_response_interceptor(
-        &mut self,
-        interceptor: HttpResponseInterceptor,
-    ) {
+    pub fn add_response_interceptor(&mut self, interceptor: HttpResponseInterceptor) {
         self.response_interceptors.push(interceptor);
     }
 
@@ -200,11 +187,7 @@ impl HttpClient {
     ///
     /// # Errors
     /// Returns [`HttpError`] when the header name or value is invalid.
-    pub fn add_header(
-        &mut self,
-        name: &str,
-        value: &str,
-    ) -> HttpResult<&mut Self> {
+    pub fn add_header(&mut self, name: &str, value: &str) -> HttpResult<&mut Self> {
         self.options.add_header(name, value)?;
         Ok(self)
     }
@@ -222,10 +205,7 @@ impl HttpClient {
     /// # Errors
     /// Returns [`HttpError`] when any name/value pair is invalid (nothing from
     /// this call is applied).
-    pub fn add_headers(
-        &mut self,
-        headers: &[(&str, &str)],
-    ) -> HttpResult<&mut Self> {
+    pub fn add_headers(&mut self, headers: &[(&str, &str)]) -> HttpResult<&mut Self> {
         self.options.add_headers(headers)?;
         Ok(self)
     }
@@ -262,11 +242,7 @@ impl HttpClient {
     /// A new [`HttpRequestBuilder`] borrowing this client for defaults; it is
     /// not sent until built and passed to [`HttpClient::execute`] (or related
     /// APIs).
-    pub fn request(
-        &self,
-        method: http::Method,
-        path: &str,
-    ) -> HttpRequestBuilder {
+    pub fn request(&self, method: http::Method, path: &str) -> HttpRequestBuilder {
         HttpRequestBuilder::new(method, path, self)
     }
 
@@ -293,9 +269,7 @@ impl HttpClient {
     ///
     /// # Returns
     /// New [`Vec`] with the same injectors and order as on this client.
-    pub(crate) fn async_injectors_snapshot(
-        &self,
-    ) -> Vec<AsyncHttpHeaderInjector> {
+    pub(crate) fn async_injectors_snapshot(&self) -> Vec<AsyncHttpHeaderInjector> {
         self.async_injectors.clone()
     }
 
@@ -316,18 +290,14 @@ impl HttpClient {
     /// - `Err(HttpError)` when any attempt fails for URL/header validation,
     ///   cancellation, interceptor failure, transport/timeout, non-success
     ///   status, or when the retry executor aborts or exceeds limits.
-    pub async fn execute(
-        &self,
-        request: HttpRequest,
-    ) -> HttpResult<HttpResponse> {
+    pub async fn execute(&self, request: HttpRequest) -> HttpResult<HttpResponse> {
         let retry_options = self.options.retry.resolve(&request);
         let result = if retry_options.should_retry(&request) {
             self.execute_with_retry(request, retry_options).await
         } else {
             self.execute_once(request).await
         };
-        result
-            .map_err(|error| error.with_log_redactor(self.log_redactor.clone()))
+        result.map_err(|error| error.with_log_redactor(self.log_redactor.clone()))
     }
 
     /// Performs one non-retrying execution: pre-send cancellation check,
@@ -349,38 +319,29 @@ impl HttpClient {
     ///
     /// # Side effects
     /// Network I/O, optional logging, and user-provided interceptor callbacks.
-    pub(crate) async fn execute_once(
-        &self,
-        request: HttpRequest,
-    ) -> HttpResult<HttpResponse> {
+    pub(crate) async fn execute_once(&self, request: HttpRequest) -> HttpResult<HttpResponse> {
         let result = async {
             let mut request = request;
-            if let Some(error) = request
-                .cancelled_error_if_needed("Request cancelled before sending")
+            if let Some(error) =
+                request.cancelled_error_if_needed("Request cancelled before sending")
             {
                 return Err(error);
             }
             self.request_interceptors.apply(&mut request)?;
             let response = self
-                .prepare_and_send_once(
-                    request,
-                    "Request cancelled before sending",
-                )
+                .prepare_and_send_once(request, "Request cancelled before sending")
                 .await?;
             let mut response = response
                 .into_success_or_status_error("HTTP request failed")
                 .await?;
             self.response_interceptors.apply(&mut response.meta)?;
-            let logger = HttpLogger::from_options_with_redactor(
-                &self.options,
-                self.log_redactor.clone(),
-            );
+            let logger =
+                HttpLogger::from_options_with_redactor(&self.options, self.log_redactor.clone());
             logger.log_response(&mut response).await?;
             Ok(response)
         }
         .await;
-        result
-            .map_err(|error| error.with_log_redactor(self.log_redactor.clone()))
+        result.map_err(|error| error.with_log_redactor(self.log_redactor.clone()))
     }
 
     /// Single low-level send: cancellation check, request logging, one backend
@@ -407,18 +368,13 @@ impl HttpClient {
         cancellation_message: &str,
     ) -> HttpResult<HttpResponse> {
         let mut request = request;
-        if let Some(error) =
-            request.cancelled_error_if_needed(cancellation_message)
-        {
+        if let Some(error) = request.cancelled_error_if_needed(cancellation_message) {
             return Err(error);
         }
-        let logger = HttpLogger::from_options_with_redactor(
-            &self.options,
-            self.log_redactor.clone(),
-        );
+        let logger =
+            HttpLogger::from_options_with_redactor(&self.options, self.log_redactor.clone());
         let request_url = request.resolved_url()?;
-        let backend_response =
-            request.send_impl(&self.backend, &logger).await?;
+        let backend_response = request.send_impl(&self.backend, &logger).await?;
         let log_redactor = request.log_redactor().clone();
         let meta = HttpResponseMeta::new(
             backend_response.status(),
@@ -470,8 +426,7 @@ impl HttpClient {
         request: HttpRequest,
         options: HttpRetryOptions,
     ) -> HttpResult<HttpResponse> {
-        let honor_retry_after =
-            request.retry_override().should_honor_retry_after();
+        let honor_retry_after = request.retry_override().should_honor_retry_after();
         let retry_policy = options.to_executor_policy();
         let started_at = Instant::now();
 
@@ -526,10 +481,7 @@ impl HttpClient {
     ///
     /// # Returns
     /// `true` if another attempt may be scheduled.
-    fn is_retryable_error(
-        error: &HttpError,
-        options: &HttpRetryOptions,
-    ) -> bool {
+    fn is_retryable_error(error: &HttpError, options: &HttpRetryOptions) -> bool {
         if error.kind == crate::HttpErrorKind::Status {
             error
                 .status
@@ -570,11 +522,7 @@ impl HttpClient {
     /// # Returns
     /// [`HttpError::retry_aborted`] with the original [`HttpError`] chained as
     /// source for callers that need the underlying status or transport error.
-    fn map_retry_aborted(
-        error: HttpError,
-        attempts: u32,
-        started_at: Instant,
-    ) -> HttpError {
+    fn map_retry_aborted(error: HttpError, attempts: u32, started_at: Instant) -> HttpError {
         let elapsed = started_at.elapsed();
         let summary = error.message.clone();
         HttpError::retry_aborted(format!(
@@ -637,28 +585,17 @@ impl HttpClient {
 
         match reason {
             RetryErrorReason::AttemptsExhausted => {
-                let error = last_error.expect(
-                    "HTTP retry attempts exceeded should preserve last error",
-                );
-                Self::map_retry_attempts_exhausted(
-                    error,
-                    attempts,
-                    max_attempts,
-                )
+                let error =
+                    last_error.expect("HTTP retry attempts exceeded should preserve last error");
+                Self::map_retry_attempts_exhausted(error, attempts, max_attempts)
             }
-            RetryErrorReason::OperationBudgetExhausted
-            | RetryErrorReason::TotalBudgetExhausted => {
-                let max_duration = max_duration
-                    .expect("HTTP retry elapsed limit requires max_duration");
-                Self::map_retry_max_duration_exceeded(
-                    started_at,
-                    max_duration,
-                    last_error,
-                )
+            RetryErrorReason::OperationBudgetExhausted | RetryErrorReason::TotalBudgetExhausted => {
+                let max_duration =
+                    max_duration.expect("HTTP retry elapsed limit requires max_duration");
+                Self::map_retry_max_duration_exceeded(started_at, max_duration, last_error)
             }
             RetryErrorReason::Aborted => {
-                let error = last_error
-                    .expect("HTTP retry abort should preserve last error");
+                let error = last_error.expect("HTTP retry abort should preserve last error");
                 if error.kind == crate::HttpErrorKind::Cancelled {
                     error
                 } else {
@@ -668,11 +605,9 @@ impl HttpClient {
             RetryErrorReason::AttemptTimedOut
             | RetryErrorReason::FlowTimedOut
             | RetryErrorReason::TimerFailed
-            | RetryErrorReason::WorkerStillRunning => {
-                HttpError::other(format!(
-                    "HTTP retry executor failed after {attempts} attempt(s): {reason:?}"
-                ))
-            }
+            | RetryErrorReason::WorkerStillRunning => HttpError::other(format!(
+                "HTTP retry executor failed after {attempts} attempt(s): {reason:?}"
+            )),
             _ => HttpError::other(format!(
                 "HTTP retry stopped after {attempts} attempt(s): {reason:?}"
             )),

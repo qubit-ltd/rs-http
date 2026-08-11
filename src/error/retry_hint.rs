@@ -16,17 +16,7 @@ use serde::Serialize;
 
 /// High-level classification from [`crate::HttpError::retry_hint`] for backoff
 /// policies.
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Serialize,
-    Deserialize,
-    Display,
-    DeriveFromStr,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Display, DeriveFromStr)]
 #[serde(rename_all = "snake_case")]
 #[display(style = "snake_case")]
 pub enum RetryHint {

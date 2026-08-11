@@ -173,8 +173,7 @@ pub async fn spawn_one_shot_server(plan: ResponsePlan) -> OneShotServer {
     let addr = listener
         .local_addr()
         .expect("failed to query one-shot server local address");
-    let base_url = Url::parse(&format!("http://{addr}/"))
-        .expect("failed to build base URL");
+    let base_url = Url::parse(&format!("http://{addr}/")).expect("failed to build base URL");
     let (request_received_tx, request_received_rx) = oneshot::channel::<()>();
     let (request_tx, request_rx) = oneshot::channel::<CapturedRequest>();
 
@@ -182,9 +181,7 @@ pub async fn spawn_one_shot_server(plan: ResponsePlan) -> OneShotServer {
         let accept_result = listener.accept().await;
         let (mut stream, _) = match accept_result {
             Ok(result) => result,
-            Err(error) => panic!(
-                "one-shot test server failed to accept connection: {error}"
-            ),
+            Err(error) => panic!("one-shot test server failed to accept connection: {error}"),
         };
 
         let request = read_request(&mut stream)
@@ -196,9 +193,7 @@ pub async fn spawn_one_shot_server(plan: ResponsePlan) -> OneShotServer {
         if let Err(error) = write_response(&mut stream, plan).await {
             // Timeout tests intentionally allow client-side early disconnects.
             if !is_expected_client_disconnect(&error) {
-                panic!(
-                    "failed to write response in one-shot test server: {error}"
-                );
+                panic!("failed to write response in one-shot test server: {error}");
             }
         }
     });
@@ -212,17 +207,14 @@ pub async fn spawn_one_shot_server(plan: ResponsePlan) -> OneShotServer {
 }
 
 /// Spawns a test HTTP server that serves one response plan per request.
-pub async fn spawn_multi_shot_server(
-    plans: Vec<ResponsePlan>,
-) -> MultiShotServer {
+pub async fn spawn_multi_shot_server(plans: Vec<ResponsePlan>) -> MultiShotServer {
     let listener = TcpListener::bind("127.0.0.1:0")
         .await
         .expect("failed to bind multi-shot test server");
     let addr = listener
         .local_addr()
         .expect("failed to query multi-shot server local address");
-    let base_url = Url::parse(&format!("http://{addr}/"))
-        .expect("failed to build base URL");
+    let base_url = Url::parse(&format!("http://{addr}/")).expect("failed to build base URL");
     let (request_tx, request_rx) = oneshot::channel::<Vec<CapturedRequest>>();
 
     let join_handle = tokio::spawn(async move {
@@ -231,9 +223,7 @@ pub async fn spawn_multi_shot_server(
             let accept_result = listener.accept().await;
             let (mut stream, _) = match accept_result {
                 Ok(result) => result,
-                Err(error) => panic!(
-                    "multi-shot test server failed to accept connection: {error}"
-                ),
+                Err(error) => panic!("multi-shot test server failed to accept connection: {error}"),
             };
 
             handles.push(tokio::spawn(async move {
@@ -251,8 +241,7 @@ pub async fn spawn_multi_shot_server(
         }
         let mut requests = vec![None; handles.len()];
         for handle in handles {
-            let (index, request) =
-                handle.await.expect("multi-shot request task panicked");
+            let (index, request) = handle.await.expect("multi-shot request task panicked");
             requests[index] = Some(request);
         }
         let requests = requests
@@ -269,22 +258,19 @@ pub async fn spawn_multi_shot_server(
     }
 }
 
-async fn read_request(
-    stream: &mut TcpStream,
-) -> std::io::Result<CapturedRequest> {
+async fn read_request(stream: &mut TcpStream) -> std::io::Result<CapturedRequest> {
     let read_timeout = Duration::from_secs(3);
     let mut buffer = Vec::new();
     let header_end_index = loop {
         let mut chunk = [0_u8; 1024];
-        let read_size =
-            tokio::time::timeout(read_timeout, stream.read(&mut chunk))
-                .await
-                .map_err(|_| {
-                    std::io::Error::new(
-                        std::io::ErrorKind::TimedOut,
-                        "timed out while waiting for request headers",
-                    )
-                })??;
+        let read_size = tokio::time::timeout(read_timeout, stream.read(&mut chunk))
+            .await
+            .map_err(|_| {
+                std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    "timed out while waiting for request headers",
+                )
+            })??;
         if read_size == 0 {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::UnexpectedEof,
@@ -313,10 +299,7 @@ async fn read_request(
             break;
         }
         if let Some((name, value)) = line.split_once(':') {
-            headers.insert(
-                name.trim().to_ascii_lowercase(),
-                value.trim().to_string(),
-            );
+            headers.insert(name.trim().to_ascii_lowercase(), value.trim().to_string());
         }
     }
 
@@ -328,10 +311,7 @@ async fn read_request(
     })
 }
 
-async fn write_response(
-    stream: &mut TcpStream,
-    plan: ResponsePlan,
-) -> std::io::Result<()> {
+async fn write_response(stream: &mut TcpStream, plan: ResponsePlan) -> std::io::Result<()> {
     match plan {
         ResponsePlan::Immediate {
             status,
@@ -372,10 +352,7 @@ async fn write_response(
             delay,
         } => {
             if !contains_header(&headers, "Content-Length") {
-                headers.push((
-                    "Content-Length".to_string(),
-                    total_length.to_string(),
-                ));
+                headers.push(("Content-Length".to_string(), total_length.to_string()));
             }
             write_status_and_headers(stream, status, &headers).await?;
             stream.write_all(&prefix).await?;
@@ -389,10 +366,7 @@ async fn write_response(
             finish,
         } => {
             if !contains_header(&headers, "Transfer-Encoding") {
-                headers.push((
-                    "Transfer-Encoding".to_string(),
-                    "chunked".to_string(),
-                ));
+                headers.push(("Transfer-Encoding".to_string(), "chunked".to_string()));
             }
             write_status_and_headers(stream, status, &headers).await?;
 
@@ -467,8 +441,7 @@ async fn write_status_and_raw_headers(
     status: u16,
     headers: &[(String, Vec<u8>)],
 ) -> std::io::Result<()> {
-    let status_line =
-        format!("HTTP/1.1 {} {}\r\n", status, reason_phrase(status));
+    let status_line = format!("HTTP/1.1 {} {}\r\n", status, reason_phrase(status));
     stream.write_all(status_line.as_bytes()).await?;
     for (name, value) in headers {
         stream.write_all(name.as_bytes()).await?;
