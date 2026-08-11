@@ -14,8 +14,8 @@ use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
 use tokio::time::timeout;
 
-use crate::common::ResponsePlan;
 use crate::common::spawn_one_shot_server;
+use crate::common::ResponsePlan;
 
 #[test]
 fn test_ipv4_only_option_is_preserved_in_client_options() {

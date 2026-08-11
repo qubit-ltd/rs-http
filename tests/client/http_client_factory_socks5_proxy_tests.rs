@@ -19,8 +19,8 @@ use tokio::net::TcpStream;
 use tokio::sync::oneshot;
 use tokio::time::timeout;
 
-use crate::common::ResponsePlan;
 use crate::common::spawn_one_shot_server;
+use crate::common::ResponsePlan;
 
 #[derive(Debug)]
 struct SocksServer {
@@ -59,8 +59,7 @@ async fn spawn_socks5_server() -> SocksServer {
     let (target_tx, target_rx) = oneshot::channel::<(String, u16)>();
 
     let join_handle = tokio::spawn(async move {
-        let (mut stream, _) =
-            listener.accept().await.expect("failed to accept socks5");
+        let (mut stream, _) = listener.accept().await.expect("failed to accept socks5");
         let (host, port) = socks5_handshake_and_target(&mut stream)
             .await
             .expect("failed socks5 handshake");
@@ -104,9 +103,7 @@ async fn spawn_socks5_server() -> SocksServer {
     }
 }
 
-async fn socks5_handshake_and_target(
-    stream: &mut TcpStream,
-) -> std::io::Result<(String, u16)> {
+async fn socks5_handshake_and_target(stream: &mut TcpStream) -> std::io::Result<(String, u16)> {
     let mut greeting = [0_u8; 2];
     stream.read_exact(&mut greeting).await?;
     let nmethods = greeting[1] as usize;
@@ -135,10 +132,7 @@ async fn socks5_handshake_and_target(
             let mut domain = vec![0_u8; len[0] as usize];
             stream.read_exact(&mut domain).await?;
             String::from_utf8(domain).map_err(|e| {
-                std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    format!("bad domain: {e}"),
-                )
+                std::io::Error::new(std::io::ErrorKind::InvalidData, format!("bad domain: {e}"))
             })?
         }
         _ => {
@@ -159,10 +153,7 @@ async fn socks5_handshake_and_target(
     Ok((host, port))
 }
 
-async fn read_http_message(
-    stream: &mut TcpStream,
-    output: &mut Vec<u8>,
-) -> std::io::Result<()> {
+async fn read_http_message(stream: &mut TcpStream, output: &mut Vec<u8>) -> std::io::Result<()> {
     let header_end = loop {
         let mut buf = [0_u8; 1024];
         let n = stream.read(&mut buf).await?;
