@@ -16,9 +16,9 @@ use qubit_http::HttpErrorKind;
 use qubit_http::RetryHint;
 use tokio::time::timeout;
 
+use crate::common::spawn_one_shot_server;
 use crate::common::ResponseChunk;
 use crate::common::ResponsePlan;
-use crate::common::spawn_one_shot_server;
 
 #[tokio::test]
 async fn test_client_level_request_timeout_triggers_timeout_classification() {
@@ -196,8 +196,7 @@ async fn test_truncated_body_with_request_timeout_context_is_transport_error() {
 }
 
 #[tokio::test]
-async fn test_reqwest_timeout_during_body_chunk_is_classified_as_read_timeout()
-{
+async fn test_reqwest_timeout_during_body_chunk_is_classified_as_read_timeout() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
         headers: vec![("Content-Type".to_string(), "text/plain".to_string())],
@@ -240,8 +239,7 @@ async fn test_reqwest_timeout_during_body_chunk_is_classified_as_read_timeout()
 }
 
 #[tokio::test]
-async fn test_request_level_read_timeout_overrides_client_level_for_buffered_execute()
- {
+async fn test_request_level_read_timeout_overrides_client_level_for_buffered_execute() {
     let server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
         status: 200,
         headers: vec![],
@@ -273,8 +271,7 @@ async fn test_request_level_read_timeout_overrides_client_level_for_buffered_exe
 }
 
 #[tokio::test]
-async fn test_request_level_read_timeout_overrides_client_level_for_stream_body()
- {
+async fn test_request_level_read_timeout_overrides_client_level_for_stream_body() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
         headers: vec![("Content-Type".to_string(), "text/plain".to_string())],
@@ -309,8 +306,7 @@ async fn test_request_level_read_timeout_overrides_client_level_for_stream_body(
         .expect("execute timed out")
         .expect("request should start");
 
-    let mut stream =
-        response.stream().expect("stream body should be available");
+    let mut stream = response.stream().expect("stream body should be available");
     let first = stream
         .next()
         .await

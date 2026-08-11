@@ -10,16 +10,14 @@ use qubit_config::Config;
 use qubit_http::HttpLoggingOptions;
 
 #[test]
-fn test_http_logging_options_from_config_preserves_defaults_for_missing_flags()
-{
+fn test_http_logging_options_from_config_preserves_defaults_for_missing_flags() {
     let mut config = Config::new();
     config
         .set("logging.log_request_body", false)
         .expect("test config should set flag");
 
     let options =
-        HttpLoggingOptions::from_config(&config.section("logging").unwrap())
-            .expect("read logging");
+        HttpLoggingOptions::from_config(&config.section("logging").unwrap()).expect("read logging");
 
     assert!(options.enabled);
     assert!(options.log_request_header);
