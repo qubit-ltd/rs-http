@@ -93,10 +93,11 @@ fn test_http_config_error_from_config_error() {
     let he = HttpConfigError::from(ce);
     assert_eq!(he.kind, HttpConfigErrorKind::TypeError);
     assert_eq!(he.path, "x");
-    assert!(he
-        .source()
-        .and_then(|source| source.downcast_ref::<ConfigError>())
-        .is_some());
+    assert!(
+        he.source()
+            .and_then(|source| source.downcast_ref::<ConfigError>())
+            .is_some()
+    );
 }
 
 #[test]
