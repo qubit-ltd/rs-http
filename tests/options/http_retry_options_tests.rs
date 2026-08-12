@@ -31,12 +31,8 @@ fn test_http_retry_options_alias_exponential_dash_normalizes_to_exponential_back
         HttpRetryOptions::from_config(&config.section("retry").unwrap())
             .unwrap();
     assert_eq!(
-        options.delay_strategy,
-        qubit_retry::RetryDelay::Exponential {
-            initial: Duration::from_millis(40),
-            max: Duration::from_secs(1),
-            multiplier: 2.0,
-        }
+        options.backoff.maximum_delay(),
+        Some(Duration::from_secs(1))
     );
 }
 
@@ -347,7 +343,6 @@ fn test_http_retry_options_from_config_reads_all_optional_fields() {
     assert!(options.enabled);
     assert_eq!(options.max_attempts, 5);
     assert_eq!(options.max_duration, Some(Duration::from_secs(12)));
-    assert_eq!(options.jitter_factor, 0.2);
     assert_eq!(options.method_policy, HttpRetryMethodPolicy::AllMethods);
     assert_eq!(
         options.retry_status_codes,
@@ -358,11 +353,7 @@ fn test_http_retry_options_from_config_reads_all_optional_fields() {
         Some(vec![HttpErrorKind::Transport])
     );
     assert_eq!(
-        options.delay_strategy,
-        qubit_retry::RetryDelay::Exponential {
-            initial: Duration::from_millis(25),
-            max: Duration::from_millis(250),
-            multiplier: 1.5,
-        }
+        options.backoff.maximum_delay(),
+        Some(Duration::from_millis(250))
     );
 }

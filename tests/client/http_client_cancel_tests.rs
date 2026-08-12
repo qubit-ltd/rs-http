@@ -22,7 +22,7 @@ use qubit_http::HttpClientOptions;
 use qubit_http::HttpError;
 use qubit_http::HttpErrorKind;
 use qubit_http::RetryHint;
-use qubit_retry::RetryDelay;
+use qubit_retry::BackoffPolicy;
 use tokio::time::timeout;
 
 use crate::common::ResponseChunk;
@@ -326,7 +326,7 @@ async fn test_execute_retry_sleep_can_be_cancelled() {
     options.base_url = Some(server.base_url());
     options.retry.enabled = true;
     options.retry.max_attempts = 3;
-    options.retry.delay_strategy = RetryDelay::Fixed(Duration::from_secs(5));
+    options.retry.backoff = BackoffPolicy::fixed(Duration::from_secs(5));
     let client = HttpClientFactory::new()
         .create(options)
         .expect("client should be created");
