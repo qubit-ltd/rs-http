@@ -31,7 +31,6 @@ use qubit_http::sse::SseJsonMode;
 use qubit_redact::RedactionPolicy;
 use qubit_redact::Sensitivity;
 use qubit_redact::http::UrlPathPolicy;
-use qubit_retry::RetryDelay;
 
 /// Verifies HTTP option parsing only reads process environment placeholders
 /// through an explicitly environment-friendly reader.
@@ -792,15 +791,10 @@ fn test_http_client_options_retry_section() {
     assert!(opts.retry.enabled);
     assert_eq!(opts.retry.max_attempts, 4);
     assert_eq!(opts.retry.max_duration, Some(Duration::from_secs(30)));
-    assert_eq!(opts.retry.jitter_factor, 0.25);
     assert_eq!(opts.retry.method_policy, HttpRetryMethodPolicy::AllMethods);
     assert_eq!(
-        opts.retry.delay_strategy,
-        RetryDelay::Exponential {
-            initial: Duration::from_millis(50),
-            max: Duration::from_secs(2),
-            multiplier: 1.5,
-        }
+        opts.retry.backoff.maximum_delay(),
+        Some(Duration::from_secs(2))
     );
 }
 
@@ -817,8 +811,8 @@ fn test_http_retry_options_delay_strategies_from_config() {
         HttpRetryOptions::from_config(&fixed_config.section("retry").unwrap())
             .unwrap();
     assert_eq!(
-        fixed.delay_strategy,
-        RetryDelay::Fixed(Duration::from_millis(250))
+        fixed.backoff.maximum_delay(),
+        Some(Duration::from_millis(250))
     );
 
     let mut random_config = Config::new();
@@ -835,11 +829,8 @@ fn test_http_retry_options_delay_strategies_from_config() {
         HttpRetryOptions::from_config(&random_config.section("retry").unwrap())
             .unwrap();
     assert_eq!(
-        random.delay_strategy,
-        RetryDelay::Random {
-            min: Duration::from_millis(10),
-            max: Duration::from_millis(20),
-        }
+        random.backoff.maximum_delay(),
+        Some(Duration::from_millis(20))
     );
 
     let mut none_config = Config::new();
@@ -849,7 +840,7 @@ fn test_http_retry_options_delay_strategies_from_config() {
     let none =
         HttpRetryOptions::from_config(&none_config.section("retry").unwrap())
             .unwrap();
-    assert_eq!(none.delay_strategy, RetryDelay::None);
+    assert_eq!(none.backoff.maximum_delay(), Some(Duration::ZERO));
 }
 
 #[test]
@@ -1060,49 +1051,12 @@ fn test_http_retry_options_validate_rejects_invalid_values() {
     assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
     assert_eq!(err.path, "max_attempts");
     assert_eq!(err.message, "Retry max_attempts must be greater than 0",);
-
-    let mut options = HttpRetryOptions::default();
-    options.jitter_factor = 1.5;
-    let err = options.validate().unwrap_err();
-    assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
-    assert_eq!(err.path, "jitter_factor");
-    assert_eq!(
-        err.message,
-        "Retry jitter_factor must be between 0.0 and 1.0",
-    );
-
-    let mut options = HttpRetryOptions::default();
-    options.delay_strategy = RetryDelay::Fixed(Duration::ZERO);
-    let err = options.validate().unwrap_err();
-    assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
-    assert_eq!(err.path, "delay_strategy");
-}
-
-#[test]
-fn test_http_retry_options_validate_rejects_non_finite_jitter() {
-    for jitter_factor in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
-        let options = HttpRetryOptions {
-            jitter_factor,
-            ..Default::default()
-        };
-
-        let error = options.validate().unwrap_err();
-
-        assert_eq!(error.kind, HttpConfigErrorKind::InvalidValue);
-        assert_eq!(error.path, "jitter_factor");
-        assert_eq!(
-            error.message,
-            "Retry jitter_factor must be between 0.0 and 1.0",
-        );
-    }
 }
 
 #[test]
 fn test_http_retry_options_validate_reports_first_invalid_field() {
     let options = HttpRetryOptions {
         max_attempts: 0,
-        jitter_factor: f64::NAN,
-        delay_strategy: RetryDelay::Fixed(Duration::ZERO),
         ..Default::default()
     };
 
@@ -1575,8 +1529,8 @@ fn test_http_client_options_interpolates_string_configuration_values() {
         Some("interpolated-password"),
     );
     assert_eq!(
-        options.retry.delay_strategy,
-        RetryDelay::Fixed(Duration::from_millis(25)),
+        options.retry.backoff.maximum_delay(),
+        Some(Duration::from_millis(25)),
     );
     assert_eq!(
         options.retry.method_policy,

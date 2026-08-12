@@ -28,8 +28,6 @@ use qubit_http::HttpRequestInterceptor;
 use qubit_http::HttpResponseInterceptor;
 use qubit_http::sse::SseReconnectOptions;
 use qubit_retry::BackoffPolicy;
-use qubit_retry::RetryDelay;
-use qubit_retry::RetryJitter;
 use qubit_retry::RetryPolicy;
 use tokio::time::timeout;
 
@@ -42,17 +40,15 @@ use crate::common::spawn_one_shot_server;
 ///
 /// # Parameters
 /// - `max_reconnects`: Maximum reconnect attempts after the initial attempt.
-/// - `delay`: Delay strategy for reconnect attempts.
-/// - `jitter`: Jitter strategy for reconnect delays.
+/// - `backoff`: Backoff policy for reconnect attempts.
 ///
 /// # Returns
 /// Retry options with `max_attempts = max_reconnects + 1`.
 fn build_retry_options(
     max_reconnects: u32,
-    delay: RetryDelay,
-    jitter: RetryJitter,
+    backoff: BackoffPolicy,
 ) -> RetryPolicy {
-    build_retry_policy(max_reconnects, None, delay, jitter)
+    build_retry_policy(max_reconnects, None, backoff)
 }
 
 /// Builds retry options for SSE reconnect tests with max elapsed-time limit.
@@ -60,44 +56,23 @@ fn build_retry_options(
 /// # Parameters
 /// - `max_reconnects`: Maximum reconnect attempts after the initial attempt.
 /// - `max_elapsed`: Maximum elapsed reconnect duration.
-/// - `delay`: Delay strategy for reconnect attempts.
-/// - `jitter`: Jitter strategy for reconnect delays.
+/// - `backoff`: Backoff policy for reconnect attempts.
 ///
 /// # Returns
 /// Retry options with `max_attempts = max_reconnects + 1`.
 fn build_retry_options_with_max_elapsed(
     max_reconnects: u32,
     max_elapsed: Duration,
-    delay: RetryDelay,
-    jitter: RetryJitter,
+    backoff: BackoffPolicy,
 ) -> RetryPolicy {
-    build_retry_policy(max_reconnects, Some(max_elapsed), delay, jitter)
+    build_retry_policy(max_reconnects, Some(max_elapsed), backoff)
 }
 
 fn build_retry_policy(
     max_reconnects: u32,
     max_elapsed: Option<Duration>,
-    delay: RetryDelay,
-    jitter: RetryJitter,
+    backoff: BackoffPolicy,
 ) -> RetryPolicy {
-    let backoff = match delay {
-        RetryDelay::None => BackoffPolicy::immediate(),
-        RetryDelay::Fixed(delay) => BackoffPolicy::fixed(delay),
-        RetryDelay::Random { min, max } => {
-            BackoffPolicy::uniform(min, max).unwrap()
-        }
-        RetryDelay::Exponential {
-            initial,
-            max,
-            multiplier,
-        } => BackoffPolicy::exponential(initial, multiplier, max).unwrap(),
-    };
-    let backoff = match jitter {
-        RetryJitter::None => backoff,
-        RetryJitter::Factor(ratio) => {
-            backoff.with_bounded_jitter(ratio).unwrap()
-        }
-    };
     let mut builder = RetryPolicy::builder()
         .max_attempts(max_reconnects + 1)
         .backoff(backoff);
@@ -149,8 +124,7 @@ async fn test_execute_sse_with_reconnect_propagates_last_event_id() {
         SseReconnectOptions {
             retry: build_retry_options(
                 1,
-                RetryDelay::fixed(Duration::from_millis(1)),
-                RetryJitter::None,
+                BackoffPolicy::fixed(Duration::from_millis(1)),
             ),
             reconnect_on_eof: true,
             honor_server_retry: false,
@@ -219,8 +193,7 @@ async fn test_execute_sse_with_reconnect_honors_server_retry_delay() {
         SseReconnectOptions {
             retry: build_retry_options(
                 1,
-                RetryDelay::fixed(Duration::from_millis(1)),
-                RetryJitter::None,
+                BackoffPolicy::fixed(Duration::from_millis(1)),
             ),
             reconnect_on_eof: true,
             honor_server_retry: true,
@@ -311,12 +284,12 @@ async fn test_execute_sse_with_reconnect_server_retry_overrides_once_and_preserv
         SseReconnectOptions {
             retry: build_retry_options(
                 2,
-                RetryDelay::exponential(
+                BackoffPolicy::exponential(
                     Duration::from_millis(40),
-                    Duration::from_millis(200),
                     2.0,
-                ),
-                RetryJitter::None,
+                    Duration::from_millis(200),
+                )
+                .expect("test backoff should be valid"),
             ),
             reconnect_on_eof: true,
             honor_server_retry: true,
@@ -412,8 +385,7 @@ async fn test_execute_sse_with_reconnect_caps_server_retry_delay() {
         SseReconnectOptions {
             retry: build_retry_options(
                 1,
-                RetryDelay::fixed(Duration::from_millis(1)),
-                RetryJitter::None,
+                BackoffPolicy::fixed(Duration::from_millis(1)),
             ),
             reconnect_on_eof: true,
             honor_server_retry: true,
@@ -503,11 +475,11 @@ async fn test_execute_sse_with_reconnect_derives_server_retry_cap_from_delay_str
         SseReconnectOptions {
             retry: build_retry_options(
                 1,
-                RetryDelay::Random {
-                    min: Duration::from_millis(20),
-                    max: Duration::from_millis(80),
-                },
-                RetryJitter::None,
+                BackoffPolicy::uniform(
+                    Duration::from_millis(20),
+                    Duration::from_millis(80),
+                )
+                .expect("test backoff should be valid"),
             ),
             reconnect_on_eof: true,
             honor_server_retry: true,
@@ -599,8 +571,9 @@ async fn test_execute_sse_with_reconnect_can_disable_server_retry_jitter() {
         SseReconnectOptions {
             retry: build_retry_options(
                 reconnect_count as u32,
-                RetryDelay::fixed(Duration::from_millis(1)),
-                RetryJitter::factor(1.0),
+                BackoffPolicy::fixed(Duration::from_millis(1))
+                    .with_bounded_jitter(1.0)
+                    .expect("test jitter should be valid"),
             ),
             reconnect_on_eof: true,
             honor_server_retry: true,
@@ -676,8 +649,7 @@ async fn test_execute_sse_with_reconnect_respects_retry_max_elapsed() {
             retry: build_retry_options_with_max_elapsed(
                 5,
                 Duration::from_millis(80),
-                RetryDelay::fixed(Duration::from_millis(60)),
-                RetryJitter::None,
+                BackoffPolicy::fixed(Duration::from_millis(60)),
             ),
             reconnect_on_eof: true,
             honor_server_retry: false,
@@ -744,8 +716,7 @@ async fn test_execute_sse_with_reconnect_checks_max_elapsed_before_eof_reconnect
             retry: build_retry_options_with_max_elapsed(
                 5,
                 Duration::from_millis(100),
-                RetryDelay::fixed(Duration::from_millis(150)),
-                RetryJitter::None,
+                BackoffPolicy::fixed(Duration::from_millis(150)),
             ),
             reconnect_on_eof: true,
             honor_server_retry: false,
@@ -812,8 +783,7 @@ async fn test_execute_sse_with_reconnect_sleep_can_be_cancelled() {
         SseReconnectOptions {
             retry: build_retry_options(
                 1,
-                RetryDelay::fixed(Duration::from_secs(1)),
-                RetryJitter::None,
+                BackoffPolicy::fixed(Duration::from_secs(1)),
             ),
             reconnect_on_eof: true,
             honor_server_retry: false,
@@ -848,7 +818,7 @@ async fn test_execute_sse_with_reconnect_disables_inner_http_retry() {
     options.timeouts.write_timeout = Duration::from_secs(2);
     options.retry.enabled = true;
     options.retry.max_attempts = 3;
-    options.retry.delay_strategy = RetryDelay::None;
+    options.retry.backoff = BackoffPolicy::immediate();
     let mut client = HttpClientFactory::new().create(options).unwrap();
 
     let attempts = Arc::new(AtomicUsize::new(0));
@@ -868,8 +838,7 @@ async fn test_execute_sse_with_reconnect_disables_inner_http_retry() {
         SseReconnectOptions {
             retry: build_retry_options(
                 1,
-                RetryDelay::fixed(Duration::from_millis(1)),
-                RetryJitter::None,
+                BackoffPolicy::fixed(Duration::from_millis(1)),
             ),
             reconnect_on_eof: true,
             honor_server_retry: false,
@@ -915,8 +884,7 @@ async fn test_execute_sse_with_reconnect_fails_fast_on_non_sse_content_type() {
         SseReconnectOptions {
             retry: build_retry_options(
                 3,
-                RetryDelay::fixed(Duration::from_millis(1)),
-                RetryJitter::None,
+                BackoffPolicy::fixed(Duration::from_millis(1)),
             ),
             reconnect_on_eof: true,
             honor_server_retry: true,
@@ -961,8 +929,7 @@ async fn test_execute_sse_with_reconnect_fails_fast_on_missing_content_type() {
         SseReconnectOptions {
             retry: build_retry_options(
                 3,
-                RetryDelay::fixed(Duration::from_millis(1)),
-                RetryJitter::None,
+                BackoffPolicy::fixed(Duration::from_millis(1)),
             ),
             reconnect_on_eof: true,
             honor_server_retry: true,
@@ -1007,8 +974,7 @@ async fn test_execute_sse_with_reconnect_fails_fast_on_non_utf8_content_type() {
         SseReconnectOptions {
             retry: build_retry_options(
                 3,
-                RetryDelay::fixed(Duration::from_millis(1)),
-                RetryJitter::None,
+                BackoffPolicy::fixed(Duration::from_millis(1)),
             ),
             reconnect_on_eof: true,
             honor_server_retry: true,
@@ -1064,8 +1030,7 @@ async fn test_execute_sse_with_reconnect_rejects_content_type_prefix_collision()
         SseReconnectOptions {
             retry: build_retry_options(
                 3,
-                RetryDelay::fixed(Duration::from_millis(1)),
-                RetryJitter::None,
+                BackoffPolicy::fixed(Duration::from_millis(1)),
             ),
             reconnect_on_eof: true,
             honor_server_retry: true,
@@ -1136,12 +1101,12 @@ async fn test_execute_sse_with_reconnect_uses_custom_backoff_parameters() {
         SseReconnectOptions {
             retry: build_retry_options(
                 2,
-                RetryDelay::exponential(
+                BackoffPolicy::exponential(
                     Duration::from_millis(80),
-                    Duration::from_millis(200),
                     3.0,
-                ),
-                RetryJitter::None,
+                    Duration::from_millis(200),
+                )
+                .expect("test backoff should be valid"),
             ),
             reconnect_on_eof: true,
             honor_server_retry: false,
@@ -1199,8 +1164,7 @@ async fn test_execute_sse_with_reconnect_does_not_retry_non_retryable_protocol_e
         SseReconnectOptions {
             retry: build_retry_options(
                 3,
-                RetryDelay::fixed(Duration::from_millis(1)),
-                RetryJitter::None,
+                BackoffPolicy::fixed(Duration::from_millis(1)),
             ),
             reconnect_on_eof: true,
             honor_server_retry: true,
@@ -1249,8 +1213,7 @@ async fn test_execute_sse_with_reconnect_reports_invalid_last_event_id_header_va
         SseReconnectOptions {
             retry: build_retry_options(
                 1,
-                RetryDelay::fixed(Duration::from_millis(1)),
-                RetryJitter::None,
+                BackoffPolicy::fixed(Duration::from_millis(1)),
             ),
             reconnect_on_eof: true,
             honor_server_retry: false,
@@ -1316,8 +1279,7 @@ async fn test_execute_sse_with_reconnect_retries_on_unexpected_eof_message() {
         SseReconnectOptions {
             retry: build_retry_options(
                 1,
-                RetryDelay::fixed(Duration::from_millis(1)),
-                RetryJitter::None,
+                BackoffPolicy::fixed(Duration::from_millis(1)),
             ),
             reconnect_on_eof: false,
             honor_server_retry: false,
@@ -1383,8 +1345,7 @@ async fn test_execute_sse_with_reconnect_retries_on_unexpected_eof_source_messag
         SseReconnectOptions {
             retry: build_retry_options(
                 1,
-                RetryDelay::fixed(Duration::from_millis(1)),
-                RetryJitter::None,
+                BackoffPolicy::fixed(Duration::from_millis(1)),
             ),
             reconnect_on_eof: false,
             honor_server_retry: false,
@@ -1429,8 +1390,7 @@ async fn test_execute_sse_with_reconnect_does_not_retry_non_eof_source_error() {
         SseReconnectOptions {
             retry: build_retry_options(
                 3,
-                RetryDelay::fixed(Duration::from_millis(1)),
-                RetryJitter::None,
+                BackoffPolicy::fixed(Duration::from_millis(1)),
             ),
             reconnect_on_eof: true,
             honor_server_retry: true,
@@ -1468,8 +1428,7 @@ async fn test_execute_sse_with_reconnect_does_not_retry_cancelled_error() {
         SseReconnectOptions {
             retry: build_retry_options(
                 3,
-                RetryDelay::fixed(Duration::from_millis(1)),
-                RetryJitter::None,
+                BackoffPolicy::fixed(Duration::from_millis(1)),
             ),
             reconnect_on_eof: true,
             honor_server_retry: true,
@@ -1523,8 +1482,7 @@ async fn test_execute_sse_with_reconnect_reports_cancelled_stream_before_reading
         SseReconnectOptions {
             retry: build_retry_options(
                 3,
-                RetryDelay::fixed(Duration::from_millis(1)),
-                RetryJitter::None,
+                BackoffPolicy::fixed(Duration::from_millis(1)),
             ),
             reconnect_on_eof: true,
             honor_server_retry: true,

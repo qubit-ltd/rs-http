@@ -18,7 +18,7 @@ use qubit_http::HttpClientFactory;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpRequestBodyByteStream;
 use qubit_http::HttpRetryMethodPolicy;
-use qubit_retry::RetryDelay;
+use qubit_retry::BackoffPolicy;
 use tokio::time::timeout;
 
 use crate::common::ResponsePlan;
@@ -272,7 +272,7 @@ async fn test_execute_with_streaming_body_factory_supports_retry_rebuild() {
     options.base_url = Some(server.base_url());
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
-    options.retry.delay_strategy = RetryDelay::None;
+    options.retry.backoff = BackoffPolicy::immediate();
     options.retry.method_policy = HttpRetryMethodPolicy::AllMethods;
     let client = HttpClientFactory::new()
         .create(options)
