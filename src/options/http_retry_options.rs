@@ -15,7 +15,6 @@ use qubit_argument::require_that;
 use qubit_config::ConfigReader;
 use qubit_config::ConfigResult;
 use qubit_retry::BackoffPolicy;
-use qubit_retry::RetryDelay;
 use qubit_retry::RetryPolicy;
 
 use super::HttpConfigError;
@@ -38,10 +37,8 @@ pub struct HttpRetryOptions {
     pub max_attempts: u32,
     /// Optional maximum total retry duration.
     pub max_duration: Option<Duration>,
-    /// Delay strategy between attempts.
-    pub delay_strategy: RetryDelay,
-    /// Jitter factor passed to the retry delay strategy.
-    pub jitter_factor: f64,
+    /// Complete validated backoff and jitter policy.
+    pub backoff: BackoffPolicy,
     /// Method replay policy.
     pub method_policy: HttpRetryMethodPolicy,
     /// Optional retryable status-code allowlist.
@@ -112,9 +109,6 @@ impl HttpRetryOptions {
             opts.max_attempts = max_attempts;
         }
         opts.max_duration = raw.max_duration;
-        if let Some(jitter_factor) = raw.jitter_factor {
-            opts.jitter_factor = jitter_factor;
-        }
         if let Some(method_policy) = raw.method_policy.as_ref() {
             opts.method_policy =
                 HttpRetryMethodPolicy::from_config_value(method_policy)?;
@@ -128,9 +122,8 @@ impl HttpRetryOptions {
                 Some(parse_retry_error_kinds(error_kinds)?);
         }
 
-        if let Some(delay_strategy) = raw.delay_strategy.as_ref() {
-            opts.delay_strategy =
-                parse_retry_delay_strategy(delay_strategy, &raw)?;
+        if raw.delay_strategy.is_some() || raw.jitter_factor.is_some() {
+            opts.backoff = parse_retry_backoff(&raw)?;
         }
 
         opts.validate()?;
@@ -189,22 +182,6 @@ impl HttpRetryOptions {
             "positive_retry_attempts",
             "Retry max_attempts must be greater than 0",
         )?;
-        require_that(
-            self.jitter_factor,
-            "jitter_factor",
-            |value| (0.0..=1.0).contains(value),
-            "retry_jitter_range",
-            "Retry jitter_factor must be between 0.0 and 1.0",
-        )?;
-        self.delay_strategy.validate().map_err(|message| {
-            qubit_argument::ArgumentError::new(
-                "delay_strategy",
-                qubit_argument::ArgumentErrorKind::Custom {
-                    code: "invalid_retry_delay".to_owned(),
-                    message,
-                },
-            )
-        })?;
         Ok(())
     }
 
@@ -284,32 +261,9 @@ impl HttpRetryOptions {
     /// Panics only if options that already passed [`Self::validate`] cannot be
     /// represented by `qubit-retry`.
     pub(crate) fn to_executor_policy(&self) -> RetryPolicy {
-        let backoff = match &self.delay_strategy {
-            RetryDelay::None => BackoffPolicy::immediate(),
-            RetryDelay::Fixed(delay) => BackoffPolicy::fixed(*delay),
-            RetryDelay::Random { min, max } => {
-                BackoffPolicy::uniform(*min, *max)
-                    .expect("validated HTTP retry delay range should be valid")
-            }
-            RetryDelay::Exponential {
-                initial,
-                max,
-                multiplier,
-            } => BackoffPolicy::exponential(*initial, *multiplier, *max)
-                .expect(
-                    "validated HTTP exponential retry delay should be valid",
-                ),
-        };
-        let backoff = if self.jitter_factor == 0.0 {
-            backoff
-        } else {
-            backoff
-                .with_bounded_jitter(self.jitter_factor)
-                .expect("validated HTTP retry jitter should be valid")
-        };
         let mut builder = RetryPolicy::builder()
             .max_attempts(self.max_attempts)
-            .backoff(backoff);
+            .backoff(self.backoff.clone());
         if let Some(max_duration) = self.max_duration {
             builder = builder.max_total_elapsed(max_duration);
         }
@@ -325,12 +279,7 @@ impl Default for HttpRetryOptions {
             enabled: false,
             max_attempts: DEFAULT_RETRY_MAX_ATTEMPTS,
             max_duration: None,
-            delay_strategy: RetryDelay::Exponential {
-                initial: DEFAULT_RETRY_INITIAL_DELAY,
-                max: DEFAULT_RETRY_MAX_DELAY,
-                multiplier: DEFAULT_RETRY_MULTIPLIER,
-            },
-            jitter_factor: DEFAULT_RETRY_JITTER_FACTOR,
+            backoff: default_backoff(),
             method_policy: HttpRetryMethodPolicy::default(),
             retry_status_codes: None,
             retry_error_kinds: None,
@@ -355,34 +304,56 @@ struct HttpRetryConfigInput {
     error_kinds: Option<Vec<String>>,
 }
 
-fn parse_retry_delay_strategy(
-    value: &str,
+fn parse_retry_backoff(
     raw: &HttpRetryConfigInput,
-) -> Result<RetryDelay, HttpConfigError> {
+) -> Result<BackoffPolicy, HttpConfigError> {
+    let value = raw.delay_strategy.as_deref().unwrap_or("exponential");
     let normalized = value.trim().to_ascii_lowercase().replace('-', "_");
-    match normalized.as_str() {
-        "none" => Ok(RetryDelay::None),
-        "fixed" => Ok(RetryDelay::Fixed(
+    let backoff = match normalized.as_str() {
+        "none" => BackoffPolicy::immediate(),
+        "fixed" => BackoffPolicy::fixed(
             raw.fixed_delay.unwrap_or(DEFAULT_RETRY_INITIAL_DELAY),
-        )),
-        "random" => Ok(RetryDelay::Random {
-            min: raw.random_min_delay.unwrap_or(DEFAULT_RETRY_INITIAL_DELAY),
-            max: raw.random_max_delay.unwrap_or(DEFAULT_RETRY_MAX_DELAY),
-        }),
-        "exponential_backoff" | "exponential" => Ok(RetryDelay::Exponential {
-            initial: raw
-                .backoff_initial_delay
+        ),
+        "random" => BackoffPolicy::uniform(
+            raw.random_min_delay.unwrap_or(DEFAULT_RETRY_INITIAL_DELAY),
+            raw.random_max_delay.unwrap_or(DEFAULT_RETRY_MAX_DELAY),
+        )
+        .map_err(|error| {
+            HttpConfigError::invalid_value(error.field(), error.message())
+        })?,
+        "exponential_backoff" | "exponential" => BackoffPolicy::exponential(
+            raw.backoff_initial_delay
                 .unwrap_or(DEFAULT_RETRY_INITIAL_DELAY),
-            max: raw.backoff_max_delay.unwrap_or(DEFAULT_RETRY_MAX_DELAY),
-            multiplier: raw
-                .backoff_multiplier
-                .unwrap_or(DEFAULT_RETRY_MULTIPLIER),
-        }),
-        _ => Err(HttpConfigError::invalid_value(
-            "delay_strategy",
-            format!("Unsupported retry delay strategy: {value}"),
-        )),
-    }
+            raw.backoff_multiplier.unwrap_or(DEFAULT_RETRY_MULTIPLIER),
+            raw.backoff_max_delay.unwrap_or(DEFAULT_RETRY_MAX_DELAY),
+        )
+        .map_err(|error| {
+            HttpConfigError::invalid_value(error.field(), error.message())
+        })?,
+        _ => {
+            return Err(HttpConfigError::invalid_value(
+                "delay_strategy",
+                format!("Unsupported retry delay strategy: {value}"),
+            ));
+        }
+    };
+    let jitter = raw.jitter_factor.unwrap_or(DEFAULT_RETRY_JITTER_FACTOR);
+    backoff.with_bounded_jitter(jitter).map_err(|error| {
+        HttpConfigError::invalid_value(error.field(), error.message())
+    })
+}
+
+/// Builds the validated default HTTP retry backoff policy.
+fn default_backoff() -> BackoffPolicy {
+    BackoffPolicy::exponential(
+        DEFAULT_RETRY_INITIAL_DELAY,
+        DEFAULT_RETRY_MULTIPLIER,
+        DEFAULT_RETRY_MAX_DELAY,
+    )
+    .and_then(|backoff| {
+        backoff.with_bounded_jitter(DEFAULT_RETRY_JITTER_FACTOR)
+    })
+    .expect("built-in HTTP retry backoff must be valid")
 }
 
 /// Parses retry status-code list from config string values.
