@@ -9,6 +9,7 @@
 //!
 //! Error type for configuration-to-options conversion failures.
 
+use std::error::Error;
 use std::fmt;
 
 use qubit_argument::ArgumentErrorKind;
@@ -19,7 +20,7 @@ use super::HttpConfigErrorKind;
 ///
 /// Carries the failing configuration path and a human-readable message so that
 /// callers can report exactly which key caused the problem.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug)]
 pub struct HttpConfigError {
     /// The configuration path that triggered the error, e.g.
     /// `http.proxy.port`.
@@ -28,6 +29,8 @@ pub struct HttpConfigError {
     pub message: String,
     /// Error category.
     pub kind: HttpConfigErrorKind,
+    /// Structured lower-level failure, when this error wraps one.
+    source: Option<Box<dyn Error + Send + Sync>>,
 }
 
 impl HttpConfigError {
@@ -49,6 +52,7 @@ impl HttpConfigError {
             kind,
             path: path.into(),
             message: message.into(),
+            source: None,
         }
     }
 
@@ -142,7 +146,13 @@ impl fmt::Display for HttpConfigError {
     }
 }
 
-impl std::error::Error for HttpConfigError {}
+impl Error for HttpConfigError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        self.source
+            .as_deref()
+            .map(|source| source as &(dyn Error + 'static))
+    }
+}
 
 impl From<qubit_argument::ArgumentError> for HttpConfigError {
     /// Converts structured argument validation failures into invalid HTTP
@@ -171,7 +181,9 @@ impl From<qubit_argument::ArgumentError> for HttpConfigError {
             ),
         };
         let path = error.path().as_str().to_owned();
-        Self::new(kind, path, message)
+        let mut result = Self::new(kind, path, message);
+        result.source = Some(Box::new(error));
+        result
     }
 }
 
@@ -190,13 +202,15 @@ impl From<qubit_config::ConfigError> for HttpConfigError {
         let kind = e.kind();
         let path = e.path().unwrap_or_default().to_owned();
         let msg = e.to_string();
-        match kind {
+        let mut result = match kind {
             ConfigErrorKind::TypeMismatch
             | ConfigErrorKind::Conversion
             | ConfigErrorKind::PropertyHasNoValue => {
                 HttpConfigError::type_error(path, msg)
             }
             _ => HttpConfigError::config_error(path, msg),
-        }
+        };
+        result.source = Some(Box::new(e));
+        result
     }
 }

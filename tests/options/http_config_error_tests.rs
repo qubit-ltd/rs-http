@@ -6,9 +6,12 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
+use std::error::Error as _;
+
 use qubit_argument::NumericArgument;
 use qubit_argument::OptionArgument;
 use qubit_config::Config;
+use qubit_config::ConfigError;
 use qubit_datatype::DataType;
 use qubit_http::HttpConfigError;
 use qubit_http::HttpConfigErrorKind;
@@ -90,6 +93,10 @@ fn test_http_config_error_from_config_error() {
     let he = HttpConfigError::from(ce);
     assert_eq!(he.kind, HttpConfigErrorKind::TypeError);
     assert_eq!(he.path, "x");
+    assert!(he
+        .source()
+        .and_then(|source| source.downcast_ref::<ConfigError>())
+        .is_some());
 }
 
 #[test]
