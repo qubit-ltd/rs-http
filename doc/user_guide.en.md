@@ -101,7 +101,8 @@ Default behavior:
 
 ```rust
 use std::time::Duration;
-use qubit_http::{HttpClientFactory, HttpClientOptions, HttpRetryMethodPolicy, RetryDelay};
+use qubit_http::{HttpClientFactory, HttpClientOptions, HttpRetryMethodPolicy};
+use qubit_retry::BackoffPolicy;
 
 let mut options = HttpClientOptions::new();
 options.set_base_url("https://api.example.com")?;
@@ -111,17 +112,17 @@ options.timeouts.connect_timeout = Duration::from_secs(3);
 options.timeouts.request_timeout = Some(Duration::from_secs(30));
 options.retry.enabled = true;
 options.retry.max_attempts = 4;
-options.retry.delay_strategy = RetryDelay::Exponential {
-    initial: Duration::from_millis(100),
-    max: Duration::from_secs(2),
-    multiplier: 2.0,
-};
+options.retry.backoff = BackoffPolicy::exponential(
+    Duration::from_millis(100),
+    2.0,
+    Duration::from_secs(2),
+)?;
 options.retry.method_policy = HttpRetryMethodPolicy::IdempotentOnly;
 
 let client = HttpClientFactory::new().create(options)?;
 ```
 
-`create` validates options before building the client. Validation includes: all timeout values must be greater than zero; enabled proxies require a non-empty host and non-zero port; a proxy password requires a username; `logging.body_size_limit` must be greater than zero when request or response body logging is enabled; `retry.max_attempts` must be greater than zero; `retry.jitter_factor` must be in `0.0..=1.0`; `error_response_preview_limit` must be greater than zero; `user_agent` must be non-empty and a valid header value; SSE line and frame limits must be greater than zero.
+`create` validates options before building the client. Validation includes: all timeout values must be greater than zero; enabled proxies require a non-empty host and non-zero port; a proxy password requires a username; `logging.body_size_limit` must be greater than zero when request or response body logging is enabled; `retry.max_attempts` must be greater than zero; `error_response_preview_limit` must be greater than zero; `user_agent` must be non-empty and a valid header value; SSE line and frame limits must be greater than zero. Backoff and jitter values are validated when constructing `BackoffPolicy`.
 
 ### Loading From qubit-config
 
@@ -784,23 +785,20 @@ while let Some(item) = chunks.next().await {
 use futures_util::StreamExt;
 use http::Method;
 use qubit_http::sse::SseReconnectOptions;
-use qubit_http::{RetryDelay, RetryJitter, RetryOptions};
+use qubit_retry::{BackoffPolicy, RetryPolicy};
 
 let request = client.request(Method::GET, "/events").build();
 let mut events = client.execute_sse_with_reconnect(
     request,
     SseReconnectOptions {
-        retry: RetryOptions::new(
-            6, // max_attempts = initial connect + 5 reconnects
-            None,
-            None,
-            RetryDelay::exponential(
+        retry: RetryPolicy::builder()
+            .max_attempts(6) // initial connect + 5 reconnects
+            .backoff(BackoffPolicy::exponential(
                 std::time::Duration::from_secs(1),
-                std::time::Duration::from_secs(30),
                 2.0,
-            ),
-            RetryJitter::None,
-        ).expect("valid SSE retry options"),
+                std::time::Duration::from_secs(30),
+            )?)
+            .build()?,
         reconnect_on_eof: true,
         honor_server_retry: true,
         server_retry_max_delay: None,
@@ -814,7 +812,7 @@ while let Some(item) = events.next().await {
 }
 ```
 
-The default reconnect settings are `retry.max_attempts = 4` (that is, at most 3 reconnects), `RetryDelay::Exponential { initial=1s, max=30s, multiplier=2.0 }`, `RetryJitter::None`, reconnect on EOF, and honor server `retry:`. Server `retry:` delays are capped by `server_retry_max_delay`; when it is `None`, the cap is derived from the retry delay strategy's max value, or falls back to 30 seconds when no max is available. `apply_jitter_to_server_retry` is enabled by default, but the default reconnect jitter is `RetryJitter::None`, so server-provided delays are unchanged unless you provide a jittered `RetryOptions`. Reconnects reuse the original request and disable inner HTTP retry, avoiding multiplicative HTTP retry plus SSE reconnect attempts. If a previous SSE message had an `id:`, the next request includes `Last-Event-ID`. `execute_sse_with_reconnect` requires response `Content-Type` to be `text/event-stream`. Cancellation does not reconnect. SSE protocol errors do not reconnect by default. Retryable timeout, transport, 429/5xx, and unexpected-EOF-like errors may reconnect.
+The default reconnect settings are `retry.max_attempts = 4` (that is, at most 3 reconnects), exponential `BackoffPolicy` with `initial=1s`, `max=30s`, `multiplier=2.0`, no jitter, reconnect on EOF, and honor server `retry:`. Server `retry:` delays are capped by `server_retry_max_delay`; when it is `None`, the cap is derived from the backoff policy's maximum delay, or falls back to 30 seconds when no maximum exists. `apply_jitter_to_server_retry` is enabled by default, but server-provided delays remain unchanged unless the supplied `RetryPolicy` uses jitter. Reconnects reuse the original request and disable inner HTTP retry, avoiding multiplicative HTTP retry plus SSE reconnect attempts. If a previous SSE message had an `id:`, the next request includes `Last-Event-ID`. `execute_sse_with_reconnect` requires response `Content-Type` to be `text/event-stream`. Cancellation does not reconnect. SSE protocol errors do not reconnect by default. Retryable timeout, transport, 429/5xx, and unexpected-EOF-like errors may reconnect.
 
 ## Configuration Reference
 

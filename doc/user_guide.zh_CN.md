@@ -101,7 +101,8 @@ let client = qubit_http::HttpClientFactory::new().create_default()?;
 
 ```rust
 use std::time::Duration;
-use qubit_http::{HttpClientFactory, HttpClientOptions, HttpRetryMethodPolicy, RetryDelay};
+use qubit_http::{HttpClientFactory, HttpClientOptions, HttpRetryMethodPolicy};
+use qubit_retry::BackoffPolicy;
 
 let mut options = HttpClientOptions::new();
 options.set_base_url("https://api.example.com")?;
@@ -111,17 +112,17 @@ options.timeouts.connect_timeout = Duration::from_secs(3);
 options.timeouts.request_timeout = Some(Duration::from_secs(30));
 options.retry.enabled = true;
 options.retry.max_attempts = 4;
-options.retry.delay_strategy = RetryDelay::Exponential {
-    initial: Duration::from_millis(100),
-    max: Duration::from_secs(2),
-    multiplier: 2.0,
-};
+options.retry.backoff = BackoffPolicy::exponential(
+    Duration::from_millis(100),
+    2.0,
+    Duration::from_secs(2),
+)?;
 options.retry.method_policy = HttpRetryMethodPolicy::IdempotentOnly;
 
 let client = HttpClientFactory::new().create(options)?;
 ```
 
-`create` 会先执行校验。常见校验包括：超时必须大于 0；启用代理时必须有非空 host 和非 0 port；只有设置 username 时才能设置 password；日志记录请求体或响应体时 `body_size_limit` 必须大于 0；`retry.max_attempts` 必须大于 0；`retry.jitter_factor` 必须在 `0.0..=1.0`；`error_response_preview_limit` 必须大于 0；`user_agent` 不能为空并且必须是合法 header value；SSE 行/帧上限必须大于 0。
+`create` 会先执行校验。常见校验包括：超时必须大于 0；启用代理时必须有非空 host 和非 0 port；只有设置 username 时才能设置 password；日志记录请求体或响应体时 `body_size_limit` 必须大于 0；`retry.max_attempts` 必须大于 0；`error_response_preview_limit` 必须大于 0；`user_agent` 不能为空并且必须是合法 header value；SSE 行/帧上限必须大于 0。backoff 与 jitter 在构造 `BackoffPolicy` 时完成校验。
 
 ### 从 qubit-config 读取
 
@@ -781,23 +782,20 @@ while let Some(item) = chunks.next().await {
 use futures_util::StreamExt;
 use http::Method;
 use qubit_http::sse::SseReconnectOptions;
-use qubit_http::{RetryDelay, RetryJitter, RetryOptions};
+use qubit_retry::{BackoffPolicy, RetryPolicy};
 
 let request = client.request(Method::GET, "/events").build();
 let mut events = client.execute_sse_with_reconnect(
     request,
     SseReconnectOptions {
-        retry: RetryOptions::new(
-            6, // max_attempts = 1 次初始连接 + 5 次重连
-            None,
-            None,
-            RetryDelay::exponential(
+        retry: RetryPolicy::builder()
+            .max_attempts(6) // 1 次初始连接 + 5 次重连
+            .backoff(BackoffPolicy::exponential(
                 std::time::Duration::from_secs(1),
-                std::time::Duration::from_secs(30),
                 2.0,
-            ),
-            RetryJitter::None,
-        ).expect("valid SSE retry options"),
+                std::time::Duration::from_secs(30),
+            )?)
+            .build()?,
         reconnect_on_eof: true,
         honor_server_retry: true,
         server_retry_max_delay: None,
@@ -811,7 +809,7 @@ while let Some(item) = events.next().await {
 }
 ```
 
-默认重连配置为 `retry.max_attempts = 4`（即最多重连 3 次），延迟策略为 `RetryDelay::Exponential { initial=1s, max=30s, multiplier=2.0 }`，jitter 为 `RetryJitter::None`，并在 EOF 后重连、尊重服务端 `retry:`。服务端 `retry:` 会被限制到 `server_retry_max_delay`；若该字段为 `None`，则从重试延迟策略的最大值推导，无法推导时使用 30 秒。`apply_jitter_to_server_retry` 默认开启，但默认重连 jitter 是 `RetryJitter::None`，因此除非调用方提供带 jitter 的 `RetryOptions`，服务端给出的延迟不会被扰动。重连时会复用原始请求，并禁用内层 HTTP 自动重试，避免 HTTP 重试和 SSE 重连相乘；如果之前收到过 SSE `id:`，下一次请求会带上 `Last-Event-ID` header。`execute_sse_with_reconnect` 会要求响应 `Content-Type` 为 `text/event-stream`。取消错误不会触发重连；SSE 协议错误默认也不会重连；超时、transport、429/5xx 等 retryable 错误，以及包含 unexpected EOF 语义的错误可触发重连。
+默认重连配置为 `retry.max_attempts = 4`（即最多重连 3 次），使用 `initial=1s`、`max=30s`、`multiplier=2.0` 且无 jitter 的指数 `BackoffPolicy`，并在 EOF 后重连、尊重服务端 `retry:`。服务端 `retry:` 会被限制到 `server_retry_max_delay`；若该字段为 `None`，则从 backoff policy 的最大值推导，无法推导时使用 30 秒。`apply_jitter_to_server_retry` 默认开启；只有传入的 `RetryPolicy` 配置了 jitter 时，服务端给出的延迟才会被扰动。重连时会复用原始请求，并禁用内层 HTTP 自动重试，避免 HTTP 重试和 SSE 重连相乘；如果之前收到过 SSE `id:`，下一次请求会带上 `Last-Event-ID` header。`execute_sse_with_reconnect` 会要求响应 `Content-Type` 为 `text/event-stream`。取消错误不会触发重连；SSE 协议错误默认也不会重连；超时、transport、429/5xx 等 retryable 错误，以及包含 unexpected EOF 语义的错误可触发重连。
 
 ## 配置参考
 
