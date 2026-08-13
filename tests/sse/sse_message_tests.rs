@@ -7,12 +7,12 @@
 // =============================================================================
 //! Tests for `src/sse/sse_message.rs`.
 
-use qubit_http::HttpErrorKind;
 use qubit_http::sse::SseJsonMode;
 use qubit_http::sse::SseMessage;
+use qubit_http::HttpErrorKind;
 
-use crate::common::SensitiveChoice;
 use crate::common::capture_trace_logs;
+use crate::common::SensitiveChoice;
 
 #[derive(Debug, serde::Deserialize, PartialEq, Eq)]
 struct TestPayload {
@@ -27,8 +27,7 @@ fn test_sse_message_decode_json_success() {
         last_event_id: Some("evt-1".to_string()),
     };
 
-    let payload: TestPayload =
-        message.decode_json().expect("JSON decoding should succeed");
+    let payload: TestPayload = message.decode_json().expect("JSON decoding should succeed");
     assert_eq!(
         payload,
         TestPayload {
@@ -49,11 +48,9 @@ fn test_sse_message_decode_json_error_is_sse_decode_with_context() {
         .decode_json::<TestPayload>()
         .expect_err("invalid JSON should fail");
     assert_eq!(error.kind, HttpErrorKind::SseDecode);
-    assert!(
-        error
-            .message
-            .contains("event=Some(\"response.output_text.delta\")")
-    );
+    assert!(error
+        .message
+        .contains("event=Some(\"response.output_text.delta\")"));
     assert!(error.message.contains("last_event_id=Some(\"evt-2\")"));
 }
 
@@ -95,8 +92,7 @@ fn test_sse_message_decode_json_with_mode_lenient_logs_redacted_diagnostics() {
 }
 
 #[test]
-fn test_sse_message_decode_json_with_mode_lenient_normalizes_control_characters()
- {
+fn test_sse_message_decode_json_with_mode_lenient_normalizes_control_characters() {
     let message = SseMessage {
         event: Some("response.output_text.delta".to_string()),
         data: "{\"delta\":\"line\nbreak\"}".to_string(),
@@ -115,8 +111,7 @@ fn test_sse_message_decode_json_with_mode_lenient_normalizes_control_characters(
 }
 
 #[test]
-fn test_sse_message_decode_json_with_mode_distinguishes_control_character_policy()
- {
+fn test_sse_message_decode_json_with_mode_distinguishes_control_character_policy() {
     let message = SseMessage {
         event: Some("response.output_text.delta".to_string()),
         data: "{\"delta\":\"line\nbreak\"}".to_string(),
@@ -153,15 +148,14 @@ fn test_sse_message_decode_json_redacts_deserializer_value() {
     assert!(!error.message.contains(SECRET));
     assert!(error.message.contains("secure.event"));
     assert!(error.message.contains("evt-secret"));
-    let source = std::error::Error::source(&error).expect(
-        "SSE JSON decode errors must retain the redacted decoder source",
-    );
+    let source = std::error::Error::source(&error)
+        .expect("SSE JSON decode errors must retain the redacted decoder source");
     let decode_error = source
-        .downcast_ref::<qubit_json::JsonDecodeError>()
+        .downcast_ref::<qubit_json::lenient::LenientJsonDecodeError>()
         .expect("SSE JSON decode source must be JsonDecodeError");
     assert_eq!(
         decode_error.privacy_policy(),
-        qubit_json::ErrorPrivacyPolicy::Redacted,
+        qubit_json::lenient::ErrorPrivacyPolicy::Redacted,
     );
     assert!(!decode_error.to_string().contains(SECRET));
 }
