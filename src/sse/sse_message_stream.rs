@@ -16,5 +16,4 @@ use crate::HttpResult;
 
 /// Pin-boxed stream of parsed [`SseMessage`] values or
 /// [`HttpError`](crate::HttpError).
-pub type SseMessageStream =
-    Pin<Box<dyn Stream<Item = HttpResult<SseMessage>> + Send>>;
+pub type SseMessageStream = Pin<Box<dyn Stream<Item = HttpResult<SseMessage>> + Send>>;

@@ -14,13 +14,11 @@ use bytes::Bytes;
 use futures_util::StreamExt as _;
 use http::HeaderMap;
 use http::Method;
+use qubit_http::sse::SseReconnectOptions;
 use qubit_http::HttpResponse;
 use qubit_http::HttpResult;
-use qubit_http::sse::SseReconnectOptions;
 
-async fn collect_results<T>(
-    stream: impl futures_util::Stream<Item = HttpResult<T>>,
-) -> Vec<T> {
+async fn collect_results<T>(stream: impl futures_util::Stream<Item = HttpResult<T>>) -> Vec<T> {
     stream
         .map(|item| item.expect("unexpected stream error in test"))
         .collect::<Vec<_>>()
@@ -53,11 +51,8 @@ async fn test_decode_messages_parses_fields_and_multiline_data() {
 
 #[tokio::test]
 async fn test_decode_messages_ignores_comment_lines() {
-    let response = stream_response_from_chunks(vec![
-        ": keep-alive\n",
-        "data: {\"value\": 7}\n",
-        "\n",
-    ]);
+    let response =
+        stream_response_from_chunks(vec![": keep-alive\n", "data: {\"value\": 7}\n", "\n"]);
     let events = collect_results(response.sse_messages()).await;
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].data, "{\"value\": 7}");

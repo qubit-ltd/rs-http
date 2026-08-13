@@ -93,29 +93,27 @@ fn test_http_config_error_from_config_error() {
     let he = HttpConfigError::from(ce);
     assert_eq!(he.kind, HttpConfigErrorKind::TypeError);
     assert_eq!(he.path, "x");
-    assert!(
-        he.source()
-            .and_then(|source| source.downcast_ref::<ConfigError>())
-            .is_some()
-    );
+    assert!(he
+        .source()
+        .and_then(|source| source.downcast_ref::<ConfigError>())
+        .is_some());
 }
 
 #[test]
 fn test_http_config_error_from_property_has_no_value_maps_to_type_error() {
-    let error = HttpConfigError::from(
-        qubit_config::ConfigError::PropertyHasNoValue("svc.token".to_string()),
-    );
+    let error = HttpConfigError::from(qubit_config::ConfigError::PropertyHasNoValue(
+        "svc.token".to_string(),
+    ));
 
     assert_eq!(error.kind, HttpConfigErrorKind::TypeError);
     assert_eq!(error.path, "svc.token");
 }
 
 #[test]
-fn test_http_config_error_from_property_not_found_maps_to_config_error_with_path()
- {
-    let error = HttpConfigError::from(
-        qubit_config::ConfigError::PropertyNotFound("svc.base_url".to_string()),
-    );
+fn test_http_config_error_from_property_not_found_maps_to_config_error_with_path() {
+    let error = HttpConfigError::from(qubit_config::ConfigError::PropertyNotFound(
+        "svc.base_url".to_string(),
+    ));
 
     assert_eq!(error.kind, HttpConfigErrorKind::ConfigError);
     assert_eq!(error.path, "svc.base_url");
@@ -123,29 +121,25 @@ fn test_http_config_error_from_property_not_found_maps_to_config_error_with_path
 
 #[test]
 fn test_http_config_error_from_conversion_error_maps_to_type_error() {
-    let error =
-        HttpConfigError::from(qubit_config::ConfigError::ConversionError {
-            key: "svc.timeout".to_string(),
-            source_index: None,
-            source: qubit_datatype::DataConversionError::invalid(
-                DataType::String,
-                DataType::Duration,
-                qubit_datatype::InvalidValueReason::InvalidSyntax {
-                    expected: "a duration",
-                },
-            ),
-        });
+    let error = HttpConfigError::from(qubit_config::ConfigError::ConversionError {
+        key: "svc.timeout".to_string(),
+        source_index: None,
+        source: qubit_datatype::DataConversionError::invalid(
+            DataType::String,
+            DataType::Duration,
+            qubit_datatype::InvalidValueReason::InvalidSyntax {
+                expected: "a duration",
+            },
+        ),
+    });
 
     assert_eq!(error.kind, HttpConfigErrorKind::TypeError);
     assert_eq!(error.path, "svc.timeout");
 }
 
 #[test]
-fn test_http_config_error_from_other_config_error_maps_to_config_error_without_path()
- {
-    let error = HttpConfigError::from(qubit_config::ConfigError::Other(
-        "boom".to_string(),
-    ));
+fn test_http_config_error_from_other_config_error_maps_to_config_error_without_path() {
+    let error = HttpConfigError::from(qubit_config::ConfigError::Other("boom".to_string()));
 
     assert_eq!(error.kind, HttpConfigErrorKind::ConfigError);
     assert_eq!(error.path, "");
@@ -154,12 +148,11 @@ fn test_http_config_error_from_other_config_error_maps_to_config_error_without_p
 
 #[test]
 fn test_http_config_error_from_type_mismatch_maps_to_type_error() {
-    let error =
-        HttpConfigError::from(qubit_config::ConfigError::TypeMismatch {
-            key: "svc.retries".to_string(),
-            expected: DataType::Int32,
-            actual: DataType::String,
-        });
+    let error = HttpConfigError::from(qubit_config::ConfigError::TypeMismatch {
+        key: "svc.retries".to_string(),
+        expected: DataType::Int32,
+        actual: DataType::String,
+    });
 
     assert_eq!(error.kind, HttpConfigErrorKind::TypeError);
     assert_eq!(error.path, "svc.retries");

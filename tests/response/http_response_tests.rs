@@ -7,11 +7,11 @@
 // =============================================================================
 
 use bytes::Bytes;
+use http::header::RETRY_AFTER;
 use http::HeaderMap;
 use http::HeaderValue;
 use http::Method;
 use http::StatusCode;
-use http::header::RETRY_AFTER;
 use qubit_http::HttpErrorKind;
 use qubit_http::HttpResponse;
 use url::Url;
@@ -96,16 +96,14 @@ fn test_http_response_is_success_reports_status_class() {
     );
 
     assert!(response.is_success());
-    assert!(
-        !HttpResponse::new(
-            StatusCode::BAD_REQUEST,
-            HeaderMap::new(),
-            Bytes::new(),
-            Url::parse("https://example.com/bad").unwrap(),
-            Method::GET,
-        )
-        .is_success()
-    );
+    assert!(!HttpResponse::new(
+        StatusCode::BAD_REQUEST,
+        HeaderMap::new(),
+        Bytes::new(),
+        Url::parse("https://example.com/bad").unwrap(),
+        Method::GET,
+    )
+    .is_success());
 }
 
 #[test]
@@ -128,8 +126,7 @@ fn test_http_response_meta_accessor_returns_shared_metadata() {
 }
 
 #[test]
-fn test_http_response_retry_after_hint_handles_applicable_status_and_past_date()
-{
+fn test_http_response_retry_after_hint_handles_applicable_status_and_past_date() {
     let mut headers = HeaderMap::new();
     headers.insert(
         RETRY_AFTER,
@@ -210,8 +207,7 @@ async fn test_http_response_json_redacts_deserializer_value() {
         StatusCode::OK,
         HeaderMap::new(),
         Bytes::from(format!("\"{SECRET}\"")),
-        Url::parse("https://example.com/secure-json")
-            .expect("test URL must parse"),
+        Url::parse("https://example.com/secure-json").expect("test URL must parse"),
         Method::GET,
     );
     let error = response
@@ -222,20 +218,16 @@ async fn test_http_response_json_redacts_deserializer_value() {
     assert_eq!(error.status, Some(StatusCode::OK));
     assert_eq!(
         error.url,
-        Some(
-            Url::parse("https://example.com/secure-json")
-                .expect("test URL must parse")
-        )
+        Some(Url::parse("https://example.com/secure-json").expect("test URL must parse"))
     );
-    let source = std::error::Error::source(&error).expect(
-        "HTTP JSON decode errors must retain the redacted decoder source",
-    );
+    let source = std::error::Error::source(&error)
+        .expect("HTTP JSON decode errors must retain the redacted decoder source");
     let decode_error = source
-        .downcast_ref::<qubit_json::JsonDecodeError>()
+        .downcast_ref::<qubit_json::lenient::LenientJsonDecodeError>()
         .expect("HTTP JSON decode source must be JsonDecodeError");
     assert_eq!(
         decode_error.privacy_policy(),
-        qubit_json::ErrorPrivacyPolicy::Redacted,
+        qubit_json::lenient::ErrorPrivacyPolicy::Redacted,
     );
     assert!(!decode_error.to_string().contains(SECRET));
 }
