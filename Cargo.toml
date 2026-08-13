@@ -60,7 +60,7 @@ qubit-redact = { version = "0.4", default-features = false, features = ["http"] 
 [dev-dependencies]
 tokio = { version = "1.52", features = ["full", "test-util"] }
 tracing-subscriber = { version = "0.3", features = ["fmt"] }
-qubit-datatype = { version = "0.10", path = "../rs-datatype", default-features = false, features = ["converter"] }
+qubit-datatype = { version = "0.11", path = "../rs-datatype", default-features = false, features = ["converter"] }
 
 [package.metadata.docs.rs]
 all-features = true
