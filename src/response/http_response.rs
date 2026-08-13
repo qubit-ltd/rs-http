@@ -910,7 +910,7 @@ impl HttpResponse {
             source_len.map_or_else(
                 || qubit_redact::http::BodyCapture::truncated_unknown(bytes),
                 |total_len| {
-                    qubit_redact::http::BodyCapture::truncated(bytes, total_len).unwrap_or_else(
+                    qubit_redact::http::BodyCapture::truncated(bytes, Some(total_len)).unwrap_or_else(
                         |_| qubit_redact::http::BodyCapture::truncated_unknown(bytes),
                     )
                 },
