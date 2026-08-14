@@ -14,8 +14,8 @@ use std::time::Duration;
 use http::Method;
 use http::StatusCode;
 use qubit_error::BoxError;
-use qubit_redact::http::HttpRedactor;
 use qubit_redact::RedactionPolicy;
+use qubit_redact::http::HttpRedactor;
 use url::Url;
 
 use super::HttpErrorKind;
@@ -52,8 +52,8 @@ pub struct HttpError {
 impl fmt::Display for HttpError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let debugger = RedactedDebugger::new(&self.log_redactor);
-        let session = debugger.session();
-        let message = debugger.diagnostic_text_with_session(&self.message, &session);
+        let mut session = debugger.session();
+        let message = session.http().redact_urls_in_text(&self.message);
         fmt::Display::fmt(&message, formatter)
     }
 }
@@ -69,9 +69,9 @@ impl Error for HttpError {
 impl fmt::Debug for HttpError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let debugger = RedactedDebugger::new(&self.log_redactor);
-        let session = debugger.session();
-        let url = debugger.optional_url_with_session(self.url.as_ref(), &session);
-        let message = debugger.diagnostic_text_with_session(&self.message, &session);
+        let mut session = debugger.session();
+        let url = debugger.optional_url(self.url.as_ref(), &mut session);
+        let message = session.http().redact_urls_in_text(&self.message);
         let response_body_preview_len = self.response_body_preview.as_ref().map(String::len);
         formatter
             .debug_struct("HttpError")

@@ -30,9 +30,6 @@ use super::http_request_builder::HttpRequestBuilder;
 use super::http_request_retry_override::HttpRequestRetryOverride;
 use super::parse_header;
 use super::validate_positive_timeout;
-use crate::error::backend_error_mapper::map_reqwest_error;
-use crate::error::ReqwestErrorPhase;
-use crate::redact::RedactedDebugger;
 use crate::AsyncHttpHeaderInjector;
 use crate::HttpError;
 use crate::HttpErrorKind;
@@ -40,6 +37,9 @@ use crate::HttpHeaderInjector;
 use crate::HttpLogger;
 use crate::HttpRequestStreamingBody;
 use crate::HttpResult;
+use crate::error::ReqwestErrorPhase;
+use crate::error::backend_error_mapper::map_reqwest_error;
+use crate::redact::RedactedDebugger;
 
 /// Request execution options (timeouts, cancellation, and retry override).
 #[derive(Debug, Clone)]
@@ -109,24 +109,21 @@ pub struct HttpRequest {
 impl fmt::Debug for HttpRequest {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let debugger = RedactedDebugger::new(&self.context.log_redactor);
-        let session = debugger.session();
+        let mut session = debugger.session();
         let url = self
             .resolved_url()
             .ok()
-            .map(|url| debugger.url_with_session(&url, &session));
+            .map(|url| session.http().redact_url(&url));
         let base_url = self
             .context
             .base_url
             .as_ref()
-            .map(|url| debugger.url_with_session(url, &session));
+            .map(|url| session.http().redact_url(url));
         formatter
             .debug_struct("HttpRequest")
             .field("method", &self.method)
             .field("url", &url)
-            .field(
-                "headers",
-                &debugger.headers_with_session(&self.headers, &session),
-            )
+            .field("headers", &session.http().redact_headers(&self.headers))
             .field("body", &self.body)
             .field(
                 "streaming_body",
