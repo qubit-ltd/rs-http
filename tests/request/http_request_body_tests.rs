@@ -41,10 +41,16 @@ fn test_http_request_body_debug_covers_all_variants_without_payloads() {
         HttpRequestBody::Empty,
         HttpRequestBody::Bytes(Bytes::from_static(b"debug-bytes-secret")),
         HttpRequestBody::Text("debug-text-secret".to_string()),
-        HttpRequestBody::Json(Bytes::from_static(br#"{"token":"debug-json-secret"}"#)),
+        HttpRequestBody::Json(Bytes::from_static(
+            br#"{"token":"debug-json-secret"}"#,
+        )),
         HttpRequestBody::Form(Bytes::from_static(b"token=debug-form-secret")),
-        HttpRequestBody::Multipart(Bytes::from_static(b"debug-multipart-secret")),
-        HttpRequestBody::Ndjson(Bytes::from_static(br#"{"token":"debug-ndjson-secret"}"#)),
+        HttpRequestBody::Multipart(Bytes::from_static(
+            b"debug-multipart-secret",
+        )),
+        HttpRequestBody::Ndjson(Bytes::from_static(
+            br#"{"token":"debug-ndjson-secret"}"#,
+        )),
         HttpRequestBody::Stream(vec![
             Bytes::from_static(b"debug-stream-secret-1"),
             Bytes::from_static(b"debug-stream-secret-2"),

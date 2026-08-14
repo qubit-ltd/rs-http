@@ -6,15 +6,15 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use http::header::RETRY_AFTER;
-use http::header::SET_COOKIE;
 use http::HeaderMap;
 use http::HeaderValue;
 use http::Method;
 use http::StatusCode;
+use http::header::RETRY_AFTER;
+use http::header::SET_COOKIE;
 use qubit_http::HttpResponseMeta;
-use qubit_redact::http::UrlPathPolicy;
 use qubit_redact::RedactionPolicy;
+use qubit_redact::http::UrlPathPolicy;
 use url::Url;
 
 #[test]
@@ -28,7 +28,8 @@ fn test_http_response_meta_retry_after_only_applies_to_retryable_statuses() {
         url.clone(),
         Method::GET,
     );
-    let success = HttpResponseMeta::new(StatusCode::OK, headers, url, Method::GET);
+    let success =
+        HttpResponseMeta::new(StatusCode::OK, headers, url, Method::GET);
 
     assert_eq!(
         rate_limited.retry_after_hint(),

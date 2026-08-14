@@ -14,8 +14,8 @@ use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
 use tokio::time::timeout;
 
-use crate::common::spawn_one_shot_server;
 use crate::common::ResponsePlan;
+use crate::common::spawn_one_shot_server;
 
 #[tokio::test]
 async fn test_reqwest_error_phase_send_timeout_maps_to_write_timeout() {
