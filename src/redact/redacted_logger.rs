@@ -36,7 +36,10 @@ impl RedactedLogger {
     ///
     /// A safe TRACE rendering helper.
     #[inline]
-    pub(crate) fn new(log_redactor: HttpRedactor, body_size_limit: usize) -> Self {
+    pub(crate) fn new(
+        log_redactor: HttpRedactor,
+        body_size_limit: usize,
+    ) -> Self {
         Self {
             redactor: log_redactor,
             body_size_limit,

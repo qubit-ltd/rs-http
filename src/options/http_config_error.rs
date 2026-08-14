@@ -64,7 +64,10 @@ impl HttpConfigError {
     ///
     /// # Returns
     /// New [`HttpConfigError`].
-    pub fn missing(path: impl Into<String>, message: impl Into<String>) -> Self {
+    pub fn missing(
+        path: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
         Self::new(HttpConfigErrorKind::MissingField, path, message)
     }
 
@@ -76,7 +79,10 @@ impl HttpConfigError {
     ///
     /// # Returns
     /// New [`HttpConfigError`].
-    pub fn type_error(path: impl Into<String>, message: impl Into<String>) -> Self {
+    pub fn type_error(
+        path: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
         Self::new(HttpConfigErrorKind::TypeError, path, message)
     }
 
@@ -88,7 +94,10 @@ impl HttpConfigError {
     ///
     /// # Returns
     /// New [`HttpConfigError`].
-    pub fn invalid_value(path: impl Into<String>, message: impl Into<String>) -> Self {
+    pub fn invalid_value(
+        path: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
         Self::new(HttpConfigErrorKind::InvalidValue, path, message)
     }
 
@@ -100,7 +109,10 @@ impl HttpConfigError {
     ///
     /// # Returns
     /// New [`HttpConfigError`].
-    pub fn invalid_header(path: impl Into<String>, message: impl Into<String>) -> Self {
+    pub fn invalid_header(
+        path: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
         Self::new(HttpConfigErrorKind::InvalidHeader, path, message)
     }
 
@@ -113,7 +125,10 @@ impl HttpConfigError {
     ///
     /// # Returns
     /// New [`HttpConfigError`].
-    pub fn config_error(path: impl Into<String>, message: impl Into<String>) -> Self {
+    pub fn config_error(
+        path: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
         Self::new(HttpConfigErrorKind::ConfigError, path, message)
     }
 }
@@ -152,7 +167,9 @@ impl From<qubit_argument::ArgumentError> for HttpConfigError {
                 HttpConfigErrorKind::MissingField,
                 "Required value is missing".to_owned(),
             ),
-            ArgumentErrorKind::Custom { code, message } if code == "http_config_missing" => {
+            ArgumentErrorKind::Custom { code, message }
+                if code == "http_config_missing" =>
+            {
                 (HttpConfigErrorKind::MissingField, message.clone())
             }
             ArgumentErrorKind::Custom { message, .. } => {
@@ -188,7 +205,9 @@ impl From<qubit_config::ConfigError> for HttpConfigError {
         let mut result = match kind {
             ConfigErrorKind::TypeMismatch
             | ConfigErrorKind::Conversion
-            | ConfigErrorKind::PropertyHasNoValue => HttpConfigError::type_error(path, msg),
+            | ConfigErrorKind::PropertyHasNoValue => {
+                HttpConfigError::type_error(path, msg)
+            }
             _ => HttpConfigError::config_error(path, msg),
         };
         result.source = Some(Box::new(e));

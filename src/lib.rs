@@ -32,9 +32,9 @@ mod request;
 mod response;
 pub mod sse;
 
-pub use client::http_logger::HttpLogger;
 pub use client::HttpClient;
 pub use client::HttpClientFactory;
+pub use client::http_logger::HttpLogger;
 pub use error::HttpError;
 pub use error::HttpErrorKind;
 pub use error::HttpResult;

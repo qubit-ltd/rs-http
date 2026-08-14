@@ -72,7 +72,8 @@ impl fmt::Debug for HttpError {
         let mut session = debugger.session();
         let url = debugger.optional_url(self.url.as_ref(), &mut session);
         let message = session.http().redact_urls_in_text(&self.message);
-        let response_body_preview_len = self.response_body_preview.as_ref().map(String::len);
+        let response_body_preview_len =
+            self.response_body_preview.as_ref().map(String::len);
         formatter
             .debug_struct("HttpError")
             .field("kind", &self.kind)
@@ -170,7 +171,10 @@ impl HttpError {
     ///
     /// # Returns
     /// `self` for chaining.
-    pub fn with_response_body_preview(mut self, preview: impl Into<String>) -> Self {
+    pub fn with_response_body_preview(
+        mut self,
+        preview: impl Into<String>,
+    ) -> Self {
         self.response_body_preview = Some(preview.into());
         self
     }
@@ -210,7 +214,10 @@ impl HttpError {
     /// # Returns
     /// `self` for chaining.
     #[inline(always)]
-    pub fn with_log_redaction_policy(mut self, policy: RedactionPolicy) -> Self {
+    pub fn with_log_redaction_policy(
+        mut self,
+        policy: RedactionPolicy,
+    ) -> Self {
         self.log_redactor = HttpRedactor::new(policy);
         self
     }
@@ -417,7 +424,9 @@ impl HttpError {
             | HttpErrorKind::Transport => RetryHint::Retryable,
             HttpErrorKind::Status => {
                 if let Some(status) = self.status {
-                    if status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error() {
+                    if status == StatusCode::TOO_MANY_REQUESTS
+                        || status.is_server_error()
+                    {
                         RetryHint::Retryable
                     } else {
                         RetryHint::NonRetryable
@@ -456,6 +465,7 @@ impl From<reqwest::Error> for HttpError {
     /// Wrapped [`HttpError`].
     fn from(error: reqwest::Error) -> Self {
         let error = error.without_url();
-        Self::build_client(format!("Failed to build reqwest client: {}", error)).with_source(error)
+        Self::build_client(format!("Failed to build reqwest client: {}", error))
+            .with_source(error)
     }
 }
