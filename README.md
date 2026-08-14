@@ -30,7 +30,7 @@ For full examples and advanced options, read the [User Guide](doc/user_guide.en.
 ```toml
 [dependencies]
 qubit-http = "0.12"
-qubit-redact = "0.4"
+qubit-redact = "0.5"
 http = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
@@ -85,9 +85,10 @@ Install the global policy once during application startup with
 `default()` use the fixed standard policy without blocking later installation.
 `HttpClientOptions::new()` snapshots the current default policy, including an
 application policy installed before construction. Existing clients,
-requests, responses, and errors retain their original redactor; each redaction
-operation uses the policy's diagnostic budget unless it receives an explicit
-shared `RedactionSession`.
+requests, responses, and errors retain their original redactor. Each redaction
+operation uses the policy's diagnostic budget; callers that render several
+fields as one record can create `let mut session = redactor.session()` and
+route HTTP fields through `session.http()` to share that budget.
 
 ```rust
 use qubit_http::{HttpClientFactory, HttpClientOptions};
