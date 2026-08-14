@@ -6,12 +6,12 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use http::header::HeaderName;
-use http::header::HeaderValue;
-use http::header::AUTHORIZATION;
-use http::header::CONTENT_TYPE;
 use http::HeaderMap;
 use http::Method;
+use http::header::AUTHORIZATION;
+use http::header::CONTENT_TYPE;
+use http::header::HeaderName;
+use http::header::HeaderValue;
 use qubit_http::HttpClientFactory;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpLogger;
@@ -46,26 +46,37 @@ fn capture_request_header_logs(name: HeaderName, value: HeaderValue) -> String {
 
 #[test]
 fn test_mask_header_value_non_sensitive_header() {
-    let logs =
-        capture_request_header_logs(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    let logs = capture_request_header_logs(
+        CONTENT_TYPE,
+        HeaderValue::from_static("application/json"),
+    );
     assert!(logs.contains("content-type: [application/json]"));
 }
 
 #[test]
 fn test_mask_header_value_sensitive_short_value() {
-    let logs = capture_request_header_logs(AUTHORIZATION, HeaderValue::from_static("abc"));
+    let logs = capture_request_header_logs(
+        AUTHORIZATION,
+        HeaderValue::from_static("abc"),
+    );
     assert!(logs.contains("authorization: [****]"));
 }
 
 #[test]
 fn test_mask_header_value_sensitive_exactly_four_chars() {
-    let logs = capture_request_header_logs(AUTHORIZATION, HeaderValue::from_static("abcd"));
+    let logs = capture_request_header_logs(
+        AUTHORIZATION,
+        HeaderValue::from_static("abcd"),
+    );
     assert!(logs.contains("authorization: [****]"));
 }
 
 #[test]
 fn test_mask_header_value_sensitive_long_value() {
-    let logs = capture_request_header_logs(AUTHORIZATION, HeaderValue::from_static("abcdefghijk"));
+    let logs = capture_request_header_logs(
+        AUTHORIZATION,
+        HeaderValue::from_static("abcdefghijk"),
+    );
     assert!(logs.contains("authorization: [****]"));
 }
 
@@ -80,7 +91,10 @@ fn test_mask_header_value_sensitive_case_insensitive() {
 
 #[test]
 fn test_mask_header_value_empty_value_kept_empty() {
-    let logs = capture_request_header_logs(AUTHORIZATION, HeaderValue::from_static(""));
+    let logs = capture_request_header_logs(
+        AUTHORIZATION,
+        HeaderValue::from_static(""),
+    );
     assert!(logs.contains("authorization: []"));
 }
 
@@ -89,7 +103,10 @@ fn test_mask_header_value_native_sensitive_uses_secret_mask() {
     let mut value = HeaderValue::from_static("native-request-header-secret");
     value.set_sensitive(true);
 
-    let logs = capture_request_header_logs(HeaderName::from_static("x-diagnostic-value"), value);
+    let logs = capture_request_header_logs(
+        HeaderName::from_static("x-diagnostic-value"),
+        value,
+    );
 
     assert!(logs.contains("x-diagnostic-value: [<redacted>]"));
     assert!(!logs.contains("native-request-header-secret"));

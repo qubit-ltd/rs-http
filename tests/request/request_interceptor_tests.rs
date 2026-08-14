@@ -15,11 +15,13 @@ use qubit_http::HttpRequestInterceptors;
 use url::Url;
 
 #[test]
-fn test_request_interceptors_apply_uses_parsed_path_when_resolved_url_cache_missing() {
+fn test_request_interceptors_apply_uses_parsed_path_when_resolved_url_cache_missing()
+ {
     let client = HttpClientFactory::new()
         .create_default()
         .expect("default options should create client");
-    let mut request = client.request(Method::GET, "http://[::1]/resource").build();
+    let mut request =
+        client.request(Method::GET, "http://[::1]/resource").build();
     request.set_ipv4_only(true);
     assert!(request.resolved_url().is_err());
 
@@ -71,13 +73,15 @@ fn test_request_interceptors_apply_preserves_existing_error_url() {
         .expect("default options should create client");
     let mut request = client.request(Method::GET, "/relative-only").build();
     let expected_url =
-        Url::parse("https://upstream.example/interceptor-failed").expect("URL should parse");
+        Url::parse("https://upstream.example/interceptor-failed")
+            .expect("URL should parse");
 
     let mut interceptors = HttpRequestInterceptors::new();
     interceptors.push(HttpRequestInterceptor::new({
         let expected_url = expected_url.clone();
         move |_request: &mut qubit_http::HttpRequest| {
-            Err(HttpError::other("request interceptor failed").with_url(&expected_url))
+            Err(HttpError::other("request interceptor failed")
+                .with_url(&expected_url))
         }
     }));
 

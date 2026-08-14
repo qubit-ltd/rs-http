@@ -14,8 +14,8 @@ use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
 use tokio::time::timeout;
 
-use crate::common::spawn_one_shot_server;
 use crate::common::ResponsePlan;
+use crate::common::spawn_one_shot_server;
 
 #[tokio::test]
 async fn test_backend_error_mapper_classifies_body_read_timeout() {

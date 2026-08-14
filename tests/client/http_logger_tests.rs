@@ -71,7 +71,9 @@ fn test_http_logger_redacts_request_url_query_and_json_body() {
 
     let logs = capture_trace_logs(|| logger.log_request(&request));
 
-    assert!(logs.contains("--> POST https://example.com/login?access_token=****"));
+    assert!(
+        logs.contains("--> POST https://example.com/login?access_token=****")
+    );
     assert!(logs.contains(r#""password":"<redacted>""#));
     assert!(!logs.contains("raw-token"));
     assert!(!logs.contains("secret"));
@@ -127,8 +129,9 @@ fn test_http_logger_does_not_leak_multipart_mixed_body_sensitive_values() {
 
 #[test]
 fn test_http_redaction_session_shares_output_exhaustion_without_input_charge() {
-    let budget = InputOutputLimit::new(4096, InputOutputLimit::MIN_OUTPUT_BYTES)
-        .expect("diagnostic budget should be valid");
+    let budget =
+        InputOutputLimit::new(4096, InputOutputLimit::MIN_OUTPUT_BYTES)
+            .expect("diagnostic budget should be valid");
     let policy = RedactionPolicy::default()
         .to_builder()
         .diagnostic_event(budget)
