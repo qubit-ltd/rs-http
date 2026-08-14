@@ -25,11 +25,22 @@ use crate::HttpResult;
 /// # Errors
 /// Returns [`HttpError`] when `name` is not a valid HTTP header name or `value`
 /// is not a valid HTTP header value.
-pub(crate) fn parse_header(name: &str, value: &str) -> HttpResult<(HeaderName, HeaderValue)> {
-    let header_name = HeaderName::from_bytes(name.as_bytes())
-        .map_err(|error| HttpError::other(format!("Invalid header name '{}': {}", name, error)))?;
+pub(crate) fn parse_header(
+    name: &str,
+    value: &str,
+) -> HttpResult<(HeaderName, HeaderValue)> {
+    let header_name =
+        HeaderName::from_bytes(name.as_bytes()).map_err(|error| {
+            HttpError::other(format!(
+                "Invalid header name '{}': {}",
+                name, error
+            ))
+        })?;
     let header_value = HeaderValue::from_str(value).map_err(|error| {
-        HttpError::other(format!("Invalid header value for '{}': {}", name, error))
+        HttpError::other(format!(
+            "Invalid header value for '{}': {}",
+            name, error
+        ))
     })?;
     Ok((header_name, header_value))
 }

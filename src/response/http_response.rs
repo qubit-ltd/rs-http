@@ -233,7 +233,11 @@ impl HttpResponse {
             meta: HttpResponseMeta::new(status, headers, url.clone(), method),
             backend: None,
             buffered_body: Some(body),
-            runtime: HttpResponseRuntime::new(Duration::from_secs(30), None, url),
+            runtime: HttpResponseRuntime::new(
+                Duration::from_secs(30),
+                None,
+                url,
+            ),
             options: HttpResponseOptions::default(),
         }
     }
@@ -251,7 +255,11 @@ impl HttpResponse {
             meta,
             backend: Some(backend),
             buffered_body: None,
-            runtime: HttpResponseRuntime::new(read_timeout, cancellation_token, request_url),
+            runtime: HttpResponseRuntime::new(
+                read_timeout,
+                cancellation_token,
+                request_url,
+            ),
             options,
         }
     }
@@ -312,7 +320,10 @@ impl HttpResponse {
     /// # Parameters
     /// - `error`: Error produced while reading the response body.
     fn remember_body_read_failure(&self, error: &HttpError) {
-        Self::remember_body_read_failure_state(&self.runtime.body_read_failure, error);
+        Self::remember_body_read_failure_state(
+            &self.runtime.body_read_failure,
+            error,
+        );
     }
 
     /// Stores the first body read failure in a shared state holder.
@@ -320,7 +331,10 @@ impl HttpResponse {
     /// # Parameters
     /// - `state`: Shared failure state captured by response streams.
     /// - `error`: Error produced while reading the response body.
-    fn remember_body_read_failure_state(state: &BodyReadFailureState, error: &HttpError) {
+    fn remember_body_read_failure_state(
+        state: &BodyReadFailureState,
+        error: &HttpError,
+    ) {
         if let Ok(mut guard) = state.lock() {
             guard.get_or_insert_with(|| BodyReadFailure::from_error(error));
         }
@@ -341,7 +355,8 @@ impl HttpResponse {
         let url = self.request_url().clone();
         let error_preview_limit = self.options.error_response_preview_limit;
         let log_redactor = self.log_redactor().clone();
-        let body_preview = self.into_error_body_preview(error_preview_limit).await?;
+        let body_preview =
+            self.into_error_body_preview(error_preview_limit).await?;
         let message = format!(
             "{} with status {} for {} {}; response body preview: {}",
             message_prefix,
@@ -368,7 +383,10 @@ impl HttpResponse {
     /// Returns [`HttpErrorKind::Cancelled`](crate::HttpErrorKind::Cancelled)
     /// when the request cancellation token fires while preview bytes are being
     /// read.
-    pub(crate) async fn into_error_body_preview(mut self, max_bytes: usize) -> HttpResult<String> {
+    pub(crate) async fn into_error_body_preview(
+        mut self,
+        max_bytes: usize,
+    ) -> HttpResult<String> {
         let limit = max_bytes.max(1);
         let Some(backend) = self.backend.take() else {
             return Ok("<empty>".to_string());
@@ -411,7 +429,8 @@ impl HttpResponse {
                 Err(_) => true,
             };
             if exceeds_limit {
-                let observed_size = usize::try_from(content_length).unwrap_or(usize::MAX);
+                let observed_size =
+                    usize::try_from(content_length).unwrap_or(usize::MAX);
                 let error = self.response_body_size_limit_error(observed_size);
                 self.remember_body_read_failure(&error);
                 return Err(error);
@@ -443,8 +462,10 @@ impl HttpResponse {
             match next {
                 Ok(Ok(Some(chunk))) => {
                     if let Err(error) = body_budget.try_consume(chunk.len()) {
-                        let observed_size = error.requested().unwrap_or(usize::MAX);
-                        let error = self.response_body_size_limit_error(observed_size);
+                        let observed_size =
+                            error.requested().unwrap_or(usize::MAX);
+                        let error =
+                            self.response_body_size_limit_error(observed_size);
                         self.remember_body_read_failure(&error);
                         return Err(error);
                     }
@@ -456,8 +477,13 @@ impl HttpResponse {
                     return Ok(body);
                 }
                 Ok(Err(error)) => {
-                    let error =
-                        map_response_read_error(error, method, url, status, self.log_redactor());
+                    let error = map_response_read_error(
+                        error,
+                        method,
+                        url,
+                        status,
+                        self.log_redactor(),
+                    );
                     self.remember_body_read_failure(&error);
                     return Err(error);
                 }
@@ -482,14 +508,16 @@ impl HttpResponse {
     pub fn stream(&mut self) -> HttpResult<HttpByteStream> {
         if let Some(body) = self.buffered_body.as_ref() {
             let bytes = body.clone();
-            return Ok(Box::pin(futures_stream::once(async move { Ok(bytes) })));
+            return Ok(Box::pin(futures_stream::once(
+                async move { Ok(bytes) },
+            )));
         }
         if let Some(error) = self.previous_body_read_error() {
             return Err(error);
         }
-        if let Some(error) = self
-            .cancelled_error_if_needed("Streaming response cancelled before reading response body")
-        {
+        if let Some(error) = self.cancelled_error_if_needed(
+            "Streaming response cancelled before reading response body",
+        ) {
             return Err(error);
         }
         let Some(backend) = self.backend.take() else {
@@ -641,10 +669,13 @@ impl HttpResponse {
                 max_line_bytes,
                 max_frame_bytes,
             ),
-            Err(error) => Box::pin(futures_stream::once(async move { Err(error) })),
+            Err(error) => {
+                Box::pin(futures_stream::once(async move { Err(error) }))
+            }
         };
         Box::pin(decoded.map(move |result| {
-            result.map_err(|error| error.with_log_redactor(log_redactor.clone()))
+            result
+                .map_err(|error| error.with_log_redactor(log_redactor.clone()))
         }))
     }
 
@@ -664,10 +695,13 @@ impl HttpResponse {
                 max_line_bytes,
                 max_frame_bytes,
             ),
-            Err(error) => Box::pin(futures_stream::once(async move { Err(error) })),
+            Err(error) => {
+                Box::pin(futures_stream::once(async move { Err(error) }))
+            }
         };
         Box::pin(decoded.map(move |result| {
-            result.map_err(|error| error.with_log_redactor(log_redactor.clone()))
+            result
+                .map_err(|error| error.with_log_redactor(log_redactor.clone()))
         }))
     }
 
@@ -685,17 +719,22 @@ impl HttpResponse {
         let max_frame_bytes = self.options.sse_max_frame_bytes;
         let log_redactor = self.log_redactor().clone();
         let decoded: SseChunkStream<T> = match self.stream() {
-            Ok(stream) => crate::sse::decode_json_chunks_from_stream_with_limits(
-                stream,
-                done_policy,
-                mode,
-                max_line_bytes,
-                max_frame_bytes,
-            ),
-            Err(error) => Box::pin(futures_stream::once(async move { Err(error) })),
+            Ok(stream) => {
+                crate::sse::decode_json_chunks_from_stream_with_limits(
+                    stream,
+                    done_policy,
+                    mode,
+                    max_line_bytes,
+                    max_frame_bytes,
+                )
+            }
+            Err(error) => {
+                Box::pin(futures_stream::once(async move { Err(error) }))
+            }
         };
         Box::pin(decoded.map(move |result| {
-            result.map_err(|error| error.with_log_redactor(log_redactor.clone()))
+            result
+                .map_err(|error| error.with_log_redactor(log_redactor.clone()))
         }))
     }
 
@@ -724,7 +763,10 @@ impl HttpResponse {
     /// `true` only when this response is not SSE, has an explicit
     /// `Content-Length`, and declared length is within `body_log_limit`.
     #[inline]
-    pub(crate) fn can_buffer_body_for_logging(&self, body_log_limit: usize) -> bool {
+    pub(crate) fn can_buffer_body_for_logging(
+        &self,
+        body_log_limit: usize,
+    ) -> bool {
         if self.backend.is_none() {
             return false;
         }
@@ -761,8 +803,10 @@ impl HttpResponse {
         let mut preview = Vec::new();
         let mut truncated = false;
         let capture_limit = limit.saturating_add(1);
-        let mut capture_budget =
-            ResourceBudget::new("status error response body preview", capture_limit);
+        let mut capture_budget = ResourceBudget::new(
+            "status error response body preview",
+            capture_limit,
+        );
 
         loop {
             let next = if let Some(token) = cancellation_token.as_ref() {
@@ -785,7 +829,8 @@ impl HttpResponse {
             };
             match next {
                 Ok(Ok(Some(chunk))) => {
-                    let captured = capture_budget.consume_available(chunk.len());
+                    let captured =
+                        capture_budget.consume_available(chunk.len());
                     preview.extend_from_slice(&chunk[..captured]);
                     if captured < chunk.len() {
                         truncated = true;
@@ -863,7 +908,10 @@ impl HttpResponse {
     }
 
     /// Returns a response-body aggregation limit error with request context.
-    fn response_body_size_limit_error(&self, observed_size: usize) -> HttpError {
+    fn response_body_size_limit_error(
+        &self,
+        observed_size: usize,
+    ) -> HttpError {
         let limit = self.options.response_body_size_limit;
         HttpError::other(format!(
             "Response body exceeds configured limit of {limit} bytes (observed {observed_size} bytes)"
@@ -910,9 +958,12 @@ impl HttpResponse {
             source_len.map_or_else(
                 || qubit_redact::http::BodyCapture::truncated_unknown(bytes),
                 |total_len| {
-                    qubit_redact::http::BodyCapture::truncated(bytes, total_len).unwrap_or_else(
-                        |_| qubit_redact::http::BodyCapture::truncated_unknown(bytes),
-                    )
+                    qubit_redact::http::BodyCapture::truncated(bytes, total_len)
+                        .unwrap_or_else(|_| {
+                            qubit_redact::http::BodyCapture::truncated_unknown(
+                                bytes,
+                            )
+                        })
                 },
             )
         } else {
