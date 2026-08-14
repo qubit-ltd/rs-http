@@ -90,7 +90,7 @@ impl RetryRule<HttpError> for HttpRetryRule {
         }
         if self.honor_retry_after {
             if let Some(delay) = error.retry_after {
-                return RetryDecision::RetryAfter(delay);
+                return RetryDecision::RetryWithHint(delay);
             }
         }
         RetryDecision::Retry
