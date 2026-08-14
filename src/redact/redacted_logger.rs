@@ -8,12 +8,9 @@
 // qubit-style: allow source-test-pair
 //! Safe rendering helpers for HTTP TRACE logs.
 
-use http::HeaderMap;
 use http::HeaderValue;
-use qubit_redact::http::HttpRedactor;
-use qubit_redact::http::RedactedHeaders;
 use qubit_redact::RedactionSession;
-use url::Url;
+use qubit_redact::http::HttpRedactor;
 
 use super::BodyPreview;
 use crate::HttpClientOptions;
@@ -67,45 +64,25 @@ impl RedactedLogger {
     /// Creates one diagnostic session for a complete TRACE record.
     #[inline(always)]
     pub(crate) fn session(&self) -> RedactionSession<'_> {
-        RedactionSession::diagnostic(self.redactor.policy())
-    }
-
-    /// Returns a redacted URL through a shared diagnostic session.
-    #[inline(always)]
-    pub(crate) fn url_with_session(
-        &self,
-        url: &Url,
-        session: &RedactionSession<'_>,
-    ) -> qubit_redact::LogSafeText<'static> {
-        self.redactor.redact_url_with_session(url, session)
-    }
-
-    /// Returns redacted headers through a shared diagnostic session.
-    #[inline(always)]
-    pub(crate) fn headers_with_session(
-        &self,
-        headers: &HeaderMap,
-        session: &RedactionSession<'_>,
-    ) -> RedactedHeaders {
-        self.redactor.redact_headers_with_session(headers, session)
+        self.redactor.session()
     }
 
     /// Returns a redacted body preview through a shared diagnostic session.
     #[inline]
-    pub(crate) fn body_with_session(
+    pub(crate) fn body(
         &self,
         body: &[u8],
         content_type: Option<&HeaderValue>,
-        session: &RedactionSession<'_>,
+        session: &mut RedactionSession<'_>,
     ) -> String {
         if body.is_empty() {
             return "<empty>".to_owned();
         }
-        self.redactor
-            .redact_body_with_session(
+        session
+            .http()
+            .redact_body(
                 BodyPreview::new(body, self.body_size_limit).capture(),
                 content_type,
-                session,
             )
             .into_log_safe_text()
             .into_owned()

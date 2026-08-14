@@ -11,13 +11,13 @@ use std::fmt;
 use std::time::Duration;
 use std::time::SystemTime;
 
-use http::header::RETRY_AFTER;
 use http::HeaderMap;
 use http::Method;
 use http::StatusCode;
+use http::header::RETRY_AFTER;
 use httpdate::parse_http_date;
-use qubit_redact::http::HttpRedactor;
 use qubit_redact::RedactionPolicy;
+use qubit_redact::http::HttpRedactor;
 use url::Url;
 
 use crate::redact::RedactedDebugger;
@@ -193,15 +193,12 @@ impl HttpResponseMeta {
 impl fmt::Debug for HttpResponseMeta {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let debugger = RedactedDebugger::new(&self.log_redactor);
-        let session = debugger.session();
-        let url = debugger.url_with_session(&self.url, &session);
+        let mut session = debugger.session();
+        let url = session.http().redact_url(&self.url);
         formatter
             .debug_struct("HttpResponseMeta")
             .field("status", &self.status)
-            .field(
-                "headers",
-                &debugger.headers_with_session(&self.headers, &session),
-            )
+            .field("headers", &session.http().redact_headers(&self.headers))
             .field("url", &url)
             .field("method", &self.method)
             .finish()

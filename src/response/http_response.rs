@@ -14,14 +14,14 @@ use std::time::Duration;
 
 use async_stream::stream;
 use bytes::Bytes;
-use futures_util::stream as futures_stream;
 use futures_util::StreamExt;
-use http::header::CONTENT_LENGTH;
-use http::header::CONTENT_TYPE;
+use futures_util::stream as futures_stream;
 use http::HeaderMap;
 use http::HeaderValue;
 use http::Method;
 use http::StatusCode;
+use http::header::CONTENT_LENGTH;
+use http::header::CONTENT_TYPE;
 use qubit_budget::ResourceBudget;
 use qubit_json::lenient::JsonDecodeOptions;
 use qubit_json::lenient::LenientJsonDecoder;
@@ -32,18 +32,18 @@ use url::Url;
 
 use super::HttpResponseMeta;
 use super::HttpResponseOptions;
+use crate::HttpByteStream;
+use crate::HttpError;
+use crate::HttpErrorKind;
+use crate::HttpResult;
 use crate::content_type;
-use crate::error::backend_error_mapper::map_reqwest_error;
 use crate::error::ReqwestErrorPhase;
+use crate::error::backend_error_mapper::map_reqwest_error;
 use crate::redact::RedactedDebugger;
 use crate::sse::DoneMarkerPolicy;
 use crate::sse::SseChunkStream;
 use crate::sse::SseJsonMode;
 use crate::sse::SseMessageStream;
-use crate::HttpByteStream;
-use crate::HttpError;
-use crate::HttpErrorKind;
-use crate::HttpResult;
 
 /// Snapshot of a body read failure retained after the backend body is consumed.
 #[derive(Debug, Clone)]
@@ -192,15 +192,15 @@ pub struct HttpResponse {
 impl fmt::Debug for HttpResponse {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let debugger = RedactedDebugger::new(&self.options.log_redactor);
-        let session = debugger.session();
-        let url = debugger.url_with_session(self.meta.url(), &session);
-        let request_url = debugger.url_with_session(&self.runtime.request_url, &session);
+        let mut session = debugger.session();
+        let url = session.http().redact_url(self.meta.url());
+        let request_url = session.http().redact_url(&self.runtime.request_url);
         formatter
             .debug_struct("HttpResponse")
             .field("status", &self.meta.status())
             .field(
                 "headers",
-                &debugger.headers_with_session(self.meta.headers(), &session),
+                &session.http().redact_headers(self.meta.headers()),
             )
             .field("url", &url)
             .field("request_url", &request_url)
@@ -347,7 +347,7 @@ impl HttpResponse {
             message_prefix,
             status,
             method,
-            log_redactor.redact_url(&url),
+            log_redactor.session().http().redact_url(&url),
             body_preview
         );
         let mut mapped = HttpError::status(status, message)
@@ -918,7 +918,11 @@ impl HttpResponse {
         } else {
             qubit_redact::http::BodyCapture::complete(bytes)
         };
-        log_redactor.redact_body(capture, content_type).to_string()
+        log_redactor
+            .session()
+            .http()
+            .redact_body(capture, content_type)
+            .to_string()
     }
 
     /// Extracts a Content-Type header value.

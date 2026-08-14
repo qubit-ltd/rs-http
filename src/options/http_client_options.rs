@@ -13,18 +13,19 @@ use std::time::Duration;
 
 use http::HeaderMap;
 use http::HeaderValue;
-use qubit_argument::require_that;
 use qubit_argument::ArgumentResultExt;
+use qubit_argument::require_that;
 use qubit_config::ConfigReader;
 use qubit_config::ConfigResult;
 use qubit_json::lenient::JsonDecodeOptions;
 use qubit_json::lenient::LenientJsonDecoder;
-use qubit_redact::http::HttpRedactor;
-use qubit_redact::http::UrlPathPolicy;
 use qubit_redact::RedactionPolicy;
 use qubit_redact::Sensitivity;
+use qubit_redact::http::HttpRedactor;
+use qubit_redact::http::UrlPathPolicy;
 use url::Url;
 
+use super::HttpConfigError;
 use super::from_config_helpers::get_optional_usize;
 use super::from_config_helpers::hashmap_to_headermap;
 use super::http_logging_options::HttpLoggingOptions;
@@ -32,7 +33,7 @@ use super::http_retry_options::HttpRetryOptions;
 use super::http_timeout_options::HttpTimeoutOptions;
 use super::internal::HttpClientLogRedactionConfigInput;
 use super::proxy_options::ProxyOptions;
-use super::HttpConfigError;
+use crate::HttpResult;
 use crate::constants::DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES;
 use crate::constants::DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES;
 use crate::constants::DEFAULT_SSE_MAX_FRAME_BYTES;
@@ -41,7 +42,6 @@ use crate::redact::RedactedDebugger;
 use crate::request::parse_header;
 use crate::sse::DoneMarkerPolicy;
 use crate::sse::SseJsonMode;
-use crate::HttpResult;
 
 /// Aggregated settings for [`crate::HttpClient`] and
 /// [`crate::HttpClientFactory`].
@@ -126,14 +126,14 @@ impl fmt::Debug for HttpClientOptions {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let redactor = HttpRedactor::new(self.log_redaction_policy.clone());
         let debugger = RedactedDebugger::new(&redactor);
-        let session = debugger.session();
-        let base_url = debugger.optional_url_with_session(self.base_url.as_ref(), &session);
+        let mut session = debugger.session();
+        let base_url = debugger.optional_url(self.base_url.as_ref(), &mut session);
         formatter
             .debug_struct("HttpClientOptions")
             .field("base_url", &base_url)
             .field(
                 "default_headers",
-                &debugger.headers_with_session(&self.default_headers, &session),
+                &session.http().redact_headers(&self.default_headers),
             )
             .field("timeouts", &self.timeouts)
             .field("proxy", &self.proxy)

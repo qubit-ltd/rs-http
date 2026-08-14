@@ -11,17 +11,17 @@
 
 use http::header::CONTENT_TYPE;
 use qubit_redact::http::HttpRedactor;
+use tracing::Metadata;
 use tracing::callsite::DefaultCallsite;
 use tracing::metadata::Kind;
-use tracing::Metadata;
 
-use crate::redact::RedactedLogger;
 use crate::HttpClientOptions;
 use crate::HttpLoggingOptions;
 use crate::HttpRequest;
 use crate::HttpRequestBody;
 use crate::HttpResponse;
 use crate::HttpResponseMeta;
+use crate::redact::RedactedLogger;
 
 const UNRESOLVED_REQUEST_URL: &str = "<unresolved request URL>";
 const STREAMING_REQUEST_BODY_SKIPPED: &str = "<skipped: streaming request body>";
@@ -105,8 +105,8 @@ impl<'a> HttpLogger<'a> {
             return;
         }
 
-        let session = self.redacted_logger.session();
-        let url = self.request_log_url(request, &session);
+        let mut session = self.redacted_logger.session();
+        let url = self.request_log_url(request, &mut session);
         tracing::trace!("--> {} {}", request.method(), url);
 
         let headers = request
@@ -114,10 +114,7 @@ impl<'a> HttpLogger<'a> {
             .unwrap_or_else(|| request.headers());
 
         if self.options.log_request_header {
-            tracing::trace!(
-                "{}",
-                self.redacted_logger.headers_with_session(headers, &session)
-            );
+            tracing::trace!("{}", session.http().redact_headers(headers));
         }
 
         if self.options.log_request_body {
@@ -126,8 +123,7 @@ impl<'a> HttpLogger<'a> {
                     let content_type = Self::content_type(headers);
                     tracing::trace!(
                         "Request body: {}",
-                        self.redacted_logger
-                            .body_with_session(bytes, content_type, &session)
+                        self.redacted_logger.body(bytes, content_type, &mut session)
                     );
                 }
                 RequestBodyLogPreview::Empty => {
@@ -157,20 +153,15 @@ impl<'a> HttpLogger<'a> {
             return Ok(());
         }
 
-        let session = self.redacted_logger.session();
+        let mut session = self.redacted_logger.session();
         tracing::trace!(
             "<-- {} {}",
             response.status().as_u16(),
-            self.redacted_logger
-                .url_with_session(response.url(), &session)
+            session.http().redact_url(response.url())
         );
 
         if self.options.log_response_header {
-            tracing::trace!(
-                "{}",
-                self.redacted_logger
-                    .headers_with_session(response.headers(), &session)
-            );
+            tracing::trace!("{}", session.http().redact_headers(response.headers()));
         }
 
         if self.options.log_response_body {
@@ -178,21 +169,15 @@ impl<'a> HttpLogger<'a> {
             if let Some(body) = response.buffered_body_for_logging() {
                 tracing::trace!(
                     "Response body: {}",
-                    self.redacted_logger.body_with_session(
-                        body.as_ref(),
-                        content_type.as_ref(),
-                        &session,
-                    )
+                    self.redacted_logger
+                        .body(body.as_ref(), content_type.as_ref(), &mut session)
                 );
             } else if response.can_buffer_body_for_logging(self.options.body_size_limit) {
                 let body = response.bytes().await?;
                 tracing::trace!(
                     "Response body: {}",
-                    self.redacted_logger.body_with_session(
-                        body.as_ref(),
-                        content_type.as_ref(),
-                        &session,
-                    )
+                    self.redacted_logger
+                        .body(body.as_ref(), content_type.as_ref(), &mut session)
                 );
             } else {
                 tracing::trace!("Response body: <skipped: streaming or unknown-size body>");
@@ -214,20 +199,15 @@ impl<'a> HttpLogger<'a> {
             return;
         }
 
-        let session = self.redacted_logger.session();
+        let mut session = self.redacted_logger.session();
         tracing::trace!(
             "<-- {} {} (stream)",
             response_meta.status().as_u16(),
-            self.redacted_logger
-                .url_with_session(response_meta.url(), &session)
+            session.http().redact_url(response_meta.url())
         );
 
         if self.options.log_response_header {
-            tracing::trace!(
-                "{}",
-                self.redacted_logger
-                    .headers_with_session(response_meta.headers(), &session)
-            );
+            tracing::trace!("{}", session.http().redact_headers(response_meta.headers()));
         }
     }
 
@@ -254,11 +234,11 @@ impl<'a> HttpLogger<'a> {
     fn request_log_url(
         &self,
         request: &HttpRequest,
-        session: &qubit_redact::RedactionSession<'_>,
+        session: &mut qubit_redact::RedactionSession<'_>,
     ) -> String {
         request
             .resolved_url()
-            .map(|url| self.redacted_logger.url_with_session(&url, session))
+            .map(|url| session.http().redact_url(&url))
             .map(|url| url.into_owned())
             .unwrap_or_else(|_| UNRESOLVED_REQUEST_URL.to_string())
     }
