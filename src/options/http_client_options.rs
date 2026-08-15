@@ -17,7 +17,7 @@ use qubit_argument::ArgumentResultExt;
 use qubit_argument::require_that;
 use qubit_config::ConfigReader;
 use qubit_config::ConfigResult;
-use qubit_json::lenient::JsonDecodeOptions;
+use qubit_json::lenient::LenientJsonDecodeOptions;
 use qubit_json::lenient::LenientJsonDecoder;
 use qubit_redact::RedactionPolicy;
 use qubit_redact::Sensitivity;
@@ -592,22 +592,23 @@ impl HttpClientOptions {
             ));
         }
         if let Some(json_str) = json_headers {
-            let parsed: HashMap<String, String> =
-                match LenientJsonDecoder::new(JsonDecodeOptions::strict())
-                    .decode(&json_str)
-                {
-                    Ok(parsed) => parsed,
-                    Err(error) => {
-                        return Err(HttpConfigError::type_error(
-                            config
-                                .resolve_key(headers_prefix)
-                                .map_err(HttpConfigError::from)?,
-                            format!(
-                                "Failed to parse default_headers JSON: {error}"
-                            ),
-                        ));
-                    }
-                };
+            let parsed: HashMap<String, String> = match LenientJsonDecoder::new(
+                LenientJsonDecodeOptions::strict(),
+            )
+            .decode(&json_str)
+            {
+                Ok(parsed) => parsed,
+                Err(error) => {
+                    return Err(HttpConfigError::type_error(
+                        config
+                            .resolve_key(headers_prefix)
+                            .map_err(HttpConfigError::from)?,
+                        format!(
+                            "Failed to parse default_headers JSON: {error}"
+                        ),
+                    ));
+                }
+            };
             header_map = parsed;
         }
         if !header_map.is_empty() {
