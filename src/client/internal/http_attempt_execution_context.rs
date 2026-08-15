@@ -13,10 +13,8 @@ use crate::RetryCancellationToken;
 /// Per-call cancellation routing that never escapes into a request clone.
 #[derive(Clone, Debug, Default)]
 pub(in crate::client) struct HttpAttemptExecutionContext {
-
     /// Original token source exclusively owned by `AsyncRetry`.
     retry_flow_token: Option<RetryCancellationToken>,
-
 }
 
 impl HttpAttemptExecutionContext {
