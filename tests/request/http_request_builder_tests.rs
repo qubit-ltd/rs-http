@@ -14,12 +14,12 @@ use http::HeaderMap;
 use http::HeaderValue;
 use http::Method;
 use http::header::CONTENT_TYPE;
-use qubit_http::CancellationToken;
 use qubit_http::HttpClientFactory;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
 use qubit_http::HttpRequestBody;
 use qubit_http::HttpRetryMethodPolicy;
+use qubit_http::RetryCancellationToken;
 use qubit_redact::RedactionPolicy;
 use qubit_redact::Sensitivity;
 use serde::ser::Error as _;
@@ -81,7 +81,7 @@ fn test_request_builder_debug_masks_sensitive_values() {
         .text_body("debug-text-secret")
         .request_timeout(Duration::from_secs(1))
         .expect("positive timeout should be accepted")
-        .cancellation_token(CancellationToken::new());
+        .cancellation_token(RetryCancellationToken::new());
     let absolute = client.request(
         Method::GET,
         "https://debug-user:debug-url-secret@example.com/path",
@@ -503,7 +503,7 @@ fn test_request_builder_disable_retry_override() {
 
 #[test]
 fn test_request_builder_sets_cancellation_token() {
-    let token = CancellationToken::new();
+    let token = RetryCancellationToken::new();
     let request = new_builder(Method::GET, "/v1/cancel")
         .cancellation_token(token.clone())
         .build();

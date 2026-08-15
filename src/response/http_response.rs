@@ -26,8 +26,8 @@ use qubit_budget::ResourceBudget;
 use qubit_json::lenient::JsonDecodeOptions;
 use qubit_json::lenient::LenientJsonDecoder;
 use qubit_redact::http::HttpRedactor;
+use qubit_retry::RetryCancellationToken;
 use serde::de::DeserializeOwned;
-use tokio_util::sync::CancellationToken;
 use url::Url;
 
 use super::HttpResponseMeta;
@@ -152,7 +152,7 @@ struct HttpResponseRuntime {
     /// Per-response read timeout inherited from request/client.
     read_timeout: Duration,
     /// Optional cancellation token inherited from request.
-    cancellation_token: Option<CancellationToken>,
+    cancellation_token: Option<RetryCancellationToken>,
     /// Request URL used in read/cancellation error context.
     request_url: Url,
     /// First response body read failure, if the backend stream failed after
@@ -163,7 +163,7 @@ struct HttpResponseRuntime {
 impl HttpResponseRuntime {
     fn new(
         read_timeout: Duration,
-        cancellation_token: Option<CancellationToken>,
+        cancellation_token: Option<RetryCancellationToken>,
         request_url: Url,
     ) -> Self {
         Self {
@@ -247,7 +247,7 @@ impl HttpResponse {
         meta: HttpResponseMeta,
         backend: reqwest::Response,
         read_timeout: Duration,
-        cancellation_token: Option<CancellationToken>,
+        cancellation_token: Option<RetryCancellationToken>,
         request_url: Url,
         options: HttpResponseOptions,
     ) -> Self {
@@ -274,6 +274,19 @@ impl HttpResponse {
     #[inline(always)]
     pub fn status(&self) -> StatusCode {
         self.meta.status()
+    }
+
+    /// Restores the request-scoped token after the retry controller completes.
+    ///
+    /// Retry attempts let the controller own active-attempt cancellation so a
+    /// request-level cancellation error cannot mask the structured retry
+    /// terminal. A successful response keeps using the same token for body and
+    /// SSE stream reads.
+    pub(crate) fn set_cancellation_token(
+        &mut self,
+        token: RetryCancellationToken,
+    ) {
+        self.runtime.cancellation_token = Some(token);
     }
 
     /// Returns response headers.
@@ -883,7 +896,7 @@ impl HttpResponse {
             .runtime
             .cancellation_token
             .as_ref()
-            .is_some_and(CancellationToken::is_cancelled)
+            .is_some_and(RetryCancellationToken::is_cancelled)
         {
             Some(
                 HttpError::cancelled(message.to_string())

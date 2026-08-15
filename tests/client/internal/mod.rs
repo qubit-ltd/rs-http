@@ -5,12 +5,7 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-//! HTTP client module root.
+//! Integration coverage for private HTTP attempt owners.
 
-mod http_client;
-mod http_client_factory;
-pub mod http_logger;
-mod internal;
-
-pub use http_client::HttpClient;
-pub use http_client_factory::HttpClientFactory;
+mod http_attempt_execution_context_tests;
+mod http_attempt_response_tests;
