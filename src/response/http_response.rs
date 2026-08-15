@@ -23,7 +23,7 @@ use http::StatusCode;
 use http::header::CONTENT_LENGTH;
 use http::header::CONTENT_TYPE;
 use qubit_budget::ResourceBudget;
-use qubit_json::lenient::JsonDecodeOptions;
+use qubit_json::lenient::LenientJsonDecodeOptions;
 use qubit_json::lenient::LenientJsonDecoder;
 use qubit_redact::http::HttpRedactor;
 use qubit_retry::RetryCancellationToken;
@@ -617,7 +617,7 @@ impl HttpResponse {
         T: DeserializeOwned,
     {
         let body = self.bytes().await?;
-        LenientJsonDecoder::new(JsonDecodeOptions::strict())
+        LenientJsonDecoder::new(LenientJsonDecodeOptions::strict())
             .decode_slice(&body)
             .map_err(|error| {
                 HttpError::decode("Failed to decode response JSON")
