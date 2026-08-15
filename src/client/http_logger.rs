@@ -9,7 +9,11 @@
 //!
 //! Encapsulates request and response logging behavior.
 
+use http::HeaderValue;
 use http::header::CONTENT_TYPE;
+use qubit_redact::RedactionCompletion;
+use qubit_redact::RedactionSession;
+use qubit_redact::http::BodyRedaction;
 use qubit_redact::http::HttpRedactor;
 use tracing::Metadata;
 use tracing::callsite::DefaultCallsite;
@@ -26,6 +30,7 @@ use crate::redact::RedactedLogger;
 const UNRESOLVED_REQUEST_URL: &str = "<unresolved request URL>";
 const STREAMING_REQUEST_BODY_SKIPPED: &str =
     "<skipped: streaming request body>";
+const REDACTION_EXHAUSTED: &str = "<truncated>";
 
 /// Callsite metadata used to query the current dispatcher directly, bypassing
 /// shared interest caching that can change while thread-local subscribers are
@@ -128,11 +133,7 @@ impl<'a> HttpLogger<'a> {
                     let content_type = Self::content_type(headers);
                     tracing::trace!(
                         "Request body: {}",
-                        self.redacted_logger.body(
-                            bytes,
-                            content_type,
-                            &mut session
-                        )
+                        self.body_log_text(bytes, content_type, &mut session)
                     );
                 }
                 RequestBodyLogPreview::Empty => {
@@ -184,7 +185,7 @@ impl<'a> HttpLogger<'a> {
             if let Some(body) = response.buffered_body_for_logging() {
                 tracing::trace!(
                     "Response body: {}",
-                    self.redacted_logger.body(
+                    self.body_log_text(
                         body.as_ref(),
                         content_type.as_ref(),
                         &mut session
@@ -196,7 +197,7 @@ impl<'a> HttpLogger<'a> {
                 let body = response.bytes().await?;
                 tracing::trace!(
                     "Response body: {}",
-                    self.redacted_logger.body(
+                    self.body_log_text(
                         body.as_ref(),
                         content_type.as_ref(),
                         &mut session
@@ -265,13 +266,73 @@ impl<'a> HttpLogger<'a> {
     fn request_log_url(
         &self,
         request: &HttpRequest,
-        session: &mut qubit_redact::RedactionSession<'_>,
+        session: &mut RedactionSession<'_>,
     ) -> String {
         request
             .resolved_url()
             .map(|url| session.http().redact_url(&url))
             .map(|url| url.into_owned())
             .unwrap_or_else(|_| UNRESOLVED_REQUEST_URL.to_string())
+    }
+
+    /// Returns log text for a body while preserving structured completion
+    /// until the presentation boundary.
+    ///
+    /// # Parameters
+    ///
+    /// * `body` - Complete body bytes offered by the logging layer.
+    /// * `content_type` - Optional native Content-Type used for parser choice.
+    /// * `session` - Shared redaction session for the enclosing TRACE record.
+    ///
+    /// # Returns
+    ///
+    /// `<empty>` for an empty source body. For a non-empty body, `Complete`
+    /// preserves the complete log-safe text, `Truncated` preserves its
+    /// non-empty safe substitute, and `Exhausted` maps empty adapter output to
+    /// [`REDACTION_EXHAUSTED`]. Body status is independent of this completion
+    /// mapping. An exhausted session has terminated input processing, so the
+    /// body adapter does not read further source bytes.
+    fn body_log_text(
+        &self,
+        body: &[u8],
+        content_type: Option<&HeaderValue>,
+        session: &mut RedactionSession<'_>,
+    ) -> String {
+        if body.is_empty() {
+            return "<empty>".to_owned();
+        }
+        Self::render_body_redaction(self.redacted_logger.body(
+            body,
+            content_type,
+            session,
+        ))
+    }
+
+    /// Maps structured completion to the final logger presentation.
+    ///
+    /// Body status intentionally remains independent: it describes how the
+    /// representation was produced, while only completion determines the
+    /// presentation. `Complete` preserves complete safe text, `Truncated`
+    /// preserves the non-empty safe substitute, and `Exhausted` maps its empty
+    /// text to [`REDACTION_EXHAUSTED`]. Exhaustion is terminal for input
+    /// processing, and the producing adapter has stopped without reading
+    /// further source bytes.
+    ///
+    /// # Parameters
+    ///
+    /// * `redaction` - Structured body result from the shared session.
+    ///
+    /// # Returns
+    ///
+    /// Complete or truncated log-safe text as described above, or the outer
+    /// marker for exhausted results.
+    fn render_body_redaction(redaction: BodyRedaction) -> String {
+        match redaction.completion() {
+            RedactionCompletion::Complete | RedactionCompletion::Truncated => {
+                redaction.into_log_safe_text().into_owned()
+            }
+            RedactionCompletion::Exhausted => REDACTION_EXHAUSTED.to_owned(),
+        }
     }
 
     /// Borrows request body content only when body logging is safe.
