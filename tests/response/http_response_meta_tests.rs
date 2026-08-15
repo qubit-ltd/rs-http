@@ -66,6 +66,8 @@ fn test_http_response_meta_debug_masks_sensitive_values() {
 
 #[test]
 fn test_http_response_meta_debug_honors_url_path_redaction_policy() {
+    let mut policy_builder = RedactionPolicy::default().to_builder();
+    policy_builder.http().url_path(UrlPathPolicy::Redact);
     let meta = HttpResponseMeta::new(
         StatusCode::OK,
         HeaderMap::new(),
@@ -76,8 +78,7 @@ fn test_http_response_meta_debug_honors_url_path_redaction_policy() {
         Method::GET,
     )
     .with_log_redaction_policy(
-        RedactionPolicy::default().to_builder()
-            .url_path_policy(UrlPathPolicy::Redact)
+        policy_builder
             .build()
             .expect("log redaction policy should be valid"),
     );

@@ -10,6 +10,7 @@
 
 use http::HeaderValue;
 use qubit_redact::RedactionSession;
+use qubit_redact::http::BodyRedaction;
 use qubit_redact::http::HttpRedactor;
 
 use super::BodyPreview;
@@ -70,24 +71,32 @@ impl RedactedLogger {
         self.redactor.session()
     }
 
-    /// Returns a redacted body preview through a shared diagnostic session.
+    /// Redacts a body preview through a shared diagnostic session.
+    ///
+    /// # Parameters
+    ///
+    /// * `body` - Complete source bytes offered by the logging layer.
+    /// * `content_type` - Optional native Content-Type used for parser choice.
+    /// * `session` - Shared diagnostic session for the enclosing TRACE record.
+    ///
+    /// # Returns
+    ///
+    /// A structured body result whose status remains independent of
+    /// completion. `Complete` carries the full log-safe representation,
+    /// `Truncated` carries a non-empty safe substitute, and `Exhausted` carries
+    /// empty safe text after terminal output-budget exhaustion. In the
+    /// exhausted state the shared session has stopped processing and this
+    /// adapter does not read further body bytes.
     #[inline]
     pub(crate) fn body(
         &self,
         body: &[u8],
         content_type: Option<&HeaderValue>,
         session: &mut RedactionSession<'_>,
-    ) -> String {
-        if body.is_empty() {
-            return "<empty>".to_owned();
-        }
-        session
-            .http()
-            .redact_body(
-                BodyPreview::new(body, self.body_size_limit).capture(),
-                content_type,
-            )
-            .into_log_safe_text()
-            .into_owned()
+    ) -> BodyRedaction {
+        session.http().redact_body(
+            BodyPreview::new(body, self.body_size_limit).capture(),
+            content_type,
+        )
     }
 }
