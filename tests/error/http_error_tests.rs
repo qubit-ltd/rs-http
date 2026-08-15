@@ -163,12 +163,12 @@ fn test_http_error_display_uses_custom_log_redaction_policy() {
 fn test_http_error_debug_honors_url_path_redaction_policy() {
     let raw_url = "https://alice:error-password-secret@example.com/tenant/error-path-secret?access_token=error-query-secret#error-fragment-secret";
     let url = url::Url::parse(raw_url).expect("URL should parse");
+    let mut policy_builder = RedactionPolicy::default().to_builder();
+    policy_builder.http().url_path(UrlPathPolicy::Redact);
     let error = HttpError::transport(format!("transport failed for {raw_url}"))
         .with_url(&url)
         .with_log_redaction_policy(
-            RedactionPolicy::default()
-                .to_builder()
-                .url_path_policy(UrlPathPolicy::Redact)
+            policy_builder
                 .build()
                 .expect("log redaction policy should be valid"),
         );
