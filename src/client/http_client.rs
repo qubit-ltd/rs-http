@@ -20,9 +20,13 @@ use qubit_retry::AttemptFailure;
 use qubit_retry::Retry;
 use qubit_retry::RetryDecision;
 use qubit_retry::RetryError;
-use qubit_retry::RetryErrorReason;
+use qubit_retry::RetryFailure;
+use qubit_retry::RetryLimitKind;
 use qubit_retry::RetryRule;
+use qubit_retry::RetryTimeoutScope;
 
+use super::internal::HttpAttemptExecutionContext;
+use super::internal::HttpAttemptResponse;
 use crate::AsyncHttpHeaderInjector;
 use crate::HttpClientOptions;
 use crate::HttpError;
@@ -353,18 +357,49 @@ impl HttpClient {
         &self,
         request: HttpRequest,
     ) -> HttpResult<HttpResponse> {
+        self.execute_once_with_context(
+            request,
+            HttpAttemptExecutionContext::direct(),
+        )
+        .await
+        .map(|attempt| attempt.into_parts().0)
+    }
+
+    /// Performs one attempt with private cancellation ownership routing.
+    ///
+    /// # Parameters
+    /// - `request`: Request snapshot consumed by this attempt.
+    /// - `context`: Non-escaping cancellation ownership for direct or retry
+    ///   execution.
+    ///
+    /// # Returns
+    /// A successful response plus the retry-flow token restoration decision.
+    ///
+    /// # Errors
+    /// Returns [`HttpError`] for interceptor failures, cancellation, request
+    /// preparation or transport failures, unsuccessful status mapping, and
+    /// response logging failures.
+    async fn execute_once_with_context(
+        &self,
+        request: HttpRequest,
+        context: HttpAttemptExecutionContext,
+    ) -> HttpResult<HttpAttemptResponse> {
         let result = async {
             let mut request = request;
-            if let Some(error) = request
-                .cancelled_error_if_needed("Request cancelled before sending")
-            {
+            if let Some(error) = request.cancelled_error_if_needed(
+                "Request cancelled before sending",
+                context.io_cancellation_token(&request),
+            ) {
                 return Err(error);
             }
             self.request_interceptors.apply(&mut request)?;
+            let restore_retry_flow_token =
+                context.should_restore_retry_flow_token(&request);
             let response = self
                 .prepare_and_send_once(
                     request,
                     "Request cancelled before sending",
+                    context,
                 )
                 .await?;
             let mut response = response
@@ -376,7 +411,7 @@ impl HttpClient {
                 self.log_redactor.clone(),
             );
             logger.log_response(&mut response).await?;
-            Ok(response)
+            Ok(HttpAttemptResponse::new(response, restore_retry_flow_token))
         }
         .await;
         result
@@ -393,6 +428,7 @@ impl HttpClient {
     /// - `request`: Request to send (may be mutated for logging/send path).
     /// - `cancellation_message`: Message embedded if the request is already
     ///   cancelled when this runs.
+    /// - `context`: Non-escaping cancellation ownership for this attempt.
     ///
     /// # Returns
     /// - `Ok(HttpResponse)` with lazy body and metadata.
@@ -405,11 +441,15 @@ impl HttpClient {
         &self,
         request: HttpRequest,
         cancellation_message: &str,
+        context: HttpAttemptExecutionContext,
     ) -> HttpResult<HttpResponse> {
         let mut request = request;
-        if let Some(error) =
-            request.cancelled_error_if_needed(cancellation_message)
-        {
+        let cancellation_token =
+            context.io_cancellation_token(&request).cloned();
+        if let Some(error) = request.cancelled_error_if_needed(
+            cancellation_message,
+            cancellation_token.as_ref(),
+        ) {
             return Err(error);
         }
         let logger = HttpLogger::from_options_with_redactor(
@@ -417,8 +457,9 @@ impl HttpClient {
             self.log_redactor.clone(),
         );
         let request_url = request.resolved_url()?;
-        let backend_response =
-            request.send_impl(&self.backend, &logger).await?;
+        let backend_response = request
+            .send_impl(&self.backend, &logger, cancellation_token.clone())
+            .await?;
         let log_redactor = request.log_redactor().clone();
         let meta = HttpResponseMeta::new(
             backend_response.status(),
@@ -440,7 +481,7 @@ impl HttpClient {
             meta,
             backend_response,
             request.read_timeout(),
-            request.cancellation_token().cloned(),
+            cancellation_token,
             request_url,
             response_options,
         ))
@@ -483,37 +524,46 @@ impl HttpClient {
             .build();
 
         let cancellation_token = request.cancellation_token().cloned();
+        let attempt_context = HttpAttemptExecutionContext::retry(&request);
         let request_method = request.method().clone();
         let request_url = request.resolved_url().ok();
         let retry_request = request.clone();
-        let async_retry = retry_policy.asynchronous();
-        let retry_future = async_retry.run(|| {
-            let attempt_request = retry_request.clone();
-            async move { self.execute_once(attempt_request).await }
-        });
-
-        let retry_result = if let Some(token) = cancellation_token.as_ref() {
-            tokio::select! {
-                _ = token.cancelled() => {
-                    return Err(Self::retry_cancelled_error(
-                        "HTTP retry cancelled while waiting before next attempt",
-                        &request_method,
-                        request_url.as_ref(),
-                    ));
+        let mut async_retry = retry_policy.asynchronous();
+        if let Some(token) = cancellation_token.as_ref() {
+            async_retry = async_retry.cancellation_token(token.clone());
+        }
+        let retry_result = async_retry
+            .run(|| {
+                let attempt_request = retry_request.clone();
+                let attempt_context = attempt_context.clone();
+                async move {
+                    self.execute_once_with_context(
+                        attempt_request,
+                        attempt_context,
+                    )
+                    .await
                 }
-                result = retry_future => result,
-            }
-        } else {
-            retry_future.await
-        };
+            })
+            .await;
 
         match retry_result {
-            Ok(response) => Ok(response.into_value()),
+            Ok(response) => {
+                let (mut response, restore_retry_flow_token) =
+                    response.into_value().into_parts();
+                if restore_retry_flow_token {
+                    if let Some(token) = cancellation_token {
+                        response.set_cancellation_token(token);
+                    }
+                }
+                Ok(response)
+            }
             Err(error) => Err(Self::map_retry_error(
                 error,
                 started_at,
                 options.max_duration,
                 options.max_attempts,
+                &request_method,
+                request_url.as_ref(),
             )),
         }
     }
@@ -621,6 +671,8 @@ impl HttpClient {
     /// - `started_at`: Monotonic start instant of the HTTP retry flow.
     /// - `max_duration`: Optional HTTP total retry budget.
     /// - `max_attempts`: Configured maximum HTTP attempts.
+    /// - `request_method`: Request method attached to cancellation errors.
+    /// - `request_url`: Resolved URL attached to cancellation errors.
     ///
     /// # Returns
     /// A rich [`HttpError`] preserving the last attempt error when available.
@@ -629,53 +681,100 @@ impl HttpClient {
         started_at: Instant,
         max_duration: Option<Duration>,
         max_attempts: u32,
+        request_method: &http::Method,
+        request_url: Option<&url::Url>,
     ) -> HttpError {
-        let attempts = error.attempts();
-        let reason = error.reason();
-        let (_, last_failure, _) = error.into_parts();
-        let last_error = last_failure.and_then(AttemptFailure::into_error);
-
-        match reason {
-            RetryErrorReason::AttemptsExhausted => {
-                let error = last_error.expect(
-                    "HTTP retry attempts exceeded should preserve last error",
+        let attempts = error.context().attempts();
+        match error.failure() {
+            RetryFailure::Cancelled { phase, .. } => {
+                let message = format!("HTTP retry cancelled during {phase}");
+                return Self::retry_cancelled_error(
+                    &message,
+                    request_method,
+                    request_url,
+                )
+                .with_source(error);
+            }
+            RetryFailure::TimedOut { scope, .. } => {
+                let message = format!(
+                    "HTTP retry {scope} timed out after {attempts} attempt(s)"
                 );
-                Self::map_retry_attempts_exhausted(
-                    error,
-                    attempts,
-                    max_attempts,
-                )
+                return match scope {
+                    RetryTimeoutScope::Attempt => {
+                        HttpError::retry_attempt_timeout(message)
+                            .with_source(error)
+                    }
+                    RetryTimeoutScope::Flow => {
+                        HttpError::retry_max_elapsed_exceeded(message)
+                            .with_source(error)
+                    }
+                };
             }
-            RetryErrorReason::OperationBudgetExhausted
-            | RetryErrorReason::TotalBudgetExhausted => {
-                let max_duration = max_duration
-                    .expect("HTTP retry elapsed limit requires max_duration");
-                Self::map_retry_max_duration_exceeded(
-                    started_at,
-                    max_duration,
-                    last_error,
-                )
+            RetryFailure::CallbackFailed { callback, .. } => {
+                let message = format!(
+                    "HTTP retry callback failed after {attempts} attempt(s): {callback}"
+                );
+                return HttpError::other(message).with_source(error);
             }
-            RetryErrorReason::Aborted => {
-                let error = last_error
-                    .expect("HTTP retry abort should preserve last error");
+            RetryFailure::Infrastructure { failure, .. } => {
+                let message = format!(
+                    "HTTP retry infrastructure failed after {attempts} attempt(s): {failure}"
+                );
+                return HttpError::other(message).with_source(error);
+            }
+            RetryFailure::Aborted { .. } | RetryFailure::Exhausted { .. } => {}
+            _ => {
+                return HttpError::other(format!(
+                    "HTTP retry stopped after {attempts} attempt(s): {}",
+                    error.failure(),
+                ))
+                .with_source(error);
+            }
+        }
+
+        let (failure, _) = error.into_parts();
+        match failure {
+            RetryFailure::Aborted { last_failure, .. } => {
+                let error = last_failure.into_error().expect(
+                    "HTTP retry abort should preserve its application error",
+                );
                 if error.kind == crate::HttpErrorKind::Cancelled {
                     error
                 } else {
                     Self::map_retry_aborted(error, attempts, started_at)
                 }
             }
-            RetryErrorReason::AttemptTimedOut
-            | RetryErrorReason::FlowTimedOut
-            | RetryErrorReason::TimerFailed
-            | RetryErrorReason::WorkerStillRunning => {
-                HttpError::other(format!(
-                    "HTTP retry executor failed after {attempts} attempt(s): {reason:?}"
-                ))
+            RetryFailure::Exhausted {
+                limit,
+                last_failure,
+                ..
+            } => {
+                let last_error =
+                    last_failure.and_then(AttemptFailure::into_error);
+                match limit {
+                    RetryLimitKind::Attempts => {
+                        let error = last_error.expect(
+                            "HTTP attempt exhaustion should preserve its application error",
+                        );
+                        Self::map_retry_attempts_exhausted(
+                            error,
+                            attempts,
+                            max_attempts,
+                        )
+                    }
+                    RetryLimitKind::OperationElapsed
+                    | RetryLimitKind::TotalElapsed => {
+                        let max_duration = max_duration
+                            .expect("HTTP elapsed limit requires max_duration");
+                        Self::map_retry_max_duration_exceeded(
+                            started_at,
+                            max_duration,
+                            last_error,
+                        )
+                    }
+                }
             }
-            _ => HttpError::other(format!(
-                "HTTP retry stopped after {attempts} attempt(s): {reason:?}"
-            )),
+            _ => unreachable!("non-business retry terminals return above"),
         }
     }
 

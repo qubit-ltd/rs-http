@@ -44,7 +44,6 @@ parse-display = "0.11"
 serde_json = "1.0"
 qubit-json = { version = "0.7", path = "../rs-json" }
 tokio = { version = "1.52", features = ["time", "net", "macros"] }
-tokio-util = { version = "0.7", features = ["rt"] }
 async-stream = "0.3"
 futures-util = "0.3"
 
@@ -54,7 +53,7 @@ qubit-clock = "0.12"
 qubit-argument = "0.4"
 qubit-error = "0.2"
 qubit-function = "0.16"
-qubit-retry = { version = "0.18", path = "../rs-retry", features = ["tokio"] }
+qubit-retry = { version = "0.19", path = "../rs-retry", features = ["tokio"] }
 qubit-redact = { version = "0.5", path = "../rs-redact", default-features = false, features = ["http"] }
 
 [dev-dependencies]

@@ -20,8 +20,8 @@ use http::HeaderValue;
 use http::Method;
 use qubit_function::MutatingFunction;
 use qubit_redact::http::HttpRedactor;
+use qubit_retry::RetryCancellationToken;
 use reqwest::Response;
-use tokio_util::sync::CancellationToken;
 use url::Host;
 use url::Url;
 
@@ -52,7 +52,7 @@ struct HttpRequestExecutionOptions {
     /// Per-request read timeout used during response body reads.
     read_timeout: Duration,
     /// Optional cancellation token checked before send and during I/O phases.
-    cancellation_token: Option<CancellationToken>,
+    cancellation_token: Option<RetryCancellationToken>,
     /// Per-request retry override (enable/disable/method-policy/Retry-After
     /// behavior).
     retry_override: HttpRequestRetryOverride,
@@ -551,11 +551,11 @@ impl HttpRequest {
     /// `Some` token checked before send and during I/O; `None` when
     /// cancellation is not wired.
     #[inline(always)]
-    pub fn cancellation_token(&self) -> Option<&CancellationToken> {
+    pub fn cancellation_token(&self) -> Option<&RetryCancellationToken> {
         self.execution_options.cancellation_token.as_ref()
     }
 
-    /// Attaches a [`CancellationToken`] that can abort this request
+    /// Attaches a [`RetryCancellationToken`] that can abort this request
     /// cooperatively.
     ///
     /// # Parameters
@@ -566,7 +566,7 @@ impl HttpRequest {
     #[inline(always)]
     pub fn set_cancellation_token(
         &mut self,
-        token: CancellationToken,
+        token: RetryCancellationToken,
     ) -> &mut Self {
         self.execution_options.cancellation_token = Some(token);
         self
@@ -642,6 +642,8 @@ impl HttpRequest {
     /// # Parameters
     /// - `backend`: Shared reqwest client.
     /// - `logger`: Attempt-scoped request logger.
+    /// - `cancellation_token`: Effective token owned by request I/O, or `None`
+    ///   when the enclosing retry flow owns cancellation.
     ///
     /// # Returns
     /// The successful [`Response`] or a mapped [`HttpError`].
@@ -655,6 +657,7 @@ impl HttpRequest {
         &mut self,
         backend: &reqwest::Client,
         logger: &HttpLogger<'_>,
+        cancellation_token: Option<RetryCancellationToken>,
     ) -> HttpResult<Response> {
         // Effective headers are cached on the request. Each send attempt must
         // invalidate and recompute them so injector output and request
@@ -665,12 +668,10 @@ impl HttpRequest {
         let method = self.method().clone();
         let request_url_context = self.resolved_url().ok();
         let write_timeout = self.execution_options.write_timeout;
-        let cancellation_token =
-            self.execution_options.cancellation_token.clone();
         let headers = Self::await_pre_send_future(
             self.effective_headers(),
             write_timeout,
-            cancellation_token,
+            cancellation_token.clone(),
             &method,
             request_url_context.as_ref(),
             "Request cancelled while preparing request",
@@ -699,7 +700,7 @@ impl HttpRequest {
             let body = Self::await_pre_send_future(
                 async { Ok(streaming_body.to_reqwest_body().await) },
                 self.execution_options.write_timeout,
-                self.execution_options.cancellation_token.clone(),
+                cancellation_token.clone(),
                 &method,
                 Some(&request_url),
                 "Request cancelled while preparing streaming request body",
@@ -719,9 +720,7 @@ impl HttpRequest {
             self.execution_options.write_timeout,
             builder.send(),
         );
-        let next = if let Some(token) =
-            self.execution_options.cancellation_token.as_ref()
-        {
+        let next = if let Some(token) = cancellation_token.as_ref() {
             tokio::select! {
                 _ = token.cancelled() => {
                     return Err(HttpError::cancelled("Request cancelled while sending")
@@ -778,7 +777,7 @@ impl HttpRequest {
     async fn await_pre_send_future<T, F>(
         future: F,
         write_timeout: Duration,
-        cancellation_token: Option<CancellationToken>,
+        cancellation_token: Option<RetryCancellationToken>,
         method: &Method,
         request_url: Option<&Url>,
         cancellation_message: &str,
@@ -1064,6 +1063,7 @@ impl HttpRequest {
     ///
     /// # Parameters
     /// - `message`: Human-readable cancellation reason.
+    /// - `cancellation_token`: Effective token to inspect for this execution.
     ///
     /// # Returns
     /// `Some` [`HttpError`] (including method context and cached URL when
@@ -1072,12 +1072,9 @@ impl HttpRequest {
     pub(crate) fn cancelled_error_if_needed(
         &self,
         message: &str,
+        cancellation_token: Option<&RetryCancellationToken>,
     ) -> Option<HttpError> {
-        if self
-            .execution_options
-            .cancellation_token
-            .as_ref()
-            .is_some_and(CancellationToken::is_cancelled)
+        if cancellation_token.is_some_and(RetryCancellationToken::is_cancelled)
         {
             let mut error = HttpError::cancelled(message.to_string())
                 .with_method(&self.method);
