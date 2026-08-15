@@ -23,8 +23,8 @@ use qubit_retry::BackoffRequest;
 use qubit_retry::BackoffState;
 use qubit_retry::RetryBudget;
 use qubit_retry::RetryBudgetExhausted;
+use qubit_retry::RetryCancellationToken;
 use qubit_retry::RetryPolicy;
-use tokio_util::sync::CancellationToken;
 
 use super::DEFAULT_SSE_MAX_RECONNECT_DELAY;
 use super::SseControl;
@@ -50,7 +50,7 @@ struct ReconnectRuntime<'a> {
     /// SSE reconnect options controlling server retry and EOF behavior.
     options: &'a SseReconnectOptions,
     /// Optional cancellation token checked while sleeping before reconnect.
-    cancellation_token: Option<&'a CancellationToken>,
+    cancellation_token: Option<&'a RetryCancellationToken>,
     /// Request method used in reconnect cancellation and max-elapsed errors.
     request_method: &'a http::Method,
     /// Request URL used in reconnect cancellation and max-elapsed errors.
@@ -520,7 +520,7 @@ fn should_reconnect_sse_error(error: &HttpError) -> bool {
 /// reconnect sleep window.
 async fn sleep_reconnect_delay(
     delay: Duration,
-    cancellation_token: Option<&CancellationToken>,
+    cancellation_token: Option<&RetryCancellationToken>,
     request_method: &http::Method,
     request_url: Option<&url::Url>,
     log_redactor: &HttpRedactor,

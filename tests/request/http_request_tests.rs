@@ -14,7 +14,6 @@ use http::HeaderMap;
 use http::HeaderName;
 use http::HeaderValue;
 use http::Method;
-use qubit_http::CancellationToken;
 use qubit_http::HttpClientFactory;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
@@ -23,6 +22,7 @@ use qubit_http::HttpRequestBodyByteStream;
 use qubit_http::HttpRequestRetryOverride;
 use qubit_http::HttpRequestStreamingBody;
 use qubit_http::HttpRetryMethodPolicy;
+use qubit_http::RetryCancellationToken;
 use qubit_redact::RedactionPolicy;
 use qubit_redact::Sensitivity;
 use qubit_redact::http::UrlPathPolicy;
@@ -320,7 +320,7 @@ fn test_http_request_setters_update_headers_timeout_retry_and_cancellation() {
     assert_eq!(request.write_timeout(), Duration::from_millis(250));
     assert_eq!(request.read_timeout(), Duration::from_millis(750));
 
-    let token = CancellationToken::new();
+    let token = RetryCancellationToken::new();
     request.set_cancellation_token(token.clone());
     assert!(request.cancellation_token().is_some());
     request.clear_cancellation_token();
