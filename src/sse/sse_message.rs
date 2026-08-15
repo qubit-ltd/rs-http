@@ -9,7 +9,7 @@
 //!
 //! One EventSource-style message dispatch after frame reassembly.
 
-use qubit_json::lenient::JsonDecodeOptions;
+use qubit_json::lenient::LenientJsonDecodeOptions;
 use qubit_json::lenient::LenientJsonDecoder;
 use serde::de::DeserializeOwned;
 
@@ -45,7 +45,7 @@ impl SseMessage {
     where
         T: DeserializeOwned,
     {
-        LenientJsonDecoder::new(JsonDecodeOptions::strict())
+        LenientJsonDecoder::new(LenientJsonDecodeOptions::strict())
             .decode::<T>(&self.data)
             .map_err(|error| {
                 HttpError::sse_decode(format!(
