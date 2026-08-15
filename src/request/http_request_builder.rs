@@ -18,8 +18,8 @@ use http::HeaderValue;
 use http::Method;
 use http::header::CONTENT_TYPE;
 use qubit_redact::http::HttpRedactor;
+use qubit_retry::RetryCancellationToken;
 use serde::Serialize;
-use tokio_util::sync::CancellationToken;
 use url::Url;
 use url::form_urlencoded;
 
@@ -67,7 +67,7 @@ pub struct HttpRequestBuilder {
     /// Whether IPv6 literal hosts are rejected during URL resolution.
     pub(super) ipv4_only: bool,
     /// Optional cancellation token for this request.
-    pub(super) cancellation_token: Option<CancellationToken>,
+    pub(super) cancellation_token: Option<RetryCancellationToken>,
     /// Per-request retry override for one-off retry behavior customization.
     pub(super) retry_override: HttpRequestRetryOverride,
     /// Default headers snapshot from the originating client.
@@ -542,7 +542,7 @@ impl HttpRequestBuilder {
         self
     }
 
-    /// Binds a [`CancellationToken`] to this request.
+    /// Binds a [`RetryCancellationToken`] to this request.
     ///
     /// # Parameters
     /// - `token`: Cancellation token checked before send and during
@@ -550,7 +550,7 @@ impl HttpRequestBuilder {
     ///
     /// # Returns
     /// `self` for chaining.
-    pub fn cancellation_token(mut self, token: CancellationToken) -> Self {
+    pub fn cancellation_token(mut self, token: RetryCancellationToken) -> Self {
         self.cancellation_token = Some(token);
         self
     }
