@@ -108,6 +108,8 @@ pub enum ResponsePlan {
 pub struct OneShotServer {
     base_url: Url,
     request_received_rx: oneshot::Receiver<()>,
+    response_started_rx: oneshot::Receiver<()>,
+    response_permit_tx: Option<oneshot::Sender<()>>,
     request_rx: oneshot::Receiver<CapturedRequest>,
     join_handle: tokio::task::JoinHandle<()>,
 }
@@ -131,6 +133,21 @@ impl OneShotServer {
         (&mut self.request_received_rx)
             .await
             .expect("one-shot test server dropped request-received sender");
+    }
+
+    /// Waits until the response head and its first available body bytes have
+    /// been flushed to the client connection.
+    pub async fn wait_until_response_started(&mut self) {
+        (&mut self.response_started_rx)
+            .await
+            .expect("one-shot test server dropped response-started sender");
+    }
+
+    /// Allows a blocked one-shot server to start writing its response.
+    pub fn allow_response(&mut self) {
+        if let Some(sender) = self.response_permit_tx.take() {
+            let _ = sender.send(());
+        }
     }
 
     /// Waits for server completion and returns the captured request.
@@ -167,6 +184,22 @@ impl MultiShotServer {
 
 /// Spawns a one-shot HTTP server with the provided response behavior.
 pub async fn spawn_one_shot_server(plan: ResponsePlan) -> OneShotServer {
+    spawn_one_shot_server_impl(plan, false).await
+}
+
+/// Spawns a one-shot server that waits for [`OneShotServer::allow_response`]
+/// after parsing the request and before writing any response bytes.
+pub async fn spawn_blocked_one_shot_server(
+    plan: ResponsePlan,
+) -> OneShotServer {
+    spawn_one_shot_server_impl(plan, true).await
+}
+
+/// Shared one-shot server construction with optional response gating.
+async fn spawn_one_shot_server_impl(
+    plan: ResponsePlan,
+    block_response: bool,
+) -> OneShotServer {
     let listener = TcpListener::bind("127.0.0.1:0")
         .await
         .expect("failed to bind one-shot test server");
@@ -176,6 +209,9 @@ pub async fn spawn_one_shot_server(plan: ResponsePlan) -> OneShotServer {
     let base_url = Url::parse(&format!("http://{addr}/"))
         .expect("failed to build base URL");
     let (request_received_tx, request_received_rx) = oneshot::channel::<()>();
+    let (response_started_tx, response_started_rx) = oneshot::channel::<()>();
+    let (response_permit_tx, response_permit_rx) = oneshot::channel::<()>();
+    let mut response_permit_rx = block_response.then_some(response_permit_rx);
     let (request_tx, request_rx) = oneshot::channel::<CapturedRequest>();
 
     let join_handle = tokio::spawn(async move {
@@ -193,7 +229,13 @@ pub async fn spawn_one_shot_server(plan: ResponsePlan) -> OneShotServer {
         let _ = request_received_tx.send(());
         let _ = request_tx.send(request);
 
-        if let Err(error) = write_response(&mut stream, plan).await {
+        if let Some(receiver) = response_permit_rx.take() {
+            let _ = receiver.await;
+        }
+
+        if let Err(error) =
+            write_response(&mut stream, plan, Some(response_started_tx)).await
+        {
             // Timeout tests intentionally allow client-side early disconnects.
             if !is_expected_client_disconnect(&error) {
                 panic!(
@@ -206,6 +248,8 @@ pub async fn spawn_one_shot_server(plan: ResponsePlan) -> OneShotServer {
     OneShotServer {
         base_url,
         request_received_rx,
+        response_started_rx,
+        response_permit_tx: block_response.then_some(response_permit_tx),
         request_rx,
         join_handle,
     }
@@ -241,7 +285,9 @@ pub async fn spawn_multi_shot_server(
                     .await
                     .expect("failed to read request in multi-shot test server");
 
-                if let Err(error) = write_response(&mut stream, plan).await {
+                if let Err(error) =
+                    write_response(&mut stream, plan, None).await
+                {
                     if !is_expected_client_disconnect(&error) {
                         panic!("failed to write response in multi-shot test server: {error}");
                     }
@@ -331,13 +377,17 @@ async fn read_request(
 async fn write_response(
     stream: &mut TcpStream,
     plan: ResponsePlan,
+    mut response_started_tx: Option<oneshot::Sender<()>>,
 ) -> std::io::Result<()> {
     match plan {
         ResponsePlan::Immediate {
             status,
             headers,
             body,
-        } => write_fixed_response(stream, status, headers, body).await?,
+        } => {
+            write_fixed_response(stream, status, headers, body).await?;
+            signal_response_started(&mut response_started_tx);
+        }
         ResponsePlan::ImmediateRawHeaders {
             status,
             mut headers,
@@ -354,6 +404,7 @@ async fn write_response(
                 stream.write_all(&body).await?;
             }
             stream.flush().await?;
+            signal_response_started(&mut response_started_tx);
         }
         ResponsePlan::DelayedStart {
             delay,
@@ -363,6 +414,7 @@ async fn write_response(
         } => {
             tokio::time::sleep(delay).await;
             write_fixed_response(stream, status, headers, body).await?;
+            signal_response_started(&mut response_started_tx);
         }
         ResponsePlan::PartialThenDelay {
             status,
@@ -380,6 +432,7 @@ async fn write_response(
             write_status_and_headers(stream, status, &headers).await?;
             stream.write_all(&prefix).await?;
             stream.flush().await?;
+            signal_response_started(&mut response_started_tx);
             tokio::time::sleep(delay).await;
         }
         ResponsePlan::Chunked {
@@ -396,7 +449,12 @@ async fn write_response(
             }
             write_status_and_headers(stream, status, &headers).await?;
 
-            for chunk in chunks {
+            if chunks.is_empty() {
+                stream.flush().await?;
+                signal_response_started(&mut response_started_tx);
+            }
+
+            for (index, chunk) in chunks.into_iter().enumerate() {
                 if !chunk.delay.is_zero() {
                     tokio::time::sleep(chunk.delay).await;
                 }
@@ -405,6 +463,9 @@ async fn write_response(
                 stream.write_all(&chunk.bytes).await?;
                 stream.write_all(b"\r\n").await?;
                 stream.flush().await?;
+                if index == 0 {
+                    signal_response_started(&mut response_started_tx);
+                }
             }
 
             if finish {
@@ -414,6 +475,15 @@ async fn write_response(
         }
     }
     Ok(())
+}
+
+/// Signals that the response is observable by the client exactly once.
+fn signal_response_started(
+    response_started_tx: &mut Option<oneshot::Sender<()>>,
+) {
+    if let Some(sender) = response_started_tx.take() {
+        let _ = sender.send(());
+    }
 }
 
 async fn write_fixed_response(
