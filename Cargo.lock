@@ -933,7 +933,6 @@ dependencies = [
  "strum",
  "thiserror",
  "tokio",
- "tokio-util",
  "tracing",
  "tracing-subscriber",
  "url",
@@ -963,15 +962,11 @@ dependencies = [
 
 [[package]]
 name = "qubit-retry"
-version = "0.18.0"
+version = "0.19.0"
 dependencies = [
  "qubit-budget",
  "qubit-clock",
- "qubit-datatype",
- "qubit-error",
- "qubit-function",
  "rand",
- "serde",
  "thiserror",
  "tokio",
 ]
@@ -1692,7 +1687,6 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-sink",
- "futures-util",
  "libc",
  "pin-project-lite",
  "tokio",
