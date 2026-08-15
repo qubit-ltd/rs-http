@@ -9,23 +9,27 @@
 //!
 //! Covers [`HttpClient::execute_sse_with_reconnect`](qubit_http::HttpClient::execute_sse_with_reconnect).
 
+use std::future::Future;
 use std::io::Error as IoError;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
+use std::task::Context;
+use std::task::Poll;
+use std::task::Waker;
 use std::time::Duration;
 use std::time::Instant;
 
 use futures_util::StreamExt;
 use http::Method;
-use qubit_http::CancellationToken;
 use qubit_http::HttpClientFactory;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpError;
 use qubit_http::HttpErrorKind;
 use qubit_http::HttpRequestInterceptor;
 use qubit_http::HttpResponseInterceptor;
+use qubit_http::RetryCancellationToken;
 use qubit_http::sse::SseReconnectOptions;
 use qubit_retry::BackoffPolicy;
 use qubit_retry::RetryPolicy;
@@ -754,7 +758,10 @@ async fn test_execute_sse_with_reconnect_sleep_can_be_cancelled() {
             "Content-Type".to_string(),
             "text/event-stream".to_string(),
         )],
-        chunks: Vec::new(),
+        chunks: vec![ResponseChunk {
+            delay: Duration::ZERO,
+            bytes: b"data: connected\n\n".to_vec(),
+        }],
         finish: true,
     })
     .await;
@@ -765,19 +772,13 @@ async fn test_execute_sse_with_reconnect_sleep_can_be_cancelled() {
     options.timeouts.write_timeout = Duration::from_secs(2);
     let client = HttpClientFactory::new().create(options).unwrap();
 
-    let token = CancellationToken::new();
-    let token_for_task = token.clone();
-    tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_millis(50)).await;
-        token_for_task.cancel();
-    });
+    let token = RetryCancellationToken::new();
 
     let request = client
         .request(Method::GET, "/sse-cancel-reconnect-sleep")
-        .cancellation_token(token)
+        .cancellation_token(token.clone())
         .build();
 
-    let start = Instant::now();
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
@@ -790,17 +791,31 @@ async fn test_execute_sse_with_reconnect_sleep_can_be_cancelled() {
             ..SseReconnectOptions::default()
         },
     );
-    let error = events
+    let first = events
         .next()
         .await
-        .expect("cancelled reconnect should emit one error item")
-        .expect_err("cancelled reconnect sleep should fail");
-    let elapsed = start.elapsed();
-    assert_eq!(error.kind, HttpErrorKind::Cancelled);
+        .expect("initial SSE connection should emit one event")
+        .expect("initial SSE event should decode");
+    assert_eq!(first.data, "connected");
+
+    let next = events.next();
+    tokio::pin!(next);
+    let waker = Waker::noop();
+    let mut context = Context::from_waker(waker);
     assert!(
-        elapsed < Duration::from_millis(500),
-        "elapsed={elapsed:?} should fail fast on cancellation"
+        next.as_mut().poll(&mut context).is_pending(),
+        "EOF should enter reconnect backoff before yielding another item"
     );
+    token.cancel();
+    let error = match next.as_mut().poll(&mut context) {
+        Poll::Ready(Some(Err(error))) => error,
+        Poll::Ready(Some(Ok(_))) => {
+            panic!("cancelled reconnect must not yield another event")
+        }
+        Poll::Ready(None) => panic!("cancelled reconnect must yield an error"),
+        Poll::Pending => panic!("ready cancellation must interrupt backoff"),
+    };
+    assert_eq!(error.kind, HttpErrorKind::Cancelled);
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
@@ -1464,7 +1479,7 @@ async fn test_execute_sse_with_reconnect_reports_cancelled_stream_before_reading
     options.timeouts.write_timeout = Duration::from_secs(1);
     let mut client = HttpClientFactory::new().create(options).unwrap();
 
-    let token = CancellationToken::new();
+    let token = RetryCancellationToken::new();
     let token_for_interceptor = token.clone();
     client.add_response_interceptor(HttpResponseInterceptor::new(
         move |_meta: &mut qubit_http::HttpResponseInterceptorContext| {

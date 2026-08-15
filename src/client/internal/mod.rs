@@ -5,12 +5,10 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-//! HTTP client module root.
+//! Private execution state owned by the HTTP client pipeline.
 
-mod http_client;
-mod http_client_factory;
-pub mod http_logger;
-mod internal;
+mod http_attempt_execution_context;
+mod http_attempt_response;
 
-pub use http_client::HttpClient;
-pub use http_client_factory::HttpClientFactory;
+pub(in crate::client) use http_attempt_execution_context::HttpAttemptExecutionContext;
+pub(in crate::client) use http_attempt_response::HttpAttemptResponse;
