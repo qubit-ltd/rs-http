@@ -17,7 +17,7 @@ use http::HeaderMap;
 use http::HeaderValue;
 use http::Method;
 use http::header::CONTENT_TYPE;
-use qubit_redact::http::HttpRedactor;
+use qubit_redact::formats::http::HttpRedactor;
 use qubit_retry::RetryCancellationToken;
 use serde::Serialize;
 use url::Url;

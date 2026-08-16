@@ -15,7 +15,7 @@ use http::Method;
 use http::StatusCode;
 use qubit_error::BoxError;
 use qubit_redact::RedactionPolicy;
-use qubit_redact::http::HttpRedactor;
+use qubit_redact::formats::http::HttpRedactor;
 use url::Url;
 
 use super::HttpErrorKind;

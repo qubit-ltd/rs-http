@@ -69,7 +69,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 所有 TRACE 与 `Debug` 路径共享一份不可变的根 `RedactionPolicy` 快照。
 其 `http()` 视图只保存 HTTP 上下文差异；基础字段规则、掩码和静态限制与其他 adapter
-共享。规范 `qubit_redact::http::HttpRedactor` 统一处理 URL 用户信息、fragment、query 字段、
+共享。规范 `qubit_redact::formats::http::HttpRedactor` 统一处理 URL 用户信息、fragment、query 字段、
 原生敏感 header、结构化 body 和硬预算。非根 URL path、不透明文本和无键 JSON 值默认隐藏。
 
 `RedactionPolicy::builder()` 使用空应用规则和标准 floor。
@@ -85,7 +85,7 @@ response 和 error 会保留原来的 redactor；每个脱敏操作默认使用�
 ```rust
 use qubit_http::{HttpClientFactory, HttpClientOptions};
 use qubit_redact::{RedactionPolicy, Sensitivity};
-use qubit_redact::http::UrlPathPolicy;
+use qubit_redact::formats::http::UrlPathPolicy;
 
 let mut options = HttpClientOptions::new();
 let mut builder = RedactionPolicy::default().to_builder();

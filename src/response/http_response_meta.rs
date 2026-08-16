@@ -17,7 +17,7 @@ use http::StatusCode;
 use http::header::RETRY_AFTER;
 use httpdate::parse_http_date;
 use qubit_redact::RedactionPolicy;
-use qubit_redact::http::HttpRedactor;
+use qubit_redact::formats::http::HttpRedactor;
 use url::Url;
 
 use crate::redact::RedactedDebugger;

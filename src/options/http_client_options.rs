@@ -21,8 +21,8 @@ use qubit_json::decode::NormalizingJsonDecodeOptions;
 use qubit_json::decode::NormalizingJsonDecoder;
 use qubit_redact::RedactionPolicy;
 use qubit_redact::Sensitivity;
-use qubit_redact::http::HttpRedactor;
-use qubit_redact::http::UrlPathPolicy;
+use qubit_redact::formats::http::HttpRedactor;
+use qubit_redact::formats::http::UrlPathPolicy;
 use url::Url;
 
 use super::HttpConfigError;

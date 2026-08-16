@@ -70,7 +70,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 Every TRACE and `Debug` path uses one immutable root `RedactionPolicy`
 snapshot. Its `http()` view contains only HTTP context differences; the base
 field rules, masking, and static limits are shared with every other adapter.
-The canonical `qubit_redact::http::HttpRedactor` handles URL userinfo,
+The canonical `qubit_redact::formats::http::HttpRedactor` handles URL userinfo,
 fragments, query fields, native-sensitive headers, structured bodies, and hard
 body budgets. Non-root URL paths, opaque text, and unkeyed JSON values are
 redacted by default.
@@ -93,7 +93,7 @@ route HTTP fields through `session.http()` to share that budget.
 ```rust
 use qubit_http::{HttpClientFactory, HttpClientOptions};
 use qubit_redact::{RedactionPolicy, Sensitivity};
-use qubit_redact::http::UrlPathPolicy;
+use qubit_redact::formats::http::UrlPathPolicy;
 
 let mut options = HttpClientOptions::new();
 let mut builder = RedactionPolicy::default().to_builder();

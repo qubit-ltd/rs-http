@@ -25,7 +25,7 @@ use qubit_http::HttpRetryMethodPolicy;
 use qubit_http::RetryCancellationToken;
 use qubit_redact::RedactionPolicy;
 use qubit_redact::Sensitivity;
-use qubit_redact::http::UrlPathPolicy;
+use qubit_redact::formats::http::UrlPathPolicy;
 use url::Url;
 
 fn new_request(method: Method, path: &str) -> qubit_http::HttpRequest {

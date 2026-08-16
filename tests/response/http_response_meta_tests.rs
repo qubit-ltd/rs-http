@@ -14,7 +14,7 @@ use http::header::RETRY_AFTER;
 use http::header::SET_COOKIE;
 use qubit_http::HttpResponseMeta;
 use qubit_redact::RedactionPolicy;
-use qubit_redact::http::UrlPathPolicy;
+use qubit_redact::formats::http::UrlPathPolicy;
 use url::Url;
 
 #[test]

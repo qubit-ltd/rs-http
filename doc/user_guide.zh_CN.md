@@ -576,11 +576,11 @@ HTTP 日志使用 `tracing::trace!`。必须同时满足：
 
 可分别控制请求头、请求体、响应头、响应体。body 只记录前 `logging.body_size_limit` 字节，超出部分显示截断提示；二进制体显示为 `<binary N bytes>`。没有结构化或文本 `Content-Type` 的 unsupported body 会显示为 `<redacted: unsupported HTTP body>`，不会直接打印原始内容。请求体日志只预览已缓冲的 body 变体（`bytes_body`、`text_body`、`json_body`、`form_body`、`multipart_body`、`ndjson_body`）；`stream_body` 和 `streaming_body` 会记录为 `<skipped: streaming request body>`，因为 logger 不会消费上传流。
 
-日志统一经过规范的 `qubit_redact::http::HttpRedactor` 和一份根 `RedactionPolicy` 脱敏。URL username、password、fragment 和敏感 query 参数会被掩码；header、query/form、body 使用同一基础规则、掩码表和静态限制上的 HTTP 上下文视图。multipart 文件 part 仍显示为 `<redacted: file part>`；格式异常、缺少 boundary 或已截断的 body 继续 fail closed。
+日志统一经过规范的 `qubit_redact::formats::http::HttpRedactor` 和一份根 `RedactionPolicy` 脱敏。URL username、password、fragment 和敏感 query 参数会被掩码；header、query/form、body 使用同一基础规则、掩码表和静态限制上的 HTTP 上下文视图。multipart 文件 part 仍显示为 `<redacted: file part>`；格式异常、缺少 boundary 或已截断的 body 继续 fail closed。
 
 对于 header，`http::HeaderValue::is_sensitive()` 是值级 `Secret` 声明。请求、响应、流式响应和 `Debug` 渲染都会在 header name 匹配前处理该标记。allow 规则不能暴露已标记值；未标记值继续使用同一个不可变 name policy 快照。
 
-`RedactionPolicy::builder()` 使用空应用规则和标准 floor；扩展默认快照时使用 `RedactionPolicy::default().to_builder()`。应用 allow 规则无法绕过启用的 floor；`builder.http().disable_all_floors()` 是关闭 HTTP 上下文 floor 的显式逃生口。`RedactionPolicy` 必须从 `qubit_redact` 导入，`HttpRedactor` 从 `qubit_redact::http` 导入，不能从 `qubit_http` 导入。`logging.body_size_limit` 是展示限额，`BodyBudget` 仍是不可绕过的输入与输出硬上限。
+`RedactionPolicy::builder()` 使用空应用规则和标准 floor；扩展默认快照时使用 `RedactionPolicy::default().to_builder()`。应用 allow 规则无法绕过启用的 floor；`builder.http().disable_all_floors()` 是关闭 HTTP 上下文 floor 的显式逃生口。`RedactionPolicy` 必须从 `qubit_redact` 导入，`HttpRedactor` 从 `qubit_redact::formats::http` 导入，不能从 `qubit_http` 导入。`logging.body_size_limit` 是展示限额，`BodyBudget` 仍是不可绕过的输入与输出硬上限。
 
 应用启动时使用 `RedactionPolicy::install_global()` 安装一次全局策略。尚未安装时，
 `RedactionPolicy::global()` 或 `default()` 会读取固定标准策略，但不会阻止后续安装。

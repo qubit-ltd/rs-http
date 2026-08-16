@@ -17,10 +17,10 @@ use qubit_http::HttpLoggingOptions;
 use qubit_redact::InputOutputLimit;
 use qubit_redact::RedactionCompletion;
 use qubit_redact::RedactionPolicy;
-use qubit_redact::http::BodyCapture;
-use qubit_redact::http::BodyRedactionStatus;
-use qubit_redact::http::HttpRedactor;
-use qubit_redact::http::TextBodyPolicy;
+use qubit_redact::formats::http::BodyCapture;
+use qubit_redact::formats::http::BodyRedactionStatus;
+use qubit_redact::formats::http::HttpRedactor;
+use qubit_redact::formats::http::TextBodyPolicy;
 use url::Url;
 
 use crate::common::capture_trace_logs;

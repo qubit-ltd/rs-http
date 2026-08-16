@@ -8,7 +8,7 @@
 // qubit-style: allow source-test-pair
 //! Presentation-level body preview limits.
 
-use qubit_redact::http::BodyCapture;
+use qubit_redact::formats::http::BodyCapture;
 
 /// Describes the caller-selected prefix before hard runtime limits apply.
 #[must_use]
