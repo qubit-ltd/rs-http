@@ -54,8 +54,9 @@ fn test_http_client_options_requires_explicit_environment_fallback() {
         .expect("the HTTP section path should be canonical");
 
     let default_result = HttpClientOptions::from_config(&section);
-    let read_policy = ReadPolicy::env_friendly()
-        .with_interpolation_sources(InterpolationSources::ConfigThenEnv);
+    let read_policy = ReadPolicy::builder_from(&ReadPolicy::env_friendly())
+        .interpolation_sources(InterpolationSources::ConfigThenEnv)
+        .build();
     let env_view = section.read_with(&read_policy);
     let explicit_result = HttpClientOptions::from_config(&env_view);
 

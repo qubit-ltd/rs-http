@@ -157,11 +157,11 @@ fn test_sse_message_decode_json_redacts_deserializer_value() {
         "SSE JSON decode errors must retain the redacted decoder source",
     );
     let decode_error = source
-        .downcast_ref::<qubit_json::lenient::LenientJsonDecodeError>()
+        .downcast_ref::<qubit_json::decode::NormalizingJsonDecodeError>()
         .expect("SSE JSON decode source must be JsonDecodeError");
     assert_eq!(
         decode_error.privacy_policy(),
-        qubit_json::lenient::ErrorPrivacyPolicy::Redacted,
+        qubit_json::decode::DiagnosticPolicy::Redacted,
     );
     assert!(!decode_error.to_string().contains(SECRET));
 }
