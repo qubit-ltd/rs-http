@@ -56,9 +56,11 @@ fn test_http_logger_logs_request_body_preview_with_truncation() {
 
 #[test]
 fn test_http_logger_maps_exhausted_body_completion_to_outer_marker() {
-    let budget =
-        InputOutputLimit::new(4096, InputOutputLimit::MIN_OUTPUT_BYTES)
-            .expect("diagnostic budget should be valid");
+    let budget = InputOutputLimit::builder()
+        .max_input_bytes(4096)
+        .max_output_bytes(InputOutputLimit::MIN_OUTPUT_BYTES)
+        .build()
+        .expect("diagnostic budget should be valid");
     let mut policy_builder = RedactionPolicy::default().to_builder();
     policy_builder.limits().diagnostic_event(budget);
     policy_builder.http().text_body(TextBodyPolicy::PassThrough);
@@ -188,9 +190,11 @@ fn test_http_logger_does_not_leak_multipart_mixed_body_sensitive_values() {
 
 #[test]
 fn test_http_redaction_session_shares_output_exhaustion_without_input_charge() {
-    let budget =
-        InputOutputLimit::new(4096, InputOutputLimit::MIN_OUTPUT_BYTES)
-            .expect("diagnostic budget should be valid");
+    let budget = InputOutputLimit::builder()
+        .max_input_bytes(4096)
+        .max_output_bytes(InputOutputLimit::MIN_OUTPUT_BYTES)
+        .build()
+        .expect("diagnostic budget should be valid");
     let mut policy_builder = RedactionPolicy::default().to_builder();
     policy_builder.limits().diagnostic_event(budget);
     let policy = policy_builder.build().expect("policy should be valid");
