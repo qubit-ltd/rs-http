@@ -219,6 +219,51 @@ async fn test_execute_bytes_rejects_response_body_larger_than_configured_limit()
 }
 
 #[tokio::test]
+async fn test_execute_bytes_chunked_response_reports_total_observed_size_on_limit_exceeded()
+ {
+    let server = spawn_one_shot_server(ResponsePlan::Chunked {
+        status: 200,
+        headers: vec![],
+        chunks: vec![
+            ResponseChunk {
+                delay: Duration::ZERO,
+                bytes: b"12".to_vec(),
+            },
+            ResponseChunk {
+                delay: Duration::ZERO,
+                bytes: b"34".to_vec(),
+            },
+        ],
+        finish: true,
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.response_body_size_limit = 3;
+
+    let client = HttpClientFactory::new()
+        .create(options)
+        .expect("client should be created");
+    let request = client.request(Method::GET, "/body-limit-chunked").build();
+    let mut response = client.execute(request).await.expect("request succeeds");
+    let error = response
+        .bytes()
+        .await
+        .expect_err("chunked body exceeding configured limit must fail");
+
+    assert_eq!(error.kind, HttpErrorKind::Other);
+    assert!(
+        error.message.contains("observed 4 bytes"),
+        "expected total observed size, got: {}",
+        error.message
+    );
+
+    let captured = server.finish().await;
+    assert_eq!(captured.target, "/body-limit-chunked");
+}
+
+#[tokio::test]
 async fn test_execute_bytes_accepts_response_body_at_configured_limit() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
