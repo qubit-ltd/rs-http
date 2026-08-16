@@ -18,7 +18,7 @@ use http::header::CONTENT_TYPE;
 use http::header::HeaderName;
 use http::header::HeaderValue;
 use qubit_clock::StdMonotonicClock;
-use qubit_redact::http::HttpRedactor;
+use qubit_redact::formats::http::HttpRedactor;
 use qubit_retry::BackoffRequest;
 use qubit_retry::BackoffState;
 use qubit_retry::RetryBudget;

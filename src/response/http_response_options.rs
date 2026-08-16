@@ -8,7 +8,7 @@
 //! Decode and error-preview options bound to one response instance.
 
 use qubit_redact::RedactionPolicy;
-use qubit_redact::http::HttpRedactor;
+use qubit_redact::formats::http::HttpRedactor;
 
 use crate::constants::DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES;
 use crate::constants::DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES;

@@ -30,7 +30,7 @@ use qubit_http::sse::DoneMarkerPolicy;
 use qubit_http::sse::SseJsonMode;
 use qubit_redact::RedactionPolicy;
 use qubit_redact::Sensitivity;
-use qubit_redact::http::UrlPathPolicy;
+use qubit_redact::formats::http::UrlPathPolicy;
 
 /// Verifies HTTP option parsing only reads process environment placeholders
 /// through an explicitly environment-friendly reader.

@@ -25,7 +25,7 @@ use http::header::CONTENT_TYPE;
 use qubit_budget::ResourceBudget;
 use qubit_json::decode::NormalizingJsonDecodeOptions;
 use qubit_json::decode::NormalizingJsonDecoder;
-use qubit_redact::http::HttpRedactor;
+use qubit_redact::formats::http::HttpRedactor;
 use qubit_retry::RetryCancellationToken;
 use serde::de::DeserializeOwned;
 use url::Url;
@@ -969,18 +969,18 @@ impl HttpResponse {
         }
         let capture = if truncated {
             source_len.map_or_else(
-                || qubit_redact::http::BodyCapture::truncated_unknown(bytes),
+                || qubit_redact::formats::http::BodyCapture::truncated_unknown(bytes),
                 |total_len| {
-                    qubit_redact::http::BodyCapture::truncated(bytes, total_len)
+                    qubit_redact::formats::http::BodyCapture::truncated(bytes, total_len)
                         .unwrap_or_else(|_| {
-                            qubit_redact::http::BodyCapture::truncated_unknown(
+                            qubit_redact::formats::http::BodyCapture::truncated_unknown(
                                 bytes,
                             )
                         })
                 },
             )
         } else {
-            qubit_redact::http::BodyCapture::complete(bytes)
+            qubit_redact::formats::http::BodyCapture::complete(bytes)
         };
         log_redactor
             .session()

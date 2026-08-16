@@ -10,8 +10,8 @@
 
 use http::HeaderValue;
 use qubit_redact::RedactionSession;
-use qubit_redact::http::BodyRedaction;
-use qubit_redact::http::HttpRedactor;
+use qubit_redact::formats::http::BodyRedaction;
+use qubit_redact::formats::http::HttpRedactor;
 
 use super::BodyPreview;
 use crate::HttpClientOptions;

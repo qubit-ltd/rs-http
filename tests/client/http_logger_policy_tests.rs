@@ -27,7 +27,7 @@ use qubit_http::HttpRequestBodyByteStream;
 use qubit_http::HttpResponse;
 use qubit_http::HttpResponseMeta;
 use qubit_redact::RedactionPolicy;
-use qubit_redact::http::TextBodyPolicy;
+use qubit_redact::formats::http::TextBodyPolicy;
 use tokio::time::timeout;
 use url::Url;
 

@@ -9,7 +9,7 @@
 //! Safe rendering helpers for `Debug` implementations.
 
 use qubit_redact::RedactionSession;
-use qubit_redact::http::HttpRedactor;
+use qubit_redact::formats::http::HttpRedactor;
 use url::Url;
 
 /// Renders diagnostic fields with one immutable policy snapshot.

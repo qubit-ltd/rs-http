@@ -15,7 +15,7 @@
 use std::time::Duration;
 use std::time::Instant;
 
-use qubit_redact::http::HttpRedactor;
+use qubit_redact::formats::http::HttpRedactor;
 use qubit_retry::AttemptFailure;
 use qubit_retry::Retry;
 use qubit_retry::RetryDecision;

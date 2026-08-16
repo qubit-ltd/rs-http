@@ -31,7 +31,7 @@ use qubit_http::HttpResponseInterceptor;
 use qubit_http::HttpRetryMethodPolicy;
 use qubit_redact::RedactionPolicy;
 use qubit_redact::Sensitivity;
-use qubit_redact::http::TextBodyPolicy;
+use qubit_redact::formats::http::TextBodyPolicy;
 use qubit_retry::BackoffPolicy;
 use tokio::time::timeout;
 
