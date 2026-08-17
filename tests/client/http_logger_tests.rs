@@ -207,20 +207,21 @@ fn test_http_redaction_session_shares_output_exhaustion_without_input_charge() {
     ))
     .expect("URL should parse");
 
-    let first = session.http().redact_url(&url);
+    let first = session.http_with_mut(|http| http.redact_url(&url));
     assert_eq!(first.as_str().len(), InputOutputLimit::MIN_OUTPUT_BYTES);
     assert!(first.as_str().ends_with("<truncated>"));
     assert!(session.is_exhausted());
     let input_after_first = session.remaining_input_bytes();
     assert!(input_after_first < input_before);
 
-    let second = session.http().redact_headers(&HeaderMap::new());
+    let second =
+        session.http_with_mut(|http| http.redact_headers(&HeaderMap::new()));
     assert!(second.log_safe_text().as_str().is_empty());
     assert_eq!(session.remaining_input_bytes(), input_after_first);
 
-    let third = session
-        .http()
-        .redact_body(BodyCapture::complete(b"body"), None);
+    let third = session.http_with_mut(|http| {
+        http.redact_body(BodyCapture::complete(b"body"), None)
+    });
     assert_eq!(third.completion(), RedactionCompletion::Exhausted);
     assert!(third.log_safe_text().as_str().is_empty());
     assert_eq!(session.remaining_input_bytes(), input_after_first);

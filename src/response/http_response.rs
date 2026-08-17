@@ -6,6 +6,7 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Unified HTTP response type and helpers.
+#![allow(deprecated)]
 
 use std::fmt;
 use std::sync::Arc;
@@ -192,16 +193,19 @@ pub struct HttpResponse {
 impl fmt::Debug for HttpResponse {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let debugger = RedactedDebugger::new(&self.options.log_redactor);
-        let mut session = debugger.session();
-        let url = session.http().redact_url(self.meta.url());
-        let request_url = session.http().redact_url(&self.runtime.request_url);
+        let session = debugger.session();
+        let (session, url) = crate::redact::http_with!(session, |http| http
+            .redact_url(self.meta.url()));
+        let (session, request_url) =
+            crate::redact::http_with!(session, |http| http
+                .redact_url(&self.runtime.request_url));
+        let (_session, headers) =
+            crate::redact::http_with!(session, |http| http
+                .redact_headers(self.meta.headers()));
         formatter
             .debug_struct("HttpResponse")
             .field("status", &self.meta.status())
-            .field(
-                "headers",
-                &session.http().redact_headers(self.meta.headers()),
-            )
+            .field("headers", &headers)
             .field("url", &url)
             .field("request_url", &request_url)
             .field("method", self.meta.method())
@@ -370,13 +374,12 @@ impl HttpResponse {
         let log_redactor = self.log_redactor().clone();
         let body_preview =
             self.into_error_body_preview(error_preview_limit).await?;
+        let mut redaction_session = log_redactor.session();
+        let redacted_url =
+            redaction_session.http_with_mut(|http| http.redact_url(&url));
         let message = format!(
             "{} with status {} for {} {}; response body preview: {}",
-            message_prefix,
-            status,
-            method,
-            log_redactor.session().http().redact_url(&url),
-            body_preview
+            message_prefix, status, method, redacted_url, body_preview
         );
         let mut mapped = HttpError::status(status, message)
             .with_method(&method)
@@ -982,11 +985,11 @@ impl HttpResponse {
         } else {
             qubit_redact::formats::http::BodyCapture::complete(bytes)
         };
-        log_redactor
-            .session()
-            .http()
-            .redact_body(capture, content_type)
-            .to_string()
+        let (session, body) =
+            crate::redact::http_with!(log_redactor.session(), |http| http
+                .redact_body(capture, content_type));
+        let _ = session;
+        body.to_string()
     }
 
     /// Extracts a Content-Type header value.

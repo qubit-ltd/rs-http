@@ -83,19 +83,36 @@ pub struct HttpRequestBuilder {
 impl fmt::Debug for HttpRequestBuilder {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let debugger = RedactedDebugger::new(&self.log_redactor);
-        let mut session = debugger.session();
-        let url = self
-            .debug_resolved_url()
-            .map(|url| session.http().redact_url(&url));
-        let base_url = self
-            .base_url
-            .as_ref()
-            .map(|url| session.http().redact_url(url));
+        let session = debugger.session();
+        let (session, url) = match self.debug_resolved_url() {
+            Some(url) => {
+                let (session, url) =
+                    crate::redact::http_with!(session, |http| http
+                        .redact_url(&url));
+                (session, Some(url))
+            }
+            None => (session, None),
+        };
+        let (session, base_url) = match self.base_url.as_ref() {
+            Some(url) => {
+                let (session, url) =
+                    crate::redact::http_with!(session, |http| http
+                        .redact_url(url));
+                (session, Some(url))
+            }
+            None => (session, None),
+        };
+        let (session, headers) =
+            crate::redact::http_with!(session, |http| http
+                .redact_headers(&self.headers));
+        let (_session, default_headers) =
+            crate::redact::http_with!(session, |http| http
+                .redact_headers(&self.default_headers));
         formatter
             .debug_struct("HttpRequestBuilder")
             .field("method", &self.method)
             .field("url", &url)
-            .field("headers", &session.http().redact_headers(&self.headers))
+            .field("headers", &headers)
             .field("body", &self.body)
             .field(
                 "streaming_body",
@@ -111,10 +128,7 @@ impl fmt::Debug for HttpRequestBuilder {
                 &self.cancellation_token.is_some(),
             )
             .field("retry_override", &self.retry_override)
-            .field(
-                "default_headers",
-                &session.http().redact_headers(&self.default_headers),
-            )
+            .field("default_headers", &default_headers)
             .field("injector_count", &self.injectors.len())
             .field("async_injector_count", &self.async_injectors.len())
             .finish()

@@ -76,11 +76,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 扩展保守默认快照时使用 `RedactionPolicy::default().to_builder()`；
 只有显式调用 `.disable_all_floors()` 才会关闭全部 floor 保护：
 
-应用启动时使用 `RedactionPolicy::install_global()` 安装一次全局策略。尚未安装时，
-`global()` 或 `default()` 会读取固定标准策略，但不会阻止后续安装。
-`HttpClientOptions::new()` 会取得构造时全局默认策略的快照，包括此前已安装的应用策略。既有 client、request、
+应用启动时使用 `Redactor::set_default()` 安装默认 redactor；`RedactionPolicy::default()` 始终
+返回固定标准策略。`HttpClientOptions::new()` 会取得构造时默认 redactor 的快照，包括此前已安装的应用策略。既有 client、request、
 response 和 error 会保留原来的 redactor；每个脱敏操作默认使用策略中的诊断预算。如果一个记录需要渲染多个字段，
-可创建 `let mut session = redactor.session()`，再通过 `session.http()` 处理 HTTP 字段，以共享同一个运行时预算。
+可创建 `let mut session = redactor.session()`，再通过 `session.http_with_mut(...)` 处理 HTTP 字段，以共享同一个运行时预算。
 
 ```rust
 use qubit_http::{HttpClientFactory, HttpClientOptions};

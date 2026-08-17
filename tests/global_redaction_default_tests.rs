@@ -13,6 +13,7 @@ use qubit_http::HttpError;
 use qubit_http::HttpErrorKind;
 use qubit_http::HttpResponseMeta;
 use qubit_redact::RedactionPolicy;
+use qubit_redact::Redactor;
 use qubit_redact::Sensitivity;
 use url::Url;
 
@@ -25,8 +26,7 @@ fn test_http_defaults_use_installed_global_policy() {
         .raise("tenant_secret", Sensitivity::Secret)
         .expect("the test query field should be valid");
     let policy = builder.build().expect("the test policy should build");
-    RedactionPolicy::install_global(policy.clone())
-        .expect("this test process installs its default only once");
+    let previous = Redactor::set_default(Redactor::new(policy.clone()));
     let url = Url::parse(
         "https://example.test/resource?tenant_secret=raw-tenant-secret",
     )
@@ -45,4 +45,5 @@ fn test_http_defaults_use_installed_global_policy() {
     assert_eq!(options.log_redaction_policy, policy);
     assert!(!format!("{error:?}").contains("raw-tenant-secret"));
     assert!(!format!("{metadata:?}").contains("raw-tenant-secret"));
+    let _ = Redactor::set_default(previous);
 }

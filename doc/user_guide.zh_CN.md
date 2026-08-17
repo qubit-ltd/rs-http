@@ -582,9 +582,8 @@ HTTP 日志使用 `tracing::trace!`。必须同时满足：
 
 `RedactionPolicy::builder()` 使用空应用规则和标准 floor；扩展默认快照时使用 `RedactionPolicy::default().to_builder()`。应用 allow 规则无法绕过启用的 floor；`builder.http().disable_all_floors()` 是关闭 HTTP 上下文 floor 的显式逃生口。`RedactionPolicy` 必须从 `qubit_redact` 导入，`HttpRedactor` 从 `qubit_redact::formats::http` 导入，不能从 `qubit_http` 导入。`logging.body_size_limit` 是展示限额，`BodyBudget` 仍是不可绕过的输入与输出硬上限。
 
-应用启动时使用 `RedactionPolicy::install_global()` 安装一次全局策略。尚未安装时，
-`RedactionPolicy::global()` 或 `default()` 会读取固定标准策略，但不会阻止后续安装。
-`HttpClientOptions::new()` 会取得构造时全局默认策略的快照，包括此前已安装的应用策略。client 创建一份
+应用启动时使用 `Redactor::set_default()` 安装默认 redactor；`RedactionPolicy::default()` 始终
+返回固定标准策略。`HttpClientOptions::new()` 会取得构造时默认 redactor 的快照，包括此前已安装的应用策略。client 创建一份
 `Arc<HttpRedactor>`，并在 request、response、retry、interceptor、error 和 SSE 诊断中
 保持该快照。使用 `fields()`、`http()` 和 `limits()` 配置统一的
 `RedactionPolicyBuilder`；`qubit_http` 不再重导出这些脱敏类型。

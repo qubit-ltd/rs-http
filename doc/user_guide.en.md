@@ -582,11 +582,10 @@ For headers, `http::HeaderValue::is_sensitive()` is a value-level `Secret` decla
 
 `RedactionPolicy::builder()` has empty application rules and the standard floor. Use `RedactionPolicy::default().to_builder()` to extend a default snapshot. Application allow rules cannot bypass an enabled floor; `builder.http().disable_all_floors()` is the explicit HTTP-context escape hatch. Import `RedactionPolicy` from `qubit_redact` and `HttpRedactor` from `qubit_redact::formats::http`, never from `qubit_http`. `logging.body_size_limit` is a presentation bound, while `BodyBudget` remains a non-bypassable parser-input and rendered-output bound.
 
-Install a global policy once with `RedactionPolicy::install_global()` during
-application startup. Before installation, `RedactionPolicy::global()` and
-`default()` use the fixed standard policy without blocking later installation.
-`HttpClientOptions::new()` snapshots the current default, including an
-application policy installed before construction. The client creates one
+Install the application default with `Redactor::set_default()` during startup.
+`RedactionPolicy::default()` remains the fixed standard policy.
+`HttpClientOptions::new()` snapshots the current default redactor, including an
+application default installed before construction. The client creates one
 `Arc<HttpRedactor>` and preserves it through requests, responses, retries,
 interceptors, errors, and SSE diagnostics. For migration, configure one
 `RedactionPolicyBuilder` through `fields()`, `http()`, and `limits()`;
