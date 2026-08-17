@@ -80,15 +80,14 @@ standard floor. Use `RedactionPolicy::default().to_builder()`
 to extend the conservative runtime snapshot; `.disable_all_floors()` is the explicit
 escape hatch that removes all floor protection.
 
-Install the global policy once during application startup with
-`RedactionPolicy::install_global()`. Before installation, `global()` and
-`default()` use the fixed standard policy without blocking later installation.
-`HttpClientOptions::new()` snapshots the current default policy, including an
-application policy installed before construction. Existing clients,
+Install the application default with `Redactor::set_default()` during startup.
+`RedactionPolicy::default()` remains the fixed standard policy.
+`HttpClientOptions::new()` snapshots the current default redactor, including an
+application default installed before construction. Existing clients,
 requests, responses, and errors retain their original redactor. Each redaction
 operation uses the policy's diagnostic budget; callers that render several
 fields as one record can create `let mut session = redactor.session()` and
-route HTTP fields through `session.http()` to share that budget.
+route HTTP fields through `session.http_with_mut(...)` to share that budget.
 
 ```rust
 use qubit_http::{HttpClientFactory, HttpClientOptions};

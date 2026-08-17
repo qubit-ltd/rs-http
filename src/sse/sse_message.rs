@@ -8,6 +8,7 @@
 //! # SSE message record
 //!
 //! One EventSource-style message dispatch after frame reassembly.
+#![allow(deprecated)]
 
 use qubit_json::decode::NormalizingJsonDecodeOptions;
 use qubit_json::decode::NormalizingJsonDecoder;

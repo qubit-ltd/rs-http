@@ -15,6 +15,7 @@ use http::Method;
 use http::StatusCode;
 use qubit_error::BoxError;
 use qubit_redact::RedactionPolicy;
+use qubit_redact::Redactor;
 use qubit_redact::formats::http::HttpRedactor;
 use url::Url;
 
@@ -52,8 +53,9 @@ pub struct HttpError {
 impl fmt::Display for HttpError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let debugger = RedactedDebugger::new(&self.log_redactor);
-        let mut session = debugger.session();
-        let message = session.http().redact_urls_in_text(&self.message);
+        let session = debugger.session();
+        let (_, message) = crate::redact::http_with!(session, |http| http
+            .redact_urls_in_text(&self.message));
         fmt::Display::fmt(&message, formatter)
     }
 }
@@ -69,9 +71,10 @@ impl Error for HttpError {
 impl fmt::Debug for HttpError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let debugger = RedactedDebugger::new(&self.log_redactor);
-        let mut session = debugger.session();
-        let url = debugger.optional_url(self.url.as_ref(), &mut session);
-        let message = session.http().redact_urls_in_text(&self.message);
+        let session = debugger.session();
+        let (session, url) = debugger.optional_url(self.url.as_ref(), session);
+        let (_, message) = crate::redact::http_with!(session, |http| http
+            .redact_urls_in_text(&self.message));
         let response_body_preview_len =
             self.response_body_preview.as_ref().map(String::len);
         formatter
@@ -109,7 +112,9 @@ impl HttpError {
             response_body_preview: None,
             retry_after: None,
             source: None,
-            log_redactor: HttpRedactor::new(RedactionPolicy::default()),
+            log_redactor: HttpRedactor::new(
+                Redactor::default().policy().clone(),
+            ),
         }
     }
 

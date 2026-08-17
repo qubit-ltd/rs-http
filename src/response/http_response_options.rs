@@ -7,7 +7,7 @@
 // =============================================================================
 //! Decode and error-preview options bound to one response instance.
 
-use qubit_redact::RedactionPolicy;
+use qubit_redact::Redactor;
 use qubit_redact::formats::http::HttpRedactor;
 
 use crate::constants::DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES;
@@ -46,7 +46,9 @@ impl Default for HttpResponseOptions {
             sse_max_line_bytes: DEFAULT_SSE_MAX_LINE_BYTES,
             sse_max_frame_bytes: DEFAULT_SSE_MAX_FRAME_BYTES,
             sse_done_marker_policy: DoneMarkerPolicy::default(),
-            log_redactor: HttpRedactor::new(RedactionPolicy::default()),
+            log_redactor: HttpRedactor::new(
+                Redactor::default().policy().clone(),
+            ),
         }
     }
 }

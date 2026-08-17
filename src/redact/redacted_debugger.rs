@@ -47,8 +47,16 @@ impl<'redactor> RedactedDebugger<'redactor> {
     pub(crate) fn optional_url(
         &self,
         url: Option<&Url>,
-        session: &mut RedactionSession<'_>,
-    ) -> Option<qubit_redact::LogSafeText<'static>> {
-        url.map(|url| session.http().redact_url(url))
+        session: RedactionSession<'redactor>,
+    ) -> (
+        RedactionSession<'redactor>,
+        Option<qubit_redact::LogSafeText<'static>>,
+    ) {
+        let Some(url) = url else {
+            return (session, None);
+        };
+        let (session, redacted) =
+            crate::redact::http_with!(session, |http| http.redact_url(url));
+        (session, Some(redacted))
     }
 }

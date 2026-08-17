@@ -88,15 +88,17 @@ impl RedactedLogger {
     /// exhausted state the shared session has stopped processing and this
     /// adapter does not read further body bytes.
     #[inline]
-    pub(crate) fn body(
+    pub(crate) fn body<'policy>(
         &self,
         body: &[u8],
         content_type: Option<&HeaderValue>,
-        session: &mut RedactionSession<'_>,
-    ) -> BodyRedaction {
-        session.http().redact_body(
-            BodyPreview::new(body, self.body_size_limit).capture(),
-            content_type,
-        )
+        session: RedactionSession<'policy>,
+    ) -> (RedactionSession<'policy>, BodyRedaction) {
+        crate::redact::http_with!(session, |http| {
+            http.redact_body(
+                BodyPreview::new(body, self.body_size_limit).capture(),
+                content_type,
+            )
+        })
     }
 }

@@ -14,6 +14,7 @@ use http::HeaderMap;
 use http::Method;
 use http::StatusCode;
 use qubit_redact::RedactionPolicy;
+use qubit_redact::Redactor;
 use qubit_redact::formats::http::HttpRedactor;
 use url::Url;
 
@@ -64,7 +65,9 @@ impl HttpResponseInterceptorContext {
             headers,
             url,
             method,
-            log_redactor: HttpRedactor::new(RedactionPolicy::default()),
+            log_redactor: HttpRedactor::new(
+                Redactor::default().policy().clone(),
+            ),
         }
     }
 
@@ -206,12 +209,15 @@ impl HttpResponseInterceptorContext {
 impl fmt::Debug for HttpResponseInterceptorContext {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let debugger = RedactedDebugger::new(&self.log_redactor);
-        let mut session = debugger.session();
-        let url = session.http().redact_url(&self.url);
+        let session = debugger.session();
+        let (session, url) = crate::redact::http_with!(session, |http| http
+            .redact_url(&self.url));
+        let (_, headers) = crate::redact::http_with!(session, |http| http
+            .redact_headers(&self.headers));
         formatter
             .debug_struct("HttpResponseInterceptorContext")
             .field("status", &self.status)
-            .field("headers", &session.http().redact_headers(&self.headers))
+            .field("headers", &headers)
             .field("url", &url)
             .field("method", &self.method)
             .finish()

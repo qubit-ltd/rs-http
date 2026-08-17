@@ -6,6 +6,8 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
+#![allow(deprecated)]
+
 use std::collections::HashMap;
 use std::fmt;
 use std::str::FromStr;
@@ -20,6 +22,7 @@ use qubit_config::ConfigResult;
 use qubit_json::decode::NormalizingJsonDecodeOptions;
 use qubit_json::decode::NormalizingJsonDecoder;
 use qubit_redact::RedactionPolicy;
+use qubit_redact::Redactor;
 use qubit_redact::Sensitivity;
 use qubit_redact::formats::http::HttpRedactor;
 use qubit_redact::formats::http::UrlPathPolicy;
@@ -113,7 +116,7 @@ impl Default for HttpClientOptions {
             pool_max_idle_per_host: None,
             use_env_proxy: false,
             retry: HttpRetryOptions::default(),
-            log_redaction_policy: RedactionPolicy::default(),
+            log_redaction_policy: Redactor::default().policy().clone(),
             ipv4_only: false,
             sse_json_mode: SseJsonMode::Lenient,
             sse_done_marker_policy: DoneMarkerPolicy::default(),
@@ -127,16 +130,16 @@ impl fmt::Debug for HttpClientOptions {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let redactor = HttpRedactor::new(self.log_redaction_policy.clone());
         let debugger = RedactedDebugger::new(&redactor);
-        let mut session = debugger.session();
-        let base_url =
-            debugger.optional_url(self.base_url.as_ref(), &mut session);
+        let session = debugger.session();
+        let (session, base_url) =
+            debugger.optional_url(self.base_url.as_ref(), session);
+        let (_, default_headers) =
+            crate::redact::http_with!(session, |http| http
+                .redact_headers(&self.default_headers));
         formatter
             .debug_struct("HttpClientOptions")
             .field("base_url", &base_url)
-            .field(
-                "default_headers",
-                &session.http().redact_headers(&self.default_headers),
-            )
+            .field("default_headers", &default_headers)
             .field("timeouts", &self.timeouts)
             .field("proxy", &self.proxy)
             .field("logging", &self.logging)
