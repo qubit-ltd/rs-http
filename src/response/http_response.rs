@@ -6,8 +6,6 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Unified HTTP response type and helpers.
-#![allow(deprecated)]
-
 use std::fmt;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -622,7 +620,7 @@ impl HttpResponse {
     {
         let body = self.bytes().await?;
         NormalizingJsonDecoder::new(NormalizingJsonDecodeOptions::strict())
-            .decode_slice(&body)
+            .decode_utf8(&body)
             .map_err(|error| {
                 HttpError::decode("Failed to decode response JSON")
                     .with_status(self.meta.status())
