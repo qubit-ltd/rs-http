@@ -29,7 +29,6 @@ use crate::redact::RedactedLogger;
 const UNRESOLVED_REQUEST_URL: &str = "<unresolved request URL>";
 const STREAMING_REQUEST_BODY_SKIPPED: &str =
     "<skipped: streaming request body>";
-const REDACTION_EXHAUSTED: &str = "<truncated>";
 
 /// Callsite metadata used to query the current dispatcher directly, bypassing
 /// shared interest caching that can change while thread-local subscribers are
