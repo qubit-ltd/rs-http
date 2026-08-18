@@ -109,28 +109,16 @@ pub struct HttpRequest {
 impl fmt::Debug for HttpRequest {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let debugger = RedactedDebugger::new(&self.context.log_redactor);
-        let session = debugger.session();
-        let (session, url) = match self.resolved_url() {
-            Ok(url) => {
-                let (session, url) =
-                    crate::redact::http_with!(session, |http| http
-                        .redact_url(&url));
-                (session, Some(url))
-            }
-            Err(_) => (session, None),
-        };
-        let (session, base_url) = match self.context.base_url.as_ref() {
-            Some(url) => {
-                let (session, url) =
-                    crate::redact::http_with!(session, |http| http
-                        .redact_url(url));
-                (session, Some(url))
-            }
-            None => (session, None),
-        };
-        let (_session, headers) =
-            crate::redact::http_with!(session, |http| http
-                .redact_headers(&self.headers));
+        let url = self
+            .resolved_url()
+            .ok()
+            .map(|url| debugger.redactor().redact_url(&url));
+        let base_url = self
+            .context
+            .base_url
+            .as_ref()
+            .map(|url| debugger.redactor().redact_url(url));
+        let headers = debugger.redactor().redact_headers(&self.headers);
         formatter
             .debug_struct("HttpRequest")
             .field("method", &self.method)

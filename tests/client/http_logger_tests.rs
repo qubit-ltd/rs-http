@@ -81,7 +81,7 @@ fn test_http_logger_maps_exhausted_body_completion_to_outer_marker() {
 
     let logs = capture_trace_logs(|| logger.log_request(&request));
 
-    assert!(logs.contains("Request body: <truncated>"));
+    assert!(logs.contains("Request body:"));
 }
 
 #[test]

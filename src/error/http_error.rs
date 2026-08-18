@@ -53,9 +53,7 @@ pub struct HttpError {
 impl fmt::Display for HttpError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let debugger = RedactedDebugger::new(&self.log_redactor);
-        let session = debugger.session();
-        let (_, message) = crate::redact::http_with!(session, |http| http
-            .redact_urls_in_text(&self.message));
+        let message = debugger.redactor().redact_urls_in_text(&self.message);
         fmt::Display::fmt(&message, formatter)
     }
 }
@@ -71,10 +69,8 @@ impl Error for HttpError {
 impl fmt::Debug for HttpError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let debugger = RedactedDebugger::new(&self.log_redactor);
-        let session = debugger.session();
-        let (session, url) = debugger.optional_url(self.url.as_ref(), session);
-        let (_, message) = crate::redact::http_with!(session, |http| http
-            .redact_urls_in_text(&self.message));
+        let url = debugger.optional_url(self.url.as_ref());
+        let message = debugger.redactor().redact_urls_in_text(&self.message);
         let response_body_preview_len =
             self.response_body_preview.as_ref().map(String::len);
         formatter

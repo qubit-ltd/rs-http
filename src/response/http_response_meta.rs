@@ -204,11 +204,8 @@ impl HttpResponseMeta {
 impl fmt::Debug for HttpResponseMeta {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let debugger = RedactedDebugger::new(&self.log_redactor);
-        let session = debugger.session();
-        let (session, url) = crate::redact::http_with!(session, |http| http
-            .redact_url(&self.url));
-        let (_, headers) = crate::redact::http_with!(session, |http| http
-            .redact_headers(&self.headers));
+        let url = debugger.redactor().redact_url(&self.url);
+        let headers = debugger.redactor().redact_headers(&self.headers);
         formatter
             .debug_struct("HttpResponseMeta")
             .field("status", &self.status)

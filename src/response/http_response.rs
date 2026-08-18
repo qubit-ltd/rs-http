@@ -191,15 +191,10 @@ pub struct HttpResponse {
 impl fmt::Debug for HttpResponse {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let debugger = RedactedDebugger::new(&self.options.log_redactor);
-        let session = debugger.session();
-        let (session, url) = crate::redact::http_with!(session, |http| http
-            .redact_url(self.meta.url()));
-        let (session, request_url) =
-            crate::redact::http_with!(session, |http| http
-                .redact_url(&self.runtime.request_url));
-        let (_session, headers) =
-            crate::redact::http_with!(session, |http| http
-                .redact_headers(self.meta.headers()));
+        let url = debugger.redactor().redact_url(self.meta.url());
+        let request_url =
+            debugger.redactor().redact_url(&self.runtime.request_url);
+        let headers = debugger.redactor().redact_headers(self.meta.headers());
         formatter
             .debug_struct("HttpResponse")
             .field("status", &self.meta.status())
@@ -372,9 +367,7 @@ impl HttpResponse {
         let log_redactor = self.log_redactor().clone();
         let body_preview =
             self.into_error_body_preview(error_preview_limit).await?;
-        let mut redaction_session = log_redactor.session();
-        let redacted_url =
-            redaction_session.http_with_mut(|http| http.redact_url(&url));
+        let redacted_url = log_redactor.redact_url(&url);
         let message = format!(
             "{} with status {} for {} {}; response body preview: {}",
             message_prefix, status, method, redacted_url, body_preview
@@ -983,10 +976,7 @@ impl HttpResponse {
         } else {
             qubit_redact::formats::http::BodyCapture::complete(bytes)
         };
-        let (session, body) =
-            crate::redact::http_with!(log_redactor.session(), |http| http
-                .redact_body(capture, content_type));
-        let _ = session;
+        let body = log_redactor.redact_body(capture, content_type);
         body.to_string()
     }
 
