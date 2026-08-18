@@ -323,7 +323,6 @@ impl<'a> HttpLogger<'a> {
             RedactionCompletion::Complete | RedactionCompletion::Truncated => {
                 redaction.into_log_safe_text().into_owned()
             }
-            RedactionCompletion::Exhausted => REDACTION_EXHAUSTED.to_owned(),
         }
     }
 
