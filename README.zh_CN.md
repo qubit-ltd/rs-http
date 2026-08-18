@@ -98,7 +98,7 @@ options.log_redaction_policy = builder.build()?;
 let client = HttpClientFactory::new().create(options)?;
 ```
 
-`logging.body_size_limit` 是展示限额；policy 中的 `BodyBudget` 是第二层不可绕过的输入与
+`logging.body_size_limit` 是展示限额；结构化 body 解析由 JSON 与结构限额约束，输入与
 输出硬上限。截断 body 统一使用 `<truncated>` 标记；调用方知道源长度时，结果保留精确
 源长度元数据。配置只读取 `log_redaction` section，不兼容旧 key。只有在应用明确接受
 移除 HTTP 上下文 floor 时，才使用 `builder.http().disable_all_floors()`。

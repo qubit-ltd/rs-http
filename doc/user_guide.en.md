@@ -580,7 +580,7 @@ Logs are redacted through the canonical `qubit_redact::formats::http::HttpRedact
 
 For headers, `http::HeaderValue::is_sensitive()` is a value-level `Secret` declaration. Request, response, streaming-response, and `Debug` rendering honor it before header-name matching. An allow rule cannot expose a marked value; unmarked values continue to use the same immutable name policy snapshot.
 
-`RedactionPolicy::builder()` has empty application rules and the standard floor. Use `RedactionPolicy::default().to_builder()` to extend a default snapshot. Application allow rules cannot bypass an enabled floor; `builder.http().disable_all_floors()` is the explicit HTTP-context escape hatch. Import `RedactionPolicy` from `qubit_redact` and `HttpRedactor` from `qubit_redact::formats::http`, never from `qubit_http`. `logging.body_size_limit` is a presentation bound, while `BodyBudget` remains a non-bypassable parser-input and rendered-output bound.
+`RedactionPolicy::builder()` has empty application rules and the standard floor. Use `RedactionPolicy::default().to_builder()` to extend a default snapshot. Application allow rules cannot bypass an enabled floor; `builder.http().disable_all_floors()` is the explicit HTTP-context escape hatch. Import `RedactionPolicy` from `qubit_redact` and `HttpRedactor` from `qubit_redact::formats::http`, never from `qubit_http`. `logging.body_size_limit` is a presentation bound, while structured body parsing remains bounded by JSON and structure limits.
 
 Install the application default with `Redactor::set_default()` during startup.
 `RedactionPolicy::default()` remains the fixed standard policy.
