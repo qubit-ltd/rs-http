@@ -6,8 +6,6 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-#![allow(deprecated)]
-
 use std::collections::HashMap;
 use std::fmt;
 use std::str::FromStr;
@@ -599,7 +597,7 @@ impl HttpClientOptions {
                 match NormalizingJsonDecoder::new(
                     NormalizingJsonDecodeOptions::strict(),
                 )
-                .decode(&json_str)
+                .decode_str(&json_str)
                 {
                     Ok(parsed) => parsed,
                     Err(error) => {

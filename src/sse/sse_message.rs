@@ -8,8 +8,6 @@
 //! # SSE message record
 //!
 //! One EventSource-style message dispatch after frame reassembly.
-#![allow(deprecated)]
-
 use qubit_json::decode::NormalizingJsonDecodeOptions;
 use qubit_json::decode::NormalizingJsonDecoder;
 use serde::de::DeserializeOwned;
@@ -47,7 +45,7 @@ impl SseMessage {
         T: DeserializeOwned,
     {
         NormalizingJsonDecoder::new(NormalizingJsonDecodeOptions::strict())
-            .decode::<T>(&self.data)
+            .decode_str::<T>(&self.data)
             .map_err(|error| {
                 HttpError::sse_decode(format!(
                     "Failed to decode SSE message data as JSON (event={:?}, last_event_id={:?})",
@@ -86,7 +84,7 @@ impl SseMessage {
         match mode {
             SseJsonMode::Strict => self.decode_json::<T>().map(Some),
             SseJsonMode::Lenient => {
-                match NormalizingJsonDecoder::default().decode::<T>(&self.data)
+                match NormalizingJsonDecoder::default().decode_str::<T>(&self.data)
                 {
                     Ok(value) => Ok(Some(value)),
                     Err(error) => {
