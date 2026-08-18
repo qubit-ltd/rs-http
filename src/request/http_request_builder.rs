@@ -83,31 +83,16 @@ pub struct HttpRequestBuilder {
 impl fmt::Debug for HttpRequestBuilder {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let debugger = RedactedDebugger::new(&self.log_redactor);
-        let session = debugger.session();
-        let (session, url) = match self.debug_resolved_url() {
-            Some(url) => {
-                let (session, url) =
-                    crate::redact::http_with!(session, |http| http
-                        .redact_url(&url));
-                (session, Some(url))
-            }
-            None => (session, None),
-        };
-        let (session, base_url) = match self.base_url.as_ref() {
-            Some(url) => {
-                let (session, url) =
-                    crate::redact::http_with!(session, |http| http
-                        .redact_url(url));
-                (session, Some(url))
-            }
-            None => (session, None),
-        };
-        let (session, headers) =
-            crate::redact::http_with!(session, |http| http
-                .redact_headers(&self.headers));
-        let (_session, default_headers) =
-            crate::redact::http_with!(session, |http| http
-                .redact_headers(&self.default_headers));
+        let url = self
+            .debug_resolved_url()
+            .map(|url| debugger.redactor().redact_url(&url));
+        let base_url = self
+            .base_url
+            .as_ref()
+            .map(|url| debugger.redactor().redact_url(url));
+        let headers = debugger.redactor().redact_headers(&self.headers);
+        let default_headers =
+            debugger.redactor().redact_headers(&self.default_headers);
         formatter
             .debug_struct("HttpRequestBuilder")
             .field("method", &self.method)

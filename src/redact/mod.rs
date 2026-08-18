@@ -8,11 +8,9 @@
 //! Immutable HTTP log redaction policies and rendering helpers.
 
 mod body_preview;
-mod http_with;
 mod redacted_debugger;
 mod redacted_logger;
 
 pub(crate) use body_preview::BodyPreview;
-pub(crate) use http_with::http_with;
 pub(crate) use redacted_debugger::RedactedDebugger;
 pub(crate) use redacted_logger::RedactedLogger;

@@ -128,12 +128,9 @@ impl fmt::Debug for HttpClientOptions {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let redactor = HttpRedactor::new(self.log_redaction_policy.clone());
         let debugger = RedactedDebugger::new(&redactor);
-        let session = debugger.session();
-        let (session, base_url) =
-            debugger.optional_url(self.base_url.as_ref(), session);
-        let (_, default_headers) =
-            crate::redact::http_with!(session, |http| http
-                .redact_headers(&self.default_headers));
+        let base_url = debugger.optional_url(self.base_url.as_ref());
+        let default_headers =
+            debugger.redactor().redact_headers(&self.default_headers);
         formatter
             .debug_struct("HttpClientOptions")
             .field("base_url", &base_url)
