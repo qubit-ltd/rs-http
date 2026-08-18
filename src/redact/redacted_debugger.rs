@@ -50,7 +50,7 @@ impl<'redactor> RedactedDebugger<'redactor> {
         session: RedactionSession<'redactor>,
     ) -> (
         RedactionSession<'redactor>,
-        Option<qubit_redact::LogSafeText<'static>>,
+        Option<qubit_redact::RedactedText>,
     ) {
         let Some(url) = url else {
             return (session, None);

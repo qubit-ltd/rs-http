@@ -12,7 +12,6 @@
 use http::HeaderValue;
 use http::header::CONTENT_TYPE;
 use qubit_redact::RedactionCompletion;
-use qubit_redact::RedactionSession;
 use qubit_redact::formats::http::BodyRedaction;
 use qubit_redact::formats::http::HttpRedactor;
 use tracing::Metadata;
@@ -115,8 +114,7 @@ impl<'a> HttpLogger<'a> {
             return;
         }
 
-        let session = self.redacted_logger.session();
-        let (mut session, url) = self.request_log_url(request, session);
+        let url = self.request_log_url(request);
         tracing::trace!("--> {} {}", request.method(), url);
 
         let headers = request
@@ -124,10 +122,8 @@ impl<'a> HttpLogger<'a> {
             .unwrap_or_else(|| request.headers());
 
         if self.options.log_request_header {
-            let (next_session, redacted_headers) =
-                crate::redact::http_with!(session, |http| http
-                    .redact_headers(headers));
-            session = next_session;
+            let redacted_headers =
+                self.redacted_logger.redactor().redact_headers(headers);
             tracing::trace!("{}", redacted_headers);
         }
 
@@ -135,8 +131,7 @@ impl<'a> HttpLogger<'a> {
             match Self::request_body_for_log(request) {
                 RequestBodyLogPreview::Bytes(bytes) => {
                     let content_type = Self::content_type(headers);
-                    let (_, text) =
-                        self.body_log_text(bytes, content_type, session);
+                    let text = self.body_log_text(bytes, content_type);
                     tracing::trace!("Request body: {}", text);
                 }
                 RequestBodyLogPreview::Empty => {
@@ -169,45 +164,37 @@ impl<'a> HttpLogger<'a> {
             return Ok(());
         }
 
-        let session = self.redacted_logger.session();
-        let (session, url) = crate::redact::http_with!(session, |http| http
-            .redact_url(response.url()));
+        let url = self.redacted_logger.redactor().redact_url(response.url());
         tracing::trace!("<-- {} {}", response.status().as_u16(), url);
 
         if self.options.log_response_header {
-            let (session, headers) =
-                crate::redact::http_with!(session, |http| http
-                    .redact_headers(response.headers()));
+            let headers = self
+                .redacted_logger
+                .redactor()
+                .redact_headers(response.headers());
             tracing::trace!("{}", headers);
-            return self.log_response_body(response, session).await;
+            return self.log_response_body(response).await;
         }
 
-        self.log_response_body(response, session).await
+        self.log_response_body(response).await
     }
 
     async fn log_response_body(
         &self,
         response: &mut HttpResponse,
-        session: RedactionSession<'_>,
     ) -> crate::HttpResult<()> {
         if self.options.log_response_body {
             let content_type = Self::content_type(response.headers()).cloned();
             if let Some(body) = response.buffered_body_for_logging() {
-                let (_, text) = self.body_log_text(
-                    body.as_ref(),
-                    content_type.as_ref(),
-                    session,
-                );
+                let text =
+                    self.body_log_text(body.as_ref(), content_type.as_ref());
                 tracing::trace!("Response body: {}", text,);
             } else if response
                 .can_buffer_body_for_logging(self.options.body_size_limit)
             {
                 let body = response.bytes().await?;
-                let (_, text) = self.body_log_text(
-                    body.as_ref(),
-                    content_type.as_ref(),
-                    session,
-                );
+                let text =
+                    self.body_log_text(body.as_ref(), content_type.as_ref());
                 tracing::trace!("Response body: {}", text,);
             } else {
                 tracing::trace!(
@@ -234,9 +221,10 @@ impl<'a> HttpLogger<'a> {
             return;
         }
 
-        let session = self.redacted_logger.session();
-        let (session, url) = crate::redact::http_with!(session, |http| http
-            .redact_url(response_meta.url()));
+        let url = self
+            .redacted_logger
+            .redactor()
+            .redact_url(response_meta.url());
         tracing::trace!(
             "<-- {} {} (stream)",
             response_meta.status().as_u16(),
@@ -244,8 +232,10 @@ impl<'a> HttpLogger<'a> {
         );
 
         if self.options.log_response_header {
-            let (_, headers) = crate::redact::http_with!(session, |http| http
-                .redact_headers(response_meta.headers()));
+            let headers = self
+                .redacted_logger
+                .redactor()
+                .redact_headers(response_meta.headers());
             tracing::trace!("{}", headers);
         }
     }
@@ -270,19 +260,14 @@ impl<'a> HttpLogger<'a> {
     /// # Returns
     /// Resolved URL including builder query parameters, or a fixed placeholder
     /// when URL resolution fails before send.
-    fn request_log_url<'policy>(
-        &self,
-        request: &HttpRequest,
-        session: RedactionSession<'policy>,
-    ) -> (RedactionSession<'policy>, String) {
+    fn request_log_url(&self, request: &HttpRequest) -> String {
         match request.resolved_url() {
-            Ok(url) => {
-                let (session, url) =
-                    crate::redact::http_with!(session, |http| http
-                        .redact_url(&url));
-                (session, url.into_owned())
-            }
-            Err(_) => (session, UNRESOLVED_REQUEST_URL.to_string()),
+            Ok(url) => self
+                .redacted_logger
+                .redactor()
+                .redact_url(&url)
+                .into_string(),
+            Err(_) => UNRESOLVED_REQUEST_URL.to_string(),
         }
     }
 
@@ -303,18 +288,16 @@ impl<'a> HttpLogger<'a> {
     /// [`REDACTION_EXHAUSTED`]. Body status is independent of this completion
     /// mapping. An exhausted session has terminated input processing, so the
     /// body adapter does not read further source bytes.
-    fn body_log_text<'policy>(
+    fn body_log_text(
         &self,
         body: &[u8],
         content_type: Option<&HeaderValue>,
-        session: RedactionSession<'policy>,
-    ) -> (RedactionSession<'policy>, String) {
+    ) -> String {
         if body.is_empty() {
-            return (session, "<empty>".to_owned());
+            return "<empty>".to_owned();
         }
-        let (session, body) =
-            self.redacted_logger.body(body, content_type, session);
-        (session, Self::render_body_redaction(body))
+        let body = self.redacted_logger.body(body, content_type);
+        Self::render_body_redaction(body)
     }
 
     /// Maps structured completion to the final logger presentation.

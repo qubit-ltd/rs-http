@@ -84,7 +84,8 @@ impl SseMessage {
         match mode {
             SseJsonMode::Strict => self.decode_json::<T>().map(Some),
             SseJsonMode::Lenient => {
-                match NormalizingJsonDecoder::default().decode_str::<T>(&self.data)
+                match NormalizingJsonDecoder::default()
+                    .decode_str::<T>(&self.data)
                 {
                     Ok(value) => Ok(Some(value)),
                     Err(error) => {

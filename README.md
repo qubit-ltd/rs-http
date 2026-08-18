@@ -87,7 +87,7 @@ application default installed before construction. Existing clients,
 requests, responses, and errors retain their original redactor. Each redaction
 operation uses the policy's diagnostic budget; callers that render several
 fields as one record can create `let mut session = redactor.session()` and
-route HTTP fields through `session.http_with_mut(...)` to share that budget.
+route HTTP fields through `session.http(...)` to share that budget.
 
 ```rust
 use qubit_http::{HttpClientFactory, HttpClientOptions};

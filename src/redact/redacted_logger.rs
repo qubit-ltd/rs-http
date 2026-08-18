@@ -9,7 +9,6 @@
 //! Safe rendering helpers for HTTP TRACE logs.
 
 use http::HeaderValue;
-use qubit_redact::RedactionSession;
 use qubit_redact::formats::http::BodyRedaction;
 use qubit_redact::formats::http::HttpRedactor;
 
@@ -67,8 +66,8 @@ impl RedactedLogger {
 
     /// Creates one diagnostic session for a complete TRACE record.
     #[inline(always)]
-    pub(crate) fn session(&self) -> RedactionSession<'_> {
-        self.redactor.session()
+    pub(crate) const fn redactor(&self) -> &HttpRedactor {
+        &self.redactor
     }
 
     /// Redacts a body preview through a shared diagnostic session.
@@ -88,17 +87,14 @@ impl RedactedLogger {
     /// exhausted state the shared session has stopped processing and this
     /// adapter does not read further body bytes.
     #[inline]
-    pub(crate) fn body<'policy>(
+    pub(crate) fn body(
         &self,
         body: &[u8],
         content_type: Option<&HeaderValue>,
-        session: RedactionSession<'policy>,
-    ) -> (RedactionSession<'policy>, BodyRedaction) {
-        crate::redact::http_with!(session, |http| {
-            http.redact_body(
-                BodyPreview::new(body, self.body_size_limit).capture(),
-                content_type,
-            )
-        })
+    ) -> BodyRedaction {
+        self.redactor.redact_body(
+            BodyPreview::new(body, self.body_size_limit).capture(),
+            content_type,
+        )
     }
 }
