@@ -107,7 +107,7 @@ let client = HttpClientFactory::new().create(options)?;
 ```
 
 `logging.body_size_limit` is the presentation limit. The policy's
-`BodyBudget` remains a second, non-bypassable input/output bound. Truncated
+Structured body parsing remains bounded by the configured JSON and structure limits. Truncated
 bodies use one generic `<truncated>` marker and retain exact source metadata
 when the caller knows it. Configuration uses only the `log_redaction` section;
 there is no compatibility path for the old key. Use

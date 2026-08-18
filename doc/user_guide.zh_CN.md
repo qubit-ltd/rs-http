@@ -580,7 +580,7 @@ HTTP 日志使用 `tracing::trace!`。必须同时满足：
 
 对于 header，`http::HeaderValue::is_sensitive()` 是值级 `Secret` 声明。请求、响应、流式响应和 `Debug` 渲染都会在 header name 匹配前处理该标记。allow 规则不能暴露已标记值；未标记值继续使用同一个不可变 name policy 快照。
 
-`RedactionPolicy::builder()` 使用空应用规则和标准 floor；扩展默认快照时使用 `RedactionPolicy::default().to_builder()`。应用 allow 规则无法绕过启用的 floor；`builder.http().disable_all_floors()` 是关闭 HTTP 上下文 floor 的显式逃生口。`RedactionPolicy` 必须从 `qubit_redact` 导入，`HttpRedactor` 从 `qubit_redact::formats::http` 导入，不能从 `qubit_http` 导入。`logging.body_size_limit` 是展示限额，`BodyBudget` 仍是不可绕过的输入与输出硬上限。
+`RedactionPolicy::builder()` 使用空应用规则和标准 floor；扩展默认快照时使用 `RedactionPolicy::default().to_builder()`。应用 allow 规则无法绕过启用的 floor；`builder.http().disable_all_floors()` 是关闭 HTTP 上下文 floor 的显式逃生口。`RedactionPolicy` 必须从 `qubit_redact` 导入，`HttpRedactor` 从 `qubit_redact::formats::http` 导入，不能从 `qubit_http` 导入。`logging.body_size_limit` 是展示限额，结构化 body 解析由 JSON 与结构限额约束。
 
 应用启动时使用 `Redactor::set_default()` 安装默认 redactor；`RedactionPolicy::default()` 始终
 返回固定标准策略。`HttpClientOptions::new()` 会取得构造时默认 redactor 的快照，包括此前已安装的应用策略。client 创建一份
