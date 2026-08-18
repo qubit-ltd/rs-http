@@ -320,7 +320,7 @@ impl<'a> HttpLogger<'a> {
     fn render_body_redaction(redaction: BodyRedaction) -> String {
         match redaction.completion() {
             RedactionCompletion::Complete | RedactionCompletion::Truncated => {
-                redaction.into_log_safe_text().into_owned()
+                redaction.into_text().into_owned()
             }
         }
     }
