@@ -15,9 +15,8 @@ use qubit_http::HttpLogger;
 use qubit_http::HttpLoggingOptions;
 use qubit_redact::RedactionCompletion;
 use qubit_redact::RedactionPolicy;
+use qubit_redact::Redactor;
 use qubit_redact::formats::http::BodyCapture;
-use qubit_redact::formats::http::BodyRedactionStatus;
-use qubit_redact::formats::http::HttpRedactor;
 use qubit_redact::formats::http::TextBodyPolicy;
 
 use crate::common::capture_trace_logs;
@@ -32,7 +31,11 @@ fn test_http_logger_logs_request_body_preview_with_truncation() {
         ..HttpLoggingOptions::default()
     };
     let mut policy_builder = RedactionPolicy::default().to_builder();
-    policy_builder.http().text_body(TextBodyPolicy::PassThrough);
+    policy_builder = policy_builder
+        .http(|http| {
+            http.text_body(TextBodyPolicy::PassThrough);
+        })
+        .expect("test policy should be valid");
     options.log_redaction_policy = policy_builder
         .build()
         .expect("log redaction policy should be valid");
@@ -53,29 +56,37 @@ fn test_http_logger_logs_request_body_preview_with_truncation() {
 
 #[test]
 fn test_http_body_redaction_reports_complete_for_normal_content() {
-    let redaction = HttpRedactor::default().redact_body(
+    let redaction = Redactor::standard().redact_http_body(
         BodyCapture::complete(br#"{"visible":"ok"}"#),
         Some(&HeaderValue::from_static("application/json")),
     );
 
-    assert_eq!(redaction.status(), BodyRedactionStatus::Structured);
-    assert_eq!(redaction.completion(), RedactionCompletion::Complete);
+    assert_eq!(
+        redaction.summary().completion(),
+        RedactionCompletion::Complete
+    );
 }
 
 #[test]
 fn test_http_body_redaction_reports_truncated_for_bounded_preview() {
     let mut policy_builder = RedactionPolicy::default().to_builder();
-    policy_builder.http().text_body(TextBodyPolicy::PassThrough);
+    policy_builder = policy_builder
+        .http(|http| {
+            http.text_body(TextBodyPolicy::PassThrough);
+        })
+        .expect("test policy should be valid");
     let policy = policy_builder
         .build()
         .expect("log redaction policy should be valid");
-    let redaction = HttpRedactor::new(policy).redact_body(
+    let redaction = Redactor::new(policy).redact_http_body(
         BodyCapture::prefix(b"abcdef", 4),
         Some(&HeaderValue::from_static("text/plain")),
     );
 
-    assert_eq!(redaction.status(), BodyRedactionStatus::PassedThrough);
-    assert_eq!(redaction.completion(), RedactionCompletion::Truncated);
+    assert_eq!(
+        redaction.summary().completion(),
+        RedactionCompletion::Truncated
+    );
 }
 
 #[test]

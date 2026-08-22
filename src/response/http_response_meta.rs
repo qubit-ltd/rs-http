@@ -18,7 +18,6 @@ use http::header::RETRY_AFTER;
 use httpdate::parse_http_date;
 use qubit_redact::RedactionPolicy;
 use qubit_redact::Redactor;
-use qubit_redact::formats::http::HttpRedactor;
 use url::Url;
 
 use crate::redact::RedactedDebugger;
@@ -35,7 +34,7 @@ pub struct HttpResponseMeta {
     /// Originating request method.
     method: Method,
     /// Redaction policy snapshot used by standalone debug output.
-    log_redactor: HttpRedactor,
+    log_redactor: Redactor,
 }
 
 impl HttpResponseMeta {
@@ -52,9 +51,7 @@ impl HttpResponseMeta {
             headers,
             url,
             method,
-            log_redactor: HttpRedactor::new(
-                Redactor::default().policy().clone(),
-            ),
+            log_redactor: Redactor::application_default(),
         }
     }
 
@@ -67,7 +64,7 @@ impl HttpResponseMeta {
     /// # Returns
     /// Updated metadata.
     #[inline(always)]
-    pub fn with_log_redactor(mut self, log_redactor: HttpRedactor) -> Self {
+    pub fn with_log_redactor(mut self, log_redactor: Redactor) -> Self {
         self.log_redactor = log_redactor;
         self
     }
@@ -84,7 +81,7 @@ impl HttpResponseMeta {
         mut self,
         policy: RedactionPolicy,
     ) -> Self {
-        self.log_redactor = HttpRedactor::new(policy);
+        self.log_redactor = Redactor::new(policy);
         self
     }
 
@@ -184,7 +181,7 @@ impl HttpResponseMeta {
     /// # Returns
     /// Borrowed policy snapshot.
     #[inline(always)]
-    pub(crate) fn log_redactor(&self) -> &HttpRedactor {
+    pub(crate) fn log_redactor(&self) -> &Redactor {
         &self.log_redactor
     }
 
@@ -196,7 +193,7 @@ impl HttpResponseMeta {
     /// # Returns
     /// Nothing.
     #[inline(always)]
-    pub(super) fn set_log_redactor(&mut self, log_redactor: HttpRedactor) {
+    pub(super) fn set_log_redactor(&mut self, log_redactor: Redactor) {
         self.log_redactor = log_redactor;
     }
 }
@@ -204,8 +201,14 @@ impl HttpResponseMeta {
 impl fmt::Debug for HttpResponseMeta {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let debugger = RedactedDebugger::new(&self.log_redactor);
-        let url = debugger.redactor().redact_url(&self.url);
-        let headers = debugger.redactor().redact_headers(&self.headers);
+        let url = debugger
+            .redactor()
+            .redact_http_url(self.url.as_str())
+            .into_text();
+        let headers = debugger
+            .redactor()
+            .redact_http_headers(&self.headers)
+            .into_text();
         formatter
             .debug_struct("HttpResponseMeta")
             .field("status", &self.status)

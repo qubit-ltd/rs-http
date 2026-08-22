@@ -959,6 +959,7 @@ dependencies = [
  "http",
  "qubit-budget",
  "qubit-json",
+ "serde",
  "serde_json",
  "url",
 ]

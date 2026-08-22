@@ -19,7 +19,7 @@ use http::HeaderName;
 use http::HeaderValue;
 use http::Method;
 use qubit_function::MutatingFunction;
-use qubit_redact::formats::http::HttpRedactor;
+use qubit_redact::Redactor;
 use qubit_retry::RetryCancellationToken;
 use reqwest::Response;
 use url::Host;
@@ -76,7 +76,7 @@ struct HttpRequestContext {
     async_injectors: Vec<AsyncHttpHeaderInjector>,
     /// Shared log redactor snapshot captured when this request builder was
     /// created.
-    log_redactor: HttpRedactor,
+    log_redactor: Redactor,
 }
 
 /// Immutable snapshot of a single HTTP call produced by
@@ -109,16 +109,22 @@ pub struct HttpRequest {
 impl fmt::Debug for HttpRequest {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let debugger = RedactedDebugger::new(&self.context.log_redactor);
-        let url = self
-            .resolved_url()
-            .ok()
-            .map(|url| debugger.redactor().redact_url(&url));
-        let base_url = self
-            .context
-            .base_url
-            .as_ref()
-            .map(|url| debugger.redactor().redact_url(url));
-        let headers = debugger.redactor().redact_headers(&self.headers);
+        let url = self.resolved_url().ok().map(|url| {
+            debugger
+                .redactor()
+                .redact_http_url(url.as_str())
+                .into_text()
+        });
+        let base_url = self.context.base_url.as_ref().map(|url| {
+            debugger
+                .redactor()
+                .redact_http_url(url.as_str())
+                .into_text()
+        });
+        let headers = debugger
+            .redactor()
+            .redact_http_headers(&self.headers)
+            .into_text();
         formatter
             .debug_struct("HttpRequest")
             .field("method", &self.method)
@@ -613,7 +619,7 @@ impl HttpRequest {
     ///
     /// The immutable request policy snapshot.
     #[inline(always)]
-    pub(crate) fn log_redactor(&self) -> &HttpRedactor {
+    pub(crate) fn log_redactor(&self) -> &Redactor {
         &self.context.log_redactor
     }
 

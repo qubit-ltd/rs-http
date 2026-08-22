@@ -79,8 +79,8 @@ fn test_http_error_debug_redacts_url_schemes_inside_token() {
     assert!(!debug.contains("debug-query-secret"));
     assert!(!debug.contains("second-user"));
     assert!(!debug.contains("second-secret"));
-    assert!(debug.contains("prefixhttps://****:%3Credacted%3E@example.com"));
-    assert!(debug.contains("http://****:%3Credacted%3E@second.example"));
+    assert!(debug.contains("prefixhttps://****:<redacted>@example.com"));
+    assert!(debug.contains("http://****:<redacted>@second.example"));
 }
 
 #[test]
@@ -94,16 +94,16 @@ fn test_http_error_debug_redacts_uppercase_url_scheme_tokens() {
     assert!(!debug.contains("debug-user"));
     assert!(!debug.contains("debug-url-secret"));
     assert!(!debug.contains("debug-query-secret"));
-    assert!(debug.contains("://****:%3Credacted%3E@example.com"));
+    assert!(debug.contains("://****:<redacted>@example.com"));
 }
 
 #[test]
 fn test_http_error_debug_uses_custom_log_redaction_policy() {
-    let mut builder = RedactionPolicy::default().to_builder();
-    builder
-        .http()
-        .query()
-        .raise("customer_secret", Sensitivity::High)
+    let builder = RedactionPolicy::default()
+        .to_builder()
+        .http(|http| {
+            let _ = http.query().raise("customer_secret", Sensitivity::High);
+        })
         .expect("the test policy input should be valid");
     let policy = builder
         .build()
@@ -139,11 +139,11 @@ fn test_http_error_display_masks_sensitive_url_values() {
 
 #[test]
 fn test_http_error_display_uses_custom_log_redaction_policy() {
-    let mut builder = RedactionPolicy::default().to_builder();
-    builder
-        .http()
-        .query()
-        .raise("customer_secret", Sensitivity::High)
+    let builder = RedactionPolicy::default()
+        .to_builder()
+        .http(|http| {
+            let _ = http.query().raise("customer_secret", Sensitivity::High);
+        })
         .expect("the test policy input should be valid");
     let policy = builder
         .build()
@@ -163,8 +163,12 @@ fn test_http_error_display_uses_custom_log_redaction_policy() {
 fn test_http_error_debug_honors_url_path_redaction_policy() {
     let raw_url = "https://alice:error-password-secret@example.com/tenant/error-path-secret?access_token=error-query-secret#error-fragment-secret";
     let url = url::Url::parse(raw_url).expect("URL should parse");
-    let mut policy_builder = RedactionPolicy::default().to_builder();
-    policy_builder.http().url_path(UrlPathPolicy::Redact);
+    let policy_builder = RedactionPolicy::default()
+        .to_builder()
+        .http(|http| {
+            http.url_path(UrlPathPolicy::Redact);
+        })
+        .expect("test policy should be valid");
     let error = HttpError::transport(format!("transport failed for {raw_url}"))
         .with_url(&url)
         .with_log_redaction_policy(
@@ -180,7 +184,7 @@ fn test_http_error_debug_honors_url_path_redaction_policy() {
     assert!(!debug.contains("error-password-secret"));
     assert!(!debug.contains("error-query-secret"));
     assert!(!debug.contains("error-fragment-secret"));
-    assert!(debug.contains("/%3Credacted%3E?"));
+    assert!(debug.contains("/<redacted>?"));
 }
 
 #[test]
@@ -225,8 +229,8 @@ fn test_http_error_debug_preserves_diagnostic_message_whitespace() {
 
     let debug = format!("{error:?}");
 
-    assert!(debug.contains("\\tthen"));
-    assert!(debug.contains("\\nsecond line"));
+    assert!(debug.contains("\tthen"));
+    assert!(debug.contains("\nsecond line"));
     assert!(!debug.contains("debug-user"));
     assert!(!debug.contains("debug-url-secret"));
     assert!(!debug.contains("debug-query-secret"));

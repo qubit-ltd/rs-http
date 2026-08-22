@@ -133,8 +133,12 @@ fn test_http_request_debug_masks_native_sensitive_header_value() {
 #[test]
 fn test_http_request_debug_honors_url_path_redaction_policy() {
     let mut options = HttpClientOptions::new();
-    let mut policy_builder = RedactionPolicy::default().to_builder();
-    policy_builder.http().url_path(UrlPathPolicy::Redact);
+    let policy_builder = RedactionPolicy::default()
+        .to_builder()
+        .http(|http| {
+            http.url_path(UrlPathPolicy::Redact);
+        })
+        .expect("test policy should be valid");
     options.log_redaction_policy = policy_builder
         .build()
         .expect("log redaction policy should be valid");
@@ -155,17 +159,17 @@ fn test_http_request_debug_honors_url_path_redaction_policy() {
     assert!(!debug.contains("request-password-secret"));
     assert!(!debug.contains("request-query-secret"));
     assert!(!debug.contains("request-fragment-secret"));
-    assert!(debug.contains("/%3Credacted%3E?"));
+    assert!(debug.contains("/<redacted>?"));
 }
 
 #[test]
 fn test_http_request_debug_honors_explicit_default_field_exclusion() {
     let mut options = HttpClientOptions::new();
-    let mut builder = RedactionPolicy::default().to_builder();
-    builder
-        .http()
-        .query()
-        .allow_exact("SIG")
+    let builder = RedactionPolicy::default()
+        .to_builder()
+        .http(|http| {
+            let _ = http.query().allow_exact("SIG");
+        })
         .expect("the test policy input should be valid");
     options.log_redaction_policy = builder
         .build()
@@ -188,11 +192,11 @@ fn test_http_request_debug_honors_explicit_default_field_exclusion() {
 #[test]
 fn test_http_request_debug_suffix_allow_wins_over_sensitive_suffix() {
     let mut options = HttpClientOptions::new();
-    let mut builder = RedactionPolicy::default().to_builder();
-    builder
-        .http()
-        .query()
-        .allow_suffix("access_token")
+    let builder = RedactionPolicy::default()
+        .to_builder()
+        .http(|http| {
+            let _ = http.query().allow_suffix("access_token");
+        })
         .expect("the test policy input should be valid");
     options.log_redaction_policy = builder
         .build()
@@ -215,13 +219,12 @@ fn test_http_request_debug_suffix_allow_wins_over_sensitive_suffix() {
 #[test]
 fn test_http_request_debug_allow_rule_wins_independent_of_builder_order() {
     let mut options = HttpClientOptions::new();
-    let mut builder = RedactionPolicy::default().to_builder();
-    builder
-        .http()
-        .query()
-        .allow_exact("sig")
-        .expect("the test policy input should be valid")
-        .raise("SIG", Sensitivity::Secret)
+    let builder = RedactionPolicy::default()
+        .to_builder()
+        .http(|http| {
+            let _ = http.query().allow_exact("sig");
+            let _ = http.query().raise("SIG", Sensitivity::Secret);
+        })
         .expect("the test policy input should be valid");
     options.log_redaction_policy = builder
         .build()

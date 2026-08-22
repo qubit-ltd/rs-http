@@ -276,7 +276,11 @@ fn test_log_request_text_body() {
     let mut client_options = HttpClientOptions::default();
     client_options.logging = options;
     let mut policy_builder = RedactionPolicy::default().to_builder();
-    policy_builder.http().text_body(TextBodyPolicy::PassThrough);
+    policy_builder = policy_builder
+        .http(|http| {
+            http.text_body(TextBodyPolicy::PassThrough);
+        })
+        .expect("test policy should be valid");
     client_options.log_redaction_policy = policy_builder
         .build()
         .expect("log redaction policy should be valid");
@@ -594,7 +598,11 @@ fn test_execute_logs_response_body_when_content_type_only_has_sse_prefix() {
             options.base_url = Some(server.base_url());
             options.logging.body_size_limit = 128;
             let mut policy_builder = RedactionPolicy::default().to_builder();
-            policy_builder.http().text_body(TextBodyPolicy::PassThrough);
+            policy_builder = policy_builder
+                .http(|http| {
+                    http.text_body(TextBodyPolicy::PassThrough);
+                })
+                .expect("test policy should be valid");
             options.log_redaction_policy = policy_builder
                 .build()
                 .expect("log redaction policy should be valid");

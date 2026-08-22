@@ -8,7 +8,8 @@
 //! # SSE message record
 //!
 //! One EventSource-style message dispatch after frame reassembly.
-use qubit_json::decode::NormalizingJsonDecodeOptions;
+use qubit_budget::json::JsonDecodeLimits;
+use qubit_json::decode::NormalizingJsonDecodePolicy;
 use qubit_json::decode::NormalizingJsonDecoder;
 use serde::de::DeserializeOwned;
 
@@ -44,7 +45,7 @@ impl SseMessage {
     where
         T: DeserializeOwned,
     {
-        NormalizingJsonDecoder::new(NormalizingJsonDecodeOptions::strict())
+        NormalizingJsonDecoder::owned(NormalizingJsonDecodePolicy::strict(), JsonDecodeLimits::default())
             .decode_str::<T>(&self.data)
             .map_err(|error| {
                 HttpError::sse_decode(format!(
@@ -84,8 +85,11 @@ impl SseMessage {
         match mode {
             SseJsonMode::Strict => self.decode_json::<T>().map(Some),
             SseJsonMode::Lenient => {
-                match NormalizingJsonDecoder::default()
-                    .decode_str::<T>(&self.data)
+                match NormalizingJsonDecoder::owned(
+                    NormalizingJsonDecodePolicy::lenient(),
+                    JsonDecodeLimits::default(),
+                )
+                .decode_str::<T>(&self.data)
                 {
                     Ok(value) => Ok(Some(value)),
                     Err(error) => {

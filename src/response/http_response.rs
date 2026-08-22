@@ -22,9 +22,10 @@ use http::StatusCode;
 use http::header::CONTENT_LENGTH;
 use http::header::CONTENT_TYPE;
 use qubit_budget::ResourceBudget;
-use qubit_json::decode::NormalizingJsonDecodeOptions;
+use qubit_budget::json::JsonDecodeLimits;
+use qubit_json::decode::NormalizingJsonDecodePolicy;
 use qubit_json::decode::NormalizingJsonDecoder;
-use qubit_redact::formats::http::HttpRedactor;
+use qubit_redact::Redactor;
 use qubit_retry::RetryCancellationToken;
 use serde::de::DeserializeOwned;
 use url::Url;
@@ -58,7 +59,7 @@ struct BodyReadFailure {
     /// Optional HTTP status context.
     status: Option<StatusCode>,
     /// Exact policy snapshot used by the originating response.
-    log_redactor: HttpRedactor,
+    log_redactor: Redactor,
 }
 
 impl BodyReadFailure {
@@ -122,7 +123,7 @@ fn map_response_read_error(
     method: Method,
     url: Url,
     status: StatusCode,
-    log_redactor: &HttpRedactor,
+    log_redactor: &Redactor,
 ) -> HttpError {
     if error.is_timeout() {
         return map_reqwest_error(
@@ -191,10 +192,18 @@ pub struct HttpResponse {
 impl fmt::Debug for HttpResponse {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let debugger = RedactedDebugger::new(&self.options.log_redactor);
-        let url = debugger.redactor().redact_url(self.meta.url());
-        let request_url =
-            debugger.redactor().redact_url(&self.runtime.request_url);
-        let headers = debugger.redactor().redact_headers(self.meta.headers());
+        let url = debugger
+            .redactor()
+            .redact_http_url(self.meta.url().as_str())
+            .into_text();
+        let request_url = debugger
+            .redactor()
+            .redact_http_url(self.runtime.request_url.as_str())
+            .into_text();
+        let headers = debugger
+            .redactor()
+            .redact_http_headers(self.meta.headers())
+            .into_text();
         formatter
             .debug_struct("HttpResponse")
             .field("status", &self.meta.status())
@@ -367,7 +376,8 @@ impl HttpResponse {
         let log_redactor = self.log_redactor().clone();
         let body_preview =
             self.into_error_body_preview(error_preview_limit).await?;
-        let redacted_url = log_redactor.redact_url(&url);
+        let redacted_url =
+            log_redactor.redact_http_url(url.as_str()).into_text();
         let message = format!(
             "{} with status {} for {} {}; response body preview: {}",
             message_prefix, status, method, redacted_url, body_preview
@@ -612,15 +622,18 @@ impl HttpResponse {
         T: DeserializeOwned,
     {
         let body = self.bytes().await?;
-        NormalizingJsonDecoder::new(NormalizingJsonDecodeOptions::strict())
-            .decode_utf8(&body)
-            .map_err(|error| {
-                HttpError::decode("Failed to decode response JSON")
-                    .with_status(self.meta.status())
-                    .with_url(self.meta.url())
-                    .with_source(error)
-                    .with_log_redactor(self.log_redactor().clone())
-            })
+        NormalizingJsonDecoder::owned(
+            NormalizingJsonDecodePolicy::strict(),
+            JsonDecodeLimits::default(),
+        )
+        .decode_utf8(&body)
+        .map_err(|error| {
+            HttpError::decode("Failed to decode response JSON")
+                .with_status(self.meta.status())
+                .with_url(self.meta.url())
+                .with_source(error)
+                .with_log_redactor(self.log_redactor().clone())
+        })
     }
 
     /// Overrides the maximum allowed size (in bytes) for one SSE line on this
@@ -748,7 +761,7 @@ impl HttpResponse {
     /// Returns the shared log redactor used for response diagnostics and
     /// errors.
     #[inline(always)]
-    pub(crate) fn log_redactor(&self) -> &HttpRedactor {
+    pub(crate) fn log_redactor(&self) -> &Redactor {
         &self.options.log_redactor
     }
 
@@ -956,7 +969,7 @@ impl HttpResponse {
         source_len: Option<usize>,
         truncated: bool,
         content_type: Option<&HeaderValue>,
-        log_redactor: &HttpRedactor,
+        log_redactor: &Redactor,
     ) -> String {
         if bytes.is_empty() && !truncated {
             return "<empty>".to_owned();
@@ -976,8 +989,8 @@ impl HttpResponse {
         } else {
             qubit_redact::formats::http::BodyCapture::complete(bytes)
         };
-        let body = log_redactor.redact_body(capture, content_type);
-        body.to_string()
+        let body = log_redactor.redact_http_body(capture, content_type);
+        body.into_text().into_string()
     }
 
     /// Extracts a Content-Type header value.

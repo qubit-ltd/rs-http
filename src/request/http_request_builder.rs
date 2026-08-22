@@ -17,7 +17,7 @@ use http::HeaderMap;
 use http::HeaderValue;
 use http::Method;
 use http::header::CONTENT_TYPE;
-use qubit_redact::formats::http::HttpRedactor;
+use qubit_redact::Redactor;
 use qubit_retry::RetryCancellationToken;
 use serde::Serialize;
 use url::Url;
@@ -77,22 +77,32 @@ pub struct HttpRequestBuilder {
     /// Async header injectors snapshot from the originating client.
     pub(super) async_injectors: Vec<AsyncHttpHeaderInjector>,
     /// Log redaction snapshot from the originating client.
-    pub(super) log_redactor: HttpRedactor,
+    pub(super) log_redactor: Redactor,
 }
 
 impl fmt::Debug for HttpRequestBuilder {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let debugger = RedactedDebugger::new(&self.log_redactor);
-        let url = self
-            .debug_resolved_url()
-            .map(|url| debugger.redactor().redact_url(&url));
-        let base_url = self
-            .base_url
-            .as_ref()
-            .map(|url| debugger.redactor().redact_url(url));
-        let headers = debugger.redactor().redact_headers(&self.headers);
-        let default_headers =
-            debugger.redactor().redact_headers(&self.default_headers);
+        let url = self.debug_resolved_url().map(|url| {
+            debugger
+                .redactor()
+                .redact_http_url(url.as_str())
+                .into_text()
+        });
+        let base_url = self.base_url.as_ref().map(|url| {
+            debugger
+                .redactor()
+                .redact_http_url(url.as_str())
+                .into_text()
+        });
+        let headers = debugger
+            .redactor()
+            .redact_http_headers(&self.headers)
+            .into_text();
+        let default_headers = debugger
+            .redactor()
+            .redact_http_headers(&self.default_headers)
+            .into_text();
         formatter
             .debug_struct("HttpRequestBuilder")
             .field("method", &self.method)

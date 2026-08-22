@@ -49,16 +49,15 @@ fn test_request_builder_debug_masks_sensitive_values() {
     options
         .set_base_url("https://api.example.com/root/")
         .expect("base URL should be valid");
-    let mut builder = RedactionPolicy::default().to_builder();
-    builder
-        .http()
-        .header()
-        .raise("x-debug-secret", Sensitivity::High)
-        .expect("the test policy input should be valid");
-    builder
-        .http()
-        .query()
-        .raise("debugToken", Sensitivity::High)
+    let builder = RedactionPolicy::default()
+        .to_builder()
+        .http(|http| {
+            let _ = http.header().raise("x-debug-secret", Sensitivity::High);
+        })
+        .expect("the test policy input should be valid")
+        .http(|http| {
+            let _ = http.query().raise("debugToken", Sensitivity::High);
+        })
         .expect("the test policy input should be valid");
     options.log_redaction_policy = builder
         .build()

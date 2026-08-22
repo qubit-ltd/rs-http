@@ -66,8 +66,12 @@ fn test_http_response_meta_debug_masks_sensitive_values() {
 
 #[test]
 fn test_http_response_meta_debug_honors_url_path_redaction_policy() {
-    let mut policy_builder = RedactionPolicy::default().to_builder();
-    policy_builder.http().url_path(UrlPathPolicy::Redact);
+    let policy_builder = RedactionPolicy::default()
+        .to_builder()
+        .http(|http| {
+            http.url_path(UrlPathPolicy::Redact);
+        })
+        .expect("test policy should be valid");
     let meta = HttpResponseMeta::new(
         StatusCode::OK,
         HeaderMap::new(),
@@ -90,5 +94,5 @@ fn test_http_response_meta_debug_honors_url_path_redaction_policy() {
     assert!(!debug.contains("response-password-secret"));
     assert!(!debug.contains("response-query-secret"));
     assert!(!debug.contains("response-fragment-secret"));
-    assert!(debug.contains("/%3Credacted%3E?"));
+    assert!(debug.contains("/<redacted>?"));
 }
