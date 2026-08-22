@@ -156,6 +156,8 @@ let client = HttpClientFactory::new()
 | `proxy.enabled` | 是否启用代理 |
 | `use_env_proxy` | 显式代理禁用时，是否继承环境变量代理 |
 | `logging.enabled` | 是否允许 TRACE HTTP 日志 |
+| `json.max_depth` | response、SSE 和配置 header JSON 的最大嵌套深度 |
+| `json.max_nodes` | 单个 JSON value 的最大节点总数 |
 | `log_redaction.url_path_policy` | URL path 策略：默认 `preserve`，也可显式设为 `redact` |
 | `log_redaction.sensitive_headers` | 追加到默认集合的敏感 header 名称 |
 | `log_redaction.sensitive_query_params` | 追加到默认集合的敏感 query 参数名称 |
@@ -744,15 +746,17 @@ while let Some(item) = chunks.next().await {
 
 ### 配置 `sse_chunks` 选项
 
-`sse_json_mode`、`sse_done_marker_policy`、`sse_max_line_bytes`、`sse_max_frame_bytes` 均返回 `HttpResponse`（按值移动后的 `self`），可在调用 `sse_chunks::<T>()` 之前与之一同链式覆盖本响应上的 SSE JSON 模式、完成标记策略与行/帧上限：
+`json_value_limits`、`sse_json_mode`、`sse_done_marker_policy`、`sse_max_line_bytes`、`sse_max_frame_bytes` 均返回 `HttpResponse`（按值移动后的 `self`），可在调用 `sse_chunks::<T>()` 前链式覆盖本响应的 JSON value 预算、SSE JSON 模式、完成标记策略与行/帧上限：
 
 ```rust
 use futures_util::StreamExt;
+use qubit_budget::json::JsonValueLimits;
 use qubit_http::sse::{DoneMarkerPolicy, SseChunk, SseJsonMode};
 
 let response = client.execute(request).await?;
 
 let mut chunks = response
+    .json_value_limits(JsonValueLimits::builder().max_nodes(10_000).build())
     .sse_json_mode(SseJsonMode::Strict)
     .sse_done_marker_policy(DoneMarkerPolicy::DefaultDone)
     .sse_max_line_bytes(256)
@@ -773,7 +777,7 @@ while let Some(item) = chunks.next().await {
 - `DefaultDone`：`data:` 去除空白后等于 `[DONE]` 时输出 `SseChunk::Done` 并结束。
 - `Custom(String)`：使用自定义完成标记。
 
-`SseJsonMode::Lenient` 会跳过 malformed JSON chunk 并继续；`Strict` 会在第一个 malformed JSON 处返回 `HttpErrorKind::SseDecode`。默认的 JSON 模式、完成标记策略与行/帧上限可在 `HttpClientOptions`（及配置里的 `sse.*`）中设置；若仅本次响应需要不同取值，按上文「配置 `sse_chunks` 选项」小节将 `sse_json_mode`、`sse_done_marker_policy`、`sse_max_line_bytes`、`sse_max_frame_bytes` 与 `sse_chunks::<T>()` 链在同一条表达式上即可。
+`SseJsonMode::Lenient` 会跳过 malformed JSON chunk 并继续；`Strict` 会在第一个 malformed JSON 处返回 `HttpErrorKind::SseDecode`。JSON value 预算可通过 `HttpClientOptions::json_value_limits` 或 `json.max_*` 配置，SSE frame 限制通过 `sse.*` 配置。若只覆盖本次响应，可按上例把 `json_value_limits`、`sse_json_mode`、`sse_done_marker_policy`、`sse_max_line_bytes`、`sse_max_frame_bytes` 与 `sse_chunks::<T>()` 链在同一表达式中。
 
 ### SSE 自动重连
 
@@ -819,6 +823,7 @@ while let Some(item) = events.next().await {
 | `base_url` | 相对请求路径的基础 URL |
 | `ipv4_only` | 启用后 DNS 只保留 IPv4 地址，并拒绝 IPv6 literal URL |
 | `error_response_preview_limit` | 非 2xx 错误中保留的响应体预览字节数 |
+| `response_body_size_limit` | 整体响应体与 JSON helper 允许累计的最大字节数 |
 | `user_agent` | 传给 `reqwest` builder 的默认 User-Agent |
 | `max_redirects` | 最大重定向次数 |
 | `pool_idle_timeout` | 连接池空闲超时 |
@@ -833,6 +838,14 @@ while let Some(item) = events.next().await {
 | `log_redaction.excluded_sensitive_body_fields` | 显式允许保持可见的精确结构化 body 字段名称字符串列表 |
 | `default_headers` | 默认请求 header 的 JSON map 字符串；不能与 `default_headers.<name>` 同时使用 |
 | `default_headers.<name>` | 一个默认请求 header 子键；不能与 `default_headers` JSON map 同时使用 |
+| `json.max_depth` | JSON 最大嵌套深度；默认 `128` |
+| `json.max_nodes` | JSON 最大节点总数；默认 `100000` |
+| `json.max_sequence_items` | 单个 JSON array 的最大元素数；默认 `100000` |
+| `json.max_map_entries` | 单个 JSON object 的最大条目数；默认 `100000` |
+| `json.max_key_bytes` | 单个 object key 的最大 UTF-8 字节数；默认 `65536` |
+| `json.max_string_bytes` | 单个 string 的最大 UTF-8 字节数；默认 `8388608` |
+| `json.max_number_bytes` | 单个 number 词法表示的最大字节数；默认 `4096` |
+| `json.max_payload_bytes` | key、string 与 number 的累计 payload 字节上限；默认 `8388608` |
 | `timeouts.connect_timeout` | 连接超时 |
 | `timeouts.read_timeout` | 读取响应体或流时的单次等待超时 |
 | `timeouts.write_timeout` | 发送前准备和发送阶段超时 |

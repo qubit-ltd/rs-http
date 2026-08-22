@@ -467,13 +467,8 @@ impl HttpClient {
             request.method().clone(),
         )
         .with_log_redactor(log_redactor.clone());
-        let response_options = HttpResponseOptions::new(
-            self.options.error_response_preview_limit,
-            self.options.response_body_size_limit,
-            self.options.sse_json_mode,
-            self.options.sse_max_line_bytes,
-            self.options.sse_max_frame_bytes,
-            self.options.sse_done_marker_policy.clone(),
+        let response_options = HttpResponseOptions::from_client_options(
+            &self.options,
             log_redactor,
         );
         Ok(HttpResponse::from_backend(

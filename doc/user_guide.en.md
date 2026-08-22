@@ -156,6 +156,8 @@ Common configuration keys:
 | `proxy.enabled` | Enables outbound proxying |
 | `use_env_proxy` | Whether to inherit environment proxies when explicit proxying is disabled |
 | `logging.enabled` | Allows TRACE HTTP logs |
+| `json.max_depth` | Maximum nesting depth for response, SSE, and configured-header JSON |
+| `json.max_nodes` | Maximum total nodes in one JSON value |
 | `log_redaction.url_path_policy` | URL path policy: `preserve` by default, or explicit `redact` |
 | `log_redaction.sensitive_headers` | Extra sensitive header names added to the default log-redaction set |
 | `log_redaction.sensitive_query_params` | Extra sensitive query-parameter names added to the default set |
@@ -747,15 +749,17 @@ while let Some(item) = chunks.next().await {
 
 ### Configure `sse_chunks` options
 
-`sse_json_mode`, `sse_done_marker_policy`, `sse_max_line_bytes`, and `sse_max_frame_bytes` all return `HttpResponse` (moving `self` back to the caller), so you can chain them with `sse_chunks::<T>()` on the same expression. `sse_chunks` reads the effective options from that same instance:
+`json_value_limits`, `sse_json_mode`, `sse_done_marker_policy`, `sse_max_line_bytes`, and `sse_max_frame_bytes` all return `HttpResponse` (moving `self` back to the caller), so you can chain them with `sse_chunks::<T>()` on the same expression. `sse_chunks` reads the effective options from that same instance:
 
 ```rust
 use futures_util::StreamExt;
+use qubit_budget::json::JsonValueLimits;
 use qubit_http::sse::{DoneMarkerPolicy, SseChunk, SseJsonMode};
 
 let response = client.execute(request).await?;
 
 let mut chunks = response
+    .json_value_limits(JsonValueLimits::builder().max_nodes(10_000).build())
     .sse_json_mode(SseJsonMode::Strict)
     .sse_done_marker_policy(DoneMarkerPolicy::DefaultDone)
     .sse_max_line_bytes(256)
@@ -776,7 +780,7 @@ while let Some(item) = chunks.next().await {
 - `DefaultDone`: when trimmed `data:` equals `[DONE]`, emits `SseChunk::Done` and ends.
 - `Custom(String)`: uses a custom done marker.
 
-`SseJsonMode::Lenient` skips malformed JSON chunks and continues. `Strict` returns `HttpErrorKind::SseDecode` on the first malformed JSON chunk. Configure defaults on `HttpClientOptions` (and under `sse.*` in config), or override for one response by chaining `sse_json_mode`, `sse_done_marker_policy`, `sse_max_line_bytes`, and `sse_max_frame_bytes` with `sse_chunks::<T>()` on the same expression, as under “Configure `sse_chunks` options” above.
+`SseJsonMode::Lenient` skips malformed JSON chunks and continues. `Strict` returns `HttpErrorKind::SseDecode` on the first malformed JSON chunk. Configure JSON value limits through `HttpClientOptions::json_value_limits` or `json.max_*`, and configure SSE framing under `sse.*`. For one response, chain `json_value_limits`, `sse_json_mode`, `sse_done_marker_policy`, `sse_max_line_bytes`, and `sse_max_frame_bytes` with `sse_chunks::<T>()`, as shown above.
 
 ### SSE Auto-reconnect
 
@@ -822,6 +826,7 @@ The table below lists every configuration key supported by `HttpClientOptions::f
 | `base_url` | Base URL used to resolve relative request paths |
 | `ipv4_only` | Keeps only IPv4 DNS results and rejects IPv6 literal URLs |
 | `error_response_preview_limit` | Body preview byte limit stored on non-2xx errors |
+| `response_body_size_limit` | Maximum bytes accumulated by whole-response body and JSON helpers |
 | `user_agent` | Default User-Agent passed to the reqwest builder |
 | `max_redirects` | Redirect limit |
 | `pool_idle_timeout` | Connection pool idle timeout |
@@ -836,6 +841,14 @@ The table below lists every configuration key supported by `HttpClientOptions::f
 | `log_redaction.excluded_sensitive_body_fields` | String list of exact structured-body field names explicitly allowed to remain visible |
 | `default_headers` | JSON map string of default request headers; cannot be combined with `default_headers.<name>` |
 | `default_headers.<name>` | One default request header subkey; cannot be combined with the `default_headers` JSON map |
+| `json.max_depth` | Maximum JSON nesting depth; defaults to `128` |
+| `json.max_nodes` | Maximum total JSON nodes; defaults to `100000` |
+| `json.max_sequence_items` | Maximum items in one JSON array; defaults to `100000` |
+| `json.max_map_entries` | Maximum entries in one JSON object; defaults to `100000` |
+| `json.max_key_bytes` | Maximum UTF-8 bytes in one object key; defaults to `65536` |
+| `json.max_string_bytes` | Maximum UTF-8 bytes in one string; defaults to `8388608` |
+| `json.max_number_bytes` | Maximum bytes in one number lexeme; defaults to `4096` |
+| `json.max_payload_bytes` | Maximum cumulative key, string, and number payload bytes; defaults to `8388608` |
 | `timeouts.connect_timeout` | Connect timeout |
 | `timeouts.read_timeout` | Per-read wait timeout for body/stream reads |
 | `timeouts.write_timeout` | Pre-send preparation and send-phase timeout |

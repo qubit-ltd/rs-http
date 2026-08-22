@@ -16,6 +16,8 @@ use serde::de::DeserializeOwned;
 use super::SseJsonMode;
 use crate::HttpError;
 use crate::HttpResult;
+use crate::json_limits::default_json_value_limits;
+use crate::json_limits::json_decode_limits;
 
 /// One EventSource-style message dispatch after `data:` line reassembly.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,7 +47,41 @@ impl SseMessage {
     where
         T: DeserializeOwned,
     {
-        NormalizingJsonDecoder::owned(NormalizingJsonDecodePolicy::strict(), JsonDecodeLimits::default())
+        self.decode_json_with_limits(json_decode_limits(
+            self.data.len(),
+            default_json_value_limits(),
+        ))
+    }
+
+    /// Decodes strict JSON using explicit resource limits.
+    ///
+    /// # Type Parameters
+    ///
+    /// * `T` - Target type deserialized from [`SseMessage::data`].
+    ///
+    /// # Parameters
+    ///
+    /// * `limits` - Complete raw, normalized, and value resource limits.
+    ///
+    /// # Returns
+    ///
+    /// The decoded target value.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`HttpError::sse_decode`] when resource accounting or JSON
+    /// deserialization fails.
+    fn decode_json_with_limits<T>(
+        &self,
+        limits: JsonDecodeLimits,
+    ) -> HttpResult<T>
+    where
+        T: DeserializeOwned,
+    {
+        NormalizingJsonDecoder::owned(
+            NormalizingJsonDecodePolicy::strict(),
+            limits,
+        )
             .decode_str::<T>(&self.data)
             .map_err(|error| {
                 HttpError::sse_decode(format!(
@@ -82,12 +118,42 @@ impl SseMessage {
     where
         T: DeserializeOwned,
     {
+        self.decode_json_with_mode_and_limits(
+            mode,
+            json_decode_limits(self.data.len(), default_json_value_limits()),
+        )
+    }
+
+    /// Decodes JSON with selectable normalization and explicit limits.
+    ///
+    /// # Parameters
+    ///
+    /// * `mode` - JSON decoding strictness.
+    /// * `limits` - Complete raw, normalized, and value resource limits.
+    ///
+    /// # Returns
+    ///
+    /// A decoded value, or `None` when lenient mode skips a rejected payload.
+    ///
+    /// # Errors
+    ///
+    /// Returns an SSE decode error when strict mode rejects the payload.
+    pub(crate) fn decode_json_with_mode_and_limits<T>(
+        &self,
+        mode: SseJsonMode,
+        limits: JsonDecodeLimits,
+    ) -> HttpResult<Option<T>>
+    where
+        T: DeserializeOwned,
+    {
         match mode {
-            SseJsonMode::Strict => self.decode_json::<T>().map(Some),
+            SseJsonMode::Strict => {
+                self.decode_json_with_limits::<T>(limits).map(Some)
+            }
             SseJsonMode::Lenient => {
                 match NormalizingJsonDecoder::owned(
                     NormalizingJsonDecodePolicy::lenient(),
-                    JsonDecodeLimits::default(),
+                    limits,
                 )
                 .decode_str::<T>(&self.data)
                 {

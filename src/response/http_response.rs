@@ -22,7 +22,7 @@ use http::StatusCode;
 use http::header::CONTENT_LENGTH;
 use http::header::CONTENT_TYPE;
 use qubit_budget::ResourceBudget;
-use qubit_budget::json::JsonDecodeLimits;
+use qubit_budget::json::JsonValueLimits;
 use qubit_json::decode::NormalizingJsonDecodePolicy;
 use qubit_json::decode::NormalizingJsonDecoder;
 use qubit_redact::Redactor;
@@ -39,6 +39,7 @@ use crate::HttpResult;
 use crate::content_type;
 use crate::error::ReqwestErrorPhase;
 use crate::error::backend_error_mapper::map_reqwest_error;
+use crate::json_limits::json_decode_limits;
 use crate::sse::DoneMarkerPolicy;
 use crate::sse::SseChunkStream;
 use crate::sse::SseJsonMode;
@@ -310,7 +311,6 @@ impl HttpResponse {
     }
 
     /// Returns whether status is success.
-    #[inline(always)]
     pub fn is_success(&self) -> bool {
         self.status().is_success()
     }
@@ -620,7 +620,10 @@ impl HttpResponse {
         let body = self.bytes().await?;
         NormalizingJsonDecoder::owned(
             NormalizingJsonDecodePolicy::strict(),
-            JsonDecodeLimits::default(),
+            json_decode_limits(
+                self.options.response_body_size_limit,
+                self.options.json_value_limits,
+            ),
         )
         .decode_utf8(&body)
         .map_err(|error| {
@@ -632,6 +635,21 @@ impl HttpResponse {
         })
     }
 
+    /// Overrides structural and decoded-payload limits used by JSON response
+    /// and SSE decoding on this response.
+    ///
+    /// # Parameters
+    ///
+    /// * `limits` - JSON value limits replacing the client defaults.
+    ///
+    /// # Returns
+    ///
+    /// This response for chained configuration before consuming its body.
+    pub fn json_value_limits(mut self, limits: JsonValueLimits) -> Self {
+        self.options.json_value_limits = limits;
+        self
+    }
+
     /// Overrides the maximum allowed size (in bytes) for one SSE line on this
     /// response.
     ///
@@ -639,7 +657,6 @@ impl HttpResponse {
     /// configuration before consuming the body with [`Self::sse_messages`]
     /// or [`Self::sse_chunks`] (together with [`Self::sse_json_mode`],
     /// [`Self::sse_done_marker_policy`], etc.).
-    #[inline(always)]
     pub fn sse_max_line_bytes(mut self, max_line_bytes: usize) -> Self {
         self.options.sse_max_line_bytes = max_line_bytes.max(1);
         self
@@ -650,7 +667,6 @@ impl HttpResponse {
     ///
     /// Values below 1 are clamped to 1. Returns `self` for chained
     /// configuration.
-    #[inline(always)]
     pub fn sse_max_frame_bytes(mut self, max_frame_bytes: usize) -> Self {
         self.options.sse_max_frame_bytes = max_frame_bytes.max(1);
         self
@@ -666,7 +682,6 @@ impl HttpResponse {
 
     /// Overrides how [`Self::sse_chunks`] detects end-of-stream from trimmed
     /// `data:` payloads.
-    #[inline(always)]
     pub fn sse_done_marker_policy(mut self, policy: DoneMarkerPolicy) -> Self {
         self.options.sse_done_marker_policy = policy;
         self
@@ -733,6 +748,7 @@ impl HttpResponse {
         let mode = self.options.sse_json_mode;
         let max_line_bytes = self.options.sse_max_line_bytes;
         let max_frame_bytes = self.options.sse_max_frame_bytes;
+        let json_value_limits = self.options.json_value_limits;
         let log_redactor = self.log_redactor().clone();
         let decoded: SseChunkStream<T> = match self.stream() {
             Ok(stream) => {
@@ -742,6 +758,7 @@ impl HttpResponse {
                     mode,
                     max_line_bytes,
                     max_frame_bytes,
+                    json_value_limits,
                 )
             }
             Err(error) => {

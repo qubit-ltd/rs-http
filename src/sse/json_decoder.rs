@@ -11,6 +11,7 @@
 
 use async_stream::stream;
 use futures_util::StreamExt;
+use qubit_budget::json::JsonValueLimits;
 use serde::de::DeserializeOwned;
 
 use super::DoneMarkerPolicy;
@@ -19,6 +20,7 @@ use super::SseChunkStream;
 use super::SseJsonMode;
 use super::decode_messages_from_stream_with_limits;
 use crate::HttpByteStream;
+use crate::json_limits::json_decode_limits;
 
 /// Parses SSE JSON payloads with selectable strictness and explicit line/frame
 /// size limits.
@@ -29,6 +31,8 @@ use crate::HttpByteStream;
 /// - `mode`: Lenient vs strict JSON parsing.
 /// - `max_line_bytes`: Maximum allowed bytes for one SSE line.
 /// - `max_frame_bytes`: Maximum allowed bytes for one SSE frame.
+/// - `json_value_limits`: Structural and decoded-payload limits for each JSON
+///   event.
 ///
 /// # Type parameters
 /// - `T`: JSON type to deserialize.
@@ -42,6 +46,7 @@ pub(crate) fn decode_json_chunks_from_stream_with_limits<T>(
     mode: SseJsonMode,
     max_line_bytes: usize,
     max_frame_bytes: usize,
+    json_value_limits: JsonValueLimits,
 ) -> SseChunkStream<T>
 where
     T: DeserializeOwned + Send + 'static,
@@ -72,7 +77,9 @@ where
                 return;
             }
 
-            match message.decode_json_with_mode::<T>(mode) {
+            let limits =
+                json_decode_limits(max_frame_bytes, json_value_limits);
+            match message.decode_json_with_mode_and_limits::<T>(mode, limits) {
                 Ok(Some(data)) => yield Ok(SseChunk::Data(data)),
                 Ok(None) => continue,
                 Err(error) => {

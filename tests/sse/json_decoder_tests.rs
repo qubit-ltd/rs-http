@@ -11,6 +11,7 @@ use bytes::Bytes;
 use futures_util::StreamExt;
 use http::HeaderMap;
 use http::Method;
+use qubit_budget::json::JsonValueLimits;
 use qubit_http::HttpResponse;
 use qubit_http::HttpResult;
 use qubit_http::sse::DoneMarkerPolicy;
@@ -129,6 +130,24 @@ async fn test_decode_json_chunks_with_limits_reports_sse_protocol_error() {
     let error = stream.next().await.unwrap().unwrap_err();
     assert_eq!(error.kind, qubit_http::HttpErrorKind::SseProtocol);
     assert!(error.message.contains("max_frame_bytes"));
+}
+
+#[tokio::test]
+async fn test_decode_json_chunks_applies_response_json_value_limits() {
+    let response =
+        stream_response_from_chunks(vec!["data: {\"value\": 1}\n\n"]);
+    let mut stream = response
+        .json_value_limits(JsonValueLimits::builder().max_nodes(1).build())
+        .sse_json_mode(SseJsonMode::Strict)
+        .sse_chunks::<TestChunk>();
+
+    let error = stream
+        .next()
+        .await
+        .expect("stream should produce a result")
+        .expect_err("response JSON node limit must reject the SSE payload");
+
+    assert_eq!(error.kind, qubit_http::HttpErrorKind::SseDecode);
 }
 
 /// Regression: `sse_json_mode` → `sse_done_marker_policy` →

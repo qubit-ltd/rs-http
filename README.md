@@ -134,7 +134,7 @@ accepts removing HTTP context floors.
 | Type | Purpose |
 | --- | --- |
 | `HttpClientFactory` | Creates clients from defaults, explicit options, or config. |
-| `HttpClientOptions` | Holds client-level defaults for base URL, headers, timeouts, retry, logging, proxy, redirects, connection pool, and SSE decoding. |
+| `HttpClientOptions` | Holds client-level defaults for base URL, headers, timeouts, retry, logging, proxy, redirects, connection pool, JSON value limits, and SSE decoding. |
 | `HttpClient` | Executes requests and applies headers, injectors, interceptors, retry, logging, and SSE reconnect helpers. |
 | `HttpRequestBuilder` | Builds method, path, query, headers, body, and request-level overrides. |
 | `HttpResponse` | Exposes response metadata and lazy readers for bytes, text, JSON, streams, and SSE. |

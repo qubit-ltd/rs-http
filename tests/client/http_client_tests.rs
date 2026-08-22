@@ -22,6 +22,7 @@ use http::StatusCode;
 use http::header::AUTHORIZATION;
 use http::header::CONTENT_TYPE;
 use http::header::HeaderName;
+use qubit_budget::json::JsonValueLimits;
 use qubit_http::HttpClientFactory;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpError;
@@ -178,6 +179,37 @@ async fn test_execute_success_with_header_injector_and_request_override() {
     );
 
     assert!(captured.headers.contains_key("content-length"));
+}
+
+#[tokio::test]
+async fn test_execute_json_applies_configured_value_limits() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 200,
+        headers: vec![(
+            "Content-Type".to_string(),
+            "application/json".to_string(),
+        )],
+        body: br#"{"outer":{"value":7}}"#.to_vec(),
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.json_value_limits = JsonValueLimits::builder().max_nodes(1).build();
+    let client = HttpClientFactory::new()
+        .create(options)
+        .expect("client should be created");
+    let request = client.request(Method::GET, "/json-value-limit").build();
+    let mut response = client.execute(request).await.expect("request succeeds");
+
+    let error = response
+        .json::<serde_json::Value>()
+        .await
+        .expect_err("configured JSON node limit must reject the response");
+
+    assert_eq!(error.kind, HttpErrorKind::Decode);
+    let captured = server.finish().await;
+    assert_eq!(captured.target, "/json-value-limit");
 }
 
 #[tokio::test]

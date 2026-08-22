@@ -13,6 +13,7 @@ use futures_util::StreamExt;
 use http::HeaderMap;
 use http::Method;
 use http::StatusCode;
+use qubit_budget::json::JsonValueLimits;
 use qubit_http::HttpClientFactory;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
@@ -265,6 +266,44 @@ async fn test_execute_stream_decode_events_uses_client_default_sse_limits() {
     let error = events.next().await.unwrap().unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::SseProtocol);
     assert!(error.message.contains("max_frame_bytes"));
+}
+
+#[tokio::test]
+async fn test_sse_chunks_apply_client_json_value_limits() {
+    let server = spawn_one_shot_server(ResponsePlan::Chunked {
+        status: 200,
+        headers: vec![(
+            "Content-Type".to_string(),
+            "text/event-stream".to_string(),
+        )],
+        chunks: vec![ResponseChunk {
+            delay: Duration::ZERO,
+            bytes: b"data: {\"value\":1}\n\n".to_vec(),
+        }],
+        finish: true,
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.sse_json_mode = SseJsonMode::Strict;
+    options.json_value_limits = JsonValueLimits::builder().max_nodes(1).build();
+    let client = HttpClientFactory::new()
+        .create(options)
+        .expect("client should be created");
+    let request = client.request(Method::GET, "/sse-json-value-limit").build();
+    let response = client.execute(request).await.expect("request succeeds");
+    let mut chunks = response.sse_chunks::<TestChunk>();
+
+    let error = chunks
+        .next()
+        .await
+        .expect("stream should produce a result")
+        .expect_err("configured JSON node limit must reject the SSE payload");
+
+    assert_eq!(error.kind, HttpErrorKind::SseDecode);
+    let captured = server.finish().await;
+    assert_eq!(captured.target, "/sse-json-value-limit");
 }
 
 /// Verifies SSE decoding errors retain the client redactor snapshot instead of
