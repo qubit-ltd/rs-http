@@ -39,7 +39,6 @@ use crate::HttpResult;
 use crate::content_type;
 use crate::error::ReqwestErrorPhase;
 use crate::error::backend_error_mapper::map_reqwest_error;
-use crate::redact::RedactedDebugger;
 use crate::sse::DoneMarkerPolicy;
 use crate::sse::SseChunkStream;
 use crate::sse::SseJsonMode;
@@ -191,19 +190,16 @@ pub struct HttpResponse {
 
 impl fmt::Debug for HttpResponse {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let debugger = RedactedDebugger::new(&self.options.log_redactor);
-        let url = debugger
-            .redactor()
-            .redact_http_url(self.meta.url().as_str())
-            .into_text();
-        let request_url = debugger
-            .redactor()
-            .redact_http_url(self.runtime.request_url.as_str())
-            .into_text();
-        let headers = debugger
-            .redactor()
-            .redact_http_headers(self.meta.headers())
-            .into_text();
+        let mut batch = self.options.log_redactor.batch();
+        let url = batch.redact_http_url(self.meta.url().as_str());
+        let request_url =
+            batch.redact_http_url(self.runtime.request_url.as_str());
+        let headers = batch.redact_http_headers(self.meta.headers());
+        let output = batch.finish();
+        let url = output.resolve(url).map_err(|_| fmt::Error)?.text();
+        let request_url =
+            output.resolve(request_url).map_err(|_| fmt::Error)?.text();
+        let headers = output.resolve(headers).map_err(|_| fmt::Error)?.text();
         formatter
             .debug_struct("HttpResponse")
             .field("status", &self.meta.status())

@@ -37,7 +37,6 @@ use crate::HttpRequestStreamingBody;
 use crate::HttpResult;
 use crate::HttpRetryMethodPolicy;
 use crate::content_type;
-use crate::redact::RedactedDebugger;
 
 /// Builder for [`HttpRequest`](super::http_request::HttpRequest).
 #[derive(Clone)]
@@ -82,27 +81,30 @@ pub struct HttpRequestBuilder {
 
 impl fmt::Debug for HttpRequestBuilder {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let debugger = RedactedDebugger::new(&self.log_redactor);
-        let url = self.debug_resolved_url().map(|url| {
-            debugger
-                .redactor()
-                .redact_http_url(url.as_str())
-                .into_text()
-        });
-        let base_url = self.base_url.as_ref().map(|url| {
-            debugger
-                .redactor()
-                .redact_http_url(url.as_str())
-                .into_text()
-        });
-        let headers = debugger
-            .redactor()
-            .redact_http_headers(&self.headers)
-            .into_text();
-        let default_headers = debugger
-            .redactor()
-            .redact_http_headers(&self.default_headers)
-            .into_text();
+        let mut batch = self.log_redactor.batch();
+        let url = self
+            .debug_resolved_url()
+            .map(|url| batch.redact_http_url(url.as_str()));
+        let base_url = self
+            .base_url
+            .as_ref()
+            .map(|url| batch.redact_http_url(url.as_str()));
+        let headers = batch.redact_http_headers(&self.headers);
+        let default_headers = batch.redact_http_headers(&self.default_headers);
+        let output = batch.finish();
+        let url = url
+            .map(|handle| output.resolve(handle).map(|item| item.text()))
+            .transpose()
+            .map_err(|_| fmt::Error)?;
+        let base_url = base_url
+            .map(|handle| output.resolve(handle).map(|item| item.text()))
+            .transpose()
+            .map_err(|_| fmt::Error)?;
+        let headers = output.resolve(headers).map_err(|_| fmt::Error)?.text();
+        let default_headers = output
+            .resolve(default_headers)
+            .map_err(|_| fmt::Error)?
+            .text();
         formatter
             .debug_struct("HttpRequestBuilder")
             .field("method", &self.method)

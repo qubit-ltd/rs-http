@@ -130,6 +130,36 @@ fn test_http_request_debug_masks_native_sensitive_header_value() {
     assert!(!debug.contains("native-debug-header-secret"));
 }
 
+/// All redacted fields in one structured diagnostic share one output budget;
+/// a late header collection must not receive a fresh allowance.
+#[test]
+fn test_http_request_debug_shares_one_redaction_budget() {
+    let mut options = HttpClientOptions::new();
+    options.log_redaction_policy = RedactionPolicy::builder()
+        .limits(|limits| {
+            limits.max_output_bytes(40);
+        })
+        .expect("limits should be valid")
+        .build()
+        .expect("policy should build");
+    let client = HttpClientFactory::new()
+        .create(options)
+        .expect("client should be created");
+    let request = client
+        .request(
+            Method::GET,
+            "https://user:password@example.com/very/long/path?token=secret",
+        )
+        .header("authorization", "Bearer header-secret")
+        .expect("header should be valid")
+        .build();
+
+    let debug = format!("{request:?}");
+
+    assert!(!debug.contains("authorization"));
+    assert!(!debug.contains("header-secret"));
+}
+
 #[test]
 fn test_http_request_debug_honors_url_path_redaction_policy() {
     let mut options = HttpClientOptions::new();
