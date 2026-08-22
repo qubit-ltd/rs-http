@@ -58,6 +58,39 @@ fn test_sse_message_decode_json_error_is_sse_decode_with_context() {
 }
 
 #[test]
+fn test_sse_message_decode_json_uses_safe_default_depth_limit() {
+    let nesting = 129;
+    let message = SseMessage {
+        event: None,
+        data: format!("{}null{}", "[".repeat(nesting), "]".repeat(nesting)),
+        last_event_id: None,
+    };
+
+    let error = message
+        .decode_json::<serde_json::Value>()
+        .expect_err("default SSE JSON depth limit must reject deep input");
+    let source = std::error::Error::source(&error)
+        .expect("SSE JSON budget failure should retain its source");
+    let decode_error = source
+        .downcast_ref::<qubit_json::decode::NormalizingJsonDecodeError>()
+        .expect("source should be a normalizing JSON decode error");
+
+    assert_eq!(error.kind, HttpErrorKind::SseDecode);
+    assert!(matches!(
+        decode_error.measured_budget_error(),
+        Some(qubit_budget::MeasuredBudgetError::Budget(
+            qubit_budget::BudgetError::LimitExceeded {
+                resource: qubit_budget::json::JsonResource::Depth,
+                ..
+            } | qubit_budget::BudgetError::Insufficient {
+                resource: qubit_budget::json::JsonResource::Depth,
+                ..
+            }
+        ))
+    ));
+}
+
+#[test]
 fn test_sse_message_decode_json_with_mode_lenient_returns_none_for_bad_json() {
     let message = SseMessage {
         event: Some("response.output_text.delta".to_string()),

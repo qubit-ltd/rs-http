@@ -8,6 +8,7 @@
 
 use std::time::Duration;
 
+use qubit_budget::json::JsonValueLimits;
 use qubit_config::Config;
 use qubit_config::options::InterpolationSources;
 use qubit_config::options::ReadPolicy;
@@ -130,6 +131,23 @@ fn test_http_client_options_defaults() {
     assert_eq!(options.sse_done_marker_policy, DoneMarkerPolicy::default());
     assert_eq!(options.sse_max_line_bytes, DEFAULT_SSE_MAX_LINE_BYTES);
     assert_eq!(options.sse_max_frame_bytes, DEFAULT_SSE_MAX_FRAME_BYTES);
+    assert_eq!(options.json_value_limits.max_depth(), Some(128));
+    assert_eq!(options.json_value_limits.max_nodes(), Some(100_000));
+    assert_eq!(
+        options.json_value_limits.max_sequence_items(),
+        Some(100_000)
+    );
+    assert_eq!(options.json_value_limits.max_map_entries(), Some(100_000));
+    assert_eq!(options.json_value_limits.max_key_bytes(), Some(64 * 1024));
+    assert_eq!(
+        options.json_value_limits.max_string_bytes(),
+        Some(8 * 1024 * 1024)
+    );
+    assert_eq!(options.json_value_limits.max_number_bytes(), Some(4 * 1024));
+    assert_eq!(
+        options.json_value_limits.max_payload_bytes(),
+        Some(8 * 1024 * 1024)
+    );
 }
 
 #[test]
@@ -168,6 +186,59 @@ fn test_http_client_options_new_matches_default() {
     );
     assert_eq!(options.sse_max_line_bytes, defaults.sse_max_line_bytes);
     assert_eq!(options.sse_max_frame_bytes, defaults.sse_max_frame_bytes);
+    assert_eq!(options.json_value_limits, defaults.json_value_limits);
+}
+
+#[test]
+fn test_http_client_options_json_value_limits_from_config() {
+    let mut config = Config::new();
+    config.set("http.json.max_depth", 2_u64).unwrap();
+    config.set("http.json.max_nodes", 3_u64).unwrap();
+    config.set("http.json.max_sequence_items", 4_u64).unwrap();
+    config.set("http.json.max_map_entries", 5_u64).unwrap();
+    config.set("http.json.max_key_bytes", 6_u64).unwrap();
+    config.set("http.json.max_string_bytes", 7_u64).unwrap();
+    config.set("http.json.max_number_bytes", 8_u64).unwrap();
+    config.set("http.json.max_payload_bytes", 9_u64).unwrap();
+
+    let options = HttpClientOptions::from_config(
+        &config.section("http").expect("HTTP section should exist"),
+    )
+    .expect("JSON value limits should parse");
+
+    assert_eq!(
+        options.json_value_limits,
+        JsonValueLimits::builder()
+            .max_depth(2)
+            .max_nodes(3)
+            .max_sequence_items(4)
+            .max_map_entries(5)
+            .max_key_bytes(6)
+            .max_string_bytes(7)
+            .max_number_bytes(8)
+            .max_payload_bytes(9)
+            .build()
+    );
+}
+
+#[test]
+fn test_default_headers_json_uses_configured_value_limits() {
+    let mut config = Config::new();
+    config.set("http.json.max_nodes", 1_u64).unwrap();
+    config
+        .set(
+            "http.default_headers",
+            r#"{"x-request-id":"abc-123"}"#.to_string(),
+        )
+        .unwrap();
+
+    let error = HttpClientOptions::from_config(
+        &config.section("http").expect("HTTP section should exist"),
+    )
+    .expect_err("configured JSON node limit must reject default_headers");
+
+    assert_eq!(error.kind, HttpConfigErrorKind::TypeError);
+    assert_eq!(error.path, "http.default_headers");
 }
 
 #[test]

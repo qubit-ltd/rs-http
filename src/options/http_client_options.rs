@@ -15,7 +15,7 @@ use http::HeaderMap;
 use http::HeaderValue;
 use qubit_argument::ArgumentResultExt;
 use qubit_argument::require_that;
-use qubit_budget::json::JsonDecodeLimits;
+use qubit_budget::json::JsonValueLimits;
 use qubit_config::ConfigReader;
 use qubit_config::ConfigResult;
 use qubit_json::decode::NormalizingJsonDecodePolicy;
@@ -39,6 +39,8 @@ use crate::constants::DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES;
 use crate::constants::DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES;
 use crate::constants::DEFAULT_SSE_MAX_FRAME_BYTES;
 use crate::constants::DEFAULT_SSE_MAX_LINE_BYTES;
+use crate::json_limits::default_json_value_limits;
+use crate::json_limits::json_decode_limits;
 use crate::request::parse_header;
 use crate::sse::DoneMarkerPolicy;
 use crate::sse::SseJsonMode;
@@ -63,6 +65,9 @@ pub struct HttpClientOptions {
     /// Maximum bytes accumulated by [`crate::HttpResponse::bytes`] and its
     /// text/JSON helpers.
     pub response_body_size_limit: usize,
+    /// Structural and decoded-payload limits applied to JSON response bodies,
+    /// SSE payloads, and JSON-valued HTTP configuration.
+    pub json_value_limits: JsonValueLimits,
     /// Optional default `User-Agent` header sent by reqwest.
     pub user_agent: Option<String>,
     /// Optional redirect limit applied by reqwest.
@@ -107,6 +112,7 @@ impl Default for HttpClientOptions {
             error_response_preview_limit:
                 DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES,
             response_body_size_limit: DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES,
+            json_value_limits: default_json_value_limits(),
             user_agent: None,
             max_redirects: None,
             pool_idle_timeout: None,
@@ -155,6 +161,7 @@ impl fmt::Debug for HttpClientOptions {
                 &self.error_response_preview_limit,
             )
             .field("response_body_size_limit", &self.response_body_size_limit)
+            .field("json_value_limits", &self.json_value_limits)
             .field("user_agent", &self.user_agent)
             .field("max_redirects", &self.max_redirects)
             .field("pool_idle_timeout", &self.pool_idle_timeout)
@@ -191,6 +198,26 @@ struct HttpClientSseConfigInput {
     done_marker: Option<String>,
     max_line_bytes: Option<usize>,
     max_frame_bytes: Option<usize>,
+}
+
+/// Optional scalar overrides read from `json.*`.
+struct HttpClientJsonConfigInput {
+    /// Maximum nesting depth.
+    max_depth: Option<usize>,
+    /// Maximum total JSON nodes.
+    max_nodes: Option<usize>,
+    /// Maximum items in one array.
+    max_sequence_items: Option<usize>,
+    /// Maximum entries in one object.
+    max_map_entries: Option<usize>,
+    /// Maximum UTF-8 bytes in one object key.
+    max_key_bytes: Option<usize>,
+    /// Maximum UTF-8 bytes in one string value.
+    max_string_bytes: Option<usize>,
+    /// Maximum bytes in one number lexeme.
+    max_number_bytes: Option<usize>,
+    /// Maximum cumulative key, string, and number payload bytes.
+    max_payload_bytes: Option<usize>,
 }
 
 impl HttpClientOptions {
@@ -297,6 +324,47 @@ impl HttpClientOptions {
         }
         if let Some(use_env_proxy) = root.use_env_proxy {
             opts.use_env_proxy = use_env_proxy;
+        }
+
+        if let Some(json_config) = config
+            .section_if_present("json")
+            .map_err(HttpConfigError::from)?
+        {
+            let json = match Self::read_json_config(&json_config) {
+                Ok(json) => json,
+                Err(error) => {
+                    return Err(Self::resolve_config_error(
+                        &json_config,
+                        HttpConfigError::from(error),
+                    ));
+                }
+            };
+            let mut builder = opts.json_value_limits.into_builder();
+            if let Some(maximum) = json.max_depth {
+                builder = builder.max_depth(maximum);
+            }
+            if let Some(maximum) = json.max_nodes {
+                builder = builder.max_nodes(maximum);
+            }
+            if let Some(maximum) = json.max_sequence_items {
+                builder = builder.max_sequence_items(maximum);
+            }
+            if let Some(maximum) = json.max_map_entries {
+                builder = builder.max_map_entries(maximum);
+            }
+            if let Some(maximum) = json.max_key_bytes {
+                builder = builder.max_key_bytes(maximum);
+            }
+            if let Some(maximum) = json.max_string_bytes {
+                builder = builder.max_string_bytes(maximum);
+            }
+            if let Some(maximum) = json.max_number_bytes {
+                builder = builder.max_number_bytes(maximum);
+            }
+            if let Some(maximum) = json.max_payload_bytes {
+                builder = builder.max_payload_bytes(maximum);
+            }
+            opts.json_value_limits = builder.build();
         }
 
         // timeouts
@@ -625,7 +693,7 @@ impl HttpClientOptions {
             let parsed: HashMap<String, String> =
                 match NormalizingJsonDecoder::owned(
                     NormalizingJsonDecodePolicy::strict(),
-                    JsonDecodeLimits::default(),
+                    json_decode_limits(json_str.len(), opts.json_value_limits),
                 )
                 .decode_str(&json_str)
                 {
@@ -807,6 +875,40 @@ impl HttpClientOptions {
                 .get_optional_interpolated::<String>("done_marker")?,
             max_line_bytes: get_optional_usize(config, "max_line_bytes")?,
             max_frame_bytes: get_optional_usize(config, "max_frame_bytes")?,
+        })
+    }
+
+    /// Reads optional JSON value-limit overrides from a `json` section.
+    ///
+    /// # Parameters
+    ///
+    /// * `config` - Reader scoped to the `json` section.
+    ///
+    /// # Returns
+    ///
+    /// Optional scalar overrides for every supported JSON value resource.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first configuration type or quantity conversion error.
+    fn read_json_config<R>(
+        config: &R,
+    ) -> ConfigResult<HttpClientJsonConfigInput>
+    where
+        R: ConfigReader + ?Sized,
+    {
+        Ok(HttpClientJsonConfigInput {
+            max_depth: get_optional_usize(config, "max_depth")?,
+            max_nodes: get_optional_usize(config, "max_nodes")?,
+            max_sequence_items: get_optional_usize(
+                config,
+                "max_sequence_items",
+            )?,
+            max_map_entries: get_optional_usize(config, "max_map_entries")?,
+            max_key_bytes: get_optional_usize(config, "max_key_bytes")?,
+            max_string_bytes: get_optional_usize(config, "max_string_bytes")?,
+            max_number_bytes: get_optional_usize(config, "max_number_bytes")?,
+            max_payload_bytes: get_optional_usize(config, "max_payload_bytes")?,
         })
     }
 
