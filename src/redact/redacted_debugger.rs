@@ -36,12 +36,6 @@ impl<'redactor> RedactedDebugger<'redactor> {
         }
     }
 
-    /// Returns the immutable redactor used for each independent field.
-    #[inline(always)]
-    pub(crate) const fn redactor(&self) -> &'redactor Redactor {
-        self.redactor
-    }
-
     /// Returns an optional redacted URL through the direct adapter API.
     #[inline(always)]
     pub(crate) fn optional_url(

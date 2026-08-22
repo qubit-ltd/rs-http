@@ -18,7 +18,6 @@ use qubit_redact::Redactor;
 use url::Url;
 
 use super::HttpResponseMeta;
-use crate::redact::RedactedDebugger;
 
 /// Metadata view passed to response interceptors.
 ///
@@ -205,15 +204,12 @@ impl HttpResponseInterceptorContext {
 
 impl fmt::Debug for HttpResponseInterceptorContext {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let debugger = RedactedDebugger::new(&self.log_redactor);
-        let url = debugger
-            .redactor()
-            .redact_http_url(self.url.as_str())
-            .into_text();
-        let headers = debugger
-            .redactor()
-            .redact_http_headers(&self.headers)
-            .into_text();
+        let mut batch = self.log_redactor.batch();
+        let url = batch.redact_http_url(self.url.as_str());
+        let headers = batch.redact_http_headers(&self.headers);
+        let output = batch.finish();
+        let url = output.resolve(url).map_err(|_| fmt::Error)?.text();
+        let headers = output.resolve(headers).map_err(|_| fmt::Error)?.text();
         formatter
             .debug_struct("HttpResponseInterceptorContext")
             .field("status", &self.status)

@@ -39,7 +39,6 @@ use crate::constants::DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES;
 use crate::constants::DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES;
 use crate::constants::DEFAULT_SSE_MAX_FRAME_BYTES;
 use crate::constants::DEFAULT_SSE_MAX_LINE_BYTES;
-use crate::redact::RedactedDebugger;
 use crate::request::parse_header;
 use crate::sse::DoneMarkerPolicy;
 use crate::sse::SseJsonMode;
@@ -129,12 +128,21 @@ impl Default for HttpClientOptions {
 impl fmt::Debug for HttpClientOptions {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let redactor = Redactor::new(self.log_redaction_policy.clone());
-        let debugger = RedactedDebugger::new(&redactor);
-        let base_url = debugger.optional_url(self.base_url.as_ref());
-        let default_headers = debugger
-            .redactor()
-            .redact_http_headers(&self.default_headers)
-            .into_text();
+        let mut batch = redactor.batch();
+        let base_url = self
+            .base_url
+            .as_ref()
+            .map(|url| batch.redact_http_url(url.as_str()));
+        let default_headers = batch.redact_http_headers(&self.default_headers);
+        let output = batch.finish();
+        let base_url = base_url
+            .map(|handle| output.resolve(handle).map(|item| item.text()))
+            .transpose()
+            .map_err(|_| fmt::Error)?;
+        let default_headers = output
+            .resolve(default_headers)
+            .map_err(|_| fmt::Error)?
+            .text();
         formatter
             .debug_struct("HttpClientOptions")
             .field("base_url", &base_url)
