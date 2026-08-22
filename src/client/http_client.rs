@@ -15,7 +15,7 @@
 use std::time::Duration;
 use std::time::Instant;
 
-use qubit_redact::formats::http::HttpRedactor;
+use qubit_redact::Redactor;
 use qubit_retry::AttemptFailure;
 use qubit_retry::Retry;
 use qubit_retry::RetryDecision;
@@ -62,7 +62,7 @@ pub struct HttpClient {
     pub(super) options: HttpClientOptions,
     /// Shared redactor for all request/response/error snapshots created by
     /// this client.
-    log_redactor: HttpRedactor,
+    log_redactor: Redactor,
     /// Header injectors applied to every outgoing request after default
     /// headers.
     pub(super) injectors: Vec<HttpHeaderInjector>,
@@ -116,8 +116,7 @@ impl HttpClient {
         backend: reqwest::Client,
         options: HttpClientOptions,
     ) -> Self {
-        let log_redactor =
-            HttpRedactor::new(options.log_redaction_policy.clone());
+        let log_redactor = Redactor::new(options.log_redaction_policy.clone());
         Self {
             backend,
             options,
@@ -139,8 +138,8 @@ impl HttpClient {
         &self.options
     }
 
-    /// Returns the shared [`HttpRedactor`] used by this client.
-    pub(crate) fn log_redactor(&self) -> &HttpRedactor {
+    /// Returns the shared [`Redactor`] used by this client.
+    pub(crate) fn log_redactor(&self) -> &Redactor {
         &self.log_redactor
     }
 

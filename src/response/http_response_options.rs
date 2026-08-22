@@ -8,7 +8,6 @@
 //! Decode and error-preview options bound to one response instance.
 
 use qubit_redact::Redactor;
-use qubit_redact::formats::http::HttpRedactor;
 
 use crate::constants::DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES;
 use crate::constants::DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES;
@@ -33,7 +32,7 @@ pub(crate) struct HttpResponseOptions {
     /// `data:` markers.
     pub sse_done_marker_policy: DoneMarkerPolicy,
     /// Shared redactor used for status-error body previews.
-    pub log_redactor: HttpRedactor,
+    pub log_redactor: Redactor,
 }
 
 impl Default for HttpResponseOptions {
@@ -46,9 +45,7 @@ impl Default for HttpResponseOptions {
             sse_max_line_bytes: DEFAULT_SSE_MAX_LINE_BYTES,
             sse_max_frame_bytes: DEFAULT_SSE_MAX_FRAME_BYTES,
             sse_done_marker_policy: DoneMarkerPolicy::default(),
-            log_redactor: HttpRedactor::new(
-                Redactor::default().policy().clone(),
-            ),
+            log_redactor: Redactor::application_default(),
         }
     }
 }
@@ -61,7 +58,7 @@ impl HttpResponseOptions {
         sse_max_line_bytes: usize,
         sse_max_frame_bytes: usize,
         sse_done_marker_policy: DoneMarkerPolicy,
-        log_redactor: HttpRedactor,
+        log_redactor: Redactor,
     ) -> Self {
         Self {
             error_response_preview_limit: error_response_preview_limit.max(1),

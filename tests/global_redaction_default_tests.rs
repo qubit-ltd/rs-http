@@ -19,14 +19,14 @@ use url::Url;
 
 #[test]
 fn test_http_defaults_use_installed_global_policy() {
-    let mut builder = RedactionPolicy::builder();
-    builder
-        .http()
-        .query()
-        .raise("tenant_secret", Sensitivity::Secret)
+    let builder = RedactionPolicy::builder()
+        .http(|http| {
+            let _ = http.query().raise("tenant_secret", Sensitivity::Secret);
+        })
         .expect("the test query field should be valid");
     let policy = builder.build().expect("the test policy should build");
-    let previous = Redactor::set_default(Redactor::new(policy.clone()));
+    let previous =
+        Redactor::replace_application_default(Redactor::new(policy.clone()));
     let url = Url::parse(
         "https://example.test/resource?tenant_secret=raw-tenant-secret",
     )
@@ -45,5 +45,5 @@ fn test_http_defaults_use_installed_global_policy() {
     assert_eq!(options.log_redaction_policy, policy);
     assert!(!format!("{error:?}").contains("raw-tenant-secret"));
     assert!(!format!("{metadata:?}").contains("raw-tenant-secret"));
-    let _ = Redactor::set_default(previous);
+    let _ = Redactor::replace_application_default(previous);
 }

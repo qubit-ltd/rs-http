@@ -9,8 +9,8 @@
 //! Safe rendering helpers for HTTP TRACE logs.
 
 use http::HeaderValue;
-use qubit_redact::formats::http::BodyRedaction;
-use qubit_redact::formats::http::HttpRedactor;
+use qubit_redact::RedactionTextOutput;
+use qubit_redact::Redactor;
 
 use super::BodyPreview;
 use crate::HttpClientOptions;
@@ -19,7 +19,7 @@ use crate::HttpClientOptions;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RedactedLogger {
     /// Unified redactor for URLs, headers, and bodies.
-    redactor: HttpRedactor,
+    redactor: Redactor,
     /// Maximum source bytes offered by the presentation layer.
     body_size_limit: usize,
 }
@@ -36,10 +36,7 @@ impl RedactedLogger {
     ///
     /// A safe TRACE rendering helper.
     #[inline]
-    pub(crate) fn new(
-        log_redactor: HttpRedactor,
-        body_size_limit: usize,
-    ) -> Self {
+    pub(crate) fn new(log_redactor: Redactor, body_size_limit: usize) -> Self {
         Self {
             redactor: log_redactor,
             body_size_limit,
@@ -59,14 +56,14 @@ impl RedactedLogger {
     #[inline(always)]
     pub(crate) fn from_options_with_redactor(
         options: &HttpClientOptions,
-        log_redactor: HttpRedactor,
+        log_redactor: Redactor,
     ) -> Self {
         Self::new(log_redactor, options.logging.body_size_limit)
     }
 
     /// Creates one diagnostic session for a complete TRACE record.
     #[inline(always)]
-    pub(crate) const fn redactor(&self) -> &HttpRedactor {
+    pub(crate) const fn redactor(&self) -> &Redactor {
         &self.redactor
     }
 
@@ -91,8 +88,8 @@ impl RedactedLogger {
         &self,
         body: &[u8],
         content_type: Option<&HeaderValue>,
-    ) -> BodyRedaction {
-        self.redactor.redact_body(
+    ) -> RedactionTextOutput {
+        self.redactor.redact_http_body(
             BodyPreview::new(body, self.body_size_limit).capture(),
             content_type,
         )

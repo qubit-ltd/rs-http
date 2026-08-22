@@ -16,7 +16,6 @@ use http::StatusCode;
 use qubit_error::BoxError;
 use qubit_redact::RedactionPolicy;
 use qubit_redact::Redactor;
-use qubit_redact::formats::http::HttpRedactor;
 use url::Url;
 
 use super::HttpErrorKind;
@@ -47,14 +46,13 @@ pub struct HttpError {
     pub source: Option<BoxError>,
     /// Redactor used when rendering this error with [`Debug`](fmt::Debug) or
     /// [`Display`](fmt::Display).
-    pub log_redactor: HttpRedactor,
+    pub log_redactor: Redactor,
 }
 
 impl fmt::Display for HttpError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let debugger = RedactedDebugger::new(&self.log_redactor);
-        let message = debugger.redactor().redact_urls_in_text(&self.message);
-        fmt::Display::fmt(&message, formatter)
+        formatter.write_str(&debugger.urls_in_text(&self.message))
     }
 }
 
@@ -70,7 +68,7 @@ impl fmt::Debug for HttpError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let debugger = RedactedDebugger::new(&self.log_redactor);
         let url = debugger.optional_url(self.url.as_ref());
-        let message = debugger.redactor().redact_urls_in_text(&self.message);
+        let message = debugger.urls_in_text(&self.message);
         let response_body_preview_len =
             self.response_body_preview.as_ref().map(String::len);
         formatter
@@ -108,9 +106,7 @@ impl HttpError {
             response_body_preview: None,
             retry_after: None,
             source: None,
-            log_redactor: HttpRedactor::new(
-                Redactor::default().policy().clone(),
-            ),
+            log_redactor: Redactor::application_default(),
         }
     }
 
@@ -201,7 +197,7 @@ impl HttpError {
     /// # Returns
     /// `self` for chaining.
     #[inline(always)]
-    pub fn with_log_redactor(mut self, log_redactor: HttpRedactor) -> Self {
+    pub fn with_log_redactor(mut self, log_redactor: Redactor) -> Self {
         self.log_redactor = log_redactor;
         self
     }
@@ -219,7 +215,7 @@ impl HttpError {
         mut self,
         policy: RedactionPolicy,
     ) -> Self {
-        self.log_redactor = HttpRedactor::new(policy);
+        self.log_redactor = Redactor::new(policy);
         self
     }
 

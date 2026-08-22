@@ -15,7 +15,6 @@ use http::Method;
 use http::StatusCode;
 use qubit_redact::RedactionPolicy;
 use qubit_redact::Redactor;
-use qubit_redact::formats::http::HttpRedactor;
 use url::Url;
 
 use super::HttpResponseMeta;
@@ -38,7 +37,7 @@ pub struct HttpResponseInterceptorContext {
     /// Originating request method captured before interceptor execution.
     method: Method,
     /// Redaction policy snapshot used by standalone debug output.
-    log_redactor: HttpRedactor,
+    log_redactor: Redactor,
 }
 
 impl HttpResponseInterceptorContext {
@@ -65,9 +64,7 @@ impl HttpResponseInterceptorContext {
             headers,
             url,
             method,
-            log_redactor: HttpRedactor::new(
-                Redactor::default().policy().clone(),
-            ),
+            log_redactor: Redactor::application_default(),
         }
     }
 
@@ -98,7 +95,7 @@ impl HttpResponseInterceptorContext {
     /// # Returns
     /// Updated context.
     #[inline(always)]
-    pub fn with_log_redactor(mut self, log_redactor: HttpRedactor) -> Self {
+    pub fn with_log_redactor(mut self, log_redactor: Redactor) -> Self {
         self.log_redactor = log_redactor;
         self
     }
@@ -115,7 +112,7 @@ impl HttpResponseInterceptorContext {
         mut self,
         policy: RedactionPolicy,
     ) -> Self {
-        self.log_redactor = HttpRedactor::new(policy);
+        self.log_redactor = Redactor::new(policy);
         self
     }
 
@@ -209,8 +206,14 @@ impl HttpResponseInterceptorContext {
 impl fmt::Debug for HttpResponseInterceptorContext {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let debugger = RedactedDebugger::new(&self.log_redactor);
-        let url = debugger.redactor().redact_url(&self.url);
-        let headers = debugger.redactor().redact_headers(&self.headers);
+        let url = debugger
+            .redactor()
+            .redact_http_url(self.url.as_str())
+            .into_text();
+        let headers = debugger
+            .redactor()
+            .redact_http_headers(&self.headers)
+            .into_text();
         formatter
             .debug_struct("HttpResponseInterceptorContext")
             .field("status", &self.status)

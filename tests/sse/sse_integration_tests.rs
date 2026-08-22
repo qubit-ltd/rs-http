@@ -209,11 +209,11 @@ async fn test_execute_stream_decode_json_chunks_uses_client_default_strict_mode(
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.sse_json_mode = SseJsonMode::Strict;
-    let mut builder = RedactionPolicy::default().to_builder();
-    builder
-        .http()
-        .body()
-        .raise("sse_decode_secret", Sensitivity::Secret)
+    let builder = RedactionPolicy::default()
+        .to_builder()
+        .http(|http| {
+            let _ = http.body().raise("sse_decode_secret", Sensitivity::Secret);
+        })
         .expect("the test policy input should be valid");
     let expected_policy = builder
         .build()
@@ -285,11 +285,13 @@ async fn test_sse_decode_error_preserves_client_redactor_policy() {
     })
     .await;
 
-    let mut builder = RedactionPolicy::default().to_builder();
-    builder
-        .http()
-        .query()
-        .raise("tenant_stream_secret", Sensitivity::Secret)
+    let builder = RedactionPolicy::default()
+        .to_builder()
+        .http(|http| {
+            let _ = http
+                .query()
+                .raise("tenant_stream_secret", Sensitivity::Secret);
+        })
         .expect("the test policy input should be valid");
     let expected_policy = builder
         .build()

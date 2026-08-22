@@ -52,11 +52,11 @@ const CUSTOM_QUERY_SECRET: &str = "task12-custom-query-secret";
 ///
 /// A policy that treats [`CUSTOM_QUERY_FIELD`] as highly sensitive.
 fn custom_query_redaction_policy() -> RedactionPolicy {
-    let mut builder = RedactionPolicy::default().to_builder();
-    builder
-        .http()
-        .query()
-        .raise(CUSTOM_QUERY_FIELD, Sensitivity::High)
+    let builder = RedactionPolicy::default()
+        .to_builder()
+        .http(|http| {
+            let _ = http.query().raise(CUSTOM_QUERY_FIELD, Sensitivity::High);
+        })
         .expect("the test policy input should be valid");
     builder
         .build()
@@ -940,16 +940,15 @@ async fn test_execute_response_metadata_debug_uses_custom_log_policy() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let mut policy_builder = RedactionPolicy::default().to_builder();
-    policy_builder
-        .http()
-        .header()
-        .raise("x-tenant-secret", Sensitivity::High)
-        .expect("the test policy input should be valid");
-    policy_builder
-        .http()
-        .query()
-        .raise("tenant_marker", Sensitivity::High)
+    let policy_builder = RedactionPolicy::default()
+        .to_builder()
+        .http(|http| {
+            let _ = http.header().raise("x-tenant-secret", Sensitivity::High);
+        })
+        .expect("the test policy input should be valid")
+        .http(|http| {
+            let _ = http.query().raise("tenant_marker", Sensitivity::High);
+        })
         .expect("the test policy input should be valid");
     options.log_redaction_policy = policy_builder
         .build()
@@ -1055,12 +1054,13 @@ async fn test_execute_non_success_text_body_pass_through_uses_same_policy_snapsh
         body: b"opt-in-status-text".to_vec(),
     })
     .await;
-    let mut policy_builder = RedactionPolicy::default().to_builder();
-    policy_builder
-        .http()
-        .text_body(TextBodyPolicy::PassThrough)
-        .query()
-        .override_level("accessToken", Sensitivity::Low)
+    let policy_builder = RedactionPolicy::default()
+        .to_builder()
+        .http(|http| {
+            http.text_body(TextBodyPolicy::PassThrough);
+            let _ =
+                http.query().override_level("accessToken", Sensitivity::Low);
+        })
         .expect("the test policy input should be valid");
     let policy = policy_builder
         .build()

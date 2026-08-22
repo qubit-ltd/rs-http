@@ -15,14 +15,14 @@ use http::HeaderMap;
 use http::HeaderValue;
 use qubit_argument::ArgumentResultExt;
 use qubit_argument::require_that;
+use qubit_budget::json::JsonDecodeLimits;
 use qubit_config::ConfigReader;
 use qubit_config::ConfigResult;
-use qubit_json::decode::NormalizingJsonDecodeOptions;
+use qubit_json::decode::NormalizingJsonDecodePolicy;
 use qubit_json::decode::NormalizingJsonDecoder;
 use qubit_redact::RedactionPolicy;
 use qubit_redact::Redactor;
 use qubit_redact::Sensitivity;
-use qubit_redact::formats::http::HttpRedactor;
 use qubit_redact::formats::http::UrlPathPolicy;
 use url::Url;
 
@@ -114,7 +114,9 @@ impl Default for HttpClientOptions {
             pool_max_idle_per_host: None,
             use_env_proxy: false,
             retry: HttpRetryOptions::default(),
-            log_redaction_policy: Redactor::default().policy().clone(),
+            log_redaction_policy: Redactor::application_default()
+                .policy()
+                .clone(),
             ipv4_only: false,
             sse_json_mode: SseJsonMode::Lenient,
             sse_done_marker_policy: DoneMarkerPolicy::default(),
@@ -126,11 +128,13 @@ impl Default for HttpClientOptions {
 
 impl fmt::Debug for HttpClientOptions {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let redactor = HttpRedactor::new(self.log_redaction_policy.clone());
+        let redactor = Redactor::new(self.log_redaction_policy.clone());
         let debugger = RedactedDebugger::new(&redactor);
         let base_url = debugger.optional_url(self.base_url.as_ref());
-        let default_headers =
-            debugger.redactor().redact_headers(&self.default_headers);
+        let default_headers = debugger
+            .redactor()
+            .redact_http_headers(&self.default_headers)
+            .into_text();
         formatter
             .debug_struct("HttpClientOptions")
             .field("base_url", &base_url)
@@ -443,14 +447,27 @@ impl HttpClientOptions {
                         ));
                     }
                 };
-                policy_builder.http().url_path(policy);
+                policy_builder = policy_builder
+                    .http(|http| {
+                        http.url_path(policy);
+                    })
+                    .map_err(|error| {
+                        Self::resolve_config_error(
+                            &log_redaction_config,
+                            HttpConfigError::invalid_value(
+                                "url_path_policy",
+                                error.to_string(),
+                            ),
+                        )
+                    })?;
             }
             if let Some(names) = log_redaction.sensitive_headers {
                 for name in names {
-                    policy_builder
-                        .http()
-                        .header()
-                        .raise(&name, Sensitivity::High)
+                    policy_builder = policy_builder
+                        .http(|http| {
+                            let _ =
+                                http.header().raise(&name, Sensitivity::High);
+                        })
                         .map_err(|error| {
                             Self::resolve_config_error(
                                 &log_redaction_config,
@@ -464,10 +481,11 @@ impl HttpClientOptions {
             }
             if let Some(names) = log_redaction.sensitive_query_params {
                 for name in names {
-                    policy_builder
-                        .http()
-                        .query()
-                        .raise(&name, Sensitivity::High)
+                    policy_builder = policy_builder
+                        .http(|http| {
+                            let _ =
+                                http.query().raise(&name, Sensitivity::High);
+                        })
                         .map_err(|error| {
                             Self::resolve_config_error(
                                 &log_redaction_config,
@@ -481,10 +499,10 @@ impl HttpClientOptions {
             }
             if let Some(names) = log_redaction.sensitive_body_fields {
                 for name in names {
-                    policy_builder
-                        .http()
-                        .body()
-                        .raise(&name, Sensitivity::High)
+                    policy_builder = policy_builder
+                        .http(|http| {
+                            let _ = http.body().raise(&name, Sensitivity::High);
+                        })
                         .map_err(|error| {
                             Self::resolve_config_error(
                                 &log_redaction_config,
@@ -498,8 +516,11 @@ impl HttpClientOptions {
             }
             if let Some(names) = log_redaction.excluded_sensitive_headers {
                 for name in names {
-                    policy_builder.http().header().allow_exact(&name).map_err(
-                        |error| {
+                    policy_builder = policy_builder
+                        .http(|http| {
+                            let _ = http.header().allow_exact(&name);
+                        })
+                        .map_err(|error| {
                             Self::resolve_config_error(
                                 &log_redaction_config,
                                 HttpConfigError::invalid_value(
@@ -507,14 +528,16 @@ impl HttpClientOptions {
                                     error.to_string(),
                                 ),
                             )
-                        },
-                    )?;
+                        })?;
                 }
             }
             if let Some(names) = log_redaction.excluded_sensitive_query_params {
                 for name in names {
-                    policy_builder.http().query().allow_exact(&name).map_err(
-                        |error| {
+                    policy_builder = policy_builder
+                        .http(|http| {
+                            let _ = http.query().allow_exact(&name);
+                        })
+                        .map_err(|error| {
                             Self::resolve_config_error(
                                 &log_redaction_config,
                                 HttpConfigError::invalid_value(
@@ -522,14 +545,16 @@ impl HttpClientOptions {
                                     error.to_string(),
                                 ),
                             )
-                        },
-                    )?;
+                        })?;
                 }
             }
             if let Some(names) = log_redaction.excluded_sensitive_body_fields {
                 for name in names {
-                    policy_builder.http().body().allow_exact(&name).map_err(
-                        |error| {
+                    policy_builder = policy_builder
+                        .http(|http| {
+                            let _ = http.body().allow_exact(&name);
+                        })
+                        .map_err(|error| {
                             Self::resolve_config_error(
                                 &log_redaction_config,
                                 HttpConfigError::invalid_value(
@@ -537,8 +562,7 @@ impl HttpClientOptions {
                                     error.to_string(),
                                 ),
                             )
-                        },
-                    )?;
+                        })?;
                 }
             }
             opts.log_redaction_policy =
@@ -591,8 +615,9 @@ impl HttpClientOptions {
         }
         if let Some(json_str) = json_headers {
             let parsed: HashMap<String, String> =
-                match NormalizingJsonDecoder::new(
-                    NormalizingJsonDecodeOptions::strict(),
+                match NormalizingJsonDecoder::owned(
+                    NormalizingJsonDecodePolicy::strict(),
+                    JsonDecodeLimits::default(),
                 )
                 .decode_str(&json_str)
                 {

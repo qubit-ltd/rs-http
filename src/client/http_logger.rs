@@ -12,8 +12,8 @@
 use http::HeaderValue;
 use http::header::CONTENT_TYPE;
 use qubit_redact::RedactionCompletion;
-use qubit_redact::formats::http::BodyRedaction;
-use qubit_redact::formats::http::HttpRedactor;
+use qubit_redact::RedactionTextOutput;
+use qubit_redact::Redactor;
 use tracing::Metadata;
 use tracing::callsite::DefaultCallsite;
 use tracing::metadata::Kind;
@@ -71,8 +71,7 @@ impl<'a> HttpLogger<'a> {
     /// # Returns
     /// A logger that emits TRACE records according to the provided options.
     pub fn new(options: &'a HttpClientOptions) -> Self {
-        let log_redactor =
-            HttpRedactor::new(options.log_redaction_policy.clone());
+        let log_redactor = Redactor::new(options.log_redaction_policy.clone());
         Self::from_options_with_redactor(options, log_redactor)
     }
 
@@ -88,7 +87,7 @@ impl<'a> HttpLogger<'a> {
     /// A logger that shares the caller's immutable redactor snapshot.
     pub(crate) fn from_options_with_redactor(
         options: &'a HttpClientOptions,
-        log_redactor: HttpRedactor,
+        log_redactor: Redactor,
     ) -> Self {
         Self {
             options: &options.logging,
@@ -121,8 +120,11 @@ impl<'a> HttpLogger<'a> {
             .unwrap_or_else(|| request.headers());
 
         if self.options.log_request_header {
-            let redacted_headers =
-                self.redacted_logger.redactor().redact_headers(headers);
+            let redacted_headers = self
+                .redacted_logger
+                .redactor()
+                .redact_http_headers(headers)
+                .into_text();
             tracing::trace!("{}", redacted_headers);
         }
 
@@ -163,14 +165,19 @@ impl<'a> HttpLogger<'a> {
             return Ok(());
         }
 
-        let url = self.redacted_logger.redactor().redact_url(response.url());
+        let url = self
+            .redacted_logger
+            .redactor()
+            .redact_http_url(response.url().as_str())
+            .into_text();
         tracing::trace!("<-- {} {}", response.status().as_u16(), url);
 
         if self.options.log_response_header {
             let headers = self
                 .redacted_logger
                 .redactor()
-                .redact_headers(response.headers());
+                .redact_http_headers(response.headers())
+                .into_text();
             tracing::trace!("{}", headers);
             return self.log_response_body(response).await;
         }
@@ -223,7 +230,8 @@ impl<'a> HttpLogger<'a> {
         let url = self
             .redacted_logger
             .redactor()
-            .redact_url(response_meta.url());
+            .redact_http_url(response_meta.url().as_str())
+            .into_text();
         tracing::trace!(
             "<-- {} {} (stream)",
             response_meta.status().as_u16(),
@@ -234,7 +242,8 @@ impl<'a> HttpLogger<'a> {
             let headers = self
                 .redacted_logger
                 .redactor()
-                .redact_headers(response_meta.headers());
+                .redact_http_headers(response_meta.headers())
+                .into_text();
             tracing::trace!("{}", headers);
         }
     }
@@ -264,7 +273,8 @@ impl<'a> HttpLogger<'a> {
             Ok(url) => self
                 .redacted_logger
                 .redactor()
-                .redact_url(&url)
+                .redact_http_url(url.as_str())
+                .into_text()
                 .into_string(),
             Err(_) => UNRESOLVED_REQUEST_URL.to_string(),
         }
@@ -317,10 +327,13 @@ impl<'a> HttpLogger<'a> {
     ///
     /// Complete or truncated log-safe text as described above, or the outer
     /// marker for exhausted results.
-    fn render_body_redaction(redaction: BodyRedaction) -> String {
-        match redaction.completion() {
+    fn render_body_redaction(redaction: RedactionTextOutput) -> String {
+        match redaction.summary().completion() {
             RedactionCompletion::Complete | RedactionCompletion::Truncated => {
-                redaction.into_text().into_owned()
+                redaction.into_text().into_string()
+            }
+            RedactionCompletion::Exhausted => {
+                "<redaction exhausted>".to_owned()
             }
         }
     }

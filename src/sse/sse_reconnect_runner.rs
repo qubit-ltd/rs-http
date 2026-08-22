@@ -18,7 +18,7 @@ use http::header::CONTENT_TYPE;
 use http::header::HeaderName;
 use http::header::HeaderValue;
 use qubit_clock::StdMonotonicClock;
-use qubit_redact::formats::http::HttpRedactor;
+use qubit_redact::Redactor;
 use qubit_retry::BackoffRequest;
 use qubit_retry::BackoffState;
 use qubit_retry::RetryBudget;
@@ -56,7 +56,7 @@ struct ReconnectRuntime<'a> {
     /// Request URL used in reconnect cancellation and max-elapsed errors.
     request_url: Option<&'a url::Url>,
     /// Shared request redactor used by reconnect-generated errors.
-    log_redactor: &'a HttpRedactor,
+    log_redactor: &'a Redactor,
 }
 
 /// Outcome after trying to schedule one reconnect.
@@ -471,7 +471,7 @@ impl SseReconnectRunner {
 fn apply_last_event_id_header(
     request: &mut HttpRequest,
     last_event_id: &str,
-    log_redactor: &HttpRedactor,
+    log_redactor: &Redactor,
 ) -> HttpResult<()> {
     let header_value =
         HeaderValue::from_str(last_event_id).map_err(|error| {
@@ -523,7 +523,7 @@ async fn sleep_reconnect_delay(
     cancellation_token: Option<&RetryCancellationToken>,
     request_method: &http::Method,
     request_url: Option<&url::Url>,
-    log_redactor: &HttpRedactor,
+    log_redactor: &Redactor,
 ) -> HttpResult<()> {
     if let Some(token) = cancellation_token {
         tokio::select! {
@@ -612,7 +612,7 @@ fn max_elapsed_exceeded_error(
     max_elapsed: Duration,
     request_method: &http::Method,
     request_url: Option<&url::Url>,
-    log_redactor: &HttpRedactor,
+    log_redactor: &Redactor,
 ) -> HttpError {
     let mut error = HttpError::retry_max_elapsed_exceeded(format!(
         "SSE reconnect max duration exceeded: {elapsed:?}/{max_elapsed:?}"
@@ -643,7 +643,7 @@ fn max_elapsed_exceeded_error_with_last_error(
     max_elapsed: Duration,
     request_method: &http::Method,
     request_url: Option<&url::Url>,
-    log_redactor: &HttpRedactor,
+    log_redactor: &Redactor,
 ) -> HttpError {
     let error = max_elapsed_exceeded_error(
         elapsed,
@@ -671,7 +671,7 @@ fn operation_elapsed_exceeded_error(
     max_elapsed: Option<Duration>,
     request_method: &http::Method,
     request_url: Option<&url::Url>,
-    log_redactor: &HttpRedactor,
+    log_redactor: &Redactor,
 ) -> HttpError {
     let max_elapsed = max_elapsed.expect(
         "operation budget exhaustion requires a configured operation limit",
@@ -704,7 +704,7 @@ fn operation_elapsed_exceeded_error_with_last_error(
     max_elapsed: Option<Duration>,
     request_method: &http::Method,
     request_url: Option<&url::Url>,
-    log_redactor: &HttpRedactor,
+    log_redactor: &Redactor,
 ) -> HttpError {
     let error = operation_elapsed_exceeded_error(
         elapsed,
@@ -762,7 +762,7 @@ fn attach_last_retryable_error(
 /// non-UTF8, or not SSE media type.
 fn validate_sse_response_content_type(
     response: &HttpResponse,
-    log_redactor: &HttpRedactor,
+    log_redactor: &Redactor,
 ) -> HttpResult<()> {
     let method = response.meta().method().clone();
     let url = response.request_url().clone();
