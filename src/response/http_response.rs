@@ -372,8 +372,9 @@ impl HttpResponse {
         let log_redactor = self.log_redactor().clone();
         let body_preview =
             self.into_error_body_preview(error_preview_limit).await?;
-        let redacted_url =
-            log_redactor.redact_http_url(url.as_str()).into_text();
+        let redacted_url = log_redactor
+            .redact_http_url(url.as_str())
+            .into_text_or_marker("<redaction incomplete>");
         let message = format!(
             "{} with status {} for {} {}; response body preview: {}",
             message_prefix, status, method, redacted_url, body_preview
@@ -1003,7 +1004,7 @@ impl HttpResponse {
             qubit_redact::formats::http::BodyCapture::complete(bytes)
         };
         let body = log_redactor.redact_http_body(capture, content_type);
-        body.into_text().into_string()
+        body.into_text_or_marker("<redaction incomplete>").into_string()
     }
 
     /// Extracts a Content-Type header value.

@@ -124,7 +124,7 @@ impl<'a> HttpLogger<'a> {
                 .redacted_logger
                 .redactor()
                 .redact_http_headers(headers)
-                .into_text();
+                .into_text_or_marker("<redaction incomplete>");
             tracing::trace!("{}", redacted_headers);
         }
 
@@ -169,7 +169,7 @@ impl<'a> HttpLogger<'a> {
             .redacted_logger
             .redactor()
             .redact_http_url(response.url().as_str())
-            .into_text();
+            .into_text_or_marker("<redaction incomplete>");
         tracing::trace!("<-- {} {}", response.status().as_u16(), url);
 
         if self.options.log_response_header {
@@ -177,7 +177,7 @@ impl<'a> HttpLogger<'a> {
                 .redacted_logger
                 .redactor()
                 .redact_http_headers(response.headers())
-                .into_text();
+                .into_text_or_marker("<redaction incomplete>");
             tracing::trace!("{}", headers);
             return self.log_response_body(response).await;
         }
@@ -231,7 +231,7 @@ impl<'a> HttpLogger<'a> {
             .redacted_logger
             .redactor()
             .redact_http_url(response_meta.url().as_str())
-            .into_text();
+            .into_text_or_marker("<redaction incomplete>");
         tracing::trace!(
             "<-- {} {} (stream)",
             response_meta.status().as_u16(),
@@ -243,7 +243,7 @@ impl<'a> HttpLogger<'a> {
                 .redacted_logger
                 .redactor()
                 .redact_http_headers(response_meta.headers())
-                .into_text();
+                .into_text_or_marker("<redaction incomplete>");
             tracing::trace!("{}", headers);
         }
     }
@@ -274,7 +274,7 @@ impl<'a> HttpLogger<'a> {
                 .redacted_logger
                 .redactor()
                 .redact_http_url(url.as_str())
-                .into_text()
+                .into_text_or_marker("<redaction incomplete>")
                 .into_string(),
             Err(_) => UNRESOLVED_REQUEST_URL.to_string(),
         }
@@ -330,7 +330,8 @@ impl<'a> HttpLogger<'a> {
     fn render_body_redaction(redaction: RedactionTextOutput) -> String {
         match redaction.summary().completion() {
             RedactionCompletion::Complete | RedactionCompletion::Truncated => {
-                redaction.into_text().into_string()
+                let (text, _) = redaction.into_parts();
+                text.into_string()
             }
             RedactionCompletion::Exhausted => {
                 "<redaction exhausted>".to_owned()

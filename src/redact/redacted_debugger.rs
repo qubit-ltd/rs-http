@@ -42,7 +42,11 @@ impl<'redactor> RedactedDebugger<'redactor> {
         &self,
         url: Option<&Url>,
     ) -> Option<RedactedText> {
-        url.map(|url| self.redactor.redact_http_url(url.as_str()).into_text())
+        url.map(|url| {
+            self.redactor
+                .redact_http_url(url.as_str())
+                .into_text_or_marker("<redaction incomplete>")
+        })
     }
 
     /// Redacts HTTP URLs embedded in a diagnostic message.
@@ -70,7 +74,7 @@ impl<'redactor> RedactedDebugger<'redactor> {
                         |url| {
                             self.redactor
                                 .redact_http_url(url.as_str())
-                                .into_text()
+                                .into_text_or_marker("<redaction incomplete>")
                                 .into_string()
                         },
                     )
