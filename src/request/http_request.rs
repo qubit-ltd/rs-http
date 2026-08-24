@@ -120,14 +120,25 @@ impl fmt::Debug for HttpRequest {
         let headers = batch.redact_http_headers(&self.headers);
         let output = batch.finish();
         let url = url
-            .map(|handle| output.resolve(handle).map(|item| item.text()))
+            .map(|handle| {
+                output
+                    .resolve(handle)
+                    .map(|item| item.text_or_marker("<redaction incomplete>"))
+            })
             .transpose()
             .map_err(|_| fmt::Error)?;
         let base_url = base_url
-            .map(|handle| output.resolve(handle).map(|item| item.text()))
+            .map(|handle| {
+                output
+                    .resolve(handle)
+                    .map(|item| item.text_or_marker("<redaction incomplete>"))
+            })
             .transpose()
             .map_err(|_| fmt::Error)?;
-        let headers = output.resolve(headers).map_err(|_| fmt::Error)?.text();
+        let headers = output
+            .resolve(headers)
+            .map_err(|_| fmt::Error)?
+            .text_or_marker("<redaction incomplete>");
         formatter
             .debug_struct("HttpRequest")
             .field("method", &self.method)
