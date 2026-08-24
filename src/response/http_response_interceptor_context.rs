@@ -209,13 +209,11 @@ impl fmt::Debug for HttpResponseInterceptorContext {
         let headers = batch.redact_http_headers(&self.headers);
         let output = batch.finish();
         let url = output
-            .resolve(url)
-            .map_err(|_| fmt::Error)?
-            .text_or_marker("<redaction incomplete>");
+            .resolve_text_or_marker(url, "<redaction incomplete>")
+            .map_err(|_| fmt::Error)?;
         let headers = output
-            .resolve(headers)
-            .map_err(|_| fmt::Error)?
-            .text_or_marker("<redaction incomplete>");
+            .resolve_text_or_marker(headers, "<redaction incomplete>")
+            .map_err(|_| fmt::Error)?;
         formatter
             .debug_struct("HttpResponseInterceptorContext")
             .field("status", &self.status)

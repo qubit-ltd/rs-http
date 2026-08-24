@@ -143,16 +143,13 @@ impl fmt::Debug for HttpClientOptions {
         let output = batch.finish();
         let base_url = base_url
             .map(|handle| {
-                output
-                    .resolve(handle)
-                    .map(|item| item.text_or_marker("<redaction incomplete>"))
+                output.resolve_text_or_marker(handle, "<redaction incomplete>")
             })
             .transpose()
             .map_err(|_| fmt::Error)?;
         let default_headers = output
-            .resolve(default_headers)
-            .map_err(|_| fmt::Error)?
-            .text_or_marker("<redaction incomplete>");
+            .resolve_text_or_marker(default_headers, "<redaction incomplete>")
+            .map_err(|_| fmt::Error)?;
         formatter
             .debug_struct("HttpClientOptions")
             .field("base_url", &base_url)
