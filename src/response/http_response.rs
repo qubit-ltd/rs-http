@@ -1004,7 +1004,8 @@ impl HttpResponse {
             qubit_redact::formats::http::BodyCapture::complete(bytes)
         };
         let body = log_redactor.redact_http_body(capture, content_type);
-        body.into_text_or_marker("<redaction incomplete>").into_string()
+        body.into_text_or_marker("<redaction incomplete>")
+            .into_string()
     }
 
     /// Extracts a Content-Type header value.
