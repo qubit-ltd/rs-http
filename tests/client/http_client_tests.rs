@@ -868,7 +868,7 @@ async fn test_execute_non_success_error_body_preview_is_truncated_by_limit() {
     assert_eq!(error.kind, HttpErrorKind::Status);
     assert_eq!(
         error.response_body_preview.as_deref(),
-        Some("<redacted: unsupported HTTP body><truncated>")
+        Some("<redaction incomplete>")
     );
 }
 
@@ -926,7 +926,7 @@ async fn test_execute_truncated_binary_error_preview_has_unknown_total_length()
     assert_eq!(error.kind, HttpErrorKind::Status);
     assert_eq!(
         error.response_body_preview.as_deref(),
-        Some("<binary 4 bytes><truncated>"),
+        Some("<redaction incomplete>"),
     );
 }
 
@@ -1194,7 +1194,7 @@ async fn test_execute_non_success_error_body_preview_truncates_when_limit_reache
     assert_eq!(error.kind, HttpErrorKind::Status);
     assert_eq!(
         error.response_body_preview.as_deref(),
-        Some("<redacted: unsupported HTTP body><truncated>")
+        Some("<redaction incomplete>")
     );
 }
 
@@ -1223,7 +1223,7 @@ async fn test_execute_error_body_preview_limit_is_decoupled_from_logging_limit()
     assert_eq!(error.kind, HttpErrorKind::Status);
     assert_eq!(
         error.response_body_preview.as_deref(),
-        Some("<redacted: unsupported HTTP body><truncated>")
+        Some("<redaction incomplete>")
     );
 }
 

@@ -156,6 +156,7 @@ fn test_http_request_debug_shares_one_redaction_budget() {
 
     let debug = format!("{request:?}");
 
+    assert!(debug.contains("<redaction incomplete>"));
     assert!(!debug.contains("authorization"));
     assert!(!debug.contains("header-secret"));
 }

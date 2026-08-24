@@ -197,10 +197,18 @@ impl fmt::Debug for HttpResponse {
             batch.redact_http_url(self.runtime.request_url.as_str());
         let headers = batch.redact_http_headers(self.meta.headers());
         let output = batch.finish();
-        let url = output.resolve(url).map_err(|_| fmt::Error)?.text();
-        let request_url =
-            output.resolve(request_url).map_err(|_| fmt::Error)?.text();
-        let headers = output.resolve(headers).map_err(|_| fmt::Error)?.text();
+        let url = output
+            .resolve(url)
+            .map_err(|_| fmt::Error)?
+            .text_or_marker("<redaction incomplete>");
+        let request_url = output
+            .resolve(request_url)
+            .map_err(|_| fmt::Error)?
+            .text_or_marker("<redaction incomplete>");
+        let headers = output
+            .resolve(headers)
+            .map_err(|_| fmt::Error)?
+            .text_or_marker("<redaction incomplete>");
         formatter
             .debug_struct("HttpResponse")
             .field("status", &self.meta.status())
