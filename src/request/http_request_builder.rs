@@ -94,28 +94,22 @@ impl fmt::Debug for HttpRequestBuilder {
         let output = batch.finish();
         let url = url
             .map(|handle| {
-                output
-                    .resolve(handle)
-                    .map(|item| item.text_or_marker("<redaction incomplete>"))
+                output.resolve_text_or_marker(handle, "<redaction incomplete>")
             })
             .transpose()
             .map_err(|_| fmt::Error)?;
         let base_url = base_url
             .map(|handle| {
-                output
-                    .resolve(handle)
-                    .map(|item| item.text_or_marker("<redaction incomplete>"))
+                output.resolve_text_or_marker(handle, "<redaction incomplete>")
             })
             .transpose()
             .map_err(|_| fmt::Error)?;
         let headers = output
-            .resolve(headers)
-            .map_err(|_| fmt::Error)?
-            .text_or_marker("<redaction incomplete>");
+            .resolve_text_or_marker(headers, "<redaction incomplete>")
+            .map_err(|_| fmt::Error)?;
         let default_headers = output
-            .resolve(default_headers)
-            .map_err(|_| fmt::Error)?
-            .text_or_marker("<redaction incomplete>");
+            .resolve_text_or_marker(default_headers, "<redaction incomplete>")
+            .map_err(|_| fmt::Error)?;
         formatter
             .debug_struct("HttpRequestBuilder")
             .field("method", &self.method)
