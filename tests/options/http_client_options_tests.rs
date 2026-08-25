@@ -148,6 +148,10 @@ fn test_http_client_options_defaults() {
         options.json_value_limits.max_payload_bytes(),
         Some(8 * 1024 * 1024)
     );
+    assert_eq!(
+        options.json_encode_limits.max_output_bytes(),
+        Some(8 * 1024 * 1024)
+    );
 }
 
 #[test]
@@ -187,6 +191,7 @@ fn test_http_client_options_new_matches_default() {
     assert_eq!(options.sse_max_line_bytes, defaults.sse_max_line_bytes);
     assert_eq!(options.sse_max_frame_bytes, defaults.sse_max_frame_bytes);
     assert_eq!(options.json_value_limits, defaults.json_value_limits);
+    assert_eq!(options.json_encode_limits, defaults.json_encode_limits);
 }
 
 #[test]
@@ -200,6 +205,7 @@ fn test_http_client_options_json_value_limits_from_config() {
     config.set("http.json.max_string_bytes", 7_u64).unwrap();
     config.set("http.json.max_number_bytes", 8_u64).unwrap();
     config.set("http.json.max_payload_bytes", 9_u64).unwrap();
+    config.set("http.json.max_output_bytes", 10_u64).unwrap();
 
     let options = HttpClientOptions::from_config(
         &config.section("http").expect("HTTP section should exist"),
@@ -218,6 +224,11 @@ fn test_http_client_options_json_value_limits_from_config() {
             .max_number_bytes(8)
             .max_payload_bytes(9)
             .build()
+    );
+    assert_eq!(options.json_encode_limits.max_output_bytes(), Some(10));
+    assert_eq!(
+        options.json_encode_limits.value_limits(),
+        &options.json_value_limits
     );
 }
 

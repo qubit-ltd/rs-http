@@ -17,6 +17,9 @@ use http::HeaderMap;
 use http::HeaderValue;
 use http::Method;
 use http::header::CONTENT_TYPE;
+use qubit_budget::json::JsonEncodeLimits;
+use qubit_budget::json::JsonEncodeSession;
+use qubit_json::encode::JsonEncoder;
 use qubit_redact::Redactor;
 use qubit_retry::RetryCancellationToken;
 use serde::Serialize;
@@ -77,6 +80,8 @@ pub struct HttpRequestBuilder {
     pub(super) async_injectors: Vec<AsyncHttpHeaderInjector>,
     /// Log redaction snapshot from the originating client.
     pub(super) log_redactor: Redactor,
+    /// JSON output limits snapshot from the originating client.
+    pub(super) json_encode_limits: JsonEncodeLimits,
 }
 
 impl fmt::Debug for HttpRequestBuilder {
@@ -133,6 +138,7 @@ impl fmt::Debug for HttpRequestBuilder {
             .field("default_headers", &default_headers)
             .field("injector_count", &self.injectors.len())
             .field("async_injector_count", &self.async_injectors.len())
+            .field("json_encode_limits", &self.json_encode_limits)
             .finish()
     }
 }
@@ -169,6 +175,7 @@ impl HttpRequestBuilder {
             injectors: client.injectors_snapshot(),
             async_injectors: client.async_injectors_snapshot(),
             log_redactor: client.log_redactor().clone(),
+            json_encode_limits: options.json_encode_limits,
         }
     }
 
@@ -317,14 +324,38 @@ impl HttpRequestBuilder {
     /// - `value`: Serializable value.
     ///
     /// # Returns
-    /// `Ok(self)` or [`HttpError`] if JSON encoding fails.
-    pub fn json_body<T>(mut self, value: &T) -> HttpResult<Self>
+    /// `Ok(self)` or [`HttpError`] if JSON encoding exceeds the client default
+    /// limits or fails.
+    pub fn json_body<T>(self, value: &T) -> HttpResult<Self>
     where
         T: Serialize,
     {
-        let bytes = serde_json::to_vec(value).map_err(|error| {
-            HttpError::decode("Failed to encode JSON body").with_source(error)
-        })?;
+        let limits = self.json_encode_limits;
+        self.json_body_with_limits(value, limits)
+    }
+
+    /// Serializes `value` to JSON with explicit resource limits, sets body to
+    /// those bytes, and adds `application/json` if needed.
+    ///
+    /// # Parameters
+    /// - `value`: Serializable value.
+    /// - `limits`: Per-request encoded-value and output-byte limits.
+    ///
+    /// # Returns
+    /// `Ok(self)` or [`HttpError`] if JSON encoding exceeds a limit or fails.
+    pub fn json_body_with_limits<T>(
+        mut self,
+        value: &T,
+        limits: JsonEncodeLimits,
+    ) -> HttpResult<Self>
+    where
+        T: Serialize,
+    {
+        let bytes =
+            JsonEncoder::owned(limits).to_vec(value).map_err(|error| {
+                HttpError::decode("Failed to encode JSON body")
+                    .with_source(error)
+            })?;
         if !self.headers.contains_key(CONTENT_TYPE) {
             self.headers.insert(
                 CONTENT_TYPE,
@@ -447,19 +478,65 @@ impl HttpRequestBuilder {
     /// `Ok(self)` for chaining.
     ///
     /// # Errors
-    /// Returns [`HttpError`] when any record fails JSON serialization.
-    pub fn ndjson_body<T>(mut self, records: &[T]) -> HttpResult<Self>
+    /// Returns [`HttpError`] when the client default output limit is exceeded
+    /// or any record fails JSON serialization or resource admission.
+    pub fn ndjson_body<T>(self, records: &[T]) -> HttpResult<Self>
     where
         T: Serialize,
     {
-        let mut payload = String::new();
+        let limits = self.json_encode_limits;
+        self.ndjson_body_with_limits(records, limits)
+    }
+
+    /// Serializes records as NDJSON with explicit resource limits.
+    ///
+    /// The output-byte bound includes the newline after every record and is
+    /// shared by the complete record sequence.
+    ///
+    /// # Parameters
+    /// - `records`: Serializable records to encode as NDJSON lines.
+    /// - `limits`: Per-request encoded-value and aggregate output-byte limits.
+    ///
+    /// # Returns
+    /// `Ok(self)` for chaining.
+    ///
+    /// # Errors
+    /// Returns [`HttpError`] when line terminators cannot fit the output limit
+    /// or any record fails JSON serialization or resource admission.
+    pub fn ndjson_body_with_limits<T>(
+        mut self,
+        records: &[T],
+        limits: JsonEncodeLimits,
+    ) -> HttpResult<Self>
+    where
+        T: Serialize,
+    {
+        let newline_bytes = records.len();
+        let limits = match limits.max_output_bytes() {
+            Some(maximum) => {
+                let Some(record_output_bytes) =
+                    maximum.checked_sub(newline_bytes)
+                else {
+                    return Err(HttpError::decode(
+                        "Failed to encode NDJSON body: output budget is smaller than required line terminators",
+                    ));
+                };
+                limits
+                    .into_builder()
+                    .max_output_bytes(record_output_bytes)
+                    .build()
+            }
+            None => limits,
+        };
+        let mut encoder = JsonEncoder::new(JsonEncodeSession::owned(limits));
+        let mut payload = Vec::new();
         for record in records {
-            let line = serde_json::to_string(record).map_err(|error| {
+            let line = encoder.to_vec(record).map_err(|error| {
                 HttpError::decode("Failed to encode NDJSON record")
                     .with_source(error)
             })?;
-            payload.push_str(&line);
-            payload.push('\n');
+            payload.extend_from_slice(&line);
+            payload.push(b'\n');
         }
         if !self.headers.contains_key(CONTENT_TYPE) {
             self.headers.insert(

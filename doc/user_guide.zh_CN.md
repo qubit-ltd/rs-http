@@ -158,6 +158,7 @@ let client = HttpClientFactory::new()
 | `logging.enabled` | 是否允许 TRACE HTTP 日志 |
 | `json.max_depth` | response、SSE 和配置 header JSON 的最大嵌套深度 |
 | `json.max_nodes` | 单个 JSON value 的最大节点总数 |
+| `json.max_output_bytes` | JSON 和 NDJSON 请求 body 编码后的累计最大字节数 |
 | `log_redaction.url_path_policy` | URL path 策略：默认 `preserve`，也可显式设为 `redact` |
 | `log_redaction.sensitive_headers` | 追加到默认集合的敏感 header 名称 |
 | `log_redaction.sensitive_query_params` | 追加到默认集合的敏感 query 参数名称 |
@@ -233,9 +234,11 @@ assert_eq!(
 | `streaming_body` | 设置异步工厂，每次发送尝试生成新的字节流；适合真正流式上传，也让重试可以重建上传流 |
 | `text_body` | 文本体；缺少 `Content-Type` 时设置 `text/plain; charset=utf-8` |
 | `json_body` | 序列化 JSON；缺少 `Content-Type` 时设置 `application/json` |
+| `json_body_with_limits` | 使用本请求的 value 与输出字节上限序列化 JSON |
 | `form_body` | `application/x-www-form-urlencoded` |
 | `multipart_body` | 原始 multipart 字节；需要 1 到 70 个 token-safe 字符的 boundary；缺少 `Content-Type` 时设置默认 multipart，已有 multipart `Content-Type` 但缺少 boundary 时补齐，已有非 UTF-8、非 multipart、boundary 畸形或 boundary 不一致时拒绝 |
 | `ndjson_body` | 每条记录一行 JSON；缺少 `Content-Type` 时设置 `application/x-ndjson` |
+| `ndjson_body_with_limits` | 使用一个累计输出预算序列化 NDJSON，且包含行结束符 |
 
 请求级覆盖：
 
@@ -846,6 +849,7 @@ while let Some(item) = events.next().await {
 | `json.max_string_bytes` | 单个 string 的最大 UTF-8 字节数；默认 `8388608` |
 | `json.max_number_bytes` | 单个 number 词法表示的最大字节数；默认 `4096` |
 | `json.max_payload_bytes` | key、string 与 number 的累计 payload 字节上限；默认 `8388608` |
+| `json.max_output_bytes` | JSON/NDJSON 请求 body 编码后的累计最大字节数（含 NDJSON 行结束符）；默认 `8388608` |
 | `timeouts.connect_timeout` | 连接超时 |
 | `timeouts.read_timeout` | 读取响应体或流时的单次等待超时 |
 | `timeouts.write_timeout` | 发送前准备和发送阶段超时 |

@@ -158,6 +158,7 @@ Common configuration keys:
 | `logging.enabled` | Allows TRACE HTTP logs |
 | `json.max_depth` | Maximum nesting depth for response, SSE, and configured-header JSON |
 | `json.max_nodes` | Maximum total nodes in one JSON value |
+| `json.max_output_bytes` | Maximum aggregate encoded bytes for JSON and NDJSON request bodies |
 | `log_redaction.url_path_policy` | URL path policy: `preserve` by default, or explicit `redact` |
 | `log_redaction.sensitive_headers` | Extra sensitive header names added to the default log-redaction set |
 | `log_redaction.sensitive_query_params` | Extra sensitive query-parameter names added to the default set |
@@ -233,9 +234,11 @@ Request body builders:
 | `streaming_body` | Installs an async factory that creates a fresh byte stream for each send attempt; useful for true streaming uploads and retryable upload streams |
 | `text_body` | Text body; sets `text/plain; charset=utf-8` when `Content-Type` is absent |
 | `json_body` | Serializes JSON; sets `application/json` when `Content-Type` is absent |
+| `json_body_with_limits` | Serializes JSON with per-request value and output-byte limits |
 | `form_body` | `application/x-www-form-urlencoded` |
 | `multipart_body` | Raw multipart bytes; requires a 1 to 70 character token-safe boundary; inserts a default multipart `Content-Type`, adds a missing boundary to an existing multipart `Content-Type`, and rejects non-UTF-8, non-multipart, malformed-boundary, or mismatched-boundary `Content-Type` values |
 | `ndjson_body` | One JSON record per line; sets `application/x-ndjson` when absent |
+| `ndjson_body_with_limits` | Serializes an NDJSON sequence with one aggregate output budget, including line terminators |
 
 Per-request overrides:
 
@@ -849,6 +852,7 @@ The table below lists every configuration key supported by `HttpClientOptions::f
 | `json.max_string_bytes` | Maximum UTF-8 bytes in one string; defaults to `8388608` |
 | `json.max_number_bytes` | Maximum bytes in one number lexeme; defaults to `4096` |
 | `json.max_payload_bytes` | Maximum cumulative key, string, and number payload bytes; defaults to `8388608` |
+| `json.max_output_bytes` | Maximum aggregate encoded JSON/NDJSON request-body bytes, including NDJSON line terminators; defaults to `8388608` |
 | `timeouts.connect_timeout` | Connect timeout |
 | `timeouts.read_timeout` | Per-read wait timeout for body/stream reads |
 | `timeouts.write_timeout` | Pre-send preparation and send-phase timeout |
