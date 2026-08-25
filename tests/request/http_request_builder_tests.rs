@@ -14,6 +14,7 @@ use http::HeaderMap;
 use http::HeaderValue;
 use http::Method;
 use http::header::CONTENT_TYPE;
+use qubit_budget::json::JsonEncodeLimits;
 use qubit_http::HttpClientFactory;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
@@ -332,6 +333,37 @@ fn test_request_builder_json_body_sets_content_type_and_payload() {
         }
         _ => panic!("expected JSON body"),
     }
+}
+
+#[test]
+fn test_request_builder_json_body_with_limits_rejects_excess_output() {
+    let limits = JsonEncodeLimits::builder().max_output_bytes(3).build();
+    let error = new_builder(Method::POST, "/v1/json")
+        .json_body_with_limits(&serde_json::json!(true), limits)
+        .expect_err("JSON output larger than the explicit bound must fail");
+
+    assert_eq!(error.kind, HttpErrorKind::Decode);
+    assert!(error.message.contains("Failed to encode JSON body"));
+    assert!(error.source().is_some());
+}
+
+#[test]
+fn test_request_builder_json_body_uses_client_encode_limits() {
+    let mut options = HttpClientOptions::new();
+    options.json_encode_limits =
+        JsonEncodeLimits::builder().max_output_bytes(3).build();
+    let client = HttpClientFactory::new()
+        .create(options)
+        .expect("options should create client");
+
+    let error = client
+        .request(Method::POST, "/v1/json")
+        .json_body(&serde_json::json!(true))
+        .expect_err(
+            "client output limit must apply to the default JSON builder path",
+        );
+
+    assert_eq!(error.kind, HttpErrorKind::Decode);
 }
 
 #[test]
@@ -903,6 +935,24 @@ fn test_request_builder_ndjson_body_sets_content_type_and_serializes_lines() {
         }
         _ => panic!("expected ndjson body"),
     }
+}
+
+#[test]
+fn test_request_builder_ndjson_body_with_limits_counts_line_terminators() {
+    #[derive(serde::Serialize)]
+    struct Record {
+        id: i32,
+    }
+
+    let limits = JsonEncodeLimits::builder().max_output_bytes(17).build();
+    let error = new_builder(Method::POST, "/v1/ndjson")
+        .ndjson_body_with_limits(&[Record { id: 1 }, Record { id: 2 }], limits)
+        .expect_err(
+            "NDJSON line terminators must count toward the output bound",
+        );
+
+    assert_eq!(error.kind, HttpErrorKind::Decode);
+    assert!(error.message.contains("Failed to encode NDJSON"));
 }
 
 #[test]

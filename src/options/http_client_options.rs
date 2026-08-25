@@ -15,6 +15,7 @@ use http::HeaderMap;
 use http::HeaderValue;
 use qubit_argument::ArgumentResultExt;
 use qubit_argument::require_that;
+use qubit_budget::json::JsonEncodeLimits;
 use qubit_budget::json::JsonValueLimits;
 use qubit_config::ConfigReader;
 use qubit_config::ConfigResult;
@@ -39,6 +40,7 @@ use crate::constants::DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES;
 use crate::constants::DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES;
 use crate::constants::DEFAULT_SSE_MAX_FRAME_BYTES;
 use crate::constants::DEFAULT_SSE_MAX_LINE_BYTES;
+use crate::json_limits::default_json_encode_limits;
 use crate::json_limits::default_json_value_limits;
 use crate::json_limits::json_decode_limits;
 use crate::request::parse_header;
@@ -68,6 +70,9 @@ pub struct HttpClientOptions {
     /// Structural and decoded-payload limits applied to JSON response bodies,
     /// SSE payloads, and JSON-valued HTTP configuration.
     pub json_value_limits: JsonValueLimits,
+    /// Structural, payload, and output-byte limits applied to JSON request
+    /// bodies, including NDJSON aggregate output.
+    pub json_encode_limits: JsonEncodeLimits,
     /// Optional default `User-Agent` header sent by reqwest.
     pub user_agent: Option<String>,
     /// Optional redirect limit applied by reqwest.
@@ -113,6 +118,7 @@ impl Default for HttpClientOptions {
                 DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES,
             response_body_size_limit: DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES,
             json_value_limits: default_json_value_limits(),
+            json_encode_limits: default_json_encode_limits(),
             user_agent: None,
             max_redirects: None,
             pool_idle_timeout: None,
@@ -163,6 +169,7 @@ impl fmt::Debug for HttpClientOptions {
             )
             .field("response_body_size_limit", &self.response_body_size_limit)
             .field("json_value_limits", &self.json_value_limits)
+            .field("json_encode_limits", &self.json_encode_limits)
             .field("user_agent", &self.user_agent)
             .field("max_redirects", &self.max_redirects)
             .field("pool_idle_timeout", &self.pool_idle_timeout)
@@ -219,6 +226,8 @@ struct HttpClientJsonConfigInput {
     max_number_bytes: Option<usize>,
     /// Maximum cumulative key, string, and number payload bytes.
     max_payload_bytes: Option<usize>,
+    /// Maximum encoded JSON request-body bytes.
+    max_output_bytes: Option<usize>,
 }
 
 impl HttpClientOptions {
@@ -366,6 +375,14 @@ impl HttpClientOptions {
                 builder = builder.max_payload_bytes(maximum);
             }
             opts.json_value_limits = builder.build();
+            let mut encode_builder = opts
+                .json_encode_limits
+                .into_builder()
+                .value_limits(opts.json_value_limits);
+            if let Some(maximum) = json.max_output_bytes {
+                encode_builder = encode_builder.max_output_bytes(maximum);
+            }
+            opts.json_encode_limits = encode_builder.build();
         }
 
         // timeouts
@@ -910,6 +927,7 @@ impl HttpClientOptions {
             max_string_bytes: get_optional_usize(config, "max_string_bytes")?,
             max_number_bytes: get_optional_usize(config, "max_number_bytes")?,
             max_payload_bytes: get_optional_usize(config, "max_payload_bytes")?,
+            max_output_bytes: get_optional_usize(config, "max_output_bytes")?,
         })
     }
 

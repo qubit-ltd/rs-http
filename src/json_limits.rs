@@ -8,6 +8,7 @@
 //! Shared JSON resource profiles for HTTP response and SSE decoding.
 
 use qubit_budget::json::JsonDecodeLimits;
+use qubit_budget::json::JsonEncodeLimits;
 use qubit_budget::json::JsonValueLimits;
 
 /// Maximum expansion of one raw control byte into a `\u00XX` JSON escape.
@@ -30,6 +31,19 @@ pub(crate) fn default_json_value_limits() -> JsonValueLimits {
         .max_string_bytes(8 * 1024 * 1024)
         .max_number_bytes(4 * 1024)
         .max_payload_bytes(8 * 1024 * 1024)
+        .build()
+}
+
+/// Builds the default JSON encoding limits for outbound HTTP request bodies.
+///
+/// # Returns
+///
+/// The standard JSON value profile plus an eight-mebibyte encoded-body limit.
+#[must_use]
+pub(crate) fn default_json_encode_limits() -> JsonEncodeLimits {
+    JsonEncodeLimits::builder()
+        .max_output_bytes(8 * 1024 * 1024)
+        .value_limits(default_json_value_limits())
         .build()
 }
 
