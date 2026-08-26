@@ -201,13 +201,9 @@ impl fmt::Debug for HttpResponseMeta {
         let mut batch = self.log_redactor.batch();
         let url = batch.redact_http_url(self.url.as_str());
         let headers = batch.redact_http_headers(&self.headers);
-        let output = batch.finish();
-        let url = output
-            .resolve_text_or_marker(url, "<redaction incomplete>")
-            .map_err(|_| fmt::Error)?;
-        let headers = output
-            .resolve_text_or_marker(headers, "<redaction incomplete>")
-            .map_err(|_| fmt::Error)?;
+        let output = batch.finish_for_diagnostics("<redaction incomplete>");
+        let url = output.text(url);
+        let headers = output.text(headers);
         formatter
             .debug_struct("HttpResponseMeta")
             .field("status", &self.status)

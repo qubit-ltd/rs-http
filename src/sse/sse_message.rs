@@ -9,6 +9,7 @@
 //!
 //! One EventSource-style message dispatch after frame reassembly.
 use qubit_budget::json::JsonDecodeLimits;
+use qubit_json::decode::JsonDecoder;
 use qubit_json::decode::NormalizingJsonDecodePolicy;
 use qubit_json::decode::NormalizingJsonDecoder;
 use serde::de::DeserializeOwned;
@@ -78,10 +79,7 @@ impl SseMessage {
     where
         T: DeserializeOwned,
     {
-        NormalizingJsonDecoder::owned(
-            NormalizingJsonDecodePolicy::strict(),
-            limits,
-        )
+        JsonDecoder::owned(limits)
             .decode_str::<T>(&self.data)
             .map_err(|error| {
                 HttpError::sse_decode(format!(
@@ -162,8 +160,8 @@ impl SseMessage {
                         tracing::debug!(
                             error_kind = %error.kind(),
                             error_stage = %error.stage(),
-                            normalized_line = ?error.normalized_line(),
-                            normalized_column = ?error.normalized_column(),
+                            normalized_line = ?error.line(),
+                            normalized_column = ?error.column(),
                             event = ?self.event,
                             last_event_id = ?self.last_event_id,
                             "Skipping malformed SSE message JSON in lenient mode",
