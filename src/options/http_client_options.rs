@@ -19,8 +19,7 @@ use qubit_budget::json::JsonEncodeLimits;
 use qubit_budget::json::JsonValueLimits;
 use qubit_config::ConfigReader;
 use qubit_config::ConfigResult;
-use qubit_json::decode::NormalizingJsonDecodePolicy;
-use qubit_json::decode::NormalizingJsonDecoder;
+use qubit_json::decode::JsonDecoder;
 use qubit_redact::RedactionPolicy;
 use qubit_redact::Redactor;
 use qubit_redact::Sensitivity;
@@ -146,16 +145,9 @@ impl fmt::Debug for HttpClientOptions {
             .as_ref()
             .map(|url| batch.redact_http_url(url.as_str()));
         let default_headers = batch.redact_http_headers(&self.default_headers);
-        let output = batch.finish();
-        let base_url = base_url
-            .map(|handle| {
-                output.resolve_text_or_marker(handle, "<redaction incomplete>")
-            })
-            .transpose()
-            .map_err(|_| fmt::Error)?;
-        let default_headers = output
-            .resolve_text_or_marker(default_headers, "<redaction incomplete>")
-            .map_err(|_| fmt::Error)?;
+        let output = batch.finish_for_diagnostics("<redaction incomplete>");
+        let base_url = base_url.map(|handle| output.text(handle));
+        let default_headers = output.text(default_headers);
         formatter
             .debug_struct("HttpClientOptions")
             .field("base_url", &base_url)
@@ -708,25 +700,23 @@ impl HttpClientOptions {
             ));
         }
         if let Some(json_str) = json_headers {
-            let parsed: HashMap<String, String> =
-                match NormalizingJsonDecoder::owned(
-                    NormalizingJsonDecodePolicy::strict(),
-                    json_decode_limits(json_str.len(), opts.json_value_limits),
-                )
-                .decode_str(&json_str)
-                {
-                    Ok(parsed) => parsed,
-                    Err(error) => {
-                        return Err(HttpConfigError::type_error(
-                            config
-                                .resolve_key(headers_prefix)
-                                .map_err(HttpConfigError::from)?,
-                            format!(
-                                "Failed to parse default_headers JSON: {error}"
-                            ),
-                        ));
-                    }
-                };
+            let parsed: HashMap<String, String> = match JsonDecoder::owned(
+                json_decode_limits(json_str.len(), opts.json_value_limits),
+            )
+            .decode_str(&json_str)
+            {
+                Ok(parsed) => parsed,
+                Err(error) => {
+                    return Err(HttpConfigError::type_error(
+                        config
+                            .resolve_key(headers_prefix)
+                            .map_err(HttpConfigError::from)?,
+                        format!(
+                            "Failed to parse default_headers JSON: {error}"
+                        ),
+                    ));
+                }
+            };
             header_map = parsed;
         }
         if !header_map.is_empty() {

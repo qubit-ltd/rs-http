@@ -470,10 +470,10 @@ fn test_http_client_options_default_headers_invalid_json() {
     let err = HttpClientOptions::from_config(&config.section("http").unwrap())
         .unwrap_err();
     assert_eq!(err.kind, HttpConfigErrorKind::TypeError);
-    assert_eq!(
-        err.message,
-        "Failed to parse default_headers JSON: Failed to parse JSON at normalized line 1 column 2",
-    );
+    assert!(err.message.starts_with(
+        "Failed to parse default_headers JSON: Failed to parse JSON:"
+    ));
+    assert!(err.message.contains("line 1 column 1"));
 }
 
 #[test]

@@ -231,10 +231,10 @@ async fn test_http_response_json_redacts_deserializer_value() {
         "HTTP JSON decode errors must retain the redacted decoder source",
     );
     let decode_error = source
-        .downcast_ref::<qubit_json::decode::NormalizingJsonDecodeError>()
+        .downcast_ref::<qubit_json::decode::JsonDecodeError>()
         .expect("HTTP JSON decode source must be JsonDecodeError");
     assert_eq!(
-        decode_error.privacy_policy(),
+        decode_error.diagnostic_policy(),
         qubit_json::decode::DiagnosticPolicy::Redacted,
     );
     assert!(!decode_error.to_string().contains(SECRET));

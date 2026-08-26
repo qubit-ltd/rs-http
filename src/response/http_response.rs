@@ -23,8 +23,7 @@ use http::header::CONTENT_LENGTH;
 use http::header::CONTENT_TYPE;
 use qubit_budget::ResourceBudget;
 use qubit_budget::json::JsonValueLimits;
-use qubit_json::decode::NormalizingJsonDecodePolicy;
-use qubit_json::decode::NormalizingJsonDecoder;
+use qubit_json::decode::JsonDecoder;
 use qubit_redact::Redactor;
 use qubit_retry::RetryCancellationToken;
 use serde::de::DeserializeOwned;
@@ -196,16 +195,10 @@ impl fmt::Debug for HttpResponse {
         let request_url =
             batch.redact_http_url(self.runtime.request_url.as_str());
         let headers = batch.redact_http_headers(self.meta.headers());
-        let output = batch.finish();
-        let url = output
-            .resolve_text_or_marker(url, "<redaction incomplete>")
-            .map_err(|_| fmt::Error)?;
-        let request_url = output
-            .resolve_text_or_marker(request_url, "<redaction incomplete>")
-            .map_err(|_| fmt::Error)?;
-        let headers = output
-            .resolve_text_or_marker(headers, "<redaction incomplete>")
-            .map_err(|_| fmt::Error)?;
+        let output = batch.finish_for_diagnostics("<redaction incomplete>");
+        let url = output.text(url);
+        let request_url = output.text(request_url);
+        let headers = output.text(headers);
         formatter
             .debug_struct("HttpResponse")
             .field("status", &self.meta.status())
@@ -624,13 +617,10 @@ impl HttpResponse {
         T: DeserializeOwned,
     {
         let body = self.bytes().await?;
-        NormalizingJsonDecoder::owned(
-            NormalizingJsonDecodePolicy::strict(),
-            json_decode_limits(
-                self.options.response_body_size_limit,
-                self.options.json_value_limits,
-            ),
-        )
+        JsonDecoder::owned(json_decode_limits(
+            self.options.response_body_size_limit,
+            self.options.json_value_limits,
+        ))
         .decode_utf8(&body)
         .map_err(|error| {
             HttpError::decode("Failed to decode response JSON")
