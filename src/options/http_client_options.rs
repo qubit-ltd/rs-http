@@ -700,7 +700,7 @@ impl HttpClientOptions {
             ));
         }
         if let Some(json_str) = json_headers {
-            let parsed: HashMap<String, String> = match JsonDecoder::owned(
+            let parsed: HashMap<String, String> = match JsonDecoder::with_limits(
                 json_decode_limits(json_str.len(), opts.json_value_limits),
             )
             .decode_str(&json_str)

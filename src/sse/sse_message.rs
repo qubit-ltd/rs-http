@@ -79,7 +79,7 @@ impl SseMessage {
     where
         T: DeserializeOwned,
     {
-        JsonDecoder::owned(limits)
+        JsonDecoder::with_limits(limits)
             .decode_str::<T>(&self.data)
             .map_err(|error| {
                 HttpError::sse_decode(format!(
@@ -149,7 +149,7 @@ impl SseMessage {
                 self.decode_json_with_limits::<T>(limits).map(Some)
             }
             SseJsonMode::Lenient => {
-                match NormalizingJsonDecoder::owned(
+                match NormalizingJsonDecoder::with_limits(
                     NormalizingJsonDecodePolicy::lenient(),
                     limits,
                 )

@@ -338,7 +338,7 @@ impl HttpRequestBuilder {
         T: Serialize,
     {
         let bytes =
-            JsonEncoder::owned(limits).to_vec(value).map_err(|error| {
+            JsonEncoder::with_limits(limits).to_vec(value).map_err(|error| {
                 HttpError::decode("Failed to encode JSON body")
                     .with_source(error)
             })?;
@@ -514,7 +514,7 @@ impl HttpRequestBuilder {
             }
             None => limits,
         };
-        let mut encoder = JsonEncoder::new(JsonEncodeSession::owned(limits));
+        let mut encoder = JsonEncoder::new(JsonEncodeSession::from_limits(limits));
         let mut payload = Vec::new();
         for record in records {
             let line = encoder.to_vec(record).map_err(|error| {

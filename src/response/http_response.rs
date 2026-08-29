@@ -617,7 +617,7 @@ impl HttpResponse {
         T: DeserializeOwned,
     {
         let body = self.bytes().await?;
-        JsonDecoder::owned(json_decode_limits(
+        JsonDecoder::with_limits(json_decode_limits(
             self.options.response_body_size_limit,
             self.options.json_value_limits,
         ))
