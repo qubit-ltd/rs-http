@@ -700,23 +700,25 @@ impl HttpClientOptions {
             ));
         }
         if let Some(json_str) = json_headers {
-            let parsed: HashMap<String, String> = match JsonDecoder::with_limits(
-                json_decode_limits(json_str.len(), opts.json_value_limits),
-            )
-            .decode_str(&json_str)
-            {
-                Ok(parsed) => parsed,
-                Err(error) => {
-                    return Err(HttpConfigError::type_error(
-                        config
-                            .resolve_key(headers_prefix)
-                            .map_err(HttpConfigError::from)?,
-                        format!(
-                            "Failed to parse default_headers JSON: {error}"
-                        ),
-                    ));
-                }
-            };
+            let parsed: HashMap<String, String> =
+                match JsonDecoder::with_limits(json_decode_limits(
+                    json_str.len(),
+                    opts.json_value_limits,
+                ))
+                .decode_str(&json_str)
+                {
+                    Ok(parsed) => parsed,
+                    Err(error) => {
+                        return Err(HttpConfigError::type_error(
+                            config
+                                .resolve_key(headers_prefix)
+                                .map_err(HttpConfigError::from)?,
+                            format!(
+                                "Failed to parse default_headers JSON: {error}"
+                            ),
+                        ));
+                    }
+                };
             header_map = parsed;
         }
         if !header_map.is_empty() {

@@ -337,11 +337,12 @@ impl HttpRequestBuilder {
     where
         T: Serialize,
     {
-        let bytes =
-            JsonEncoder::with_limits(limits).to_vec(value).map_err(|error| {
+        let bytes = JsonEncoder::with_limits(limits).to_vec(value).map_err(
+            |error| {
                 HttpError::decode("Failed to encode JSON body")
                     .with_source(error)
-            })?;
+            },
+        )?;
         if !self.headers.contains_key(CONTENT_TYPE) {
             self.headers.insert(
                 CONTENT_TYPE,
@@ -514,7 +515,8 @@ impl HttpRequestBuilder {
             }
             None => limits,
         };
-        let mut encoder = JsonEncoder::new(JsonEncodeSession::from_limits(limits));
+        let mut encoder =
+            JsonEncoder::new(JsonEncodeSession::from_limits(limits));
         let mut payload = Vec::new();
         for record in records {
             let line = encoder.to_vec(record).map_err(|error| {
