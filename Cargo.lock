@@ -853,6 +853,8 @@ dependencies = [
 [[package]]
 name = "qubit-clock"
 version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4b6ac8d4db46f084d6e21db1f091901d8a1561bacfe73d40eefae0cc4581a5e1"
 dependencies = [
  "pin-project-lite",
  "qubit-collections",
@@ -975,9 +977,9 @@ dependencies = [
 
 [[package]]
 name = "qubit-utils"
-version = "0.2.1"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a10f49f1e871d14bce08182c456b9a90146e7e40a40165861fed4d9e5d204fc1"
+checksum = "7f9bf5cd2e783a8a6edd6536826084ef0a82d1924b14f82e79fe0088b7b33748"
 
 [[package]]
 name = "qubit-value"
