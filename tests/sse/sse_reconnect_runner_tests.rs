@@ -48,10 +48,7 @@ use crate::common::spawn_one_shot_server;
 ///
 /// # Returns
 /// Retry options with `max_attempts = max_reconnects + 1`.
-fn build_retry_options(
-    max_reconnects: u32,
-    backoff: BackoffPolicy,
-) -> RetryPolicy {
+fn build_retry_options(max_reconnects: u32, backoff: BackoffPolicy) -> RetryPolicy {
     build_retry_policy(max_reconnects, None, backoff)
 }
 
@@ -72,14 +69,8 @@ fn build_retry_options_with_max_elapsed(
     build_retry_policy(max_reconnects, Some(max_elapsed), backoff)
 }
 
-fn build_retry_policy(
-    max_reconnects: u32,
-    max_elapsed: Option<Duration>,
-    backoff: BackoffPolicy,
-) -> RetryPolicy {
-    let mut builder = RetryPolicy::builder()
-        .max_attempts(max_reconnects + 1)
-        .backoff(backoff);
+fn build_retry_policy(max_reconnects: u32, max_elapsed: Option<Duration>, backoff: BackoffPolicy) -> RetryPolicy {
+    let mut builder = RetryPolicy::builder().max_attempts(max_reconnects + 1).backoff(backoff);
     if let Some(max_elapsed) = max_elapsed {
         builder = builder.max_total_elapsed(max_elapsed);
     }
@@ -91,10 +82,7 @@ async fn test_execute_sse_with_reconnect_propagates_last_event_id() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Chunked {
             status: 200,
-            headers: vec![(
-                "Content-Type".to_string(),
-                "text/event-stream".to_string(),
-            )],
+            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
             chunks: vec![ResponseChunk {
                 delay: Duration::from_millis(0),
                 bytes: b"id: evt-1\ndata: first\n\n".to_vec(),
@@ -103,10 +91,7 @@ async fn test_execute_sse_with_reconnect_propagates_last_event_id() {
         },
         ResponsePlan::Chunked {
             status: 200,
-            headers: vec![(
-                "Content-Type".to_string(),
-                "text/event-stream".to_string(),
-            )],
+            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
             chunks: vec![ResponseChunk {
                 delay: Duration::from_millis(0),
                 bytes: b"data: second\n\n".to_vec(),
@@ -126,10 +111,7 @@ async fn test_execute_sse_with_reconnect_propagates_last_event_id() {
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
-            retry: build_retry_options(
-                1,
-                BackoffPolicy::fixed(Duration::from_millis(1)),
-            ),
+            retry: build_retry_options(1, BackoffPolicy::fixed(Duration::from_millis(1))),
             reconnect_on_eof: true,
             honor_server_retry: false,
             ..SseReconnectOptions::default()
@@ -148,10 +130,7 @@ async fn test_execute_sse_with_reconnect_propagates_last_event_id() {
     assert_eq!(requests.len(), 2);
     assert_eq!(requests[0].target, "/sse-reconnect");
     assert_eq!(requests[1].target, "/sse-reconnect");
-    assert_eq!(
-        requests[1].headers.get("last-event-id"),
-        Some(&"evt-1".to_string())
-    );
+    assert_eq!(requests[1].headers.get("last-event-id"), Some(&"evt-1".to_string()));
 }
 
 #[tokio::test]
@@ -159,10 +138,7 @@ async fn test_execute_sse_with_reconnect_honors_server_retry_delay() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Chunked {
             status: 200,
-            headers: vec![(
-                "Content-Type".to_string(),
-                "text/event-stream".to_string(),
-            )],
+            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
             chunks: vec![ResponseChunk {
                 delay: Duration::from_millis(0),
                 bytes: b"id: evt-2\nretry: 120\ndata: first\n\n".to_vec(),
@@ -171,10 +147,7 @@ async fn test_execute_sse_with_reconnect_honors_server_retry_delay() {
         },
         ResponsePlan::Chunked {
             status: 200,
-            headers: vec![(
-                "Content-Type".to_string(),
-                "text/event-stream".to_string(),
-            )],
+            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
             chunks: vec![ResponseChunk {
                 delay: Duration::from_millis(0),
                 bytes: b"data: second\n\n".to_vec(),
@@ -195,10 +168,7 @@ async fn test_execute_sse_with_reconnect_honors_server_retry_delay() {
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
-            retry: build_retry_options(
-                1,
-                BackoffPolicy::fixed(Duration::from_millis(1)),
-            ),
+            retry: build_retry_options(1, BackoffPolicy::fixed(Duration::from_millis(1))),
             reconnect_on_eof: true,
             honor_server_retry: true,
             ..SseReconnectOptions::default()
@@ -220,15 +190,11 @@ async fn test_execute_sse_with_reconnect_honors_server_retry_delay() {
 }
 
 #[tokio::test]
-async fn test_execute_sse_with_reconnect_server_retry_overrides_once_and_preserves_backoff_progression()
- {
+async fn test_execute_sse_with_reconnect_server_retry_overrides_once_and_preserves_backoff_progression() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Chunked {
             status: 200,
-            headers: vec![(
-                "Content-Type".to_string(),
-                "text/event-stream".to_string(),
-            )],
+            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
             chunks: vec![ResponseChunk {
                 delay: Duration::from_millis(0),
                 bytes: b"retry: 120\ndata: first\n\n".to_vec(),
@@ -237,10 +203,7 @@ async fn test_execute_sse_with_reconnect_server_retry_overrides_once_and_preserv
         },
         ResponsePlan::Chunked {
             status: 200,
-            headers: vec![(
-                "Content-Type".to_string(),
-                "text/event-stream".to_string(),
-            )],
+            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
             chunks: vec![ResponseChunk {
                 delay: Duration::from_millis(0),
                 bytes: b"data: second\n\n".to_vec(),
@@ -249,10 +212,7 @@ async fn test_execute_sse_with_reconnect_server_retry_overrides_once_and_preserv
         },
         ResponsePlan::Chunked {
             status: 200,
-            headers: vec![(
-                "Content-Type".to_string(),
-                "text/event-stream".to_string(),
-            )],
+            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
             chunks: vec![ResponseChunk {
                 delay: Duration::from_millis(0),
                 bytes: b"data: done\n\n".to_vec(),
@@ -288,12 +248,8 @@ async fn test_execute_sse_with_reconnect_server_retry_overrides_once_and_preserv
         SseReconnectOptions {
             retry: build_retry_options(
                 2,
-                BackoffPolicy::exponential(
-                    Duration::from_millis(40),
-                    2.0,
-                    Duration::from_millis(200),
-                )
-                .expect("test backoff should be valid"),
+                BackoffPolicy::exponential(Duration::from_millis(40), 2.0, Duration::from_millis(200))
+                    .expect("test backoff should be valid"),
             ),
             reconnect_on_eof: true,
             honor_server_retry: true,
@@ -340,10 +296,7 @@ async fn test_execute_sse_with_reconnect_caps_server_retry_delay() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Chunked {
             status: 200,
-            headers: vec![(
-                "Content-Type".to_string(),
-                "text/event-stream".to_string(),
-            )],
+            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
             chunks: vec![ResponseChunk {
                 delay: Duration::from_millis(0),
                 bytes: b"retry: 800\ndata: first\n\n".to_vec(),
@@ -352,10 +305,7 @@ async fn test_execute_sse_with_reconnect_caps_server_retry_delay() {
         },
         ResponsePlan::Chunked {
             status: 200,
-            headers: vec![(
-                "Content-Type".to_string(),
-                "text/event-stream".to_string(),
-            )],
+            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
             chunks: vec![ResponseChunk {
                 delay: Duration::from_millis(0),
                 bytes: b"data: second\n\n".to_vec(),
@@ -387,10 +337,7 @@ async fn test_execute_sse_with_reconnect_caps_server_retry_delay() {
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
-            retry: build_retry_options(
-                1,
-                BackoffPolicy::fixed(Duration::from_millis(1)),
-            ),
+            retry: build_retry_options(1, BackoffPolicy::fixed(Duration::from_millis(1))),
             reconnect_on_eof: true,
             honor_server_retry: true,
             server_retry_max_delay: Some(Duration::from_millis(80)),
@@ -423,15 +370,11 @@ async fn test_execute_sse_with_reconnect_caps_server_retry_delay() {
 }
 
 #[tokio::test]
-async fn test_execute_sse_with_reconnect_derives_server_retry_cap_from_delay_strategy()
- {
+async fn test_execute_sse_with_reconnect_derives_server_retry_cap_from_delay_strategy() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Chunked {
             status: 200,
-            headers: vec![(
-                "Content-Type".to_string(),
-                "text/event-stream".to_string(),
-            )],
+            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
             chunks: vec![ResponseChunk {
                 delay: Duration::ZERO,
                 bytes: b"retry: 800\ndata: first\n\n".to_vec(),
@@ -440,10 +383,7 @@ async fn test_execute_sse_with_reconnect_derives_server_retry_cap_from_delay_str
         },
         ResponsePlan::Chunked {
             status: 200,
-            headers: vec![(
-                "Content-Type".to_string(),
-                "text/event-stream".to_string(),
-            )],
+            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
             chunks: vec![ResponseChunk {
                 delay: Duration::ZERO,
                 bytes: b"data: second\n\n".to_vec(),
@@ -471,19 +411,14 @@ async fn test_execute_sse_with_reconnect_derives_server_retry_cap_from_delay_str
         },
     ));
 
-    let request = client
-        .request(Method::GET, "/sse-server-retry-derived-cap")
-        .build();
+    let request = client.request(Method::GET, "/sse-server-retry-derived-cap").build();
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
             retry: build_retry_options(
                 1,
-                BackoffPolicy::uniform(
-                    Duration::from_millis(20),
-                    Duration::from_millis(80),
-                )
-                .expect("test backoff should be valid"),
+                BackoffPolicy::uniform(Duration::from_millis(20), Duration::from_millis(80))
+                    .expect("test backoff should be valid"),
             ),
             reconnect_on_eof: true,
             honor_server_retry: true,
@@ -523,24 +458,17 @@ async fn test_execute_sse_with_reconnect_can_disable_server_retry_jitter() {
     for index in 0..reconnect_count {
         plans.push(ResponsePlan::Chunked {
             status: 200,
-            headers: vec![(
-                "Content-Type".to_string(),
-                "text/event-stream".to_string(),
-            )],
+            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
             chunks: vec![ResponseChunk {
                 delay: Duration::from_millis(0),
-                bytes: format!("retry: 120\ndata: tick-{index}\n\n")
-                    .into_bytes(),
+                bytes: format!("retry: 120\ndata: tick-{index}\n\n").into_bytes(),
             }],
             finish: false,
         });
     }
     plans.push(ResponsePlan::Chunked {
         status: 200,
-        headers: vec![(
-            "Content-Type".to_string(),
-            "text/event-stream".to_string(),
-        )],
+        headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
         chunks: vec![ResponseChunk {
             delay: Duration::from_millis(0),
             bytes: b"data: done\n\n".to_vec(),
@@ -567,9 +495,7 @@ async fn test_execute_sse_with_reconnect_can_disable_server_retry_jitter() {
         },
     ));
 
-    let request = client
-        .request(Method::GET, "/sse-disable-server-retry-jitter")
-        .build();
+    let request = client.request(Method::GET, "/sse-disable-server-retry-jitter").build();
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
@@ -668,14 +594,9 @@ async fn test_execute_sse_with_reconnect_respects_retry_max_elapsed() {
         .expect_err("stream should fail when max_elapsed is exhausted");
     assert_eq!(error.kind, HttpErrorKind::RetryMaxElapsedExceeded);
     assert_eq!(error.status, Some(http::StatusCode::INTERNAL_SERVER_ERROR));
+    assert!(error.source.is_some(), "last retryable error should be chained");
     assert!(
-        error.source.is_some(),
-        "last retryable error should be chained"
-    );
-    assert!(
-        error
-            .message
-            .contains("SSE reconnect max duration exceeded"),
+        error.message.contains("SSE reconnect max duration exceeded"),
         "error message should mention max elapsed budget: {}",
         error.message
     );
@@ -692,14 +613,10 @@ async fn test_execute_sse_with_reconnect_respects_retry_max_elapsed() {
 }
 
 #[tokio::test]
-async fn test_execute_sse_with_reconnect_checks_max_elapsed_before_eof_reconnect_sleep()
- {
+async fn test_execute_sse_with_reconnect_checks_max_elapsed_before_eof_reconnect_sleep() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
-        headers: vec![(
-            "Content-Type".to_string(),
-            "text/event-stream".to_string(),
-        )],
+        headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
         chunks: Vec::new(),
         finish: true,
     })
@@ -732,14 +649,10 @@ async fn test_execute_sse_with_reconnect_checks_max_elapsed_before_eof_reconnect
         .next()
         .await
         .expect("reconnect should stop with max_elapsed error")
-        .expect_err(
-            "max_elapsed should block reconnect sleep before second request",
-        );
+        .expect_err("max_elapsed should block reconnect sleep before second request");
     assert_eq!(error.kind, HttpErrorKind::RetryMaxElapsedExceeded);
     assert!(
-        error
-            .message
-            .contains("SSE reconnect max duration exceeded"),
+        error.message.contains("SSE reconnect max duration exceeded"),
         "error message should mention max elapsed budget: {}",
         error.message
     );
@@ -754,10 +667,7 @@ async fn test_execute_sse_with_reconnect_checks_max_elapsed_before_eof_reconnect
 async fn test_execute_sse_with_reconnect_sleep_can_be_cancelled() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
-        headers: vec![(
-            "Content-Type".to_string(),
-            "text/event-stream".to_string(),
-        )],
+        headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
         chunks: vec![ResponseChunk {
             delay: Duration::ZERO,
             bytes: b"data: connected\n\n".to_vec(),
@@ -782,10 +692,7 @@ async fn test_execute_sse_with_reconnect_sleep_can_be_cancelled() {
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
-            retry: build_retry_options(
-                1,
-                BackoffPolicy::fixed(Duration::from_secs(1)),
-            ),
+            retry: build_retry_options(1, BackoffPolicy::fixed(Duration::from_secs(1))),
             reconnect_on_eof: true,
             honor_server_retry: false,
             ..SseReconnectOptions::default()
@@ -845,16 +752,11 @@ async fn test_execute_sse_with_reconnect_disables_inner_http_retry() {
         },
     ));
 
-    let request = client
-        .request(Method::GET, "/sse-disable-inner-retry")
-        .build();
+    let request = client.request(Method::GET, "/sse-disable-inner-retry").build();
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
-            retry: build_retry_options(
-                1,
-                BackoffPolicy::fixed(Duration::from_millis(1)),
-            ),
+            retry: build_retry_options(1, BackoffPolicy::fixed(Duration::from_millis(1))),
             reconnect_on_eof: true,
             honor_server_retry: false,
             ..SseReconnectOptions::default()
@@ -865,9 +767,7 @@ async fn test_execute_sse_with_reconnect_disables_inner_http_retry() {
         .next()
         .await
         .expect("stream should yield one failure item")
-        .expect_err(
-            "transport failure should stop after reconnect budget is exhausted",
-        );
+        .expect_err("transport failure should stop after reconnect budget is exhausted");
     assert_eq!(error.kind, HttpErrorKind::Transport);
     assert_eq!(
         attempts.load(Ordering::Relaxed),
@@ -891,16 +791,11 @@ async fn test_execute_sse_with_reconnect_fails_fast_on_non_sse_content_type() {
     options.timeouts.write_timeout = Duration::from_secs(2);
     let client = HttpClientFactory::new().create(options).unwrap();
 
-    let request = client
-        .request(Method::GET, "/sse-content-type-check")
-        .build();
+    let request = client.request(Method::GET, "/sse-content-type-check").build();
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
-            retry: build_retry_options(
-                3,
-                BackoffPolicy::fixed(Duration::from_millis(1)),
-            ),
+            retry: build_retry_options(3, BackoffPolicy::fixed(Duration::from_millis(1))),
             reconnect_on_eof: true,
             honor_server_retry: true,
             ..SseReconnectOptions::default()
@@ -936,16 +831,11 @@ async fn test_execute_sse_with_reconnect_fails_fast_on_missing_content_type() {
     options.timeouts.write_timeout = Duration::from_secs(2);
     let client = HttpClientFactory::new().create(options).unwrap();
 
-    let request = client
-        .request(Method::GET, "/sse-missing-content-type")
-        .build();
+    let request = client.request(Method::GET, "/sse-missing-content-type").build();
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
-            retry: build_retry_options(
-                3,
-                BackoffPolicy::fixed(Duration::from_millis(1)),
-            ),
+            retry: build_retry_options(3, BackoffPolicy::fixed(Duration::from_millis(1))),
             reconnect_on_eof: true,
             honor_server_retry: true,
             ..SseReconnectOptions::default()
@@ -981,16 +871,11 @@ async fn test_execute_sse_with_reconnect_fails_fast_on_non_utf8_content_type() {
     options.timeouts.write_timeout = Duration::from_secs(2);
     let client = HttpClientFactory::new().create(options).unwrap();
 
-    let request = client
-        .request(Method::GET, "/sse-non-utf8-content-type")
-        .build();
+    let request = client.request(Method::GET, "/sse-non-utf8-content-type").build();
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
-            retry: build_retry_options(
-                3,
-                BackoffPolicy::fixed(Duration::from_millis(1)),
-            ),
+            retry: build_retry_options(3, BackoffPolicy::fixed(Duration::from_millis(1))),
             reconnect_on_eof: true,
             honor_server_retry: true,
             ..SseReconnectOptions::default()
@@ -1019,8 +904,7 @@ async fn test_execute_sse_with_reconnect_fails_fast_on_non_utf8_content_type() {
 }
 
 #[tokio::test]
-async fn test_execute_sse_with_reconnect_rejects_content_type_prefix_collision()
-{
+async fn test_execute_sse_with_reconnect_rejects_content_type_prefix_collision() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
         headers: vec![(
@@ -1043,10 +927,7 @@ async fn test_execute_sse_with_reconnect_rejects_content_type_prefix_collision()
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
-            retry: build_retry_options(
-                3,
-                BackoffPolicy::fixed(Duration::from_millis(1)),
-            ),
+            retry: build_retry_options(3, BackoffPolicy::fixed(Duration::from_millis(1))),
             reconnect_on_eof: true,
             honor_server_retry: true,
             ..SseReconnectOptions::default()
@@ -1072,28 +953,19 @@ async fn test_execute_sse_with_reconnect_uses_custom_backoff_parameters() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Chunked {
             status: 200,
-            headers: vec![(
-                "Content-Type".to_string(),
-                "text/event-stream".to_string(),
-            )],
+            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
             chunks: Vec::new(),
             finish: true,
         },
         ResponsePlan::Chunked {
             status: 200,
-            headers: vec![(
-                "Content-Type".to_string(),
-                "text/event-stream".to_string(),
-            )],
+            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
             chunks: Vec::new(),
             finish: true,
         },
         ResponsePlan::Chunked {
             status: 200,
-            headers: vec![(
-                "Content-Type".to_string(),
-                "text/event-stream".to_string(),
-            )],
+            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
             chunks: vec![ResponseChunk {
                 delay: Duration::from_millis(0),
                 bytes: b"data: done\n\n".to_vec(),
@@ -1116,12 +988,8 @@ async fn test_execute_sse_with_reconnect_uses_custom_backoff_parameters() {
         SseReconnectOptions {
             retry: build_retry_options(
                 2,
-                BackoffPolicy::exponential(
-                    Duration::from_millis(80),
-                    3.0,
-                    Duration::from_millis(200),
-                )
-                .expect("test backoff should be valid"),
+                BackoffPolicy::exponential(Duration::from_millis(80), 3.0, Duration::from_millis(200))
+                    .expect("test backoff should be valid"),
             ),
             reconnect_on_eof: true,
             honor_server_retry: false,
@@ -1143,14 +1011,10 @@ async fn test_execute_sse_with_reconnect_uses_custom_backoff_parameters() {
 }
 
 #[tokio::test]
-async fn test_execute_sse_with_reconnect_does_not_retry_non_retryable_protocol_error()
- {
+async fn test_execute_sse_with_reconnect_does_not_retry_non_retryable_protocol_error() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
-        headers: vec![(
-            "Content-Type".to_string(),
-            "text/event-stream".to_string(),
-        )],
+        headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
         chunks: vec![ResponseChunk {
             delay: Duration::from_millis(0),
             bytes: vec![0xFF, b'\n'],
@@ -1177,10 +1041,7 @@ async fn test_execute_sse_with_reconnect_does_not_retry_non_retryable_protocol_e
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
-            retry: build_retry_options(
-                3,
-                BackoffPolicy::fixed(Duration::from_millis(1)),
-            ),
+            retry: build_retry_options(3, BackoffPolicy::fixed(Duration::from_millis(1))),
             reconnect_on_eof: true,
             honor_server_retry: true,
             ..SseReconnectOptions::default()
@@ -1198,14 +1059,10 @@ async fn test_execute_sse_with_reconnect_does_not_retry_non_retryable_protocol_e
 }
 
 #[tokio::test]
-async fn test_execute_sse_with_reconnect_reports_invalid_last_event_id_header_value()
- {
+async fn test_execute_sse_with_reconnect_reports_invalid_last_event_id_header_value() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
-        headers: vec![(
-            "Content-Type".to_string(),
-            "text/event-stream".to_string(),
-        )],
+        headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
         chunks: vec![ResponseChunk {
             delay: Duration::from_millis(0),
             bytes: b"id: bad\x7fvalue\ndata: first\n\n".to_vec(),
@@ -1220,16 +1077,11 @@ async fn test_execute_sse_with_reconnect_reports_invalid_last_event_id_header_va
     options.timeouts.write_timeout = Duration::from_secs(2);
     let client = HttpClientFactory::new().create(options).unwrap();
 
-    let request = client
-        .request(Method::GET, "/sse-invalid-last-event-id")
-        .build();
+    let request = client.request(Method::GET, "/sse-invalid-last-event-id").build();
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
-            retry: build_retry_options(
-                1,
-                BackoffPolicy::fixed(Duration::from_millis(1)),
-            ),
+            retry: build_retry_options(1, BackoffPolicy::fixed(Duration::from_millis(1))),
             reconnect_on_eof: true,
             honor_server_retry: false,
             ..SseReconnectOptions::default()
@@ -1254,10 +1106,7 @@ async fn test_execute_sse_with_reconnect_reports_invalid_last_event_id_header_va
 async fn test_execute_sse_with_reconnect_retries_on_unexpected_eof_message() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
-        headers: vec![(
-            "Content-Type".to_string(),
-            "text/event-stream".to_string(),
-        )],
+        headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
         chunks: vec![ResponseChunk {
             delay: Duration::from_millis(0),
             bytes: b"data: recovered\n\n".to_vec(),
@@ -1276,12 +1125,9 @@ async fn test_execute_sse_with_reconnect_retries_on_unexpected_eof_message() {
     let attempts_for_interceptor = Arc::clone(&attempts);
     client.add_request_interceptor(HttpRequestInterceptor::new(
         move |_request: &mut qubit_http::HttpRequest| {
-            let current =
-                attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
+            let current = attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
             if current == 0 {
-                Err(HttpError::other(
-                    "unexpected eof while preparing local SSE pipeline",
-                ))
+                Err(HttpError::other("unexpected eof while preparing local SSE pipeline"))
             } else {
                 Ok(())
             }
@@ -1292,10 +1138,7 @@ async fn test_execute_sse_with_reconnect_retries_on_unexpected_eof_message() {
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
-            retry: build_retry_options(
-                1,
-                BackoffPolicy::fixed(Duration::from_millis(1)),
-            ),
+            retry: build_retry_options(1, BackoffPolicy::fixed(Duration::from_millis(1))),
             reconnect_on_eof: false,
             honor_server_retry: false,
             ..SseReconnectOptions::default()
@@ -1314,14 +1157,10 @@ async fn test_execute_sse_with_reconnect_retries_on_unexpected_eof_message() {
 }
 
 #[tokio::test]
-async fn test_execute_sse_with_reconnect_retries_on_unexpected_eof_source_message()
- {
+async fn test_execute_sse_with_reconnect_retries_on_unexpected_eof_source_message() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
-        headers: vec![(
-            "Content-Type".to_string(),
-            "text/event-stream".to_string(),
-        )],
+        headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
         chunks: vec![ResponseChunk {
             delay: Duration::from_millis(0),
             bytes: b"data: recovered-from-source\n\n".to_vec(),
@@ -1340,28 +1179,21 @@ async fn test_execute_sse_with_reconnect_retries_on_unexpected_eof_source_messag
     let attempts_for_interceptor = Arc::clone(&attempts);
     client.add_request_interceptor(HttpRequestInterceptor::new(
         move |_request: &mut qubit_http::HttpRequest| {
-            let current =
-                attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
+            let current = attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
             if current == 0 {
-                Err(HttpError::other("local SSE source failure").with_source(
-                    IoError::other("unexpected eof from wrapped source"),
-                ))
+                Err(HttpError::other("local SSE source failure")
+                    .with_source(IoError::other("unexpected eof from wrapped source")))
             } else {
                 Ok(())
             }
         },
     ));
 
-    let request = client
-        .request(Method::GET, "/sse-unexpected-eof-source")
-        .build();
+    let request = client.request(Method::GET, "/sse-unexpected-eof-source").build();
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
-            retry: build_retry_options(
-                1,
-                BackoffPolicy::fixed(Duration::from_millis(1)),
-            ),
+            retry: build_retry_options(1, BackoffPolicy::fixed(Duration::from_millis(1))),
             reconnect_on_eof: false,
             honor_server_retry: false,
             ..SseReconnectOptions::default()
@@ -1394,8 +1226,7 @@ async fn test_execute_sse_with_reconnect_does_not_retry_non_eof_source_error() {
     client.add_request_interceptor(HttpRequestInterceptor::new(
         move |_request: &mut qubit_http::HttpRequest| {
             attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
-            Err(HttpError::other("local SSE non-EOF failure")
-                .with_source(IoError::other("ordinary source error")))
+            Err(HttpError::other("local SSE non-EOF failure").with_source(IoError::other("ordinary source error")))
         },
     ));
 
@@ -1403,10 +1234,7 @@ async fn test_execute_sse_with_reconnect_does_not_retry_non_eof_source_error() {
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
-            retry: build_retry_options(
-                3,
-                BackoffPolicy::fixed(Duration::from_millis(1)),
-            ),
+            retry: build_retry_options(3, BackoffPolicy::fixed(Duration::from_millis(1))),
             reconnect_on_eof: true,
             honor_server_retry: true,
             ..SseReconnectOptions::default()
@@ -1441,10 +1269,7 @@ async fn test_execute_sse_with_reconnect_does_not_retry_cancelled_error() {
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
-            retry: build_retry_options(
-                3,
-                BackoffPolicy::fixed(Duration::from_millis(1)),
-            ),
+            retry: build_retry_options(3, BackoffPolicy::fixed(Duration::from_millis(1))),
             reconnect_on_eof: true,
             honor_server_retry: true,
             ..SseReconnectOptions::default()
@@ -1457,14 +1282,10 @@ async fn test_execute_sse_with_reconnect_does_not_retry_cancelled_error() {
 }
 
 #[tokio::test]
-async fn test_execute_sse_with_reconnect_reports_cancelled_stream_before_reading_body()
- {
+async fn test_execute_sse_with_reconnect_reports_cancelled_stream_before_reading_body() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
-        headers: vec![(
-            "Content-Type".to_string(),
-            "text/event-stream".to_string(),
-        )],
+        headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
         chunks: vec![ResponseChunk {
             delay: Duration::from_millis(0),
             bytes: b"data: should-not-be-read\n\n".to_vec(),
@@ -1495,10 +1316,7 @@ async fn test_execute_sse_with_reconnect_reports_cancelled_stream_before_reading
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
-            retry: build_retry_options(
-                3,
-                BackoffPolicy::fixed(Duration::from_millis(1)),
-            ),
+            retry: build_retry_options(3, BackoffPolicy::fixed(Duration::from_millis(1))),
             reconnect_on_eof: true,
             honor_server_retry: true,
             ..SseReconnectOptions::default()

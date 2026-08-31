@@ -51,11 +51,7 @@ pub(crate) fn decode_json_chunks_from_stream_with_limits<T>(
 where
     T: DeserializeOwned + Send + 'static,
 {
-    let mut messages = decode_messages_from_stream_with_limits(
-        stream,
-        max_line_bytes,
-        max_frame_bytes,
-    );
+    let mut messages = decode_messages_from_stream_with_limits(stream, max_line_bytes, max_frame_bytes);
 
     let output = stream! {
         while let Some(item) = messages.next().await {

@@ -82,9 +82,8 @@ async fn test_execute_with_multipart_body_and_query_headers_timeout() {
         .create(options)
         .expect("client should be created");
 
-    let payload = Bytes::from_static(
-        b"--abc\r\nContent-Disposition: form-data; name=\"field\"\r\n\r\nvalue\r\n--abc--\r\n",
-    );
+    let payload =
+        Bytes::from_static(b"--abc\r\nContent-Disposition: form-data; name=\"field\"\r\n\r\nvalue\r\n--abc--\r\n");
     let request = client
         .request(Method::POST, "/multipart")
         .query_param("kind", "multipart")
@@ -137,16 +136,7 @@ async fn test_execute_with_ndjson_body_and_query_headers_timeout() {
         .query_param("kind", "ndjson")
         .header("x-test", "1")
         .expect("header should be valid")
-        .ndjson_body(&[
-            Record {
-                id: 1,
-                name: "alpha",
-            },
-            Record {
-                id: 2,
-                name: "beta",
-            },
-        ])
+        .ndjson_body(&[Record { id: 1, name: "alpha" }, Record { id: 2, name: "beta" }])
         .expect("ndjson should be encoded")
         .request_timeout(Duration::from_secs(1))
         .expect("positive request timeout should be accepted")
@@ -165,10 +155,7 @@ async fn test_execute_with_ndjson_body_and_query_headers_timeout() {
         Some(&"application/x-ndjson".to_string())
     );
     let body = String::from_utf8(captured.body).expect("body should be utf-8");
-    assert_eq!(
-        body,
-        "{\"id\":1,\"name\":\"alpha\"}\n{\"id\":2,\"name\":\"beta\"}\n"
-    );
+    assert_eq!(body, "{\"id\":1,\"name\":\"alpha\"}\n{\"id\":2,\"name\":\"beta\"}\n");
 }
 
 #[tokio::test]
@@ -207,15 +194,11 @@ async fn test_execute_with_stream_body_uses_chunked_transfer_encoding() {
         .await
         .expect("server finish timed out");
     assert_eq!(captured.target, "/stream-upload?kind=stream");
-    assert_eq!(
-        captured.headers.get("transfer-encoding"),
-        Some(&"chunked".to_string())
-    );
+    assert_eq!(captured.headers.get("transfer-encoding"), Some(&"chunked".to_string()));
 }
 
 #[tokio::test]
-async fn test_execute_with_stream_body_uses_chunked_transfer_encoding_without_eager_read()
- {
+async fn test_execute_with_stream_body_uses_chunked_transfer_encoding_without_eager_read() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
         headers: vec![],
@@ -246,10 +229,7 @@ async fn test_execute_with_stream_body_uses_chunked_transfer_encoding_without_ea
         .await
         .expect("server finish timed out");
     assert_eq!(captured.target, "/stream-upload-streaming?kind=stream-body");
-    assert_eq!(
-        captured.headers.get("transfer-encoding"),
-        Some(&"chunked".to_string())
-    );
+    assert_eq!(captured.headers.get("transfer-encoding"), Some(&"chunked".to_string()));
 }
 
 #[tokio::test]
@@ -283,8 +263,7 @@ async fn test_execute_with_streaming_body_factory_supports_retry_rebuild() {
     let request = client
         .request(Method::POST, "/streaming-body-factory")
         .streaming_body(move || {
-            let stream_factory_calls_for_future =
-                Arc::clone(&stream_factory_calls_for_builder);
+            let stream_factory_calls_for_future = Arc::clone(&stream_factory_calls_for_builder);
             Box::pin(async move {
                 stream_factory_calls_for_future.fetch_add(1, Ordering::Relaxed);
                 Box::pin(stream::iter(vec![
@@ -331,8 +310,7 @@ async fn test_streaming_body_factory_preparation_respects_write_timeout() {
         .streaming_body(|| {
             Box::pin(async move {
                 tokio::time::sleep(Duration::from_secs(5)).await;
-                Box::pin(stream::empty::<Result<Bytes, std::io::Error>>())
-                    as HttpRequestBodyByteStream
+                Box::pin(stream::empty::<Result<Bytes, std::io::Error>>()) as HttpRequestBodyByteStream
             })
         })
         .build();

@@ -197,10 +197,7 @@ fn parse_proxy_type(path: &str, s: &str) -> Result<ProxyType, HttpConfigError> {
     ProxyType::from_str(s.trim()).map_err(|_| {
         HttpConfigError::invalid_value(
             path,
-            format!(
-                "Unknown proxy type '{}'; expected http, https, or socks5",
-                s,
-            ),
+            format!("Unknown proxy type '{}'; expected http, https, or socks5", s,),
         )
     })
 }

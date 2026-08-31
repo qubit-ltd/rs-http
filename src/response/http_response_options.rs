@@ -43,8 +43,7 @@ pub(crate) struct HttpResponseOptions {
 impl Default for HttpResponseOptions {
     fn default() -> Self {
         Self {
-            error_response_preview_limit:
-                DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES,
+            error_response_preview_limit: DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES,
             response_body_size_limit: DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES,
             json_value_limits: default_json_value_limits(),
             sse_json_mode: SseJsonMode::Lenient,
@@ -67,14 +66,9 @@ impl HttpResponseOptions {
     /// # Returns
     ///
     /// An independent response option snapshot.
-    pub(crate) fn from_client_options(
-        options: &HttpClientOptions,
-        log_redactor: Redactor,
-    ) -> Self {
+    pub(crate) fn from_client_options(options: &HttpClientOptions, log_redactor: Redactor) -> Self {
         Self {
-            error_response_preview_limit: options
-                .error_response_preview_limit
-                .max(1),
+            error_response_preview_limit: options.error_response_preview_limit.max(1),
             response_body_size_limit: options.response_body_size_limit.max(1),
             json_value_limits: options.json_value_limits,
             sse_json_mode: options.sse_json_mode,

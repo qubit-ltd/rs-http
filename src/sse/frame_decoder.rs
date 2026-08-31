@@ -27,10 +27,7 @@ use super::line_decoder::SseLineStream;
 ///
 /// # Returns
 /// Stream of records or forwarded transport/protocol errors.
-pub(crate) fn decode_records(
-    mut lines: SseLineStream,
-    max_frame_bytes: usize,
-) -> SseRecordStream {
+pub(crate) fn decode_records(mut lines: SseLineStream, max_frame_bytes: usize) -> SseRecordStream {
     let output = stream! {
         let max_frame_bytes = max_frame_bytes.max(1);
         let mut current_event: Option<String> = None;

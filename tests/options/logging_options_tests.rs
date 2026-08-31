@@ -25,10 +25,7 @@ fn test_logging_options_default_values() {
 #[test]
 fn test_logging_options_defaults_when_no_keys() {
     let config = Config::new();
-    let opts = HttpLoggingOptions::from_config(
-        &config.section("http.logging").unwrap(),
-    )
-    .unwrap();
+    let opts = HttpLoggingOptions::from_config(&config.section("http.logging").unwrap()).unwrap();
     assert_eq!(opts, HttpLoggingOptions::default());
 }
 
@@ -42,8 +39,7 @@ fn test_logging_options_all_fields() {
     config.set("l.log_response_body", false).unwrap();
     config.set("l.body_size_limit", 4096u64).unwrap();
 
-    let opts =
-        HttpLoggingOptions::from_config(&config.section("l").unwrap()).unwrap();
+    let opts = HttpLoggingOptions::from_config(&config.section("l").unwrap()).unwrap();
     assert!(!opts.enabled);
     assert!(!opts.log_request_header);
     assert!(!opts.log_request_body);
@@ -97,15 +93,10 @@ fn test_logging_validate_body_size_limit_zero_no_body_logging_ok() {
 fn test_logging_options_from_config_can_disable_individual_flags() {
     let mut config = Config::new();
     config.set("l.enabled", false).unwrap();
-    config
-        .set("l.log_request_header", false)
-        .expect("set boolean flag");
-    config
-        .set("l.log_response_body", false)
-        .expect("set boolean flag");
+    config.set("l.log_request_header", false).expect("set boolean flag");
+    config.set("l.log_response_body", false).expect("set boolean flag");
 
-    let opts = HttpLoggingOptions::from_config(&config.section("l").unwrap())
-        .expect("read logging options");
+    let opts = HttpLoggingOptions::from_config(&config.section("l").unwrap()).expect("read logging options");
     assert!(!opts.enabled);
     assert!(!opts.log_request_header);
     assert!(!opts.log_response_body);
@@ -117,8 +108,7 @@ fn test_logging_options_invalid_body_size_type_is_prefixed() {
     let mut config = Config::new();
     config.set("l.body_size_limit", "invalid-size").unwrap();
 
-    let err = HttpLoggingOptions::from_config(&config.section("l").unwrap())
-        .unwrap_err();
+    let err = HttpLoggingOptions::from_config(&config.section("l").unwrap()).unwrap_err();
 
     assert_eq!(err.kind, HttpConfigErrorKind::TypeError);
     assert_eq!(err.path, "l.body_size_limit");
@@ -129,8 +119,7 @@ fn test_logging_options_invalid_enabled_type_is_prefixed() {
     let mut config = Config::new();
     config.set("l.enabled", "not-bool").unwrap();
 
-    let err = HttpLoggingOptions::from_config(&config.section("l").unwrap())
-        .unwrap_err();
+    let err = HttpLoggingOptions::from_config(&config.section("l").unwrap()).unwrap_err();
 
     assert_eq!(err.kind, HttpConfigErrorKind::TypeError);
     assert_eq!(err.path, "l.enabled");
@@ -141,8 +130,7 @@ fn test_logging_options_invalid_request_header_type_is_prefixed() {
     let mut config = Config::new();
     config.set("l.log_request_header", "not-bool").unwrap();
 
-    let err = HttpLoggingOptions::from_config(&config.section("l").unwrap())
-        .unwrap_err();
+    let err = HttpLoggingOptions::from_config(&config.section("l").unwrap()).unwrap_err();
 
     assert_eq!(err.kind, HttpConfigErrorKind::TypeError);
     assert_eq!(err.path, "l.log_request_header");

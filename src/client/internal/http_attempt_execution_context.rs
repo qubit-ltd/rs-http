@@ -72,10 +72,7 @@ impl HttpAttemptExecutionContext {
     /// # Returns
     /// `true` when the successful response must inherit the retry-flow token;
     /// otherwise `false`.
-    pub(in crate::client) fn should_restore_retry_flow_token(
-        &self,
-        request: &HttpRequest,
-    ) -> bool {
+    pub(in crate::client) fn should_restore_retry_flow_token(&self, request: &HttpRequest) -> bool {
         self.retry_flow_owns_current_token(request)
     }
 

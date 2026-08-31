@@ -27,13 +27,8 @@ fn stream_response_from_chunks(chunks: Vec<String>) -> HttpResponse {
 
 #[tokio::test]
 async fn test_decode_events_accepts_cr_only_line_endings() {
-    let response = stream_response_from_chunks(vec![
-        "data: one\r\rdata: two\r\r".to_string(),
-    ]);
-    let mut events = response
-        .sse_max_line_bytes(64)
-        .sse_max_frame_bytes(1024)
-        .sse_messages();
+    let response = stream_response_from_chunks(vec!["data: one\r\rdata: two\r\r".to_string()]);
+    let mut events = response.sse_max_line_bytes(64).sse_max_frame_bytes(1024).sse_messages();
 
     let first = events.next().await.unwrap().unwrap();
     let second = events.next().await.unwrap().unwrap();
@@ -51,10 +46,7 @@ async fn test_decode_events_accepts_crlf_split_across_chunks() {
         "\n\r".to_string(),
         "\n".to_string(),
     ]);
-    let mut events = response
-        .sse_max_line_bytes(64)
-        .sse_max_frame_bytes(1024)
-        .sse_messages();
+    let mut events = response.sse_max_line_bytes(64).sse_max_frame_bytes(1024).sse_messages();
 
     let first = events.next().await.unwrap().unwrap();
     let second = events.next().await.unwrap().unwrap();
@@ -65,13 +57,9 @@ async fn test_decode_events_accepts_crlf_split_across_chunks() {
 
 #[tokio::test]
 async fn test_decode_events_accepts_dense_mixed_line_endings_in_one_chunk() {
-    let response = stream_response_from_chunks(vec![
-        "event: add\ndata: one\n\revent: add\rdata: two\r\r\n".to_string(),
-    ]);
-    let mut events = response
-        .sse_max_line_bytes(64)
-        .sse_max_frame_bytes(1024)
-        .sse_messages();
+    let response =
+        stream_response_from_chunks(vec!["event: add\ndata: one\n\revent: add\rdata: two\r\r\n".to_string()]);
+    let mut events = response.sse_max_line_bytes(64).sse_max_frame_bytes(1024).sse_messages();
 
     let first = events.next().await.unwrap().unwrap();
     let second = events.next().await.unwrap().unwrap();
@@ -87,10 +75,7 @@ async fn test_decode_events_accepts_dense_mixed_line_endings_in_one_chunk() {
 async fn test_decode_events_with_limits_rejects_line_exceeding_max_bytes() {
     let long_line = format!("data: {}\n\n", "a".repeat(64));
     let response = stream_response_from_chunks(vec![long_line]);
-    let mut events = response
-        .sse_max_line_bytes(16)
-        .sse_max_frame_bytes(1024)
-        .sse_messages();
+    let mut events = response.sse_max_line_bytes(16).sse_max_frame_bytes(1024).sse_messages();
 
     let error = events.next().await.unwrap().unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::SseProtocol);
@@ -106,10 +91,7 @@ async fn test_decode_events_rejects_invalid_utf8_line() {
         url::Url::parse("https://example.com/stream").expect("valid URL"),
         Method::GET,
     );
-    let mut events = response
-        .sse_max_line_bytes(64)
-        .sse_max_frame_bytes(1024)
-        .sse_messages();
+    let mut events = response.sse_max_line_bytes(64).sse_max_frame_bytes(1024).sse_messages();
 
     let error = events.next().await.unwrap().unwrap_err();
 
@@ -119,12 +101,8 @@ async fn test_decode_events_rejects_invalid_utf8_line() {
 
 #[tokio::test]
 async fn test_decode_events_with_limits_accepts_line_within_max_bytes() {
-    let response =
-        stream_response_from_chunks(vec!["data: ok\n\n".to_string()]);
-    let mut events = response
-        .sse_max_line_bytes(64)
-        .sse_max_frame_bytes(1024)
-        .sse_messages();
+    let response = stream_response_from_chunks(vec!["data: ok\n\n".to_string()]);
+    let mut events = response.sse_max_line_bytes(64).sse_max_frame_bytes(1024).sse_messages();
 
     let event = events.next().await.unwrap().unwrap();
     assert_eq!(event.data, "ok");
@@ -133,8 +111,7 @@ async fn test_decode_events_with_limits_accepts_line_within_max_bytes() {
 
 #[tokio::test]
 async fn test_decode_events_with_limits_accepts_line_at_max_bytes() {
-    let response =
-        stream_response_from_chunks(vec!["data: ok\n\n".to_string()]);
+    let response = stream_response_from_chunks(vec!["data: ok\n\n".to_string()]);
     let mut events = response
         .sse_max_line_bytes("data: ok".len())
         .sse_max_frame_bytes(1024)

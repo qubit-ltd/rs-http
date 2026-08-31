@@ -76,8 +76,7 @@ fn retry_failure(error: &HttpError) -> &RetryFailure<HttpError> {
 }
 
 #[tokio::test]
-async fn test_execute_request_with_pre_cancelled_token_returns_cancelled_error()
-{
+async fn test_execute_request_with_pre_cancelled_token_returns_cancelled_error() {
     let server = spawn_multi_shot_server(vec![]).await;
 
     let mut options = HttpClientOptions::default();
@@ -116,8 +115,7 @@ async fn test_execute_request_with_pre_cancelled_token_returns_cancelled_error()
 }
 
 #[tokio::test]
-async fn test_execute_request_with_pre_cancelled_token_skips_request_interceptors()
- {
+async fn test_execute_request_with_pre_cancelled_token_skips_request_interceptors() {
     let server = spawn_multi_shot_server(vec![]).await;
 
     let mut options = HttpClientOptions::default();
@@ -234,16 +232,14 @@ async fn test_execute_request_can_be_cancelled_while_preparing_async_headers() {
             Ok(())
         },
     ));
-    client.add_async_header_injector(AsyncHttpHeaderInjector::new(
-        move |_headers: &mut http::HeaderMap| {
-            let injector_token = injector_token.clone();
-            injector_attempt_calls.fetch_add(1, Ordering::SeqCst);
-            Box::pin(async move {
-                injector_token.cancel();
-                std::future::pending::<qubit_http::HttpResult<()>>().await
-            })
-        },
-    ));
+    client.add_async_header_injector(AsyncHttpHeaderInjector::new(move |_headers: &mut http::HeaderMap| {
+        let injector_token = injector_token.clone();
+        injector_attempt_calls.fetch_add(1, Ordering::SeqCst);
+        Box::pin(async move {
+            injector_token.cancel();
+            std::future::pending::<qubit_http::HttpResult<()>>().await
+        })
+    }));
 
     let request = client
         .request(Method::GET, "/cancel-preparing-headers")
@@ -324,8 +320,7 @@ async fn test_execute_request_can_be_cancelled_while_reading_response_body() {
 }
 
 #[tokio::test]
-async fn test_execute_request_can_be_cancelled_while_reading_status_error_preview()
- {
+async fn test_execute_request_can_be_cancelled_while_reading_status_error_preview() {
     let mut server = spawn_blocked_one_shot_server(ResponsePlan::Chunked {
         status: 503,
         headers: vec![],
@@ -364,9 +359,7 @@ async fn test_execute_request_can_be_cancelled_while_reading_status_error_previe
             panic!("request completed before server response: {result:?}");
         }
     }
-    let notify_wake = Arc::new(NotifyWake {
-        notify: Notify::new(),
-    });
+    let notify_wake = Arc::new(NotifyWake { notify: Notify::new() });
     let waker = Waker::from(Arc::clone(&notify_wake));
     let mut context = Context::from_waker(&waker);
     assert!(
@@ -516,16 +509,13 @@ async fn test_retry_interceptor_request_clone_keeps_direct_cancellation() {
         .create(options)
         .expect("retry client should be created");
     let saved_request = Arc::new(Mutex::new(None));
-    retry_client.add_request_interceptor(
-        qubit_http::HttpRequestInterceptor::new({
-            let saved_request = Arc::clone(&saved_request);
-            move |request: &mut qubit_http::HttpRequest| {
-                *saved_request.lock().expect("saved request lock") =
-                    Some(request.clone());
-                Ok(())
-            }
-        }),
-    );
+    retry_client.add_request_interceptor(qubit_http::HttpRequestInterceptor::new({
+        let saved_request = Arc::clone(&saved_request);
+        move |request: &mut qubit_http::HttpRequest| {
+            *saved_request.lock().expect("saved request lock") = Some(request.clone());
+            Ok(())
+        }
+    }));
 
     let token = RetryCancellationToken::new();
     let request = retry_client
@@ -992,8 +982,7 @@ async fn test_execute_stream_body_can_be_cancelled_after_first_chunk() {
         .expect("execute timed out")
         .expect("request should start");
 
-    let mut stream =
-        response.stream().expect("stream body should be available");
+    let mut stream = response.stream().expect("stream body should be available");
     let first = stream
         .next()
         .await
@@ -1021,10 +1010,7 @@ async fn test_execute_stream_body_can_be_cancelled_after_first_chunk() {
 async fn test_sse_messages_reports_pre_cancelled_stream_before_reading_body() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
-        headers: vec![(
-            "Content-Type".to_string(),
-            "text/event-stream".to_string(),
-        )],
+        headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
         chunks: vec![],
         finish: false,
     })
@@ -1068,10 +1054,7 @@ async fn test_sse_messages_reports_pre_cancelled_stream_before_reading_body() {
 async fn test_sse_chunks_reports_pre_cancelled_stream_before_reading_body() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
-        headers: vec![(
-            "Content-Type".to_string(),
-            "text/event-stream".to_string(),
-        )],
+        headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
         chunks: vec![],
         finish: false,
     })

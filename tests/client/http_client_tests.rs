@@ -59,9 +59,7 @@ fn custom_query_redaction_policy() -> RedactionPolicy {
             let _ = http.query().raise(CUSTOM_QUERY_FIELD, Sensitivity::High);
         })
         .expect("the test policy input should be valid");
-    builder
-        .build()
-        .expect("custom query policy should be valid")
+    builder.build().expect("custom query policy should be valid")
 }
 
 /// Verifies that an error's debug rendering uses the custom query policy.
@@ -104,10 +102,7 @@ fn path_with_custom_query(path: &str) -> String {
 ///
 /// Panics when the source is missing or is not an [`HttpError`].
 fn retry_abort_inner_http(error: &HttpError) -> &HttpError {
-    let boxed = error
-        .source
-        .as_ref()
-        .expect("retry abort should chain inner error");
+    let boxed = error.source.as_ref().expect("retry abort should chain inner error");
     (boxed.as_ref() as &(dyn StdError + 'static))
         .downcast_ref::<HttpError>()
         .expect("inner should be HttpError")
@@ -117,10 +112,7 @@ fn retry_abort_inner_http(error: &HttpError) -> &HttpError {
 async fn test_execute_success_with_header_injector_and_request_override() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
-        headers: vec![(
-            "Content-Type".to_string(),
-            "application/json".to_string(),
-        )],
+        headers: vec![("Content-Type".to_string(), "application/json".to_string())],
         body: br#"{"ok":true,"value":7}"#.to_vec(),
     })
     .await;
@@ -131,19 +123,11 @@ async fn test_execute_success_with_header_injector_and_request_override() {
 
     let factory = HttpClientFactory::new();
     let mut client = factory.create(options).unwrap();
-    client.add_header_injector(HttpHeaderInjector::new(
-        |headers: &mut http::HeaderMap| {
-            headers.insert(
-                HeaderName::from_static("x-order"),
-                HeaderValue::from_static("injector"),
-            );
-            headers.insert(
-                AUTHORIZATION,
-                HeaderValue::from_static("Bearer secret-token"),
-            );
-            Ok(())
-        },
-    ));
+    client.add_header_injector(HttpHeaderInjector::new(|headers: &mut http::HeaderMap| {
+        headers.insert(HeaderName::from_static("x-order"), HeaderValue::from_static("injector"));
+        headers.insert(AUTHORIZATION, HeaderValue::from_static("Bearer secret-token"));
+        Ok(())
+    }));
 
     let request = client
         .request(Method::POST, "/v1/messages")
@@ -169,14 +153,8 @@ async fn test_execute_success_with_header_injector_and_request_override() {
     assert_eq!(captured.method, "POST");
     assert_eq!(captured.target, "/v1/messages?stream=false");
     assert_eq!(captured.headers.get("x-order").unwrap(), "request");
-    assert_eq!(
-        captured.headers.get("authorization").unwrap(),
-        "Bearer secret-token"
-    );
-    assert_eq!(
-        captured.headers.get("content-type").unwrap(),
-        "application/json"
-    );
+    assert_eq!(captured.headers.get("authorization").unwrap(), "Bearer secret-token");
+    assert_eq!(captured.headers.get("content-type").unwrap(), "application/json");
 
     assert!(captured.headers.contains_key("content-length"));
 }
@@ -185,10 +163,7 @@ async fn test_execute_success_with_header_injector_and_request_override() {
 async fn test_execute_json_applies_configured_value_limits() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
-        headers: vec![(
-            "Content-Type".to_string(),
-            "application/json".to_string(),
-        )],
+        headers: vec![("Content-Type".to_string(), "application/json".to_string())],
         body: br#"{"outer":{"value":7}}"#.to_vec(),
     })
     .await;
@@ -213,8 +188,7 @@ async fn test_execute_json_applies_configured_value_limits() {
 }
 
 #[tokio::test]
-async fn test_execute_bytes_rejects_response_body_larger_than_configured_limit()
-{
+async fn test_execute_bytes_rejects_response_body_larger_than_configured_limit() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
         headers: vec![],
@@ -225,10 +199,7 @@ async fn test_execute_bytes_rejects_response_body_larger_than_configured_limit()
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.response_body_size_limit = 3;
-    let expected_url = server
-        .base_url()
-        .join("/body-limit")
-        .expect("test URL should resolve");
+    let expected_url = server.base_url().join("/body-limit").expect("test URL should resolve");
 
     let client = HttpClientFactory::new()
         .create(options)
@@ -251,8 +222,7 @@ async fn test_execute_bytes_rejects_response_body_larger_than_configured_limit()
 }
 
 #[tokio::test]
-async fn test_execute_bytes_chunked_response_reports_total_observed_size_on_limit_exceeded()
- {
+async fn test_execute_bytes_chunked_response_reports_total_observed_size_on_limit_exceeded() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
         headers: vec![],
@@ -351,13 +321,7 @@ async fn test_execute_maps_non_success_status_to_http_error() {
         Some("<redacted: unsupported HTTP body>")
     );
     assert!(error.message.contains("response body preview"));
-    assert!(
-        error
-            .url
-            .unwrap()
-            .as_str()
-            .starts_with(&server.base_url().to_string())
-    );
+    assert!(error.url.unwrap().as_str().starts_with(&server.base_url().to_string()));
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
@@ -414,9 +378,7 @@ fn test_request_builder_methods_override_client_default_options() {
 
     let request = client
         .request(Method::GET, "/override")
-        .base_url(
-            url::Url::parse("https://override.example.com/root/").unwrap(),
-        )
+        .base_url(url::Url::parse("https://override.example.com/root/").unwrap())
         .ipv4_only(false)
         .request_timeout(Duration::from_secs(5))
         .expect("positive request timeout should be accepted")
@@ -518,21 +480,15 @@ async fn test_execute_stream_success_reads_all_chunks() {
     let client = HttpClientFactory::new().create(options).unwrap();
 
     let request = client.request(Method::GET, "/stream").build();
-    let mut stream_response =
-        timeout(Duration::from_secs(3), client.execute(request))
-            .await
-            .expect("execute timed out")
-            .unwrap();
+    let mut stream_response = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .unwrap();
     assert_eq!(stream_response.status(), StatusCode::OK);
-    assert_eq!(
-        stream_response.headers().get(CONTENT_TYPE).unwrap(),
-        "text/plain"
-    );
+    assert_eq!(stream_response.headers().get(CONTENT_TYPE).unwrap(), "text/plain");
 
     let mut body = Vec::new();
-    let mut stream = stream_response
-        .stream()
-        .expect("stream body should be available");
+    let mut stream = stream_response.stream().expect("stream body should be available");
     while let Some(item) = stream.next().await {
         let bytes = item.unwrap();
         body.extend_from_slice(&bytes);
@@ -575,8 +531,7 @@ async fn test_execute_stream_read_timeout() {
         .await
         .expect("execute timed out")
         .unwrap();
-    let mut stream =
-        response.stream().expect("stream body should be available");
+    let mut stream = response.stream().expect("stream body should be available");
 
     let first = stream.next().await.unwrap().unwrap();
     assert_eq!(first, b"first".as_slice());
@@ -707,12 +662,8 @@ async fn test_execute_stream_post_json_body_with_query_and_timeout() {
         .expect("server finish timed out");
     assert_eq!(captured.method, "POST");
     assert_eq!(captured.target, "/stream-post?mode=events");
-    assert_eq!(
-        captured.headers.get("content-type").unwrap(),
-        "application/json"
-    );
-    let json: serde_json::Value =
-        serde_json::from_slice(&captured.body).unwrap();
+    assert_eq!(captured.headers.get("content-type").unwrap(), "application/json");
+    let json: serde_json::Value = serde_json::from_slice(&captured.body).unwrap();
     assert_eq!(json["hello"], "stream");
 }
 
@@ -769,10 +720,7 @@ async fn test_execute_stream_with_text_body() {
 async fn test_execute_stream_with_bytes_body() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
-        headers: vec![(
-            "Content-Type".to_string(),
-            "application/octet-stream".to_string(),
-        )],
+        headers: vec![("Content-Type".to_string(), "application/octet-stream".to_string())],
         chunks: vec![ResponseChunk {
             delay: Duration::from_millis(0),
             bytes: b"ok".to_vec(),
@@ -866,20 +814,14 @@ async fn test_execute_non_success_error_body_preview_is_truncated_by_limit() {
     let error = client.execute(request).await.unwrap_err();
 
     assert_eq!(error.kind, HttpErrorKind::Status);
-    assert_eq!(
-        error.response_body_preview.as_deref(),
-        Some("<redaction incomplete>")
-    );
+    assert_eq!(error.response_body_preview.as_deref(), Some("<redaction incomplete>"));
 }
 
 #[tokio::test]
 async fn test_execute_non_utf8_content_type_redacts_error_body_preview() {
     let server = spawn_one_shot_server(ResponsePlan::ImmediateRawHeaders {
         status: 500,
-        headers: vec![(
-            "Content-Type".to_string(),
-            b"application/json; charset=\xFF".to_vec(),
-        )],
+        headers: vec![("Content-Type".to_string(), b"application/json; charset=\xFF".to_vec())],
         body: br#"{"note":"unclassified-response-secret"}"#.to_vec(),
     })
     .await;
@@ -889,9 +831,7 @@ async fn test_execute_non_utf8_content_type_redacts_error_body_preview() {
     let client = HttpClientFactory::new()
         .create(options)
         .expect("client should be created");
-    let request = client
-        .request(Method::GET, "/status-non-utf8-content-type")
-        .build();
+    let request = client.request(Method::GET, "/status-non-utf8-content-type").build();
 
     let error = client.execute(request).await.unwrap_err();
 
@@ -904,8 +844,7 @@ async fn test_execute_non_utf8_content_type_redacts_error_body_preview() {
 }
 
 #[tokio::test]
-async fn test_execute_truncated_binary_error_preview_has_unknown_total_length()
-{
+async fn test_execute_truncated_binary_error_preview_has_unknown_total_length() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 500,
         headers: vec![],
@@ -918,21 +857,15 @@ async fn test_execute_truncated_binary_error_preview_has_unknown_total_length()
     options.error_response_preview_limit = 4;
 
     let client = HttpClientFactory::new().create(options).unwrap();
-    let request = client
-        .request(Method::GET, "/status-truncated-binary")
-        .build();
+    let request = client.request(Method::GET, "/status-truncated-binary").build();
     let error = client.execute(request).await.unwrap_err();
 
     assert_eq!(error.kind, HttpErrorKind::Status);
-    assert_eq!(
-        error.response_body_preview.as_deref(),
-        Some("<redaction incomplete>"),
-    );
+    assert_eq!(error.response_body_preview.as_deref(), Some("<redaction incomplete>"),);
 }
 
 #[tokio::test]
-async fn test_execute_non_success_error_body_preview_is_not_truncated_at_exact_limit()
- {
+async fn test_execute_non_success_error_body_preview_is_not_truncated_at_exact_limit() {
     let body = "abcdefgh";
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 500,
@@ -946,9 +879,7 @@ async fn test_execute_non_success_error_body_preview_is_not_truncated_at_exact_l
     options.error_response_preview_limit = body.len();
 
     let client = HttpClientFactory::new().create(options).unwrap();
-    let request = client
-        .request(Method::GET, "/status-exact-preview-limit")
-        .build();
+    let request = client.request(Method::GET, "/status-exact-preview-limit").build();
     let error = client.execute(request).await.unwrap_err();
 
     assert_eq!(error.kind, HttpErrorKind::Status);
@@ -962,10 +893,7 @@ async fn test_execute_non_success_error_body_preview_is_not_truncated_at_exact_l
 async fn test_execute_response_metadata_debug_uses_custom_log_policy() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
-        headers: vec![(
-            "x-tenant-secret".to_string(),
-            "custom-header-secret".to_string(),
-        )],
+        headers: vec![("x-tenant-secret".to_string(), "custom-header-secret".to_string())],
         body: b"ok".to_vec(),
     })
     .await;
@@ -982,29 +910,22 @@ async fn test_execute_response_metadata_debug_uses_custom_log_policy() {
             let _ = http.query().raise("tenant_marker", Sensitivity::High);
         })
         .expect("the test policy input should be valid");
-    options.log_redaction_policy = policy_builder
-        .build()
-        .expect("log redaction policy should be valid");
+    options.log_redaction_policy = policy_builder.build().expect("log redaction policy should be valid");
 
     let captured_context_debug = Arc::new(Mutex::new(None));
-    let captured_context_debug_for_interceptor =
-        Arc::clone(&captured_context_debug);
+    let captured_context_debug_for_interceptor = Arc::clone(&captured_context_debug);
     let mut client = HttpClientFactory::new().create(options).unwrap();
     client.add_response_interceptor(HttpResponseInterceptor::new(
         move |context: &mut qubit_http::HttpResponseInterceptorContext| {
             *captured_context_debug_for_interceptor
                 .lock()
-                .expect("lock captured context debug") =
-                Some(format!("{context:?}"));
+                .expect("lock captured context debug") = Some(format!("{context:?}"));
             Ok(())
         },
     ));
 
     let request = client
-        .request(
-            Method::GET,
-            "/status-custom-policy?tenant_marker=custom-query-secret",
-        )
+        .request(Method::GET, "/status-custom-policy?tenant_marker=custom-query-secret")
         .build();
     let response = client.execute(request).await.unwrap();
     let meta_debug = format!("{:?}", response.meta());
@@ -1025,10 +946,7 @@ async fn test_execute_response_metadata_debug_uses_custom_log_policy() {
 async fn test_execute_non_success_error_body_preview_redacts_json_fields() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 400,
-        headers: vec![(
-            "Content-Type".to_string(),
-            "application/json".to_string(),
-        )],
+        headers: vec![("Content-Type".to_string(), "application/json".to_string())],
         body: br#"{"user":"alice","password":"secret"}"#.to_vec(),
     })
     .await;
@@ -1037,9 +955,7 @@ async fn test_execute_non_success_error_body_preview_redacts_json_fields() {
     options.base_url = Some(server.base_url());
 
     let client = HttpClientFactory::new().create(options).unwrap();
-    let request = client
-        .request(Method::GET, "/status-sensitive-body")
-        .build();
+    let request = client.request(Method::GET, "/status-sensitive-body").build();
     let error = client.execute(request).await.unwrap_err();
 
     assert_eq!(error.kind, HttpErrorKind::Status);
@@ -1070,16 +986,12 @@ async fn test_execute_non_success_text_body_preview_redacts_by_default() {
         .expect_err("non-success response should map to an error");
 
     assert_eq!(error.kind, HttpErrorKind::Status);
-    assert_eq!(
-        error.response_body_preview.as_deref(),
-        Some("<redacted: text body>")
-    );
+    assert_eq!(error.response_body_preview.as_deref(), Some("<redacted: text body>"));
     assert!(!error.message.contains("status-text-secret"));
 }
 
 #[tokio::test]
-async fn test_execute_non_success_text_body_pass_through_uses_same_policy_snapshot()
- {
+async fn test_execute_non_success_text_body_pass_through_uses_same_policy_snapshot() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 400,
         headers: vec![("Content-Type".to_string(), "text/plain".to_string())],
@@ -1090,13 +1002,10 @@ async fn test_execute_non_success_text_body_pass_through_uses_same_policy_snapsh
         .to_builder()
         .http(|http| {
             http.text_body(TextBodyPolicy::PassThrough);
-            let _ =
-                http.query().override_level("accessToken", Sensitivity::Low);
+            let _ = http.query().override_level("accessToken", Sensitivity::Low);
         })
         .expect("the test policy input should be valid");
-    let policy = policy_builder
-        .build()
-        .expect("log redaction policy should be valid");
+    let policy = policy_builder.build().expect("log redaction policy should be valid");
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.log_redaction_policy = policy;
@@ -1107,19 +1016,13 @@ async fn test_execute_non_success_text_body_pass_through_uses_same_policy_snapsh
     let error = client
         .execute(
             client
-                .request(
-                    Method::GET,
-                    "/status-text?accessToken=strong-default-secret",
-                )
+                .request(Method::GET, "/status-text?accessToken=strong-default-secret")
                 .build(),
         )
         .await
         .expect_err("non-success response should map to an error");
 
-    assert_eq!(
-        error.response_body_preview.as_deref(),
-        Some("opt-in-status-text")
-    );
+    assert_eq!(error.response_body_preview.as_deref(), Some("opt-in-status-text"));
     assert!(error.message.contains("opt-in-status-text"));
     assert!(!error.message.contains("strong-default-secret"));
     assert!(error.message.contains("accessToken=****"));
@@ -1137,8 +1040,7 @@ async fn test_execute_status_error_message_redacts_sensitive_url_parts() {
         .base_url()
         .join("/status-sensitive-url?accessToken=query-secret")
         .expect("request URL should join");
-    url.set_username("debug-user")
-        .expect("URL should accept username");
+    url.set_username("debug-user").expect("URL should accept username");
     url.set_password(Some("url-secret"))
         .expect("URL should accept password");
     url.set_fragment(Some("fragment-secret"));
@@ -1155,15 +1057,11 @@ async fn test_execute_status_error_message_redacts_sensitive_url_parts() {
     assert!(error.message.contains("****"));
 
     let captured = server.finish().await;
-    assert_eq!(
-        captured.target,
-        "/status-sensitive-url?accessToken=query-secret"
-    );
+    assert_eq!(captured.target, "/status-sensitive-url?accessToken=query-secret");
 }
 
 #[tokio::test]
-async fn test_execute_non_success_error_body_preview_truncates_when_limit_reached_before_next_chunk()
- {
+async fn test_execute_non_success_error_body_preview_truncates_when_limit_reached_before_next_chunk() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 500,
         headers: vec![],
@@ -1186,21 +1084,15 @@ async fn test_execute_non_success_error_body_preview_truncates_when_limit_reache
     options.error_response_preview_limit = 3;
 
     let client = HttpClientFactory::new().create(options).unwrap();
-    let request = client
-        .request(Method::GET, "/status-truncated-next-chunk")
-        .build();
+    let request = client.request(Method::GET, "/status-truncated-next-chunk").build();
     let error = client.execute(request).await.unwrap_err();
 
     assert_eq!(error.kind, HttpErrorKind::Status);
-    assert_eq!(
-        error.response_body_preview.as_deref(),
-        Some("<redaction incomplete>")
-    );
+    assert_eq!(error.response_body_preview.as_deref(), Some("<redaction incomplete>"));
 }
 
 #[tokio::test]
-async fn test_execute_error_body_preview_limit_is_decoupled_from_logging_limit()
-{
+async fn test_execute_error_body_preview_limit_is_decoupled_from_logging_limit() {
     let body = "abcdefghijklmnopqrstuvwxyz";
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 500,
@@ -1215,16 +1107,11 @@ async fn test_execute_error_body_preview_limit_is_decoupled_from_logging_limit()
     options.error_response_preview_limit = 12;
 
     let client = HttpClientFactory::new().create(options).unwrap();
-    let request = client
-        .request(Method::GET, "/status-decoupled-limit")
-        .build();
+    let request = client.request(Method::GET, "/status-decoupled-limit").build();
     let error = client.execute(request).await.unwrap_err();
 
     assert_eq!(error.kind, HttpErrorKind::Status);
-    assert_eq!(
-        error.response_body_preview.as_deref(),
-        Some("<redaction incomplete>")
-    );
+    assert_eq!(error.response_body_preview.as_deref(), Some("<redaction incomplete>"));
 }
 
 #[tokio::test]
@@ -1245,10 +1132,7 @@ async fn test_execute_non_success_error_body_preview_for_binary_body() {
     let error = client.execute(request).await.unwrap_err();
 
     assert_eq!(error.kind, HttpErrorKind::Status);
-    assert_eq!(
-        error.response_body_preview.as_deref(),
-        Some("<binary 6 bytes>")
-    );
+    assert_eq!(error.response_body_preview.as_deref(), Some("<binary 6 bytes>"));
 }
 
 #[tokio::test]
@@ -1324,13 +1208,7 @@ async fn test_execute_maps_truncated_response_body_to_transport_error() {
 
     assert_eq!(error.kind, HttpErrorKind::Transport);
     assert_eq!(error.method, Some(Method::GET));
-    assert!(
-        error
-            .url
-            .unwrap()
-            .as_str()
-            .starts_with(&server.base_url().to_string())
-    );
+    assert!(error.url.unwrap().as_str().starts_with(&server.base_url().to_string()));
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
@@ -1389,8 +1267,7 @@ async fn test_execute_maps_truncated_response_stream_to_transport_error() {
         .await
         .expect("execute timed out")
         .unwrap();
-    let mut stream =
-        response.stream().expect("stream body should be available");
+    let mut stream = response.stream().expect("stream body should be available");
 
     let first = stream
         .next()
@@ -1406,13 +1283,7 @@ async fn test_execute_maps_truncated_response_stream_to_transport_error() {
 
     assert_eq!(error.kind, HttpErrorKind::Transport);
     assert_eq!(error.method, Some(Method::GET));
-    assert!(
-        error
-            .url
-            .unwrap()
-            .as_str()
-            .starts_with(&server.base_url().to_string())
-    );
+    assert!(error.url.unwrap().as_str().starts_with(&server.base_url().to_string()));
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
@@ -1498,11 +1369,7 @@ async fn test_remembered_body_read_error_restores_custom_query_policy() {
         .expect_err("repeated read should restore the original failure");
 
     assert_eq!(remembered.kind, HttpErrorKind::Transport);
-    assert!(
-        remembered
-            .message
-            .contains("previous response body read failed")
-    );
+    assert!(remembered.message.contains("previous response body read failed"));
     assert_custom_query_is_redacted(&remembered);
     let captured = server.finish().await;
     assert_eq!(captured.target, path);
@@ -1532,17 +1399,15 @@ async fn test_execute_retries_retryable_status_until_success() {
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();
     let mut client = HttpClientFactory::new().create(options).unwrap();
-    client.add_header_injector(HttpHeaderInjector::new(
-        move |headers: &mut http::HeaderMap| {
-            let mut count = injector_count_clone.lock().unwrap();
-            *count += 1;
-            headers.insert(
-                HeaderName::from_static("x-attempt"),
-                HeaderValue::from_str(&count.to_string()).unwrap(),
-            );
-            Ok(())
-        },
-    ));
+    client.add_header_injector(HttpHeaderInjector::new(move |headers: &mut http::HeaderMap| {
+        let mut count = injector_count_clone.lock().unwrap();
+        *count += 1;
+        headers.insert(
+            HeaderName::from_static("x-attempt"),
+            HeaderValue::from_str(&count.to_string()).unwrap(),
+        );
+        Ok(())
+    }));
 
     let request = client.request(Method::GET, "/retry-status").build();
     let mut response = timeout(Duration::from_secs(3), client.execute(request))
@@ -1640,8 +1505,7 @@ async fn test_execute_returns_last_error_after_retry_attempts_exhausted() {
 }
 
 #[tokio::test]
-async fn test_execute_retry_max_duration_returns_last_error_after_retry_delay()
-{
+async fn test_execute_retry_max_duration_returns_last_error_after_retry_delay() {
     let server = spawn_multi_shot_server(vec![ResponsePlan::Immediate {
         status: 503,
         headers: vec![],
@@ -1734,11 +1598,7 @@ async fn test_execute_retry_max_duration_zero_reports_no_retryable_failure() {
         .unwrap_err();
 
     assert_eq!(error.kind, HttpErrorKind::RetryMaxElapsedExceeded);
-    assert!(
-        error
-            .message
-            .contains("before a retryable error was captured")
-    );
+    assert!(error.message.contains("before a retryable error was captured"));
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
@@ -1865,10 +1725,7 @@ async fn test_execute_stream_retries_initial_status_until_success() {
         },
         ResponsePlan::Chunked {
             status: 200,
-            headers: vec![(
-                "Content-Type".to_string(),
-                "text/plain".to_string(),
-            )],
+            headers: vec![("Content-Type".to_string(), "text/plain".to_string())],
             chunks: vec![ResponseChunk {
                 delay: Duration::ZERO,
                 bytes: b"stream-ok".to_vec(),
@@ -1938,13 +1795,8 @@ async fn test_execute_stream_does_not_retry_after_stream_is_returned() {
         .await
         .expect("execute timed out")
         .unwrap();
-    let mut stream =
-        response.stream().expect("stream body should be available");
-    let first = stream
-        .next()
-        .await
-        .expect("first stream item should exist")
-        .unwrap();
+    let mut stream = response.stream().expect("stream body should be available");
+    let first = stream.next().await.expect("first stream item should exist").unwrap();
     assert_eq!(first, b"first".as_slice());
     let error = stream
         .next()
@@ -1961,11 +1813,8 @@ async fn test_execute_stream_does_not_retry_after_stream_is_returned() {
 
 #[tokio::test]
 async fn test_execute_connect_refused_maps_to_transport_error() {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0")
-        .expect("ephemeral listener bind should work");
-    let addr = listener
-        .local_addr()
-        .expect("listener should expose a local address");
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("ephemeral listener bind should work");
+    let addr = listener.local_addr().expect("listener should expose a local address");
     drop(listener);
 
     let client = HttpClientFactory::new()
@@ -1983,11 +1832,8 @@ async fn test_execute_connect_refused_maps_to_transport_error() {
 
 #[tokio::test]
 async fn test_send_error_uses_custom_query_policy() {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0")
-        .expect("ephemeral listener bind should work");
-    let addr = listener
-        .local_addr()
-        .expect("listener should expose a local address");
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("ephemeral listener bind should work");
+    let addr = listener.local_addr().expect("listener should expose a local address");
     drop(listener);
 
     let mut options = HttpClientOptions::default();
@@ -1995,9 +1841,7 @@ async fn test_send_error_uses_custom_query_policy() {
     let client = HttpClientFactory::new()
         .create(options)
         .expect("client should be created");
-    let target = format!(
-        "http://{addr}/send-policy?{CUSTOM_QUERY_FIELD}={CUSTOM_QUERY_SECRET}"
-    );
+    let target = format!("http://{addr}/send-policy?{CUSTOM_QUERY_FIELD}={CUSTOM_QUERY_SECRET}");
     let request = client.request(Method::GET, &target).build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
         .await

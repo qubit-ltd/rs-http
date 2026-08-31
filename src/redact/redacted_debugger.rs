@@ -31,17 +31,12 @@ impl<'redactor> RedactedDebugger<'redactor> {
     /// A safe debug renderer.
     #[inline(always)]
     pub(crate) const fn new(log_redactor: &'redactor Redactor) -> Self {
-        Self {
-            redactor: log_redactor,
-        }
+        Self { redactor: log_redactor }
     }
 
     /// Returns an optional redacted URL through the direct adapter API.
     #[inline(always)]
-    pub(crate) fn optional_url(
-        &self,
-        url: Option<&Url>,
-    ) -> Option<RedactedText> {
+    pub(crate) fn optional_url(&self, url: Option<&Url>) -> Option<RedactedText> {
         url.map(|url| {
             self.redactor
                 .redact_http_url(url.as_str())
@@ -57,13 +52,11 @@ impl<'redactor> RedactedDebugger<'redactor> {
             let start = cursor + relative_start;
             output.push_str(&text[cursor..start]);
             let next_search_start = start + 1;
-            let candidate_limit = find_url_start(&text[next_search_start..])
-                .map_or(text.len(), |next| next_search_start + next);
+            let candidate_limit =
+                find_url_start(&text[next_search_start..]).map_or(text.len(), |next| next_search_start + next);
             let candidate_limit = text[start..candidate_limit]
                 .char_indices()
-                .find_map(|(index, character)| {
-                    character.is_whitespace().then_some(start + index)
-                })
+                .find_map(|(index, character)| character.is_whitespace().then_some(start + index))
                 .unwrap_or(candidate_limit);
             let end = url_candidate_end(&text[..candidate_limit], start);
             let candidate = &text[start..end];
@@ -102,14 +95,8 @@ fn find_url_start(text: &str) -> Option<usize> {
 
 fn url_candidate_end(text: &str, start: usize) -> usize {
     let mut end = text.len();
-    while let Some((index, character)) = text[..end].char_indices().next_back()
-    {
-        if index <= start
-            || !matches!(
-                character,
-                '.' | ',' | ';' | ':' | '!' | '?' | ')' | ']' | '}'
-            )
-        {
+    while let Some((index, character)) = text[..end].char_indices().next_back() {
+        if index <= start || !matches!(character, '.' | ',' | ';' | ':' | '!' | '?' | ')' | ']' | '}') {
             break;
         }
         end = index;

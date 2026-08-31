@@ -63,9 +63,7 @@ async fn test_ipv4_only_rejects_ipv6_literal_request_url() {
     options.timeouts.read_timeout = Duration::from_secs(1);
 
     let client = HttpClientFactory::new().create(options).unwrap();
-    let request = client
-        .request(Method::GET, "http://[::1]:18080/ipv6")
-        .build();
+    let request = client.request(Method::GET, "http://[::1]:18080/ipv6").build();
     let error = client.execute(request).await.unwrap_err();
 
     assert_eq!(error.kind, HttpErrorKind::InvalidUrl);
@@ -104,10 +102,7 @@ async fn test_ipv4_only_fails_on_hostname_without_ipv4_address() {
         .unwrap_err();
 
     assert!(
-        matches!(
-            error.kind,
-            HttpErrorKind::Transport | HttpErrorKind::WriteTimeout
-        ),
+        matches!(error.kind, HttpErrorKind::Transport | HttpErrorKind::WriteTimeout),
         "expected IPv4-only DNS failure to be transport or write timeout, got {:?}",
         error.kind
     );

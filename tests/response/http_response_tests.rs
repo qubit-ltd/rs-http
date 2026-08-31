@@ -30,23 +30,15 @@ async fn test_http_response_text_decode_error_contains_status_and_url() {
     let error = response.text().await.unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::Decode);
     assert_eq!(error.status, Some(StatusCode::OK));
-    assert_eq!(
-        error.url,
-        Some(Url::parse("https://example.com/bin").unwrap())
-    );
+    assert_eq!(error.url, Some(Url::parse("https://example.com/bin").unwrap()));
 }
 
 #[test]
 fn test_http_response_debug_masks_sensitive_values() {
     let mut headers = HeaderMap::new();
-    headers.insert(
-        "set-cookie",
-        HeaderValue::from_static("session=debug-cookie-secret"),
-    );
-    let mut url = Url::parse(
-        "https://debug-user:debug-url-secret@example.com/data?access_token=debug-query-secret",
-    )
-    .expect("URL should parse");
+    headers.insert("set-cookie", HeaderValue::from_static("session=debug-cookie-secret"));
+    let mut url = Url::parse("https://debug-user:debug-url-secret@example.com/data?access_token=debug-query-secret")
+        .expect("URL should parse");
     url.set_fragment(Some("debug-fragment-secret"));
     let response = HttpResponse::new(
         StatusCode::OK,
@@ -79,10 +71,7 @@ async fn test_http_response_json_decode_error_contains_status_and_url() {
     let error = response.json::<serde_json::Value>().await.unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::Decode);
     assert_eq!(error.status, Some(StatusCode::OK));
-    assert_eq!(
-        error.url,
-        Some(Url::parse("https://example.com/json").unwrap())
-    );
+    assert_eq!(error.url, Some(Url::parse("https://example.com/json").unwrap()));
 }
 
 #[test]
@@ -120,21 +109,14 @@ fn test_http_response_meta_accessor_returns_shared_metadata() {
 
     let meta = response.meta();
     assert_eq!(meta.status(), StatusCode::ACCEPTED);
-    assert_eq!(
-        meta.url(),
-        &Url::parse("https://example.com/jobs/1").unwrap()
-    );
+    assert_eq!(meta.url(), &Url::parse("https://example.com/jobs/1").unwrap());
     assert_eq!(meta.method(), &Method::POST);
 }
 
 #[test]
-fn test_http_response_retry_after_hint_handles_applicable_status_and_past_date()
-{
+fn test_http_response_retry_after_hint_handles_applicable_status_and_past_date() {
     let mut headers = HeaderMap::new();
-    headers.insert(
-        RETRY_AFTER,
-        HeaderValue::from_static("Wed, 21 Oct 2015 07:28:00 GMT"),
-    );
+    headers.insert(RETRY_AFTER, HeaderValue::from_static("Wed, 21 Oct 2015 07:28:00 GMT"));
     let response = HttpResponse::new(
         StatusCode::SERVICE_UNAVAILABLE,
         headers.clone(),
@@ -210,8 +192,7 @@ async fn test_http_response_json_redacts_deserializer_value() {
         StatusCode::OK,
         HeaderMap::new(),
         Bytes::from(format!("\"{SECRET}\"")),
-        Url::parse("https://example.com/secure-json")
-            .expect("test URL must parse"),
+        Url::parse("https://example.com/secure-json").expect("test URL must parse"),
         Method::GET,
     );
     let error = response
@@ -222,14 +203,10 @@ async fn test_http_response_json_redacts_deserializer_value() {
     assert_eq!(error.status, Some(StatusCode::OK));
     assert_eq!(
         error.url,
-        Some(
-            Url::parse("https://example.com/secure-json")
-                .expect("test URL must parse")
-        )
+        Some(Url::parse("https://example.com/secure-json").expect("test URL must parse"))
     );
-    let source = std::error::Error::source(&error).expect(
-        "HTTP JSON decode errors must retain the redacted decoder source",
-    );
+    let source =
+        std::error::Error::source(&error).expect("HTTP JSON decode errors must retain the redacted decoder source");
     let decode_error = source
         .downcast_ref::<qubit_json::decode::JsonDecodeError>()
         .expect("HTTP JSON decode source must be JsonDecodeError");

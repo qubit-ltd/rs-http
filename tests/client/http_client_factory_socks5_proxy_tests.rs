@@ -40,10 +40,7 @@ impl SocksServer {
     }
 
     async fn finish(self) -> (String, u16) {
-        let target = self
-            .target_rx
-            .await
-            .expect("failed to receive socks target");
+        let target = self.target_rx.await.expect("failed to receive socks target");
         self.join_handle.await.expect("socks server task panicked");
         target
     }
@@ -53,14 +50,11 @@ async fn spawn_socks5_server() -> SocksServer {
     let listener = TcpListener::bind("127.0.0.1:0")
         .await
         .expect("failed to bind socks5 server");
-    let addr = listener
-        .local_addr()
-        .expect("failed to query socks5 address");
+    let addr = listener.local_addr().expect("failed to query socks5 address");
     let (target_tx, target_rx) = oneshot::channel::<(String, u16)>();
 
     let join_handle = tokio::spawn(async move {
-        let (mut stream, _) =
-            listener.accept().await.expect("failed to accept socks5");
+        let (mut stream, _) = listener.accept().await.expect("failed to accept socks5");
         let (host, port) = socks5_handshake_and_target(&mut stream)
             .await
             .expect("failed socks5 handshake");
@@ -90,10 +84,7 @@ async fn spawn_socks5_server() -> SocksServer {
             .write_all(&response)
             .await
             .expect("failed to write proxied response");
-        stream
-            .flush()
-            .await
-            .expect("failed to flush proxied response");
+        stream.flush().await.expect("failed to flush proxied response");
     });
 
     SocksServer {
@@ -104,9 +95,7 @@ async fn spawn_socks5_server() -> SocksServer {
     }
 }
 
-async fn socks5_handshake_and_target(
-    stream: &mut TcpStream,
-) -> std::io::Result<(String, u16)> {
+async fn socks5_handshake_and_target(stream: &mut TcpStream) -> std::io::Result<(String, u16)> {
     let mut greeting = [0_u8; 2];
     stream.read_exact(&mut greeting).await?;
     let nmethods = greeting[1] as usize;
@@ -134,12 +123,8 @@ async fn socks5_handshake_and_target(
             stream.read_exact(&mut len).await?;
             let mut domain = vec![0_u8; len[0] as usize];
             stream.read_exact(&mut domain).await?;
-            String::from_utf8(domain).map_err(|e| {
-                std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    format!("bad domain: {e}"),
-                )
-            })?
+            String::from_utf8(domain)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, format!("bad domain: {e}")))?
         }
         _ => {
             return Err(std::io::Error::new(
@@ -159,10 +144,7 @@ async fn socks5_handshake_and_target(
     Ok((host, port))
 }
 
-async fn read_http_message(
-    stream: &mut TcpStream,
-    output: &mut Vec<u8>,
-) -> std::io::Result<()> {
+async fn read_http_message(stream: &mut TcpStream, output: &mut Vec<u8>) -> std::io::Result<()> {
     let header_end = loop {
         let mut buf = [0_u8; 1024];
         let n = stream.read(&mut buf).await?;
@@ -202,9 +184,7 @@ async fn read_http_message(
 }
 
 fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
-    haystack
-        .windows(needle.len())
-        .position(|window| window == needle)
+    haystack.windows(needle.len()).position(|window| window == needle)
 }
 
 #[tokio::test]
