@@ -25,22 +25,13 @@ fn test_http_defaults_use_installed_global_policy() {
         })
         .expect("the test query field should be valid");
     let policy = builder.build().expect("the test policy should build");
-    let previous =
-        Redactor::replace_application_default(Redactor::new(policy.clone()));
-    let url = Url::parse(
-        "https://example.test/resource?tenant_secret=raw-tenant-secret",
-    )
-    .expect("the test URL should be valid");
+    let previous = Redactor::replace_application_default(Redactor::new(policy.clone()));
+    let url = Url::parse("https://example.test/resource?tenant_secret=raw-tenant-secret")
+        .expect("the test URL should be valid");
 
     let options = HttpClientOptions::default();
-    let error = HttpError::new(HttpErrorKind::Transport, "request failed")
-        .with_url(&url);
-    let metadata = HttpResponseMeta::new(
-        StatusCode::OK,
-        HeaderMap::new(),
-        url,
-        Method::GET,
-    );
+    let error = HttpError::new(HttpErrorKind::Transport, "request failed").with_url(&url);
+    let metadata = HttpResponseMeta::new(StatusCode::OK, HeaderMap::new(), url, Method::GET);
 
     assert_eq!(options.log_redaction_policy, policy);
     assert!(!format!("{error:?}").contains("raw-tenant-secret"));

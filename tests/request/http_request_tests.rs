@@ -45,9 +45,7 @@ fn test_http_request_setters_update_method_path_query_and_body() {
     assert_eq!(request.method(), &Method::POST);
     assert_eq!(request.path(), "/v2/orders");
 
-    request
-        .add_query_param("page", "1")
-        .add_query_param("limit", "10");
+    request.add_query_param("page", "1").add_query_param("limit", "10");
     assert_eq!(
         request.query(),
         vec![
@@ -170,9 +168,7 @@ fn test_http_request_debug_honors_url_path_redaction_policy() {
             http.url_path(UrlPathPolicy::Redact);
         })
         .expect("test policy should be valid");
-    options.log_redaction_policy = policy_builder
-        .build()
-        .expect("log redaction policy should be valid");
+    options.log_redaction_policy = policy_builder.build().expect("log redaction policy should be valid");
     let client = HttpClientFactory::new()
         .create(options)
         .expect("client should be created");
@@ -202,17 +198,12 @@ fn test_http_request_debug_honors_explicit_default_field_exclusion() {
             let _ = http.query().allow_exact("SIG");
         })
         .expect("the test policy input should be valid");
-    options.log_redaction_policy = builder
-        .build()
-        .expect("log redaction policy should be valid");
+    options.log_redaction_policy = builder.build().expect("log redaction policy should be valid");
     let client = HttpClientFactory::new()
         .create(options)
         .expect("client should be created");
     let request = client
-        .request(
-            Method::GET,
-            "https://example.com/callback?sig=known-false-positive",
-        )
+        .request(Method::GET, "https://example.com/callback?sig=known-false-positive")
         .build();
 
     let debug = format!("{request:?}");
@@ -229,9 +220,7 @@ fn test_http_request_debug_suffix_allow_wins_over_sensitive_suffix() {
             let _ = http.query().allow_suffix("access_token");
         })
         .expect("the test policy input should be valid");
-    options.log_redaction_policy = builder
-        .build()
-        .expect("log redaction policy should be valid");
+    options.log_redaction_policy = builder.build().expect("log redaction policy should be valid");
     let client = HttpClientFactory::new()
         .create(options)
         .expect("client should be created");
@@ -257,17 +246,12 @@ fn test_http_request_debug_allow_rule_wins_independent_of_builder_order() {
             let _ = http.query().raise("SIG", Sensitivity::Secret);
         })
         .expect("the test policy input should be valid");
-    options.log_redaction_policy = builder
-        .build()
-        .expect("log redaction policy should be valid");
+    options.log_redaction_policy = builder.build().expect("log redaction policy should be valid");
     let client = HttpClientFactory::new()
         .create(options)
         .expect("client should be created");
     let request = client
-        .request(
-            Method::GET,
-            "https://example.com/callback?sig=must-be-redacted",
-        )
+        .request(Method::GET, "https://example.com/callback?sig=must-be-redacted")
         .build();
 
     let debug = format!("{request:?}");
@@ -289,9 +273,7 @@ fn test_http_request_resolved_url_is_public() {
         .query_param("added", "two words")
         .build();
 
-    let url = request
-        .resolved_url()
-        .expect("resolved request URL should be public");
+    let url = request.resolved_url().expect("resolved request URL should be public");
 
     assert_eq!(
         url.as_str(),
@@ -306,10 +288,7 @@ fn test_http_request_setters_update_headers_timeout_retry_and_cancellation() {
     request
         .set_header("x-trace-id", "trace-1")
         .expect("valid header should be accepted");
-    request.set_typed_header(
-        HeaderName::from_static("x-role"),
-        HeaderValue::from_static("tester"),
-    );
+    request.set_typed_header(HeaderName::from_static("x-role"), HeaderValue::from_static("tester"));
     assert_eq!(
         request
             .headers()
@@ -318,10 +297,7 @@ fn test_http_request_setters_update_headers_timeout_retry_and_cancellation() {
         "trace-1"
     );
     assert_eq!(
-        request
-            .headers()
-            .get("x-role")
-            .expect("x-role header should exist"),
+        request.headers().get("x-role").expect("x-role header should exist"),
         "tester"
     );
 
@@ -416,10 +392,7 @@ fn test_http_request_setters_update_resolved_url_for_base_url_and_ipv4_only() {
     let mut request = client.request(Method::GET, "users").build();
 
     assert_eq!(
-        request
-            .resolved_url()
-            .expect("request URL should resolve")
-            .as_str(),
+        request.resolved_url().expect("request URL should resolve").as_str(),
         "https://api.example.com/v1/users"
     );
 
@@ -458,11 +431,9 @@ fn test_http_request_setters_update_resolved_url_for_base_url_and_ipv4_only() {
 }
 
 #[test]
-fn test_http_request_set_streaming_body_replaces_existing_body_and_has_safe_debug()
- {
+fn test_http_request_set_streaming_body_replaces_existing_body_and_has_safe_debug() {
     let mut request = new_request(Method::POST, "/streaming-upload");
-    request
-        .set_body(HttpRequestBody::Bytes(Bytes::from_static(b"legacy-body")));
+    request.set_body(HttpRequestBody::Bytes(Bytes::from_static(b"legacy-body")));
 
     let streaming_body = HttpRequestStreamingBody::new(|| {
         Box::pin(async move {

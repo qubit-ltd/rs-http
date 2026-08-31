@@ -15,13 +15,9 @@ use http::HeaderMap;
 
 use crate::HttpResult;
 
-type AsyncHttpHeaderInjectorFuture<'a> =
-    Pin<Box<dyn Future<Output = HttpResult<()>> + Send + 'a>>;
+type AsyncHttpHeaderInjectorFuture<'a> = Pin<Box<dyn Future<Output = HttpResult<()>> + Send + 'a>>;
 type AsyncHttpHeaderInjectorFn =
-    dyn for<'a> Fn(&'a mut HeaderMap) -> AsyncHttpHeaderInjectorFuture<'a>
-        + Send
-        + Sync
-        + 'static;
+    dyn for<'a> Fn(&'a mut HeaderMap) -> AsyncHttpHeaderInjectorFuture<'a> + Send + Sync + 'static;
 
 /// Async HTTP header injector that can await external state (for example token
 /// refresh) before mutating outbound request headers.
@@ -40,8 +36,7 @@ impl std::fmt::Debug for AsyncHttpHeaderInjector {
     /// # Returns
     /// Formatting result.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("AsyncHttpHeaderInjector")
-            .finish_non_exhaustive()
+        f.debug_struct("AsyncHttpHeaderInjector").finish_non_exhaustive()
     }
 }
 
@@ -55,10 +50,7 @@ impl AsyncHttpHeaderInjector {
     /// New [`AsyncHttpHeaderInjector`].
     pub fn new<F>(injector: F) -> Self
     where
-        F: for<'a> Fn(&'a mut HeaderMap) -> AsyncHttpHeaderInjectorFuture<'a>
-            + Send
-            + Sync
-            + 'static,
+        F: for<'a> Fn(&'a mut HeaderMap) -> AsyncHttpHeaderInjectorFuture<'a> + Send + Sync + 'static,
     {
         Self {
             inner: Arc::new(injector),

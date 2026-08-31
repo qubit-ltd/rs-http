@@ -48,24 +48,17 @@ impl SimpleProxyServer {
     }
 
     pub async fn finish(self) -> ProxyCapturedRequest {
-        let request = self
-            .request_rx
-            .await
-            .expect("proxy server dropped request sender");
+        let request = self.request_rx.await.expect("proxy server dropped request sender");
         self.join_handle.await.expect("proxy server task panicked");
         request
     }
 }
 
-pub async fn spawn_simple_proxy_server(
-    behavior: ProxyBehavior,
-) -> SimpleProxyServer {
+pub async fn spawn_simple_proxy_server(behavior: ProxyBehavior) -> SimpleProxyServer {
     let listener = TcpListener::bind("127.0.0.1:0")
         .await
         .expect("failed to bind simple proxy server");
-    let addr = listener
-        .local_addr()
-        .expect("failed to query simple proxy address");
+    let addr = listener.local_addr().expect("failed to query simple proxy address");
     let host = addr.ip().to_string();
     let port = addr.port();
     let (request_tx, request_rx) = oneshot::channel::<ProxyCapturedRequest>();
@@ -82,43 +75,27 @@ pub async fn spawn_simple_proxy_server(
 
         match behavior {
             ProxyBehavior::CaptureOnly => {
-                write_simple_response(
-                    &mut client_stream,
-                    502,
-                    b"proxy capture only",
-                )
-                .await
-                .expect("proxy server failed to write capture response");
+                write_simple_response(&mut client_stream, 502, b"proxy capture only")
+                    .await
+                    .expect("proxy server failed to write capture response");
             }
             ProxyBehavior::ConnectProbe => {
                 if request.method.eq_ignore_ascii_case("CONNECT") {
                     write_simple_response(&mut client_stream, 200, b"")
                         .await
-                        .expect(
-                            "proxy server failed to write connect response",
-                        );
+                        .expect("proxy server failed to write connect response");
                     tokio::time::sleep(Duration::from_millis(50)).await;
                 } else {
-                    write_simple_response(
-                        &mut client_stream,
-                        400,
-                        b"expected CONNECT",
-                    )
-                    .await
-                    .expect(
-                        "proxy server failed to write connect-probe response",
-                    );
+                    write_simple_response(&mut client_stream, 400, b"expected CONNECT")
+                        .await
+                        .expect("proxy server failed to write connect-probe response");
                 }
             }
             ProxyBehavior::ForwardHttp => {
                 if request.method.eq_ignore_ascii_case("CONNECT") {
-                    write_simple_response(
-                        &mut client_stream,
-                        501,
-                        b"CONNECT not supported",
-                    )
-                    .await
-                    .expect("proxy server failed to reject CONNECT");
+                    write_simple_response(&mut client_stream, 501, b"CONNECT not supported")
+                        .await
+                        .expect("proxy server failed to reject CONNECT");
                 } else {
                     forward_http_request(&request, &mut client_stream)
                         .await
@@ -136,23 +113,18 @@ pub async fn spawn_simple_proxy_server(
     }
 }
 
-async fn read_http_request(
-    stream: &mut TcpStream,
-) -> std::io::Result<ProxyCapturedRequest> {
+async fn read_http_request(stream: &mut TcpStream) -> std::io::Result<ProxyCapturedRequest> {
     let mut buffer = Vec::new();
     let header_end = loop {
         let mut chunk = [0_u8; 1024];
-        let read_size = tokio::time::timeout(
-            Duration::from_secs(3),
-            stream.read(&mut chunk),
-        )
-        .await
-        .map_err(|_| {
-            std::io::Error::new(
-                std::io::ErrorKind::TimedOut,
-                "timed out while reading proxy request headers",
-            )
-        })??;
+        let read_size = tokio::time::timeout(Duration::from_secs(3), stream.read(&mut chunk))
+            .await
+            .map_err(|_| {
+                std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    "timed out while reading proxy request headers",
+                )
+            })??;
         if read_size == 0 {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::UnexpectedEof,
@@ -180,10 +152,7 @@ async fn read_http_request(
             break;
         }
         if let Some((name, value)) = line.split_once(':') {
-            headers.insert(
-                name.trim().to_ascii_lowercase(),
-                value.trim().to_string(),
-            );
+            headers.insert(name.trim().to_ascii_lowercase(), value.trim().to_string());
         }
     }
 
@@ -208,19 +177,13 @@ async fn read_http_request(
     })
 }
 
-async fn forward_http_request(
-    request: &ProxyCapturedRequest,
-    client_stream: &mut TcpStream,
-) -> std::io::Result<()> {
+async fn forward_http_request(request: &ProxyCapturedRequest, client_stream: &mut TcpStream) -> std::io::Result<()> {
     let (host, port, path_and_query) = parse_target(&request.target)?;
     let mut upstream = TcpStream::connect((host.as_str(), port)).await?;
 
-    let mut outgoing =
-        format!("{} {} HTTP/1.1\r\n", request.method, path_and_query);
+    let mut outgoing = format!("{} {} HTTP/1.1\r\n", request.method, path_and_query);
     for (name, value) in &request.headers {
-        if name.eq_ignore_ascii_case("proxy-authorization")
-            || name.eq_ignore_ascii_case("proxy-connection")
-        {
+        if name.eq_ignore_ascii_case("proxy-authorization") || name.eq_ignore_ascii_case("proxy-connection") {
             continue;
         }
         outgoing.push_str(name);
@@ -273,11 +236,7 @@ fn parse_target(target: &str) -> std::io::Result<(String, u16, String)> {
     Ok((host.to_string(), port, path))
 }
 
-async fn write_simple_response(
-    stream: &mut TcpStream,
-    status: u16,
-    body: &[u8],
-) -> std::io::Result<()> {
+async fn write_simple_response(stream: &mut TcpStream, status: u16, body: &[u8]) -> std::io::Result<()> {
     let reason = match status {
         200 => "OK",
         400 => "Bad Request",
@@ -285,10 +244,7 @@ async fn write_simple_response(
         502 => "Bad Gateway",
         _ => "Unknown",
     };
-    let head = format!(
-        "HTTP/1.1 {status} {reason}\r\nContent-Length: {}\r\n\r\n",
-        body.len()
-    );
+    let head = format!("HTTP/1.1 {status} {reason}\r\nContent-Length: {}\r\n\r\n", body.len());
     stream.write_all(head.as_bytes()).await?;
     if !body.is_empty() {
         stream.write_all(body).await?;
@@ -298,7 +254,5 @@ async fn write_simple_response(
 }
 
 fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
-    haystack
-        .windows(needle.len())
-        .position(|window| window == needle)
+    haystack.windows(needle.len()).position(|window| window == needle)
 }

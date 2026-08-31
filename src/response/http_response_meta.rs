@@ -38,12 +38,7 @@ pub struct HttpResponseMeta {
 impl HttpResponseMeta {
     /// Creates response metadata from status/headers/url/method parts.
     #[inline]
-    pub fn new(
-        status: StatusCode,
-        headers: HeaderMap,
-        url: Url,
-        method: Method,
-    ) -> Self {
+    pub fn new(status: StatusCode, headers: HeaderMap, url: Url, method: Method) -> Self {
         Self {
             status,
             headers,
@@ -75,10 +70,7 @@ impl HttpResponseMeta {
     /// # Returns
     /// Updated metadata.
     #[inline(always)]
-    pub fn with_log_redaction_policy(
-        mut self,
-        policy: RedactionPolicy,
-    ) -> Self {
+    pub fn with_log_redaction_policy(mut self, policy: RedactionPolicy) -> Self {
         self.log_redactor = Redactor::new(policy);
         self
     }
@@ -137,10 +129,7 @@ impl HttpResponseMeta {
     /// # Returns
     /// `Some(Duration)` when status and header value are applicable; otherwise
     /// `None`.
-    pub(super) fn retry_after_hint_from_parts(
-        status: StatusCode,
-        headers: &HeaderMap,
-    ) -> Option<Duration> {
+    pub(super) fn retry_after_hint_from_parts(status: StatusCode, headers: &HeaderMap) -> Option<Duration> {
         if !is_retry_after_applicable_status(status) {
             return None;
         }
@@ -228,9 +217,5 @@ fn parse_retry_after_value(value: &str) -> Option<Duration> {
     }
     let retry_at = parse_http_date(trimmed).ok()?;
     let now = SystemTime::now();
-    Some(
-        retry_at
-            .duration_since(now)
-            .unwrap_or_else(|_| Duration::from_secs(0)),
-    )
+    Some(retry_at.duration_since(now).unwrap_or_else(|_| Duration::from_secs(0)))
 }

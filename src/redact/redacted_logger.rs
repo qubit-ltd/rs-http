@@ -54,10 +54,7 @@ impl RedactedLogger {
     ///
     /// A helper using the supplied immutable redactor snapshot.
     #[inline(always)]
-    pub(crate) fn from_options_with_redactor(
-        options: &HttpClientOptions,
-        log_redactor: Redactor,
-    ) -> Self {
+    pub(crate) fn from_options_with_redactor(options: &HttpClientOptions, log_redactor: Redactor) -> Self {
         Self::new(log_redactor, options.logging.body_size_limit)
     }
 
@@ -84,14 +81,8 @@ impl RedactedLogger {
     /// exhausted state the shared session has stopped processing and this
     /// adapter does not read further body bytes.
     #[inline]
-    pub(crate) fn body(
-        &self,
-        body: &[u8],
-        content_type: Option<&HeaderValue>,
-    ) -> RedactionTextOutput {
-        self.redactor.redact_http_body(
-            BodyPreview::new(body, self.body_size_limit).capture(),
-            content_type,
-        )
+    pub(crate) fn body(&self, body: &[u8], content_type: Option<&HeaderValue>) -> RedactionTextOutput {
+        self.redactor
+            .redact_http_body(BodyPreview::new(body, self.body_size_limit).capture(), content_type)
     }
 }

@@ -87,13 +87,8 @@ pub struct HttpRequestBuilder {
 impl fmt::Debug for HttpRequestBuilder {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut batch = self.log_redactor.batch();
-        let url = self
-            .debug_resolved_url()
-            .map(|url| batch.redact_http_url(url.as_str()));
-        let base_url = self
-            .base_url
-            .as_ref()
-            .map(|url| batch.redact_http_url(url.as_str()));
+        let url = self.debug_resolved_url().map(|url| batch.redact_http_url(url.as_str()));
+        let base_url = self.base_url.as_ref().map(|url| batch.redact_http_url(url.as_str()));
         let headers = batch.redact_http_headers(&self.headers);
         let default_headers = batch.redact_http_headers(&self.default_headers);
         let output = batch.finish_for_diagnostics("<redaction incomplete>");
@@ -107,19 +102,13 @@ impl fmt::Debug for HttpRequestBuilder {
             .field("url", &url)
             .field("headers", &headers)
             .field("body", &self.body)
-            .field(
-                "streaming_body",
-                &self.streaming_body.as_ref().map(|_| "present"),
-            )
+            .field("streaming_body", &self.streaming_body.as_ref().map(|_| "present"))
             .field("request_timeout", &self.request_timeout)
             .field("write_timeout", &self.write_timeout)
             .field("read_timeout", &self.read_timeout)
             .field("base_url", &base_url)
             .field("ipv4_only", &self.ipv4_only)
-            .field(
-                "cancellation_token_present",
-                &self.cancellation_token.is_some(),
-            )
+            .field("cancellation_token_present", &self.cancellation_token.is_some())
             .field("retry_override", &self.retry_override)
             .field("default_headers", &default_headers)
             .field("injector_count", &self.injectors.len())
@@ -249,9 +238,7 @@ impl HttpRequestBuilder {
         I: IntoIterator<Item = B>,
         B: Into<Bytes>,
     {
-        self.body = HttpRequestBody::Stream(
-            chunks.into_iter().map(Into::into).collect(),
-        );
+        self.body = HttpRequestBody::Stream(chunks.into_iter().map(Into::into).collect());
         self.streaming_body = None;
         self
     }
@@ -268,15 +255,7 @@ impl HttpRequestBuilder {
     /// `self` for chaining.
     pub fn streaming_body<F>(mut self, factory: F) -> Self
     where
-        F: Fn() -> Pin<
-                Box<
-                    dyn Future<Output = HttpRequestBodyByteStream>
-                        + Send
-                        + 'static,
-                >,
-            > + Send
-            + Sync
-            + 'static,
+        F: Fn() -> Pin<Box<dyn Future<Output = HttpRequestBodyByteStream> + Send + 'static>> + Send + Sync + 'static,
     {
         self.streaming_body = Some(HttpRequestStreamingBody::new(factory));
         self.body = HttpRequestBody::Empty;
@@ -293,10 +272,8 @@ impl HttpRequestBuilder {
     /// `self` for chaining.
     pub fn text_body(mut self, body: impl Into<String>) -> Self {
         if !self.headers.contains_key(CONTENT_TYPE) {
-            self.headers.insert(
-                CONTENT_TYPE,
-                HeaderValue::from_static("text/plain; charset=utf-8"),
-            );
+            self.headers
+                .insert(CONTENT_TYPE, HeaderValue::from_static("text/plain; charset=utf-8"));
         }
         self.body = HttpRequestBody::Text(body.into());
         self.streaming_body = None;
@@ -329,25 +306,16 @@ impl HttpRequestBuilder {
     ///
     /// # Returns
     /// `Ok(self)` or [`HttpError`] if JSON encoding exceeds a limit or fails.
-    pub fn json_body_with_limits<T>(
-        mut self,
-        value: &T,
-        limits: JsonEncodeLimits,
-    ) -> HttpResult<Self>
+    pub fn json_body_with_limits<T>(mut self, value: &T, limits: JsonEncodeLimits) -> HttpResult<Self>
     where
         T: Serialize,
     {
-        let bytes = JsonEncoder::with_limits(limits).to_vec(value).map_err(
-            |error| {
-                HttpError::decode("Failed to encode JSON body")
-                    .with_source(error)
-            },
-        )?;
+        let bytes = JsonEncoder::with_limits(limits)
+            .to_vec(value)
+            .map_err(|error| HttpError::decode("Failed to encode JSON body").with_source(error))?;
         if !self.headers.contains_key(CONTENT_TYPE) {
-            self.headers.insert(
-                CONTENT_TYPE,
-                HeaderValue::from_static("application/json"),
-            );
+            self.headers
+                .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         }
         self.body = HttpRequestBody::Json(Bytes::from(bytes));
         self.streaming_body = None;
@@ -394,11 +362,7 @@ impl HttpRequestBuilder {
     /// Returns [`HttpError`] when `boundary` is not a 1 to 70 character
     /// ASCII token-safe multipart boundary, or when an existing `Content-Type`
     /// is not UTF-8 multipart content with a valid matching boundary.
-    pub fn multipart_body(
-        mut self,
-        body: impl Into<Bytes>,
-        boundary: &str,
-    ) -> HttpResult<Self> {
+    pub fn multipart_body(mut self, body: impl Into<Bytes>, boundary: &str) -> HttpResult<Self> {
         if !content_type::is_valid_multipart_boundary(boundary) {
             return Err(HttpError::other(
                 "Invalid multipart boundary for multipart_body: expected 1 to 70 token-safe ASCII characters",
@@ -406,9 +370,7 @@ impl HttpRequestBuilder {
         }
         if let Some(existing) = self.headers.get(CONTENT_TYPE) {
             let existing = existing.to_str().map_err(|error| {
-                HttpError::other(format!(
-                    "Existing multipart Content-Type must be valid UTF-8: {error}"
-                ))
+                HttpError::other(format!("Existing multipart Content-Type must be valid UTF-8: {error}"))
             })?;
             if !content_type::is_multipart(existing) {
                 return Err(HttpError::other(
@@ -416,17 +378,9 @@ impl HttpRequestBuilder {
                 ));
             }
             let declares_boundary = content_type::has_parameter_name(existing, "boundary")
-                .ok_or_else(|| {
-                    HttpError::other(
-                        "Existing multipart Content-Type boundary is malformed or invalid",
-                    )
-                })?;
-            if let Some(existing_boundary) =
-                content_type::parameter(existing, "boundary")
-            {
-                if !content_type::is_valid_multipart_boundary(
-                    &existing_boundary,
-                ) {
+                .ok_or_else(|| HttpError::other("Existing multipart Content-Type boundary is malformed or invalid"))?;
+            if let Some(existing_boundary) = content_type::parameter(existing, "boundary") {
+                if !content_type::is_valid_multipart_boundary(&existing_boundary) {
                     return Err(HttpError::other(
                         "Existing multipart Content-Type boundary is malformed or invalid",
                     ));
@@ -490,47 +444,34 @@ impl HttpRequestBuilder {
     /// # Errors
     /// Returns [`HttpError`] when line terminators cannot fit the output limit
     /// or any record fails JSON serialization or resource admission.
-    pub fn ndjson_body_with_limits<T>(
-        mut self,
-        records: &[T],
-        limits: JsonEncodeLimits,
-    ) -> HttpResult<Self>
+    pub fn ndjson_body_with_limits<T>(mut self, records: &[T], limits: JsonEncodeLimits) -> HttpResult<Self>
     where
         T: Serialize,
     {
         let newline_bytes = records.len();
         let limits = match limits.max_output_bytes() {
             Some(maximum) => {
-                let Some(record_output_bytes) =
-                    maximum.checked_sub(newline_bytes)
-                else {
+                let Some(record_output_bytes) = maximum.checked_sub(newline_bytes) else {
                     return Err(HttpError::decode(
                         "Failed to encode NDJSON body: output budget is smaller than required line terminators",
                     ));
                 };
-                limits
-                    .into_builder()
-                    .max_output_bytes(record_output_bytes)
-                    .build()
+                limits.into_builder().max_output_bytes(record_output_bytes).build()
             }
             None => limits,
         };
-        let mut encoder =
-            JsonEncoder::new(JsonEncodeSession::from_limits(limits));
+        let mut encoder = JsonEncoder::new(JsonEncodeSession::from_limits(limits));
         let mut payload = Vec::new();
         for record in records {
-            let line = encoder.to_vec(record).map_err(|error| {
-                HttpError::decode("Failed to encode NDJSON record")
-                    .with_source(error)
-            })?;
+            let line = encoder
+                .to_vec(record)
+                .map_err(|error| HttpError::decode("Failed to encode NDJSON record").with_source(error))?;
             payload.extend_from_slice(&line);
             payload.push(b'\n');
         }
         if !self.headers.contains_key(CONTENT_TYPE) {
-            self.headers.insert(
-                CONTENT_TYPE,
-                HeaderValue::from_static("application/x-ndjson"),
-            );
+            self.headers
+                .insert(CONTENT_TYPE, HeaderValue::from_static("application/x-ndjson"));
         }
         self.body = HttpRequestBody::Ndjson(Bytes::from(payload));
         self.streaming_body = None;
@@ -662,10 +603,7 @@ impl HttpRequestBuilder {
     ///
     /// # Returns
     /// `self` for chaining.
-    pub fn retry_method_policy(
-        mut self,
-        policy: HttpRetryMethodPolicy,
-    ) -> Self {
+    pub fn retry_method_policy(mut self, policy: HttpRetryMethodPolicy) -> Self {
         self.retry_override = self.retry_override.with_method_policy(policy);
         self
     }
@@ -679,8 +617,7 @@ impl HttpRequestBuilder {
     /// # Returns
     /// `self` for chaining.
     pub fn honor_retry_after(mut self, enabled: bool) -> Self {
-        self.retry_override =
-            self.retry_override.with_honor_retry_after(enabled);
+        self.retry_override = self.retry_override.with_honor_retry_after(enabled);
         self
     }
 

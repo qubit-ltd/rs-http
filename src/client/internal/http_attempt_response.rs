@@ -29,10 +29,7 @@ impl HttpAttemptResponse {
     /// # Returns
     /// A handoff containing the successful response and token restoration
     /// decision.
-    pub(in crate::client) fn new(
-        response: HttpResponse,
-        restore_retry_flow_token: bool,
-    ) -> Self {
+    pub(in crate::client) fn new(response: HttpResponse, restore_retry_flow_token: bool) -> Self {
         Self {
             response,
             restore_retry_flow_token,

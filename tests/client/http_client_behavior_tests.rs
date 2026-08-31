@@ -31,10 +31,7 @@ use crate::common::ResponsePlan;
 use crate::common::spawn_one_shot_server;
 
 fn retry_abort_inner_http(error: &HttpError) -> &HttpError {
-    let boxed = error
-        .source
-        .as_ref()
-        .expect("retry abort should chain inner error");
+    let boxed = error.source.as_ref().expect("retry abort should chain inner error");
     (boxed.as_ref() as &(dyn StdError + 'static))
         .downcast_ref::<HttpError>()
         .expect("inner should be HttpError")
@@ -45,9 +42,7 @@ fn test_http_client_debug_includes_options_and_injectors() {
     let mut client = HttpClientFactory::new()
         .create_default()
         .expect("default options should create client");
-    client.add_header_injector(HttpHeaderInjector::new(
-        |_headers: &mut HeaderMap| Ok(()),
-    ));
+    client.add_header_injector(HttpHeaderInjector::new(|_headers: &mut HeaderMap| Ok(())));
 
     let output = format!("{:?}", client);
 
@@ -88,10 +83,7 @@ async fn test_absolute_url_request_bypasses_base_url_join() {
 #[tokio::test]
 async fn test_execute_returns_invalid_url_for_bad_relative_path() {
     let mut options = HttpClientOptions::default();
-    options.base_url = Some(
-        url::Url::parse("https://example.com/api/")
-            .expect("static base_url in test should parse"),
-    );
+    options.base_url = Some(url::Url::parse("https://example.com/api/").expect("static base_url in test should parse"));
     let client = HttpClientFactory::new()
         .create(options)
         .expect("valid options should create client");
@@ -103,11 +95,7 @@ async fn test_execute_returns_invalid_url_for_bad_relative_path() {
         .expect_err("invalid relative path should fail before request is sent");
 
     assert_eq!(error.kind, HttpErrorKind::InvalidUrl);
-    assert!(
-        error
-            .message
-            .contains("Failed to resolve path 'http://[::1'")
-    );
+    assert!(error.message.contains("Failed to resolve path 'http://[::1'"));
 }
 
 #[tokio::test]
@@ -121,24 +109,14 @@ async fn test_header_injector_order_is_stable_and_clear_works() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server1.base_url());
     let mut client = HttpClientFactory::new().create(options).unwrap();
-    client.add_header_injector(HttpHeaderInjector::new(
-        |headers: &mut HeaderMap| {
-            headers.insert(
-                HeaderName::from_static("x-seq"),
-                HeaderValue::from_static("A"),
-            );
-            Ok(())
-        },
-    ));
-    client.add_header_injector(HttpHeaderInjector::new(
-        |headers: &mut HeaderMap| {
-            headers.insert(
-                HeaderName::from_static("x-seq"),
-                HeaderValue::from_static("B"),
-            );
-            Ok(())
-        },
-    ));
+    client.add_header_injector(HttpHeaderInjector::new(|headers: &mut HeaderMap| {
+        headers.insert(HeaderName::from_static("x-seq"), HeaderValue::from_static("A"));
+        Ok(())
+    }));
+    client.add_header_injector(HttpHeaderInjector::new(|headers: &mut HeaderMap| {
+        headers.insert(HeaderName::from_static("x-seq"), HeaderValue::from_static("B"));
+        Ok(())
+    }));
 
     let request = client.request(Method::GET, "/ordered").build();
     let _ = client.execute(request).await.unwrap();
@@ -154,15 +132,10 @@ async fn test_header_injector_order_is_stable_and_clear_works() {
     let mut options2 = HttpClientOptions::default();
     options2.base_url = Some(server2.base_url());
     let mut client2 = HttpClientFactory::new().create(options2).unwrap();
-    client2.add_header_injector(HttpHeaderInjector::new(
-        |headers: &mut HeaderMap| {
-            headers.insert(
-                HeaderName::from_static("x-seq"),
-                HeaderValue::from_static("A"),
-            );
-            Ok(())
-        },
-    ));
+    client2.add_header_injector(HttpHeaderInjector::new(|headers: &mut HeaderMap| {
+        headers.insert(HeaderName::from_static("x-seq"), HeaderValue::from_static("A"));
+        Ok(())
+    }));
     client2.clear_header_injectors();
     let request2 = client2.request(Method::GET, "/cleared").build();
     let _ = client2.execute(request2).await.unwrap();
@@ -181,9 +154,9 @@ async fn test_failing_header_injector_short_circuits_request() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     let mut client = HttpClientFactory::new().create(options).unwrap();
-    client.add_header_injector(HttpHeaderInjector::new(
-        |_headers: &mut HeaderMap| Err(HttpError::other("inject failed")),
-    ));
+    client.add_header_injector(HttpHeaderInjector::new(|_headers: &mut HeaderMap| {
+        Err(HttpError::other("inject failed"))
+    }));
 
     let request = client.request(Method::GET, "/will-not-send").build();
     let error = client.execute(request).await.unwrap_err();
@@ -202,26 +175,16 @@ async fn test_request_interceptor_order_is_stable_and_clear_works() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server1.base_url());
     let mut client = HttpClientFactory::new().create(options).unwrap();
-    client.add_request_interceptor(HttpRequestInterceptor::new(
-        |request: &mut qubit_http::HttpRequest| {
-            request.set_typed_header(
-                HeaderName::from_static("x-request-seq"),
-                HeaderValue::from_static("A"),
-            );
-            request.add_query_param("request_interceptor", "first");
-            Ok(())
-        },
-    ));
-    client.add_request_interceptor(HttpRequestInterceptor::new(
-        |request: &mut qubit_http::HttpRequest| {
-            request.set_typed_header(
-                HeaderName::from_static("x-request-seq"),
-                HeaderValue::from_static("B"),
-            );
-            request.add_query_param("request_interceptor", "second");
-            Ok(())
-        },
-    ));
+    client.add_request_interceptor(HttpRequestInterceptor::new(|request: &mut qubit_http::HttpRequest| {
+        request.set_typed_header(HeaderName::from_static("x-request-seq"), HeaderValue::from_static("A"));
+        request.add_query_param("request_interceptor", "first");
+        Ok(())
+    }));
+    client.add_request_interceptor(HttpRequestInterceptor::new(|request: &mut qubit_http::HttpRequest| {
+        request.set_typed_header(HeaderName::from_static("x-request-seq"), HeaderValue::from_static("B"));
+        request.add_query_param("request_interceptor", "second");
+        Ok(())
+    }));
 
     let request = client
         .request(Method::GET, "/request-order")
@@ -229,10 +192,7 @@ async fn test_request_interceptor_order_is_stable_and_clear_works() {
         .build();
     let _ = client.execute(request).await.unwrap();
     let captured = server1.finish().await;
-    assert_eq!(
-        captured.headers.get("x-request-seq"),
-        Some(&"B".to_string())
-    );
+    assert_eq!(captured.headers.get("x-request-seq"), Some(&"B".to_string()));
     assert!(captured.target.contains("initial=1"));
     assert!(captured.target.contains("request_interceptor=first"));
     assert!(captured.target.contains("request_interceptor=second"));
@@ -246,15 +206,13 @@ async fn test_request_interceptor_order_is_stable_and_clear_works() {
     let mut options2 = HttpClientOptions::default();
     options2.base_url = Some(server2.base_url());
     let mut client2 = HttpClientFactory::new().create(options2).unwrap();
-    client2.add_request_interceptor(HttpRequestInterceptor::new(
-        |request: &mut qubit_http::HttpRequest| {
-            request.set_typed_header(
-                HeaderName::from_static("x-request-cleared"),
-                HeaderValue::from_static("yes"),
-            );
-            Ok(())
-        },
-    ));
+    client2.add_request_interceptor(HttpRequestInterceptor::new(|request: &mut qubit_http::HttpRequest| {
+        request.set_typed_header(
+            HeaderName::from_static("x-request-cleared"),
+            HeaderValue::from_static("yes"),
+        );
+        Ok(())
+    }));
     client2.clear_request_interceptors();
 
     let request2 = client2.request(Method::GET, "/request-clear").build();
@@ -264,34 +222,23 @@ async fn test_request_interceptor_order_is_stable_and_clear_works() {
 }
 
 #[tokio::test]
-async fn test_failing_request_interceptor_short_circuits_before_url_resolution()
-{
+async fn test_failing_request_interceptor_short_circuits_before_url_resolution() {
     let mut client = HttpClientFactory::new()
         .create_default()
         .expect("default options should create client");
-    client.add_request_interceptor(HttpRequestInterceptor::new(
-        |_request: &mut qubit_http::HttpRequest| {
-            Err(HttpError::other("request blocked by interceptor"))
-        },
-    ));
+    client.add_request_interceptor(HttpRequestInterceptor::new(|_request: &mut qubit_http::HttpRequest| {
+        Err(HttpError::other("request blocked by interceptor"))
+    }));
 
     let request = client
-        .request(
-            Method::GET,
-            "http://127.0.0.1:1/request-interceptor-blocked",
-        )
+        .request(Method::GET, "http://127.0.0.1:1/request-interceptor-blocked")
         .build();
     let error = client.execute(request).await.unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::Other);
     assert!(error.message.contains("request blocked by interceptor"));
     assert_eq!(error.method, Some(Method::GET));
-    let error_url = error
-        .url
-        .expect("request interceptor error should include URL");
-    assert_eq!(
-        error_url.as_str(),
-        "http://127.0.0.1:1/request-interceptor-blocked"
-    );
+    let error_url = error.url.expect("request interceptor error should include URL");
+    assert_eq!(error_url.as_str(), "http://127.0.0.1:1/request-interceptor-blocked");
 }
 
 #[tokio::test]
@@ -336,9 +283,7 @@ async fn test_response_interceptor_order_is_stable_and_short_circuits() {
     assert!(error.url.is_some());
     assert!(error.message.contains("response blocked by interceptor"));
     assert_eq!(
-        *events
-            .lock()
-            .expect("lock response interceptor events for assertion"),
+        *events.lock().expect("lock response interceptor events for assertion"),
         vec!["first".to_string(), "second".to_string()]
     );
 }
@@ -355,9 +300,7 @@ async fn test_clear_response_interceptors_restores_success_path() {
     options.base_url = Some(server.base_url());
     let mut client = HttpClientFactory::new().create(options).unwrap();
     client.add_response_interceptor(HttpResponseInterceptor::new(
-        |_meta: &mut qubit_http::HttpResponseInterceptorContext| {
-            Err(HttpError::other("should be cleared"))
-        },
+        |_meta: &mut qubit_http::HttpResponseInterceptorContext| Err(HttpError::other("should be cleared")),
     ));
     client.clear_response_interceptors();
 
@@ -387,9 +330,7 @@ async fn test_execute_applies_response_interceptor_for_unconsumed_body() {
         },
     ));
 
-    let request = client
-        .request(Method::GET, "/stream-response-interceptor")
-        .build();
+    let request = client.request(Method::GET, "/stream-response-interceptor").build();
     let response = client.execute(request).await.unwrap();
     assert_eq!(response.status().as_u16(), 200);
     assert_eq!(called.load(Ordering::Relaxed), 1);
@@ -409,8 +350,7 @@ async fn test_request_url_can_differ_from_response_meta_url() {
         .create(options)
         .expect("valid options should create client");
     let rewritten_url =
-        url::Url::parse("https://interceptor.example/rewritten")
-            .expect("static interceptor URL should parse");
+        url::Url::parse("https://interceptor.example/rewritten").expect("static interceptor URL should parse");
     let rewritten_url_for_interceptor = rewritten_url.clone();
     client.add_response_interceptor(HttpResponseInterceptor::new(
         move |context: &mut qubit_http::HttpResponseInterceptorContext| {
@@ -420,10 +360,7 @@ async fn test_request_url_can_differ_from_response_meta_url() {
     ));
 
     let request = client.request(Method::GET, "/request-url-diff").build();
-    let response = client
-        .execute(request)
-        .await
-        .expect("request should succeed");
+    let response = client.execute(request).await.expect("request should succeed");
     let expected_request_url = server
         .base_url()
         .join("request-url-diff")
@@ -455,25 +392,17 @@ async fn test_request_url_includes_builder_query_params() {
         .request(Method::GET, "/request-url-query?existing=1")
         .query_param("added", "two words")
         .build();
-    let response = client
-        .execute(request)
-        .await
-        .expect("request should succeed");
+    let response = client.execute(request).await.expect("request should succeed");
     let mut expected_request_url = server
         .base_url()
         .join("request-url-query?existing=1")
         .expect("request URL should join");
-    expected_request_url
-        .query_pairs_mut()
-        .append_pair("added", "two words");
+    expected_request_url.query_pairs_mut().append_pair("added", "two words");
 
     assert_eq!(response.request_url(), &expected_request_url);
 
     let captured = server.finish().await;
-    assert_eq!(
-        captured.target,
-        "/request-url-query?existing=1&added=two+words"
-    );
+    assert_eq!(captured.target, "/request-url-query?existing=1&added=two+words");
 }
 
 #[tokio::test]
@@ -534,9 +463,8 @@ async fn test_request_url_is_used_in_buffered_read_error() {
     let mut client = HttpClientFactory::new()
         .create(options)
         .expect("valid options should create client");
-    let interceptor_url =
-        url::Url::parse("https://interceptor.example/context-url-rewritten")
-            .expect("static interceptor URL should parse");
+    let interceptor_url = url::Url::parse("https://interceptor.example/context-url-rewritten")
+        .expect("static interceptor URL should parse");
     let expected_request_url = server
         .base_url()
         .join("context-url-timeout")
@@ -550,12 +478,8 @@ async fn test_request_url_is_used_in_buffered_read_error() {
     ));
 
     let request = client.request(Method::GET, "/context-url-timeout").build();
-    let mut response =
-        client.execute(request).await.expect("request should start");
-    let error = response
-        .bytes()
-        .await
-        .expect_err("buffered read should timeout");
+    let mut response = client.execute(request).await.expect("request should start");
+    let error = response.bytes().await.expect_err("buffered read should timeout");
 
     assert_eq!(error.kind, HttpErrorKind::ReadTimeout);
     assert_eq!(error.url, Some(expected_request_url));
@@ -576,8 +500,7 @@ async fn test_retry_status_code_allowlist_can_disable_retry_for_503() {
     options.logging.enabled = false;
     options.retry.enabled = true;
     options.retry.max_attempts = 3;
-    options.retry.retry_status_codes =
-        Some(vec![StatusCode::TOO_MANY_REQUESTS]);
+    options.retry.retry_status_codes = Some(vec![StatusCode::TOO_MANY_REQUESTS]);
     let mut client = HttpClientFactory::new().create(options).unwrap();
     let attempts = Arc::new(AtomicUsize::new(0));
     let attempts_for_interceptor = Arc::clone(&attempts);
@@ -610,8 +533,7 @@ async fn test_retry_status_code_allowlist_can_enable_retry_for_503() {
     options.logging.enabled = false;
     options.retry.enabled = true;
     options.retry.max_attempts = 3;
-    options.retry.retry_status_codes =
-        Some(vec![StatusCode::SERVICE_UNAVAILABLE]);
+    options.retry.retry_status_codes = Some(vec![StatusCode::SERVICE_UNAVAILABLE]);
     options.retry.retry_error_kinds = Some(vec![HttpErrorKind::Status]);
     let mut client = HttpClientFactory::new().create(options).unwrap();
     let attempts = Arc::new(AtomicUsize::new(0));
@@ -677,10 +599,7 @@ async fn test_add_header_applies_client_default_header() {
     let request = client.request(Method::GET, "/default-header").build();
     let _ = client.execute(request).await.unwrap();
     let captured = server.finish().await;
-    assert_eq!(
-        captured.headers.get("x-client"),
-        Some(&"default".to_string())
-    );
+    assert_eq!(captured.headers.get("x-client"), Some(&"default".to_string()));
 }
 
 #[tokio::test]
@@ -709,18 +628,9 @@ async fn test_add_headers_is_atomic_and_request_header_still_overrides() {
         .build();
     let _ = client.execute(request).await.unwrap();
     let captured = server.finish().await;
-    assert_eq!(
-        captured.headers.get("x-batch-a"),
-        Some(&"value-a".to_string())
-    );
-    assert_eq!(
-        captured.headers.get("x-batch-b"),
-        Some(&"value-b".to_string())
-    );
-    assert_eq!(
-        captured.headers.get("x-order"),
-        Some(&"request".to_string())
-    );
+    assert_eq!(captured.headers.get("x-batch-a"), Some(&"value-a".to_string()));
+    assert_eq!(captured.headers.get("x-batch-b"), Some(&"value-b".to_string()));
+    assert_eq!(captured.headers.get("x-order"), Some(&"request".to_string()));
 }
 
 #[tokio::test]
@@ -781,23 +691,15 @@ async fn test_add_header_injector_still_overrides_client_default_header() {
     options.base_url = Some(server.base_url());
     let mut client = HttpClientFactory::new().create(options).unwrap();
     client.add_header("x-order", "client").unwrap();
-    client.add_header_injector(HttpHeaderInjector::new(
-        |headers: &mut HeaderMap| {
-            headers.insert(
-                HeaderName::from_static("x-order"),
-                HeaderValue::from_static("injector"),
-            );
-            Ok(())
-        },
-    ));
+    client.add_header_injector(HttpHeaderInjector::new(|headers: &mut HeaderMap| {
+        headers.insert(HeaderName::from_static("x-order"), HeaderValue::from_static("injector"));
+        Ok(())
+    }));
 
     let request = client.request(Method::GET, "/injector-overrides").build();
     let _ = client.execute(request).await.unwrap();
     let captured = server.finish().await;
-    assert_eq!(
-        captured.headers.get("x-order"),
-        Some(&"injector".to_string())
-    );
+    assert_eq!(captured.headers.get("x-order"), Some(&"injector".to_string()));
 }
 
 #[tokio::test]
@@ -833,22 +735,10 @@ async fn test_clone_default_headers_are_independent_after_creation() {
     let captured_original = server_original.finish().await;
     let captured_clone = server_clone.finish().await;
 
-    assert_eq!(
-        captured_original.headers.get("x-shared"),
-        Some(&"base".to_string())
-    );
-    assert_eq!(
-        captured_clone.headers.get("x-shared"),
-        Some(&"base".to_string())
-    );
-    assert_eq!(
-        captured_original.headers.get("x-origin-only"),
-        Some(&"yes".to_string())
-    );
+    assert_eq!(captured_original.headers.get("x-shared"), Some(&"base".to_string()));
+    assert_eq!(captured_clone.headers.get("x-shared"), Some(&"base".to_string()));
+    assert_eq!(captured_original.headers.get("x-origin-only"), Some(&"yes".to_string()));
     assert!(!captured_original.headers.contains_key("x-clone-only"));
-    assert_eq!(
-        captured_clone.headers.get("x-clone-only"),
-        Some(&"yes".to_string())
-    );
+    assert_eq!(captured_clone.headers.get("x-clone-only"), Some(&"yes".to_string()));
     assert!(!captured_clone.headers.contains_key("x-origin-only"));
 }

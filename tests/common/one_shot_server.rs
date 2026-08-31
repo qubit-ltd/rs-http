@@ -156,9 +156,7 @@ impl OneShotServer {
             .request_rx
             .await
             .expect("one-shot test server dropped request sender");
-        self.join_handle
-            .await
-            .expect("one-shot test server task panicked");
+        self.join_handle.await.expect("one-shot test server task panicked");
         request
     }
 }
@@ -175,9 +173,7 @@ impl MultiShotServer {
             .request_rx
             .await
             .expect("multi-shot test server dropped request sender");
-        self.join_handle
-            .await
-            .expect("multi-shot test server task panicked");
+        self.join_handle.await.expect("multi-shot test server task panicked");
         requests
     }
 }
@@ -189,25 +185,19 @@ pub async fn spawn_one_shot_server(plan: ResponsePlan) -> OneShotServer {
 
 /// Spawns a one-shot server that waits for [`OneShotServer::allow_response`]
 /// after parsing the request and before writing any response bytes.
-pub async fn spawn_blocked_one_shot_server(
-    plan: ResponsePlan,
-) -> OneShotServer {
+pub async fn spawn_blocked_one_shot_server(plan: ResponsePlan) -> OneShotServer {
     spawn_one_shot_server_impl(plan, true).await
 }
 
 /// Shared one-shot server construction with optional response gating.
-async fn spawn_one_shot_server_impl(
-    plan: ResponsePlan,
-    block_response: bool,
-) -> OneShotServer {
+async fn spawn_one_shot_server_impl(plan: ResponsePlan, block_response: bool) -> OneShotServer {
     let listener = TcpListener::bind("127.0.0.1:0")
         .await
         .expect("failed to bind one-shot test server");
     let addr = listener
         .local_addr()
         .expect("failed to query one-shot server local address");
-    let base_url = Url::parse(&format!("http://{addr}/"))
-        .expect("failed to build base URL");
+    let base_url = Url::parse(&format!("http://{addr}/")).expect("failed to build base URL");
     let (request_received_tx, request_received_rx) = oneshot::channel::<()>();
     let (response_started_tx, response_started_rx) = oneshot::channel::<()>();
     let (response_permit_tx, response_permit_rx) = oneshot::channel::<()>();
@@ -218,9 +208,7 @@ async fn spawn_one_shot_server_impl(
         let accept_result = listener.accept().await;
         let (mut stream, _) = match accept_result {
             Ok(result) => result,
-            Err(error) => panic!(
-                "one-shot test server failed to accept connection: {error}"
-            ),
+            Err(error) => panic!("one-shot test server failed to accept connection: {error}"),
         };
 
         let request = read_request(&mut stream)
@@ -233,14 +221,10 @@ async fn spawn_one_shot_server_impl(
             let _ = receiver.await;
         }
 
-        if let Err(error) =
-            write_response(&mut stream, plan, Some(response_started_tx)).await
-        {
+        if let Err(error) = write_response(&mut stream, plan, Some(response_started_tx)).await {
             // Timeout tests intentionally allow client-side early disconnects.
             if !is_expected_client_disconnect(&error) {
-                panic!(
-                    "failed to write response in one-shot test server: {error}"
-                );
+                panic!("failed to write response in one-shot test server: {error}");
             }
         }
     });
@@ -256,17 +240,14 @@ async fn spawn_one_shot_server_impl(
 }
 
 /// Spawns a test HTTP server that serves one response plan per request.
-pub async fn spawn_multi_shot_server(
-    plans: Vec<ResponsePlan>,
-) -> MultiShotServer {
+pub async fn spawn_multi_shot_server(plans: Vec<ResponsePlan>) -> MultiShotServer {
     let listener = TcpListener::bind("127.0.0.1:0")
         .await
         .expect("failed to bind multi-shot test server");
     let addr = listener
         .local_addr()
         .expect("failed to query multi-shot server local address");
-    let base_url = Url::parse(&format!("http://{addr}/"))
-        .expect("failed to build base URL");
+    let base_url = Url::parse(&format!("http://{addr}/")).expect("failed to build base URL");
     let (request_tx, request_rx) = oneshot::channel::<Vec<CapturedRequest>>();
 
     let join_handle = tokio::spawn(async move {
@@ -275,9 +256,7 @@ pub async fn spawn_multi_shot_server(
             let accept_result = listener.accept().await;
             let (mut stream, _) = match accept_result {
                 Ok(result) => result,
-                Err(error) => panic!(
-                    "multi-shot test server failed to accept connection: {error}"
-                ),
+                Err(error) => panic!("multi-shot test server failed to accept connection: {error}"),
             };
 
             handles.push(tokio::spawn(async move {
@@ -285,9 +264,7 @@ pub async fn spawn_multi_shot_server(
                     .await
                     .expect("failed to read request in multi-shot test server");
 
-                if let Err(error) =
-                    write_response(&mut stream, plan, None).await
-                {
+                if let Err(error) = write_response(&mut stream, plan, None).await {
                     if !is_expected_client_disconnect(&error) {
                         panic!("failed to write response in multi-shot test server: {error}");
                     }
@@ -297,8 +274,7 @@ pub async fn spawn_multi_shot_server(
         }
         let mut requests = vec![None; handles.len()];
         for handle in handles {
-            let (index, request) =
-                handle.await.expect("multi-shot request task panicked");
+            let (index, request) = handle.await.expect("multi-shot request task panicked");
             requests[index] = Some(request);
         }
         let requests = requests
@@ -315,22 +291,19 @@ pub async fn spawn_multi_shot_server(
     }
 }
 
-async fn read_request(
-    stream: &mut TcpStream,
-) -> std::io::Result<CapturedRequest> {
+async fn read_request(stream: &mut TcpStream) -> std::io::Result<CapturedRequest> {
     let read_timeout = Duration::from_secs(3);
     let mut buffer = Vec::new();
     let header_end_index = loop {
         let mut chunk = [0_u8; 1024];
-        let read_size =
-            tokio::time::timeout(read_timeout, stream.read(&mut chunk))
-                .await
-                .map_err(|_| {
-                    std::io::Error::new(
-                        std::io::ErrorKind::TimedOut,
-                        "timed out while waiting for request headers",
-                    )
-                })??;
+        let read_size = tokio::time::timeout(read_timeout, stream.read(&mut chunk))
+            .await
+            .map_err(|_| {
+                std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    "timed out while waiting for request headers",
+                )
+            })??;
         if read_size == 0 {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::UnexpectedEof,
@@ -359,10 +332,7 @@ async fn read_request(
             break;
         }
         if let Some((name, value)) = line.split_once(':') {
-            headers.insert(
-                name.trim().to_ascii_lowercase(),
-                value.trim().to_string(),
-            );
+            headers.insert(name.trim().to_ascii_lowercase(), value.trim().to_string());
         }
     }
 
@@ -380,11 +350,7 @@ async fn write_response(
     mut response_started_tx: Option<oneshot::Sender<()>>,
 ) -> std::io::Result<()> {
     match plan {
-        ResponsePlan::Immediate {
-            status,
-            headers,
-            body,
-        } => {
+        ResponsePlan::Immediate { status, headers, body } => {
             write_fixed_response(stream, status, headers, body).await?;
             signal_response_started(&mut response_started_tx);
         }
@@ -394,10 +360,7 @@ async fn write_response(
             body,
         } => {
             if !contains_raw_header(&headers, "Content-Length") {
-                headers.push((
-                    "Content-Length".to_string(),
-                    body.len().to_string().into_bytes(),
-                ));
+                headers.push(("Content-Length".to_string(), body.len().to_string().into_bytes()));
             }
             write_status_and_raw_headers(stream, status, &headers).await?;
             if !body.is_empty() {
@@ -424,10 +387,7 @@ async fn write_response(
             delay,
         } => {
             if !contains_header(&headers, "Content-Length") {
-                headers.push((
-                    "Content-Length".to_string(),
-                    total_length.to_string(),
-                ));
+                headers.push(("Content-Length".to_string(), total_length.to_string()));
             }
             write_status_and_headers(stream, status, &headers).await?;
             stream.write_all(&prefix).await?;
@@ -442,10 +402,7 @@ async fn write_response(
             finish,
         } => {
             if !contains_header(&headers, "Transfer-Encoding") {
-                headers.push((
-                    "Transfer-Encoding".to_string(),
-                    "chunked".to_string(),
-                ));
+                headers.push(("Transfer-Encoding".to_string(), "chunked".to_string()));
             }
             write_status_and_headers(stream, status, &headers).await?;
 
@@ -478,9 +435,7 @@ async fn write_response(
 }
 
 /// Signals that the response is observable by the client exactly once.
-fn signal_response_started(
-    response_started_tx: &mut Option<oneshot::Sender<()>>,
-) {
+fn signal_response_started(response_started_tx: &mut Option<oneshot::Sender<()>>) {
     if let Some(sender) = response_started_tx.take() {
         let _ = sender.send(());
     }
@@ -537,8 +492,7 @@ async fn write_status_and_raw_headers(
     status: u16,
     headers: &[(String, Vec<u8>)],
 ) -> std::io::Result<()> {
-    let status_line =
-        format!("HTTP/1.1 {} {}\r\n", status, reason_phrase(status));
+    let status_line = format!("HTTP/1.1 {} {}\r\n", status, reason_phrase(status));
     stream.write_all(status_line.as_bytes()).await?;
     for (name, value) in headers {
         stream.write_all(name.as_bytes()).await?;
@@ -563,9 +517,7 @@ fn is_expected_client_disconnect(error: &std::io::Error) -> bool {
 }
 
 fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
-    haystack
-        .windows(needle.len())
-        .position(|window| window == needle)
+    haystack.windows(needle.len()).position(|window| window == needle)
 }
 
 fn reason_phrase(status: u16) -> &'static str {

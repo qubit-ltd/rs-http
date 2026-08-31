@@ -33,10 +33,7 @@ struct SharedWriterGuard {
 
 impl io::Write for SharedWriterGuard {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let mut guard = self
-            .buffer
-            .lock()
-            .expect("failed to acquire tracing capture mutex");
+        let mut guard = self.buffer.lock().expect("failed to acquire tracing capture mutex");
         guard.extend_from_slice(buf);
         Ok(buf.len())
     }
@@ -51,9 +48,7 @@ where
     F: FnOnce(),
 {
     let buffer = Arc::new(Mutex::new(Vec::new()));
-    let writer = SharedWriter {
-        buffer: buffer.clone(),
-    };
+    let writer = SharedWriter { buffer: buffer.clone() };
 
     let subscriber = tracing_subscriber::fmt()
         .with_max_level(tracing::Level::TRACE)
@@ -64,10 +59,6 @@ where
 
     tracing::subscriber::with_default(subscriber, func);
 
-    let bytes = buffer
-        .lock()
-        .expect("failed to read tracing capture buffer")
-        .clone();
-    String::from_utf8(bytes)
-        .expect("captured tracing output is not valid UTF-8")
+    let bytes = buffer.lock().expect("failed to read tracing capture buffer").clone();
+    String::from_utf8(bytes).expect("captured tracing output is not valid UTF-8")
 }

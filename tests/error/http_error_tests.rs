@@ -105,12 +105,9 @@ fn test_http_error_debug_uses_custom_log_redaction_policy() {
             let _ = http.query().raise("customer_secret", Sensitivity::High);
         })
         .expect("the test policy input should be valid");
-    let policy = builder
-        .build()
-        .expect("log redaction policy should be valid");
-    let url =
-        url::Url::parse("https://example.com/path?customer_secret=debug-custom-secret&visible=ok")
-            .expect("URL should parse");
+    let policy = builder.build().expect("log redaction policy should be valid");
+    let url = url::Url::parse("https://example.com/path?customer_secret=debug-custom-secret&visible=ok")
+        .expect("URL should parse");
     let error = HttpError::transport(
         "transport failed for https://example.com/path?customer_secret=debug-custom-secret&visible=ok",
     )
@@ -145,9 +142,7 @@ fn test_http_error_display_uses_custom_log_redaction_policy() {
             let _ = http.query().raise("customer_secret", Sensitivity::High);
         })
         .expect("the test policy input should be valid");
-    let policy = builder
-        .build()
-        .expect("log redaction policy should be valid");
+    let policy = builder.build().expect("log redaction policy should be valid");
     let error = HttpError::transport(
         "transport failed for https://example.com/path?customer_secret=display-custom-secret&visible=ok",
     )
@@ -171,11 +166,7 @@ fn test_http_error_debug_honors_url_path_redaction_policy() {
         .expect("test policy should be valid");
     let error = HttpError::transport(format!("transport failed for {raw_url}"))
         .with_url(&url)
-        .with_log_redaction_policy(
-            policy_builder
-                .build()
-                .expect("log redaction policy should be valid"),
-        );
+        .with_log_redaction_policy(policy_builder.build().expect("log redaction policy should be valid"));
 
     let debug = format!("{error:?}");
 

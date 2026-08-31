@@ -13,9 +13,7 @@ use http::Method;
 use qubit_http::HttpResponse;
 use qubit_http::HttpResult;
 
-async fn collect_results<T>(
-    stream: impl futures_util::Stream<Item = HttpResult<T>>,
-) -> Vec<T> {
+async fn collect_results<T>(stream: impl futures_util::Stream<Item = HttpResult<T>>) -> Vec<T> {
     stream
         .map(|item| item.expect("unexpected stream error in test"))
         .collect::<Vec<_>>()
@@ -35,12 +33,7 @@ fn stream_response_from_chunks(chunks: Vec<&'static str>) -> HttpResponse {
 
 #[tokio::test]
 async fn test_decode_messages_does_not_emit_retry_only_control_frame() {
-    let response = stream_response_from_chunks(vec![
-        "retry: 100\n",
-        "\n",
-        "data: hello\n",
-        "\n",
-    ]);
+    let response = stream_response_from_chunks(vec!["retry: 100\n", "\n", "data: hello\n", "\n"]);
     let messages = collect_results(response.sse_messages()).await;
 
     assert_eq!(messages.len(), 1);
@@ -49,12 +42,7 @@ async fn test_decode_messages_does_not_emit_retry_only_control_frame() {
 
 #[tokio::test]
 async fn test_decode_messages_applies_control_only_id_to_next_message() {
-    let response = stream_response_from_chunks(vec![
-        "id: resume-token\n",
-        "\n",
-        "data: hello\n",
-        "\n",
-    ]);
+    let response = stream_response_from_chunks(vec!["id: resume-token\n", "\n", "data: hello\n", "\n"]);
     let messages = collect_results(response.sse_messages()).await;
 
     assert_eq!(messages.len(), 1);
@@ -73,8 +61,7 @@ async fn test_decode_frames_allows_field_without_colon_as_field_name() {
 
 #[tokio::test]
 async fn test_decode_frames_handles_invalid_retry_value_as_known_field() {
-    let response =
-        stream_response_from_chunks(vec!["data: hi\n", "retry: bad\n", "\n"]);
+    let response = stream_response_from_chunks(vec!["data: hi\n", "retry: bad\n", "\n"]);
     let events = collect_results(response.sse_messages()).await;
 
     assert_eq!(events.len(), 1);
@@ -83,11 +70,7 @@ async fn test_decode_frames_handles_invalid_retry_value_as_known_field() {
 
 #[tokio::test]
 async fn test_decode_frames_ignores_unknown_field_name() {
-    let response = stream_response_from_chunks(vec![
-        "unknown: ignored\n",
-        "data: value\n",
-        "\n",
-    ]);
+    let response = stream_response_from_chunks(vec!["unknown: ignored\n", "data: value\n", "\n"]);
     let events = collect_results(response.sse_messages()).await;
 
     assert_eq!(events.len(), 1);
@@ -96,15 +79,8 @@ async fn test_decode_frames_ignores_unknown_field_name() {
 
 #[tokio::test]
 async fn test_decode_frames_rejects_frame_exceeding_max_bytes() {
-    let response = stream_response_from_chunks(vec![
-        "data: 12345\n",
-        "data: 67890\n",
-        "\n",
-    ]);
-    let mut events = response
-        .sse_max_line_bytes(128)
-        .sse_max_frame_bytes(12)
-        .sse_messages();
+    let response = stream_response_from_chunks(vec!["data: 12345\n", "data: 67890\n", "\n"]);
+    let mut events = response.sse_max_line_bytes(128).sse_max_frame_bytes(12).sse_messages();
     let error = events.next().await.unwrap().unwrap_err();
 
     assert_eq!(error.kind, qubit_http::HttpErrorKind::SseProtocol);
@@ -131,18 +107,8 @@ async fn test_decode_frames_accepts_frame_at_max_bytes() {
 
 #[tokio::test]
 async fn test_decode_frames_ignores_comment_lines() {
-    let response = stream_response_from_chunks(vec![
-        ": heartbeat\n",
-        "data: hello\n",
-        "\n",
-    ]);
-    let events = collect_results(
-        response
-            .sse_max_line_bytes(128)
-            .sse_max_frame_bytes(64)
-            .sse_messages(),
-    )
-    .await;
+    let response = stream_response_from_chunks(vec![": heartbeat\n", "data: hello\n", "\n"]);
+    let events = collect_results(response.sse_max_line_bytes(128).sse_max_frame_bytes(64).sse_messages()).await;
 
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].data, "hello");
@@ -159,11 +125,7 @@ async fn test_decode_frames_emits_last_event_without_trailing_blank_line() {
 
 #[tokio::test]
 async fn test_decode_frames_accepts_field_value_without_space_after_colon() {
-    let response = stream_response_from_chunks(vec![
-        "event:update\n",
-        "data:value\n",
-        "\n",
-    ]);
+    let response = stream_response_from_chunks(vec!["event:update\n", "data:value\n", "\n"]);
     let events = collect_results(response.sse_messages()).await;
 
     assert_eq!(events.len(), 1);

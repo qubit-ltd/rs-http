@@ -84,9 +84,8 @@ impl HttpTimeoutOptions {
         validate_positive_duration("connect_timeout", self.connect_timeout)?;
         validate_positive_duration("read_timeout", self.read_timeout)?;
         validate_positive_duration("write_timeout", self.write_timeout)?;
-        self.request_timeout.validate_some(|request_timeout| {
-            validate_positive_duration("request_timeout", request_timeout)
-        })?;
+        self.request_timeout
+            .validate_some(|request_timeout| validate_positive_duration("request_timeout", request_timeout))?;
         Ok(())
     }
 
@@ -129,10 +128,7 @@ impl HttpTimeoutOptions {
 
 /// Returns `value` when it is nonzero while preserving the public domain
 /// diagnostic on failure.
-fn validate_positive_duration(
-    path: &str,
-    value: Duration,
-) -> ArgumentResult<Duration> {
+fn validate_positive_duration(path: &str, value: Duration) -> ArgumentResult<Duration> {
     require_that(
         value,
         path,
