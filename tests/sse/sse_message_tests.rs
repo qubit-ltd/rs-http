@@ -27,8 +27,7 @@ fn test_sse_message_decode_json_success() {
         last_event_id: Some("evt-1".to_string()),
     };
 
-    let payload: TestPayload =
-        message.decode_json().expect("JSON decoding should succeed");
+    let payload: TestPayload = message.decode_json().expect("JSON decoding should succeed");
     assert_eq!(
         payload,
         TestPayload {
@@ -49,11 +48,7 @@ fn test_sse_message_decode_json_error_is_sse_decode_with_context() {
         .decode_json::<TestPayload>()
         .expect_err("invalid JSON should fail");
     assert_eq!(error.kind, HttpErrorKind::SseDecode);
-    assert!(
-        error
-            .message
-            .contains("event=Some(\"response.output_text.delta\")")
-    );
+    assert!(error.message.contains("event=Some(\"response.output_text.delta\")"));
     assert!(error.message.contains("last_event_id=Some(\"evt-2\")"));
 }
 
@@ -69,8 +64,7 @@ fn test_sse_message_decode_json_uses_safe_default_depth_limit() {
     let error = message
         .decode_json::<serde_json::Value>()
         .expect_err("default SSE JSON depth limit must reject deep input");
-    let source = std::error::Error::source(&error)
-        .expect("SSE JSON budget failure should retain its source");
+    let source = std::error::Error::source(&error).expect("SSE JSON budget failure should retain its source");
     let decode_error = source
         .downcast_ref::<qubit_json::decode::JsonDecodeError>()
         .expect("source should be a JSON decode error");
@@ -88,6 +82,29 @@ fn test_sse_message_decode_json_uses_safe_default_depth_limit() {
             }
         ))
     ));
+}
+
+/// Verifies lenient content handling never converts a resource-policy failure
+/// into a skipped message.
+#[test]
+fn test_sse_message_decode_json_with_mode_lenient_propagates_budget_error() {
+    let nesting = 129;
+    let message = SseMessage {
+        event: Some(String::from("budget.event")),
+        data: format!("{}null{}", "[".repeat(nesting), "]".repeat(nesting)),
+        last_event_id: Some(String::from("evt-budget")),
+    };
+
+    let error = message
+        .decode_json_with_mode::<serde_json::Value>(SseJsonMode::Lenient)
+        .expect_err("lenient mode must propagate JSON budget failures");
+    let source = std::error::Error::source(&error).expect("the SSE error must retain its JSON source");
+    let decode_error = source
+        .downcast_ref::<qubit_json::decode::JsonDecodeError>()
+        .expect("the source must be a JSON decode error");
+
+    assert_eq!(error.kind, HttpErrorKind::SseDecode);
+    assert_eq!(decode_error.kind(), qubit_json::decode::JsonDecodeErrorKind::Budget);
 }
 
 #[test]
@@ -128,8 +145,7 @@ fn test_sse_message_decode_json_with_mode_lenient_logs_redacted_diagnostics() {
 }
 
 #[test]
-fn test_sse_message_decode_json_with_mode_lenient_normalizes_control_characters()
- {
+fn test_sse_message_decode_json_with_mode_lenient_normalizes_control_characters() {
     let message = SseMessage {
         event: Some("response.output_text.delta".to_string()),
         data: "{\"delta\":\"line\nbreak\"}".to_string(),
@@ -148,8 +164,7 @@ fn test_sse_message_decode_json_with_mode_lenient_normalizes_control_characters(
 }
 
 #[test]
-fn test_sse_message_decode_json_with_mode_distinguishes_control_character_policy()
- {
+fn test_sse_message_decode_json_with_mode_distinguishes_control_character_policy() {
     let message = SseMessage {
         event: Some("response.output_text.delta".to_string()),
         data: "{\"delta\":\"line\nbreak\"}".to_string(),
@@ -186,9 +201,8 @@ fn test_sse_message_decode_json_redacts_deserializer_value() {
     assert!(!error.message.contains(SECRET));
     assert!(error.message.contains("secure.event"));
     assert!(error.message.contains("evt-secret"));
-    let source = std::error::Error::source(&error).expect(
-        "SSE JSON decode errors must retain the redacted decoder source",
-    );
+    let source =
+        std::error::Error::source(&error).expect("SSE JSON decode errors must retain the redacted decoder source");
     let decode_error = source
         .downcast_ref::<qubit_json::decode::JsonDecodeError>()
         .expect("SSE JSON decode source must be JsonDecodeError");
