@@ -9,6 +9,8 @@
 //!
 //! One EventSource-style message dispatch after frame reassembly.
 use qubit_budget::json::JsonDecodeLimits;
+use qubit_json::decode::JsonDecodeError;
+use qubit_json::decode::JsonDecodeErrorKind;
 use qubit_json::decode::JsonDecoder;
 use qubit_json::decode::NormalizingJsonDecodePolicy;
 use qubit_json::decode::NormalizingJsonDecoder;
@@ -48,10 +50,7 @@ impl SseMessage {
     where
         T: DeserializeOwned,
     {
-        self.decode_json_with_limits(json_decode_limits(
-            self.data.len(),
-            default_json_value_limits(),
-        ))
+        self.decode_json_with_limits(json_decode_limits(self.data.len(), default_json_value_limits()))
     }
 
     /// Decodes strict JSON using explicit resource limits.
@@ -72,22 +71,13 @@ impl SseMessage {
     ///
     /// Returns [`HttpError::sse_decode`] when resource accounting or JSON
     /// deserialization fails.
-    fn decode_json_with_limits<T>(
-        &self,
-        limits: JsonDecodeLimits,
-    ) -> HttpResult<T>
+    fn decode_json_with_limits<T>(&self, limits: JsonDecodeLimits) -> HttpResult<T>
     where
         T: DeserializeOwned,
     {
         JsonDecoder::with_limits(limits)
             .decode_str::<T>(&self.data)
-            .map_err(|error| {
-                HttpError::sse_decode(format!(
-                    "Failed to decode SSE message data as JSON (event={:?}, last_event_id={:?})",
-                    self.event, self.last_event_id
-                ))
-                .with_source(error)
-            })
+            .map_err(|error| self.json_decode_error(error))
     }
 
     /// Decodes the current message's `data` payload as JSON with configurable
@@ -108,18 +98,12 @@ impl SseMessage {
     ///
     /// # Errors
     /// Returns [`HttpError::sse_decode`] in strict mode when JSON parsing
-    /// fails.
-    pub fn decode_json_with_mode<T>(
-        &self,
-        mode: SseJsonMode,
-    ) -> HttpResult<Option<T>>
+    /// fails, or in either mode when resource accounting rejects the payload.
+    pub fn decode_json_with_mode<T>(&self, mode: SseJsonMode) -> HttpResult<Option<T>>
     where
         T: DeserializeOwned,
     {
-        self.decode_json_with_mode_and_limits(
-            mode,
-            json_decode_limits(self.data.len(), default_json_value_limits()),
-        )
+        self.decode_json_with_mode_and_limits(mode, json_decode_limits(self.data.len(), default_json_value_limits()))
     }
 
     /// Decodes JSON with selectable normalization and explicit limits.
@@ -135,7 +119,8 @@ impl SseMessage {
     ///
     /// # Errors
     ///
-    /// Returns an SSE decode error when strict mode rejects the payload.
+    /// Returns an SSE decode error when strict mode rejects the payload or
+    /// either mode exceeds a configured resource budget.
     pub(crate) fn decode_json_with_mode_and_limits<T>(
         &self,
         mode: SseJsonMode,
@@ -145,17 +130,13 @@ impl SseMessage {
         T: DeserializeOwned,
     {
         match mode {
-            SseJsonMode::Strict => {
-                self.decode_json_with_limits::<T>(limits).map(Some)
-            }
+            SseJsonMode::Strict => self.decode_json_with_limits::<T>(limits).map(Some),
             SseJsonMode::Lenient => {
-                match NormalizingJsonDecoder::with_limits(
-                    NormalizingJsonDecodePolicy::lenient(),
-                    limits,
-                )
-                .decode_str::<T>(&self.data)
+                match NormalizingJsonDecoder::with_limits(NormalizingJsonDecodePolicy::lenient(), limits)
+                    .decode_str::<T>(&self.data)
                 {
                     Ok(value) => Ok(Some(value)),
+                    Err(error) if error.kind() == JsonDecodeErrorKind::Budget => Err(self.json_decode_error(error)),
                     Err(error) => {
                         tracing::debug!(
                             error_kind = %error.kind(),
@@ -171,5 +152,14 @@ impl SseMessage {
                 }
             }
         }
+    }
+
+    /// Wraps a JSON decoder failure with non-payload SSE message context.
+    fn json_decode_error(&self, error: JsonDecodeError) -> HttpError {
+        HttpError::sse_decode(format!(
+            "Failed to decode SSE message data as JSON (event={:?}, last_event_id={:?})",
+            self.event, self.last_event_id
+        ))
+        .with_source(error)
     }
 }
