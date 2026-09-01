@@ -581,15 +581,15 @@ HTTP 日志使用 `tracing::trace!`。必须同时满足：
 
 可分别控制请求头、请求体、响应头、响应体。body 只记录前 `logging.body_size_limit` 字节，超出部分显示截断提示；二进制体显示为 `<binary N bytes>`。没有结构化或文本 `Content-Type` 的 unsupported body 会显示为 `<redacted: unsupported HTTP body>`，不会直接打印原始内容。请求体日志只预览已缓冲的 body 变体（`bytes_body`、`text_body`、`json_body`、`form_body`、`multipart_body`、`ndjson_body`）；`stream_body` 和 `streaming_body` 会记录为 `<skipped: streaming request body>`，因为 logger 不会消费上传流。
 
-日志统一经过规范的 `qubit_redact::formats::http::HttpRedactor` 和一份根 `RedactionPolicy` 脱敏。URL username、password、fragment 和敏感 query 参数会被掩码；header、query/form、body 使用同一基础规则、掩码表和静态限制上的 HTTP 上下文视图。multipart 文件 part 仍显示为 `<redacted: file part>`；格式异常、缺少 boundary 或已截断的 body 继续 fail closed。
+日志统一经过规范的 `qubit_redact::Redactor` 和一份根 `RedactionPolicy` 脱敏。URL username、password、fragment 和敏感 query 参数会被掩码；header、query/form、body 使用同一基础规则、掩码表和静态限制上的 HTTP 上下文视图。multipart 文件 part 仍显示为 `<redacted: file part>`；格式异常、缺少 boundary 或已截断的 body 继续 fail closed。
 
 对于 header，`http::HeaderValue::is_sensitive()` 是值级 `Secret` 声明。请求、响应、流式响应和 `Debug` 渲染都会在 header name 匹配前处理该标记。allow 规则不能暴露已标记值；未标记值继续使用同一个不可变 name policy 快照。
 
-`RedactionPolicy::builder()` 使用空应用规则和标准 floor；扩展默认快照时使用 `RedactionPolicy::default().to_builder()`。应用 allow 规则无法绕过启用的 floor；`builder.http().disable_all_floors()` 是关闭 HTTP 上下文 floor 的显式逃生口。`RedactionPolicy` 必须从 `qubit_redact` 导入，`HttpRedactor` 从 `qubit_redact::formats::http` 导入，不能从 `qubit_http` 导入。`logging.body_size_limit` 是展示限额，结构化 body 解析由 JSON 与结构限额约束。
+`RedactionPolicy::builder()` 使用空应用规则和标准 floor；扩展默认快照时使用 `RedactionPolicy::default().to_builder()`。应用 allow 规则无法绕过启用的 floor；在分组 `http(|http| { ... })` 视图中调用 `http.disable_all_floors()` 是关闭 HTTP 上下文 floor 的显式逃生口。`RedactionPolicy` 和 `Redactor` 必须从 `qubit_redact` 导入，`qubit_http` 不会重新导出它们。`logging.body_size_limit` 是展示限额，结构化 body 解析由 JSON 与结构限额约束。
 
-应用启动时使用 `Redactor::set_default()` 安装默认 redactor；`RedactionPolicy::default()` 始终
+应用启动时使用 `Redactor::replace_application_default(Redactor::new(policy))` 安装默认 redactor；`RedactionPolicy::default()` 始终
 返回固定标准策略。`HttpClientOptions::new()` 会取得构造时默认 redactor 的快照，包括此前已安装的应用策略。client 创建一份
-`Arc<HttpRedactor>`，并在 request、response、retry、interceptor、error 和 SSE 诊断中
+`Redactor` 快照，并在 request、response、retry、interceptor、error 和 SSE 诊断中
 保持该快照。使用 `fields()`、`http()` 和 `limits()` 配置统一的
 `RedactionPolicyBuilder`；`qubit_http` 不再重导出这些脱敏类型。
 
@@ -608,10 +608,11 @@ let mut options = HttpClientOptions::new();
 options.logging.enabled = true;
 options.logging.log_request_header = true;
 options.logging.log_request_body = true;
-let mut builder = RedactionPolicy::default().to_builder();
-builder.http().header().raise("x-api-key", Sensitivity::High)?;
-builder.http().query().raise("access_token", Sensitivity::High)?;
-builder.http().body().raise("password", Sensitivity::Secret)?;
+let builder = RedactionPolicy::default().to_builder().http(|http| {
+    let _ = http.header().raise("x-api-key", Sensitivity::High);
+    let _ = http.query().raise("access_token", Sensitivity::High);
+    let _ = http.body().raise("password", Sensitivity::Secret);
+})?;
 options.log_redaction_policy = builder.build()?;
 
 let client = HttpClientFactory::new().create(options)?;
