@@ -581,17 +581,18 @@ HTTP logs use `tracing::trace!`. Both conditions must be true:
 
 Request headers, request body, response headers, and response body can be toggled separately. Body logs include only the first `logging.body_size_limit` bytes and show a truncation marker for the remainder. Binary bodies are rendered as `<binary N bytes>`. Unsupported bodies without a structured or textual `Content-Type` are rendered as `<redacted: unsupported HTTP body>`. Request-body logging previews buffered body variants (`bytes_body`, `text_body`, `json_body`, `form_body`, `multipart_body`, and `ndjson_body`); `stream_body` and `streaming_body` are logged as `<skipped: streaming request body>` because the logger does not consume upload streams.
 
-Logs are redacted through the canonical `qubit_redact::formats::http::HttpRedactor` and one root `RedactionPolicy`. URL username, password, fragment, and sensitive query parameters are masked; the standard policy preserves non-root URL paths for diagnostics, while `RedactionPolicy::strict()` or explicit `UrlPathPolicy::Redact` hides them. JSON/form/multipart body fields use HTTP context views over the same base rules, masking table, and static limits. Multipart file parts remain `<redacted: file part>`; malformed, missing-boundary, or truncated multipart bodies remain fail-closed.
+Logs are redacted through the canonical `qubit_redact::Redactor` and one root `RedactionPolicy`. URL username, password, fragment, and sensitive query parameters are masked; the standard policy preserves non-root URL paths for diagnostics, while `RedactionPolicy::strict()` or explicit `UrlPathPolicy::Redact` hides them. JSON/form/multipart body fields use HTTP context views over the same base rules, masking table, and static limits. Multipart file parts remain `<redacted: file part>`; malformed, missing-boundary, or truncated multipart bodies remain fail-closed.
 
 For headers, `http::HeaderValue::is_sensitive()` is a value-level `Secret` declaration. Request, response, streaming-response, and `Debug` rendering honor it before header-name matching. An allow rule cannot expose a marked value; unmarked values continue to use the same immutable name policy snapshot.
 
-`RedactionPolicy::builder()` has empty application rules and the standard floor. Use `RedactionPolicy::default().to_builder()` to extend a default snapshot. Application allow rules cannot bypass an enabled floor; `builder.http().disable_all_floors()` is the explicit HTTP-context escape hatch. Import `RedactionPolicy` from `qubit_redact` and `HttpRedactor` from `qubit_redact::formats::http`, never from `qubit_http`. `logging.body_size_limit` is a presentation bound, while structured body parsing remains bounded by JSON and structure limits.
+`RedactionPolicy::builder()` has empty application rules and the standard floor. Use `RedactionPolicy::default().to_builder()` to extend a default snapshot. Application allow rules cannot bypass an enabled floor; `http.disable_all_floors()` inside the grouped `http(|http| { ... })` view is the explicit HTTP-context escape hatch. Import `RedactionPolicy` and `Redactor` from `qubit_redact`; `qubit_http` does not re-export them. `logging.body_size_limit` is a presentation bound, while structured body parsing remains bounded by JSON and structure limits.
 
-Install the application default with `Redactor::set_default()` during startup.
+Install the application default with
+`Redactor::replace_application_default(Redactor::new(policy))` during startup.
 `RedactionPolicy::default()` remains the fixed standard policy.
 `HttpClientOptions::new()` snapshots the current default redactor, including an
 application default installed before construction. The client creates one
-`Arc<HttpRedactor>` and preserves it through requests, responses, retries,
+`Redactor` snapshot and preserves it through requests, responses, retries,
 interceptors, errors, and SSE diagnostics. For migration, configure one
 `RedactionPolicyBuilder` through `fields()`, `http()`, and `limits()`;
 `qubit_http` does not re-export these redaction types.
@@ -611,10 +612,11 @@ let mut options = HttpClientOptions::new();
 options.logging.enabled = true;
 options.logging.log_request_header = true;
 options.logging.log_request_body = true;
-let mut builder = RedactionPolicy::default().to_builder();
-builder.http().header().raise("x-api-key", Sensitivity::High)?;
-builder.http().query().raise("access_token", Sensitivity::High)?;
-builder.http().body().raise("password", Sensitivity::Secret)?;
+let builder = RedactionPolicy::default().to_builder().http(|http| {
+    let _ = http.header().raise("x-api-key", Sensitivity::High);
+    let _ = http.query().raise("access_token", Sensitivity::High);
+    let _ = http.body().raise("password", Sensitivity::Secret);
+})?;
 options.log_redaction_policy = builder.build()?;
 
 let client = HttpClientFactory::new().create(options)?;
