@@ -23,6 +23,7 @@ use qubit_http::HttpRequestBody;
 use qubit_http::HttpRetryMethodPolicy;
 use qubit_http::RetryCancellationToken;
 use qubit_json::encode::JsonEncodeError;
+use qubit_json::encode::JsonEncodeErrorKind;
 use qubit_json::encode::JsonSerializationErrorKind;
 use qubit_redact::RedactionPolicy;
 use qubit_redact::Sensitivity;
@@ -469,11 +470,14 @@ fn test_request_builder_json_body_serialization_failure_returns_decode_error() {
         .source()
         .and_then(|source| source.downcast_ref::<JsonEncodeError<JsonResource>>())
         .expect("JSON encoding error should remain available as the source");
-    assert!(matches!(
-        source,
-        JsonEncodeError::Serialize(error)
-            if error.kind() == JsonSerializationErrorKind::CustomSerialization
-    ));
+    assert_eq!(source.kind(), JsonEncodeErrorKind::Serialize);
+    assert_eq!(
+        source
+            .serialization_error()
+            .expect("serialize kind must retain a serialization source")
+            .kind(),
+        JsonSerializationErrorKind::CustomSerialization,
+    );
     assert!(!source.to_string().contains("boom"));
 }
 
@@ -915,11 +919,14 @@ fn test_request_builder_ndjson_body_serialization_failure_returns_decode_error()
         .source()
         .and_then(|source| source.downcast_ref::<JsonEncodeError<JsonResource>>())
         .expect("JSON encoding error should remain available as the source");
-    assert!(matches!(
-        source,
-        JsonEncodeError::Serialize(error)
-            if error.kind() == JsonSerializationErrorKind::CustomSerialization
-    ));
+    assert_eq!(source.kind(), JsonEncodeErrorKind::Serialize);
+    assert_eq!(
+        source
+            .serialization_error()
+            .expect("serialize kind must retain a serialization source")
+            .kind(),
+        JsonSerializationErrorKind::CustomSerialization,
+    );
     assert!(!source.to_string().contains("boom"));
 }
 
