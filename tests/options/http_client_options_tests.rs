@@ -1192,6 +1192,7 @@ fn test_http_client_options_from_root_config_all_sections() {
     assert!(opts.default_headers.contains_key("x-root"));
     assert!(
         opts.log_redaction_policy
+            .http()
             .header_rules()
             .sensitivity_for("x-root-secret")
             .is_some()
@@ -1353,7 +1354,10 @@ fn test_http_client_options_interpolates_string_configuration_values() {
         options.sse_done_marker_policy,
         DoneMarkerPolicy::Custom("[INTERPOLATED_DONE]".to_string()),
     );
-    assert_eq!(options.log_redaction_policy.url_path_policy(), UrlPathPolicy::Preserve,);
+    assert_eq!(
+        options.log_redaction_policy.http().url_path_policy(),
+        UrlPathPolicy::Preserve,
+    );
     assert!(
         options
             .log_redaction_policy
