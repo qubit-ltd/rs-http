@@ -538,12 +538,14 @@ fn test_http_client_options_log_redaction_section() {
     let opts = HttpClientOptions::from_config(&config.section("http").unwrap()).unwrap();
     assert!(
         opts.log_redaction_policy
+            .http()
             .header_rules()
             .sensitivity_for("x-custom-secret")
             .is_some()
     );
     assert!(
         opts.log_redaction_policy
+            .http()
             .header_rules()
             .sensitivity_for("x-api-token")
             .is_some()
@@ -551,6 +553,7 @@ fn test_http_client_options_log_redaction_section() {
     assert!(opts.log_redaction_policy.sensitivity_for("authorization").is_some());
     assert!(
         opts.log_redaction_policy
+            .http()
             .query_rules()
             .sensitivity_for("session_token")
             .is_some()
@@ -558,6 +561,7 @@ fn test_http_client_options_log_redaction_section() {
     assert!(opts.log_redaction_policy.sensitivity_for("access_token").is_some());
     assert!(
         opts.log_redaction_policy
+            .http()
             .body_rules()
             .sensitivity_for("customer_secret")
             .is_some()
@@ -565,7 +569,10 @@ fn test_http_client_options_log_redaction_section() {
     assert!(opts.log_redaction_policy.sensitivity_for("client_secret").is_some());
     assert!(opts.log_redaction_policy.sensitivity_for("sig").is_some());
     assert!(opts.log_redaction_policy.sensitivity_for("signature").is_some());
-    assert_eq!(opts.log_redaction_policy.url_path_policy(), UrlPathPolicy::Preserve,);
+    assert_eq!(
+        opts.log_redaction_policy.http().url_path_policy(),
+        UrlPathPolicy::Preserve,
+    );
 }
 
 /// Verifies the explicit `redact` URL-path setting survives policy building.
@@ -579,7 +586,10 @@ fn test_http_client_options_parses_redact_url_path_policy() {
     let options =
         HttpClientOptions::from_config(&config.section("http").unwrap()).expect("redact URL path policy should parse");
 
-    assert_eq!(options.log_redaction_policy.url_path_policy(), UrlPathPolicy::Redact,);
+    assert_eq!(
+        options.log_redaction_policy.http().url_path_policy(),
+        UrlPathPolicy::Redact,
+    );
 }
 
 #[test]
@@ -634,6 +644,7 @@ fn test_http_client_options_root_sensitive_headers_is_not_supported() {
 
     assert!(
         opts.log_redaction_policy
+            .http()
             .header_rules()
             .sensitivity_for("xlegacysecret")
             .is_none()
@@ -1187,12 +1198,14 @@ fn test_http_client_options_from_root_config_all_sections() {
     );
     assert!(
         opts.log_redaction_policy
+            .http()
             .query_rules()
             .sensitivity_for("root_token")
             .is_some()
     );
     assert!(
         opts.log_redaction_policy
+            .http()
             .body_rules()
             .sensitivity_for("root_password")
             .is_some()
@@ -1344,6 +1357,7 @@ fn test_http_client_options_interpolates_string_configuration_values() {
     assert!(
         options
             .log_redaction_policy
+            .http()
             .header_rules()
             .sensitivity_for("x-interpolated-secret")
             .is_some()
@@ -1364,6 +1378,7 @@ fn test_http_client_options_log_redaction_header_number_from_config_is_converted
 
     assert!(
         opts.log_redaction_policy
+            .http()
             .header_rules()
             .sensitivity_for("123")
             .is_some()
