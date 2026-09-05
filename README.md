@@ -149,6 +149,19 @@ only when the application explicitly accepts removing HTTP context floors.
 - Built-in request retry covers failures before `HttpResponse` is returned. Stream body errors after return are surfaced to the caller.
 - SSE reconnect has a dedicated API: `HttpClient::execute_sse_with_reconnect(...)`.
 
+## Retry timing boundaries
+
+HTTP retry budgets use qubit-retry 0.20. `max_duration` is a continuation budget,
+not a hard request timeout: it prevents further attempts while preserving a
+completed successful request. Request timeouts remain configured separately.
+SSE reconnects preserve structured budget errors as HTTP error sources.
+
+For SSE server-directed reconnects, `server_retry_max_delay` caps the final
+selected delay after jitter and hint merging, with a minimum of one millisecond.
+It does not cap ordinary HTTP `Retry-After` handling. Backoff policy
+`maximum_delay()` is a base-strategy bound; `.limit_delay(duration)` configures an
+explicit final policy cap. SSE retains its one-millisecond minimum wait.
+
 ## Testing
 
 ```bash
