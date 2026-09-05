@@ -118,5 +118,5 @@ fn test_timeout_options_from_config_rejects_zero_request_timeout() {
 
     let err = HttpTimeoutOptions::from_config(&config.section("t").unwrap()).unwrap_err();
     assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
-    assert_eq!(err.path, "request_timeout");
+    assert_eq!(err.path, "t.request_timeout");
 }

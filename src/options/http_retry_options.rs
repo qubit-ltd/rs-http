@@ -104,20 +104,29 @@ impl HttpRetryOptions {
         }
         opts.max_duration = raw.max_duration;
         if let Some(method_policy) = raw.method_policy.as_ref() {
-            opts.method_policy = HttpRetryMethodPolicy::from_config_value(method_policy)?;
+            opts.method_policy = HttpRetryMethodPolicy::from_config_value(method_policy)
+                .map_err(|error| super::from_config_helpers::resolve_config_error(config, error))?;
         }
         if let Some(status_codes) = raw.status_codes.as_ref() {
-            opts.retry_status_codes = Some(parse_retry_status_codes(status_codes)?);
+            opts.retry_status_codes = Some(
+                parse_retry_status_codes(status_codes)
+                    .map_err(|error| super::from_config_helpers::resolve_config_error(config, error))?,
+            );
         }
         if let Some(error_kinds) = raw.error_kinds.as_ref() {
-            opts.retry_error_kinds = Some(parse_retry_error_kinds(error_kinds)?);
+            opts.retry_error_kinds = Some(
+                parse_retry_error_kinds(error_kinds)
+                    .map_err(|error| super::from_config_helpers::resolve_config_error(config, error))?,
+            );
         }
 
         if raw.delay_strategy.is_some() || raw.jitter_factor.is_some() {
-            opts.backoff = parse_retry_backoff(&raw)?;
+            opts.backoff = parse_retry_backoff(&raw)
+                .map_err(|error| super::from_config_helpers::resolve_config_error(config, error))?;
         }
 
-        opts.validate()?;
+        opts.validate()
+            .map_err(|error| super::from_config_helpers::resolve_config_error(config, error))?;
         Ok(opts)
     }
 
@@ -133,6 +142,26 @@ impl HttpRetryOptions {
     where
         R: ConfigReader + ?Sized,
     {
+        super::from_config_helpers::ensure_known_config_keys(
+            config,
+            &[
+                "enabled",
+                "max_attempts",
+                "max_duration",
+                "delay_strategy",
+                "fixed_delay",
+                "random_min_delay",
+                "random_max_delay",
+                "backoff_initial_delay",
+                "backoff_max_delay",
+                "backoff_multiplier",
+                "jitter_factor",
+                "method_policy",
+                "status_codes",
+                "error_kinds",
+            ],
+            &[],
+        )?;
         Ok(HttpRetryConfigInput {
             enabled: config.get_optional("enabled")?,
             max_attempts: config.get_optional("max_attempts")?,

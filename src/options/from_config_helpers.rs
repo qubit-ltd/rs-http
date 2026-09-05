@@ -47,29 +47,61 @@ use qubit_config::ConfigResult;
 
 use super::HttpConfigError;
 
-/// Resolves a reader-relative configuration error to its root-relative path.
+/// Resolves an explicitly reader-relative domain error to its root path.
+/// Callers must propagate configuration read errors directly: those paths
+/// have already been resolved by qubit-config.
 pub(crate) fn resolve_config_error<R>(config: &R, mut error: HttpConfigError) -> HttpConfigError
 where
     R: ConfigReader + ?Sized,
 {
-    let section_path = config.scope_path().to_owned();
-    error.path = if error.path.is_empty() {
-        section_path
-    } else if section_path.is_empty()
-        || error.path == section_path
-        || error
-            .path
-            .strip_prefix(&section_path)
-            .is_some_and(|suffix| suffix.starts_with('.'))
-    {
-        error.path
-    } else {
-        match config.resolve_key(&error.path) {
-            Ok(path) => path,
-            Err(error) => return HttpConfigError::from(error),
-        }
+    error.path = match config.resolve_key(&error.path) {
+        Ok(path) => path,
+        Err(error) => return HttpConfigError::from(error),
     };
     error
+}
+
+/// Rejects keys outside a component's declared fields and open child sections.
+/// Returns sorted root-relative unknown paths; unrelated siblings outside the
+/// supplied reader are not inspected. Open sections accept descendants only.
+pub(crate) fn ensure_known_config_keys<R>(config: &R, fields: &[&str], sections: &[&str]) -> ConfigResult<()>
+where
+    R: ConfigReader + ?Sized,
+{
+    let mut paths = Vec::new();
+    for (key, _) in config.iter() {
+        if fields.contains(&key)
+            || sections
+                .iter()
+                .any(|section| key.strip_prefix(section).is_some_and(|suffix| suffix.starts_with('.')))
+        {
+            continue;
+        }
+        paths.push(config.resolve_key(key)?);
+    }
+    if paths.is_empty() {
+        Ok(())
+    } else {
+        paths.sort();
+        paths.dedup();
+        Err(ConfigError::UnknownProperties { paths })
+    }
+}
+
+/// Resolves validation errors whose schema explicitly uses a component prefix.
+/// The prefix belongs to the validator, regardless of the reader's scope.
+pub(crate) fn resolve_component_error<R>(config: &R, mut error: HttpConfigError, component: &str) -> HttpConfigError
+where
+    R: ConfigReader + ?Sized,
+{
+    if let Some(relative) = error
+        .path
+        .strip_prefix(component)
+        .and_then(|suffix| suffix.strip_prefix('.'))
+    {
+        error.path = relative.to_owned();
+    }
+    resolve_config_error(config, error)
 }
 
 /// Reads an optional fixed-width unsigned value and converts it to `usize`.
