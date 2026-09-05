@@ -65,6 +65,18 @@ fn read_logging_config<R>(config: &R) -> ConfigResult<LoggingConfigInput>
 where
     R: ConfigReader + ?Sized,
 {
+    super::from_config_helpers::ensure_known_config_keys(
+        config,
+        &[
+            "enabled",
+            "log_request_header",
+            "log_request_body",
+            "log_response_header",
+            "log_response_body",
+            "body_size_limit",
+        ],
+        &[],
+    )?;
     Ok(LoggingConfigInput {
         enabled: config.get_optional("enabled")?,
         log_request_header: config.get_optional("log_request_header")?,
@@ -117,6 +129,8 @@ impl HttpLoggingOptions {
             opts.body_size_limit = v;
         }
 
+        opts.validate()
+            .map_err(|error| super::from_config_helpers::resolve_component_error(config, error, "logging"))?;
         Ok(opts)
     }
 

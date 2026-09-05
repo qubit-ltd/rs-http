@@ -62,6 +62,11 @@ fn read_timeout_config<R>(config: &R) -> ConfigResult<TimeoutConfigInput>
 where
     R: ConfigReader + ?Sized,
 {
+    super::from_config_helpers::ensure_known_config_keys(
+        config,
+        &["connect_timeout", "read_timeout", "write_timeout", "request_timeout"],
+        &[],
+    )?;
     Ok(TimeoutConfigInput {
         connect_timeout: config.get_optional("connect_timeout")?,
         read_timeout: config.get_optional("read_timeout")?,
@@ -121,7 +126,8 @@ impl HttpTimeoutOptions {
             opts.write_timeout = d;
         }
         opts.request_timeout = raw.request_timeout;
-        opts.validate()?;
+        opts.validate()
+            .map_err(|error| super::from_config_helpers::resolve_config_error(config, error))?;
         Ok(opts)
     }
 }

@@ -79,6 +79,11 @@ fn read_proxy_config<R>(config: &R) -> ConfigResult<ProxyConfigInput>
 where
     R: ConfigReader + ?Sized,
 {
+    super::from_config_helpers::ensure_known_config_keys(
+        config,
+        &["enabled", "proxy_type", "host", "port", "username", "password"],
+        &[],
+    )?;
     Ok(ProxyConfigInput {
         enabled: config.get_optional("enabled")?,
         proxy_type: config.get_optional_interpolated::<String>("proxy_type")?,
@@ -116,7 +121,8 @@ impl ProxyOptions {
             opts.enabled = v;
         }
         if let Some(s) = raw.proxy_type {
-            opts.proxy_type = parse_proxy_type("proxy_type", &s)?;
+            opts.proxy_type = parse_proxy_type("proxy_type", &s)
+                .map_err(|error| super::from_config_helpers::resolve_config_error(config, error))?;
         }
         opts.host = raw.host;
         if let Some(p) = raw.port {
@@ -125,6 +131,8 @@ impl ProxyOptions {
         opts.username = raw.username;
         opts.password = raw.password;
 
+        opts.validate()
+            .map_err(|error| super::from_config_helpers::resolve_component_error(config, error, "proxy"))?;
         Ok(opts)
     }
 

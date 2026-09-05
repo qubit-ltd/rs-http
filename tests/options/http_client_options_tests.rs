@@ -461,7 +461,7 @@ fn test_http_client_options_empty_header_value_from_config_is_prefixed() {
 
     let err = HttpClientOptions::from_config(&config.section("http").unwrap()).unwrap_err();
 
-    assert_eq!(err.kind, HttpConfigErrorKind::ConfigError);
+    assert_eq!(err.kind, HttpConfigErrorKind::TypeError);
     assert_eq!(err.path, "http.default_headers.x-empty");
 }
 
@@ -640,15 +640,9 @@ fn test_http_client_options_root_sensitive_headers_is_not_supported() {
         .set("http.sensitive_headers", vec!["X-Legacy-Secret".to_string()])
         .unwrap();
 
-    let opts = HttpClientOptions::from_config(&config.section("http").unwrap()).unwrap();
-
-    assert!(
-        opts.log_redaction_policy
-            .http()
-            .header_rules()
-            .sensitivity_for("xlegacysecret")
-            .is_none()
-    );
+    let error = HttpClientOptions::from_config(&config.section("http").expect("section"))
+        .expect_err("unsupported root option must be reported");
+    assert_eq!(error.path, "http.sensitive_headers");
 }
 
 #[test]
@@ -803,7 +797,7 @@ fn test_http_retry_options_invalid_method_policy_from_config() {
     let err = HttpRetryOptions::from_config(&config.section("retry").unwrap()).unwrap_err();
 
     assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
-    assert_eq!(err.path, "method_policy");
+    assert_eq!(err.path, "retry.method_policy");
 }
 
 #[test]
@@ -1236,46 +1230,46 @@ fn test_http_client_options_from_root_config_all_sections() {
 fn test_http_client_options_interpolates_string_configuration_values() {
     let mut config = Config::new();
     config
-        .set("http.shared.base_url", "https://interpolated.example/api/")
+        .set("shared.base_url", "https://interpolated.example/api/")
         .expect("test config should set shared base URL");
     config
-        .set("http.shared.user_agent", "qubit-http-interpolated/1.0")
+        .set("shared.user_agent", "qubit-http-interpolated/1.0")
         .expect("test config should set shared user agent");
     config
-        .set("http.proxy.shared.proxy_type", "http")
+        .set("shared.proxy_type", "http")
         .expect("test config should set shared proxy type");
     config
-        .set("http.proxy.shared.proxy_host", "proxy.interpolated.example")
+        .set("shared.proxy_host", "proxy.interpolated.example")
         .expect("test config should set shared proxy host");
     config
-        .set("http.proxy.shared.proxy_username", "interpolated-user")
+        .set("shared.proxy_username", "interpolated-user")
         .expect("test config should set shared proxy username");
     config
-        .set("http.proxy.shared.proxy_password", "interpolated-password")
+        .set("shared.proxy_password", "interpolated-password")
         .expect("test config should set shared proxy password");
     config
-        .set("http.retry.shared.retry_delay_strategy", "fixed")
+        .set("shared.retry_delay_strategy", "fixed")
         .expect("test config should set shared retry delay strategy");
     config
-        .set("http.retry.shared.retry_method_policy", "all_methods")
+        .set("shared.retry_method_policy", "all_methods")
         .expect("test config should set shared retry method policy");
     config
-        .set("http.sse.shared.sse_json_mode", "strict")
+        .set("shared.sse_json_mode", "strict")
         .expect("test config should set shared SSE JSON mode");
     config
-        .set("http.sse.shared.sse_done_marker", "[INTERPOLATED_DONE]")
+        .set("shared.sse_done_marker", "[INTERPOLATED_DONE]")
         .expect("test config should set shared SSE done marker");
     config
-        .set("http.log_redaction.shared.url_path_policy", "preserve")
+        .set("shared.url_path_policy", "preserve")
         .expect("test config should set shared URL path policy");
     config
-        .set("http.log_redaction.shared.sensitive_header", "X-Interpolated-Secret")
+        .set("shared.sensitive_header", "X-Interpolated-Secret")
         .expect("test config should set shared sensitive header");
     config
-        .set("http.retry.shared.retry_status_code", "503")
+        .set("shared.retry_status_code", "503")
         .expect("test config should set shared retry status code");
     config
-        .set("http.retry.shared.retry_error_kind", "transport")
+        .set("shared.retry_error_kind", "transport")
         .expect("test config should set shared retry error kind");
     config
         .set("http.base_url", "${shared.base_url}")

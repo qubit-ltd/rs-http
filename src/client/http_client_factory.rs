@@ -160,11 +160,7 @@ impl HttpClientFactory {
     where
         R: ConfigReader + ?Sized,
     {
-        let options =
-            HttpClientOptions::from_config(config).map_err(|e| crate::options::resolve_config_error(config, e))?;
-        options
-            .validate()
-            .map_err(|e| crate::options::resolve_config_error(config, e))?;
+        let options = HttpClientOptions::from_config(config)?;
         self.create(options).map_err(|e| {
             HttpConfigError::new(
                 crate::HttpConfigErrorKind::InvalidValue,

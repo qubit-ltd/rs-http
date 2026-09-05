@@ -13,7 +13,6 @@
 //! `from_config_helpers` module (see `from_config_helpers.rs`).
 
 mod from_config_helpers;
-pub(crate) use from_config_helpers::resolve_config_error;
 mod http_client_options;
 mod http_config_error;
 mod http_config_error_kind;
