@@ -141,8 +141,24 @@ config.set("http.retry.delay_strategy", "FIXED".to_string())?;
 config.set("http.retry.fixed_delay", Duration::from_millis(250))?;
 
 let client = HttpClientFactory::new()
-    .create_from_config(&config.section("http"))?;
+    .create_from_config(&config.section("http")?)?;
 ```
+
+`from_config` rejects unknown fields in the selected component scope. For
+example, `http.timeouts.connect_timout` fails instead of silently using the
+default timeout. The independent `HttpTimeoutOptions`, `ProxyOptions`,
+`HttpLoggingOptions`, and `HttpRetryOptions` constructors enforce their own
+schemas and return existing domain validation failures during construction.
+Both conversion and domain errors report root-relative paths, such as
+`service.http.timeouts.connect_timeout`.
+
+`default_headers.*` remains an open map accepting custom header names. Select
+`config.section("http")?` when using a shared configuration; sibling sections
+are not checked. Put interpolation helpers such as `${shared.host}` in root
+`shared.*` keys outside the component scope; root fallback still resolves them.
+Previously ignored legacy fields, such as root `sensitive_headers`, now fail
+and must be migrated to declared fields. Conversion failures from rs-config
+sources retain their final loading origin through `Error::source()`.
 
 Common configuration keys:
 

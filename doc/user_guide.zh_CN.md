@@ -141,8 +141,20 @@ config.set("http.retry.delay_strategy", "FIXED".to_string())?;
 config.set("http.retry.fixed_delay", Duration::from_millis(250))?;
 
 let client = HttpClientFactory::new()
-    .create_from_config(&config.section("http"))?;
+    .create_from_config(&config.section("http")?)?;
 ```
+
+`from_config` 会拒绝所选组件范围内的未知字段。例如
+`http.timeouts.connect_timout` 会报错，而不会悄悄使用默认超时。独立的
+`HttpTimeoutOptions`、`ProxyOptions`、`HttpLoggingOptions`、`HttpRetryOptions`
+入口也检查各自字段，并在构造时返回已有领域校验失败。转换错误和领域错误都报告
+根相对路径，例如 `service.http.timeouts.connect_timeout`。
+
+`default_headers.*` 是开放的 header map，允许自定义 header 名。共享配置请通过
+`config.section("http")?` 隔离；其他 section 不受检查。`${shared.host}` 一类插值
+辅助值应放在根级 `shared.*` 等组件范围之外，仍可通过根回退解析。此前被忽略的
+旧字段（例如根级 `sensitive_headers`）现在会报错，请迁移到已声明的字段。
+由 rs-config source 加载的转换错误仍通过 `Error::source()` 保留其最终来源。
 
 常用配置键：
 
