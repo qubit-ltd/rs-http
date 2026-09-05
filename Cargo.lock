@@ -846,6 +846,15 @@ version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc94844f6f5cca8005774cbd1d84e58b9369b50eab393aa9b34d0662edf435fb"
 dependencies = [
+ "thiserror",
+]
+
+[[package]]
+name = "qubit-budget"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f93253bc135140ca58d3d4f7dffcc330394cf94fec873c5f86ec3bb41dbfa18e"
+dependencies = [
  "qubit-clock",
  "thiserror",
 ]
@@ -875,9 +884,9 @@ dependencies = [
 name = "qubit-config"
 version = "0.16.0"
 dependencies = [
- "qubit-budget",
+ "qubit-budget 0.5.0",
  "qubit-datatype",
- "qubit-json",
+ "qubit-json 0.8.0",
  "qubit-redact",
  "qubit-utils",
  "qubit-value",
@@ -891,8 +900,8 @@ dependencies = [
 name = "qubit-datatype"
 version = "0.12.0"
 dependencies = [
- "qubit-budget",
- "qubit-json",
+ "qubit-budget 0.5.0",
+ "qubit-json 0.8.1",
  "serde",
  "serde_json",
  "thiserror",
@@ -921,13 +930,13 @@ dependencies = [
  "httpdate",
  "parse-display",
  "qubit-argument",
- "qubit-budget",
+ "qubit-budget 0.5.0",
  "qubit-clock",
  "qubit-config",
  "qubit-datatype",
  "qubit-error",
  "qubit-function",
- "qubit-json",
+ "qubit-json 0.8.0",
  "qubit-redact",
  "qubit-retry",
  "reqwest",
@@ -947,7 +956,17 @@ version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f3ec40e4bcd917345717aa1983bbece89ad4bd68780230edceaf5c286e634b2a"
 dependencies = [
- "qubit-budget",
+ "qubit-budget 0.4.0",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "qubit-json"
+version = "0.8.1"
+dependencies = [
+ "qubit-budget 0.5.0",
  "serde",
  "serde_json",
  "thiserror",
@@ -959,8 +978,8 @@ version = "0.5.0"
 dependencies = [
  "form_urlencoded",
  "http",
- "qubit-budget",
- "qubit-json",
+ "qubit-budget 0.5.0",
+ "qubit-json 0.8.0",
  "serde",
  "serde_json",
  "url",
@@ -970,7 +989,7 @@ dependencies = [
 name = "qubit-retry"
 version = "0.19.0"
 dependencies = [
- "qubit-budget",
+ "qubit-budget 0.5.0",
  "qubit-clock",
  "rand",
  "thiserror",
@@ -987,9 +1006,9 @@ checksum = "7f9bf5cd2e783a8a6edd6536826084ef0a82d1924b14f82e79fe0088b7b33748"
 name = "qubit-value"
 version = "0.10.0"
 dependencies = [
- "qubit-budget",
+ "qubit-budget 0.5.0",
  "qubit-datatype",
- "qubit-json",
+ "qubit-json 0.8.0",
  "qubit-redact",
  "serde",
  "serde_json",
