@@ -552,18 +552,11 @@ async fn test_execute_sse_with_reconnect_can_disable_server_retry_jitter() {
 
 #[tokio::test]
 async fn test_execute_sse_with_reconnect_respects_retry_max_elapsed() {
-    let server = spawn_multi_shot_server(vec![
-        ResponsePlan::Immediate {
-            status: 500,
-            headers: vec![],
-            body: b"server-error-1".to_vec(),
-        },
-        ResponsePlan::Immediate {
-            status: 500,
-            headers: vec![],
-            body: b"server-error-2".to_vec(),
-        },
-    ])
+    let server = spawn_multi_shot_server(vec![ResponsePlan::Immediate {
+        status: 500,
+        headers: vec![],
+        body: b"server-error".to_vec(),
+    }])
     .await;
 
     let mut options = HttpClientOptions::default();
@@ -573,13 +566,14 @@ async fn test_execute_sse_with_reconnect_respects_retry_max_elapsed() {
     let client = HttpClientFactory::new().create(options).unwrap();
 
     let request = client.request(Method::GET, "/sse-max-elapsed").build();
+    // The proposed delay alone exhausts the budget, regardless of request latency.
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
             retry: build_retry_options_with_max_elapsed(
                 5,
-                Duration::from_millis(80),
-                BackoffPolicy::fixed(Duration::from_millis(60)),
+                Duration::from_secs(1),
+                BackoffPolicy::fixed(Duration::from_secs(1)),
             ),
             reconnect_on_eof: true,
             honor_server_retry: false,
@@ -609,7 +603,7 @@ async fn test_execute_sse_with_reconnect_respects_retry_max_elapsed() {
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
         .expect("server finish timed out");
-    assert_eq!(captured.len(), 2);
+    assert_eq!(captured.len(), 1);
 }
 
 #[tokio::test]

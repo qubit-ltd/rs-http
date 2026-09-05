@@ -22,6 +22,7 @@ use qubit_redact::Redactor;
 use qubit_retry::BackoffRequest;
 use qubit_retry::BackoffState;
 use qubit_retry::RetryBudget;
+use qubit_retry::RetryBudgetError;
 use qubit_retry::RetryBudgetExhausted;
 use qubit_retry::RetryCancellationToken;
 use qubit_retry::RetryPolicy;
@@ -118,27 +119,32 @@ impl ReconnectState {
     async fn after_error(
         &mut self,
         error: HttpError,
-        budget: &RetryBudget<'_>,
+        budget: &mut RetryBudget<'_>,
         runtime: &ReconnectRuntime<'_>,
     ) -> ReconnectAction {
         let sleep_delay = self.sleep_delay(runtime);
-        match budget.check_retry_after(sleep_delay) {
+        let decision = budget.check_retry_after(sleep_delay);
+        let snapshot = match budget.snapshot() {
+            Ok(snapshot) => snapshot,
+            Err(error) => return ReconnectAction::Fail(Box::new(reconnect_budget_error(error, runtime))),
+        };
+        match decision {
             Ok(()) => self.sleep_and_advance(sleep_delay, runtime).await,
-            Err(RetryBudgetExhausted::Attempts) => ReconnectAction::Fail(Box::new(error)),
-            Err(RetryBudgetExhausted::OperationElapsed) => {
+            Err(RetryBudgetError::Exhausted(RetryBudgetExhausted::Attempts)) => ReconnectAction::Fail(Box::new(error)),
+            Err(RetryBudgetError::Exhausted(RetryBudgetExhausted::OperationElapsed)) => {
                 ReconnectAction::Fail(Box::new(operation_elapsed_exceeded_error_with_last_error(
                     error,
-                    budget.snapshot().operation_elapsed(),
+                    snapshot.operation_elapsed(),
                     runtime.retry_policy.limits().max_operation_elapsed(),
                     runtime.request_method,
                     runtime.request_url,
                     runtime.log_redactor,
                 )))
             }
-            Err(RetryBudgetExhausted::TotalElapsed) => {
+            Err(RetryBudgetError::Exhausted(RetryBudgetExhausted::TotalElapsed)) => {
                 ReconnectAction::Fail(Box::new(max_elapsed_exceeded_error_with_last_error(
                     error,
-                    budget.snapshot().total_elapsed(),
+                    snapshot.total_elapsed(),
                     runtime
                         .retry_policy
                         .limits()
@@ -149,6 +155,7 @@ impl ReconnectState {
                     runtime.log_redactor,
                 )))
             }
+            Err(error) => ReconnectAction::Fail(Box::new(reconnect_budget_error(error, runtime))),
         }
     }
 
@@ -162,31 +169,39 @@ impl ReconnectState {
     ///
     /// # Side effects
     /// Sleeps asynchronously when another reconnect is allowed.
-    async fn after_eof(&mut self, budget: &RetryBudget<'_>, runtime: &ReconnectRuntime<'_>) -> ReconnectAction {
+    async fn after_eof(&mut self, budget: &mut RetryBudget<'_>, runtime: &ReconnectRuntime<'_>) -> ReconnectAction {
         let sleep_delay = self.sleep_delay(runtime);
-        match budget.check_retry_after(sleep_delay) {
+        let decision = budget.check_retry_after(sleep_delay);
+        let snapshot = match budget.snapshot() {
+            Ok(snapshot) => snapshot,
+            Err(error) => return ReconnectAction::Fail(Box::new(reconnect_budget_error(error, runtime))),
+        };
+        match decision {
             Ok(()) => self.sleep_and_advance(sleep_delay, runtime).await,
-            Err(RetryBudgetExhausted::Attempts) => ReconnectAction::Stop,
-            Err(RetryBudgetExhausted::OperationElapsed) => {
+            Err(RetryBudgetError::Exhausted(RetryBudgetExhausted::Attempts)) => ReconnectAction::Stop,
+            Err(RetryBudgetError::Exhausted(RetryBudgetExhausted::OperationElapsed)) => {
                 ReconnectAction::Fail(Box::new(operation_elapsed_exceeded_error(
-                    budget.snapshot().operation_elapsed(),
+                    snapshot.operation_elapsed(),
                     runtime.retry_policy.limits().max_operation_elapsed(),
                     runtime.request_method,
                     runtime.request_url,
                     runtime.log_redactor,
                 )))
             }
-            Err(RetryBudgetExhausted::TotalElapsed) => ReconnectAction::Fail(Box::new(max_elapsed_exceeded_error(
-                budget.snapshot().total_elapsed(),
-                runtime
-                    .retry_policy
-                    .limits()
-                    .max_total_elapsed()
-                    .expect("total budget exhaustion requires a configured total limit"),
-                runtime.request_method,
-                runtime.request_url,
-                runtime.log_redactor,
-            ))),
+            Err(RetryBudgetError::Exhausted(RetryBudgetExhausted::TotalElapsed)) => {
+                ReconnectAction::Fail(Box::new(max_elapsed_exceeded_error(
+                    snapshot.total_elapsed(),
+                    runtime
+                        .retry_policy
+                        .limits()
+                        .max_total_elapsed()
+                        .expect("total budget exhaustion requires a configured total limit"),
+                    runtime.request_method,
+                    runtime.request_url,
+                    runtime.log_redactor,
+                )))
+            }
+            Err(error) => ReconnectAction::Fail(Box::new(reconnect_budget_error(error, runtime))),
         }
     }
 
@@ -203,10 +218,16 @@ impl ReconnectState {
             Some(delay) => BackoffRequest::hint(delay),
             None => BackoffRequest::policy(),
         };
-        self.backoff
+        let delay = self
+            .backoff
             .next(request)
             .effective_delay()
-            .max(Duration::from_millis(1))
+            .max(Duration::from_millis(1));
+        if self.pending_server_retry_delay.is_some() {
+            delay.min(server_retry_max_delay(runtime.retry_policy, runtime.options))
+        } else {
+            delay
+        }
     }
 
     /// Sleeps before reconnect and clears one-shot reconnect state.
@@ -309,12 +330,19 @@ impl SseReconnectRunner {
             };
             let mut last_event_id: Option<String> = None;
             loop {
+                let retry_snapshot = match retry_budget.snapshot() {
+                    Ok(snapshot) => snapshot,
+                    Err(error) => {
+                        yield Err(reconnect_budget_error(error, &runtime));
+                        return;
+                    }
+                };
                 let attempt = match retry_budget.begin_attempt() {
                     Ok(attempt) => attempt,
-                    Err(RetryBudgetExhausted::Attempts) => return,
-                    Err(RetryBudgetExhausted::OperationElapsed) => {
+                    Err(RetryBudgetError::Exhausted(RetryBudgetExhausted::Attempts)) => return,
+                    Err(RetryBudgetError::Exhausted(RetryBudgetExhausted::OperationElapsed)) => {
                         yield Err(operation_elapsed_exceeded_error(
-                            retry_budget.snapshot().operation_elapsed(),
+                            retry_snapshot.operation_elapsed(),
                             retry_policy.limits().max_operation_elapsed(),
                             runtime.request_method,
                             runtime.request_url,
@@ -322,9 +350,9 @@ impl SseReconnectRunner {
                         ));
                         return;
                     }
-                    Err(RetryBudgetExhausted::TotalElapsed) => {
+                    Err(RetryBudgetError::Exhausted(RetryBudgetExhausted::TotalElapsed)) => {
                         yield Err(max_elapsed_exceeded_error(
-                            retry_budget.snapshot().total_elapsed(),
+                            retry_snapshot.total_elapsed(),
                             retry_policy.limits().max_total_elapsed().expect(
                                 "total budget exhaustion requires a configured total limit",
                             ),
@@ -332,6 +360,10 @@ impl SseReconnectRunner {
                             runtime.request_url,
                             runtime.log_redactor,
                         ));
+                        return;
+                    }
+                    Err(error) => {
+                        yield Err(reconnect_budget_error(error, &runtime));
                         return;
                     }
                 };
@@ -346,7 +378,10 @@ impl SseReconnectRunner {
                         last_event_id,
                         runtime.log_redactor,
                     ) {
-                        let _ = retry_budget.finish_attempt(attempt);
+                        if let Err(error) = retry_budget.finish_attempt(attempt) {
+                            yield Err(reconnect_budget_error(error, &runtime));
+                            return;
+                        }
                         yield Err(error);
                         return;
                     }
@@ -355,9 +390,12 @@ impl SseReconnectRunner {
                 let response = match client.execute_once(request).await {
                     Ok(response) => response,
                     Err(error) => {
-                        let _ = retry_budget.finish_attempt(attempt);
+                        if let Err(error) = retry_budget.finish_attempt(attempt) {
+                            yield Err(reconnect_budget_error(error, &runtime));
+                            return;
+                        }
                         if should_reconnect_sse_error(&error) {
-                            match reconnect_state.after_error(error, &retry_budget, &runtime).await {
+                            match reconnect_state.after_error(error, &mut retry_budget, &runtime).await {
                                 ReconnectAction::Continue => continue,
                                 ReconnectAction::Stop => return,
                                 ReconnectAction::Fail(error) => {
@@ -373,11 +411,17 @@ impl SseReconnectRunner {
                 if let Err(error) =
                     validate_sse_response_content_type(&response, runtime.log_redactor)
                 {
-                    let _ = retry_budget.finish_attempt(attempt);
+                    if let Err(error) = retry_budget.finish_attempt(attempt) {
+                            yield Err(reconnect_budget_error(error, &runtime));
+                            return;
+                        }
                     yield Err(error);
                     return;
                 }
-                let _ = retry_budget.finish_attempt(attempt);
+                if let Err(error) = retry_budget.finish_attempt(attempt) {
+                            yield Err(reconnect_budget_error(error, &runtime));
+                            return;
+                        }
 
                 let mut records = response.sse_records();
                 let mut stream_error: Option<HttpError> = None;
@@ -410,7 +454,7 @@ impl SseReconnectRunner {
 
                 if let Some(error) = stream_error {
                     if should_reconnect_sse_error(&error) {
-                        match reconnect_state.after_error(error, &retry_budget, &runtime).await {
+                        match reconnect_state.after_error(error, &mut retry_budget, &runtime).await {
                             ReconnectAction::Continue => continue,
                             ReconnectAction::Stop => return,
                             ReconnectAction::Fail(error) => {
@@ -424,7 +468,7 @@ impl SseReconnectRunner {
                 }
 
                 if options.reconnect_on_eof {
-                    match reconnect_state.after_eof(&retry_budget, &runtime).await {
+                    match reconnect_state.after_eof(&mut retry_budget, &runtime).await {
                         ReconnectAction::Continue => continue,
                         ReconnectAction::Stop => return,
                         ReconnectAction::Fail(error) => {
@@ -780,4 +824,72 @@ fn has_unexpected_eof_in_error_chain(error: &(dyn StdError + 'static)) -> bool {
         current = item.source();
     }
     false
+}
+
+/// Preserves a reconnect accounting failure and its request diagnostics.
+fn reconnect_budget_error(error: RetryBudgetError, runtime: &ReconnectRuntime<'_>) -> HttpError {
+    let mut mapped = HttpError::other(format!("SSE reconnect budget failed: {error}"))
+        .with_source(error)
+        .with_method(runtime.request_method)
+        .with_log_redactor(runtime.log_redactor.clone());
+    if let Some(url) = runtime.request_url {
+        mapped = mapped.with_url(url);
+    }
+    mapped
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use http::Method;
+    use qubit_redact::Redactor;
+    use qubit_retry::BackoffPolicy;
+    use qubit_retry::RetryPolicy;
+    use qubit_retry::RetryRandomSource;
+
+    use super::ReconnectRuntime;
+    use super::ReconnectState;
+    use super::SseReconnectOptions;
+
+    struct MaximumRandom;
+    impl RetryRandomSource for MaximumRandom {
+        /// Selects the maximum jitter to make the upper-bound test
+        /// deterministic.
+        fn random_f64_inclusive(&self, _min: f64, max: f64) -> f64 {
+            max
+        }
+    }
+
+    /// The server cap must apply after jitter, not only to the raw hint.
+    #[test]
+    fn test_server_retry_cap_is_applied_after_jitter() {
+        let policy = RetryPolicy::builder()
+            .backoff(
+                BackoffPolicy::fixed(Duration::from_secs(1))
+                    .with_bounded_jitter(0.5)
+                    .expect("valid jitter")
+                    .prefer_retry_after(),
+            )
+            .build()
+            .expect("valid policy");
+        let options = SseReconnectOptions {
+            server_retry_max_delay: Some(Duration::from_secs(10)),
+            ..SseReconnectOptions::default()
+        };
+        let redactor = Redactor::default();
+        let runtime = ReconnectRuntime {
+            retry_policy: &policy,
+            options: &options,
+            cancellation_token: None,
+            request_method: &Method::GET,
+            request_url: None,
+            log_redactor: &redactor,
+        };
+        let mut state = ReconnectState::new(&policy);
+        state.backoff = policy.backoff().start_with_random_source(Arc::new(MaximumRandom));
+        state.set_server_retry_delay(Duration::from_secs(10));
+        assert_eq!(state.sleep_delay(&runtime), Duration::from_secs(10));
+    }
 }

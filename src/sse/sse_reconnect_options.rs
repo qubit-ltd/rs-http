@@ -55,12 +55,12 @@ pub struct SseReconnectOptions {
     pub reconnect_on_eof: bool,
     /// Whether to honor SSE `retry:` field as the next reconnect delay.
     pub honor_server_retry: bool,
-    /// Optional upper bound applied to SSE `retry:` delay values from server
-    /// events.
+    /// Upper bound for a server-directed reconnect delay after hint merging
+    /// and jitter. The effective bound is at least one millisecond.
     ///
     /// When `None`, reconnect runner derives a cap from retry delay strategy
-    /// when it has explicit max (`Random` / `Exponential`), otherwise it uses
-    /// internal default bound.
+    /// from its base maximum when greater than one millisecond; otherwise
+    /// it uses the internal default bound.
     pub server_retry_max_delay: Option<Duration>,
     /// Whether jitter should be applied when the reconnect delay comes from
     /// SSE `retry:` field.
