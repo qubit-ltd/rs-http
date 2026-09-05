@@ -138,6 +138,17 @@ let client = HttpClientFactory::new().create(options)?;
 - 内置请求重试只覆盖返回 `HttpResponse` 之前的失败。返回后的流式响应体错误会交给调用方处理。
 - SSE 重连使用独立 API：`HttpClient::execute_sse_with_reconnect(...)`。
 
+## 重试时间边界
+
+HTTP 重试预算已迁移到 qubit-retry 0.20。`max_duration` 控制是否继续尝试，
+不会主动中断当前请求，也不会覆盖已经成功的结果；请求超时需要单独配置。
+SSE 重连会把结构化预算错误保留在 HTTP 错误的 source 中。
+
+SSE 使用服务端提示重连时，`server_retry_max_delay` 限制抖动和提示合并后的
+最终延迟，最小有效上限为 1 毫秒。该限制不影响普通 HTTP 的 `Retry-After`。
+退避策略的 `maximum_delay()` 只描述基础延迟；需要最终策略上限时使用
+`.limit_delay(duration)`。SSE 本身仍保留至少 1 毫秒的等待。
+
 ## 测试
 
 ```bash
