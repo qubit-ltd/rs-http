@@ -985,7 +985,7 @@ checksum = "7f9bf5cd2e783a8a6edd6536826084ef0a82d1924b14f82e79fe0088b7b33748"
 
 [[package]]
 name = "qubit-value"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "qubit-budget",
  "qubit-datatype",
