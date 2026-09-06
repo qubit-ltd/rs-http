@@ -72,9 +72,11 @@ async fn test_retry_max_duration_allows_admitted_request_to_finish_after_budget(
         .expect("server finish timed out");
     assert_eq!(captured.len(), 2);
     assert!(captured.iter().all(|request| request.method == "GET"));
-    assert!(captured
-        .iter()
-        .all(|request| request.target == "/admitted-after-budget"));
+    assert!(
+        captured
+            .iter()
+            .all(|request| request.target == "/admitted-after-budget")
+    );
 }
 
 #[tokio::test]
