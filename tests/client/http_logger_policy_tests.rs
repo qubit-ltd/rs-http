@@ -208,7 +208,7 @@ fn test_log_response_binary_body_and_truncation() {
             .block_on(async { logger.log_response(&mut response).await })
             .expect("response logging should succeed");
     });
-    assert!(logs.contains("Response body: <binary 4 bytes><truncated>"));
+    assert!(logs.contains("Response body: <redaction incomplete>"));
 }
 
 #[test]

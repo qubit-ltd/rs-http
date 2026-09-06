@@ -49,7 +49,7 @@ fn test_http_logger_logs_request_body_preview_with_truncation() {
     let logs = capture_trace_logs(|| logger.log_request(&request));
 
     assert!(logs.contains("--> POST https://example.com/upload"));
-    assert!(logs.contains("Request body: abcd<truncated>"));
+    assert!(logs.contains("Request body: <redaction incomplete>"));
 }
 
 #[test]
