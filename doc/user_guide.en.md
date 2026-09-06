@@ -565,7 +565,7 @@ let request = client
     .build();
 ```
 
-`honor_retry_after(true)` is request-level. For retryable 429 or 5xx responses, if `Retry-After` is present, the retry executor waits at least that duration before the next attempt; if the executor's planned backoff is already longer, no extra delay is added.
+`honor_retry_after(true)` is request-level. For retryable 429 or 5xx responses, it passes the response's `Retry-After` value to the backoff policy as a hint. The default HTTP backoff policy uses this hint as a minimum: the next attempt waits for the longer of the planned backoff and the hint. A custom `BackoffPolicy` can change that behavior: `ignore_retry_after()` ignores the hint, and `limit_delay(duration)` caps the final delay even when the hint is longer.
 
 When retry is enabled, `execute` runs attempts through `qubit-retry`'s `Retry`. HTTP `max_duration` maps to `qubit-retry`'s `max_total_elapsed`, so it is measured with monotonic time and includes attempt execution, retry backoff sleeps, `Retry-After` sleeps, and retry control-path listener time. Retryable failures that exhaust `max_attempts` or `max_duration` return the last HTTP error with exhaustion context appended to `message`. If the current error does not match the active allowlist or retry policy, the executor returns `RetryAborted` and keeps the aborted original `HttpError` as `source`.
 
@@ -579,9 +579,11 @@ outside the built-in retry boundary.
 
 Retryable requests must be safe to replay. Buffered bodies can be sent again;
 `streaming_body` factories must create a fresh stream for each attempt, and header
-injectors/interceptors may run again. `honor_retry_after` retains its minimum-delay
-semantics; an excessive hint can exhaust the continuation budget instead of
-starting another request. SSE reconnect continues to disable inner HTTP retries.
+injectors/interceptors may run again. With the default HTTP backoff policy,
+`honor_retry_after` uses the hint as a minimum; an excessive hint can exhaust the
+continuation budget instead of starting another request. Custom hint policies or
+final delay caps can change the selected delay. SSE reconnect continues to
+disable inner HTTP retries.
 
 This release uses `qubit-retry` 0.21. Update any direct dependency and its lockfile
 entry when sharing `RetryPolicy` or `BackoffPolicy` with HTTP/SSE. When consuming
