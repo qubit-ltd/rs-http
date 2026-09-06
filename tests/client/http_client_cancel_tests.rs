@@ -67,12 +67,16 @@ fn test_cancelled_error_semantics() {
 }
 
 /// Returns the structured retry terminal retained as an HTTP error source.
-fn retry_failure(error: &HttpError) -> &RetryFailure<HttpError> {
+fn retry_error(error: &HttpError) -> &RetryError<HttpError> {
     error
         .source()
         .and_then(|source| source.downcast_ref::<RetryError<HttpError>>())
         .expect("retry cancellation should retain RetryError as its source")
-        .failure()
+}
+
+/// Returns the structured retry failure retained as an HTTP error source.
+fn retry_failure(error: &HttpError) -> &RetryFailure<HttpError> {
+    retry_error(error).failure()
 }
 
 #[tokio::test]
@@ -100,6 +104,16 @@ async fn test_execute_request_with_pre_cancelled_token_returns_cancelled_error()
         .expect_err("request should be cancelled");
     assert_eq!(error.kind, HttpErrorKind::Cancelled);
     assert!(error.message.contains("cancelled"));
+    assert_eq!(error.method.as_ref(), Some(&Method::GET));
+    assert_eq!(
+        error
+            .url
+            .as_ref()
+            .expect("cancelled error should include request URL")
+            .path(),
+        "/pre-cancelled"
+    );
+    assert_eq!(retry_error(&error).context().attempts(), 0);
     assert!(matches!(
         retry_failure(&error),
         RetryFailure::Cancelled {
@@ -251,6 +265,7 @@ async fn test_execute_request_can_be_cancelled_while_preparing_async_headers() {
         .expect_err("request should be cancelled while preparing headers");
 
     assert_eq!(error.kind, HttpErrorKind::Cancelled);
+    assert_eq!(retry_error(&error).context().attempts(), 1);
     assert!(matches!(
         retry_failure(&error),
         RetryFailure::Cancelled {
@@ -440,6 +455,16 @@ async fn test_execute_retry_sleep_can_be_cancelled() {
     };
 
     assert_eq!(error.kind, HttpErrorKind::Cancelled);
+    assert_eq!(error.method.as_ref(), Some(&Method::GET));
+    assert_eq!(
+        error
+            .url
+            .as_ref()
+            .expect("cancelled retry should include request URL")
+            .path(),
+        "/cancel-retry-sleep"
+    );
+    assert_eq!(retry_error(&error).context().attempts(), 1);
     assert!(matches!(
         retry_failure(&error),
         RetryFailure::Cancelled {
