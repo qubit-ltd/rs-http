@@ -9,10 +9,7 @@
 //!
 //! Encapsulates request and response logging behavior.
 
-use http::HeaderValue;
 use http::header::CONTENT_TYPE;
-use qubit_redact::RedactionCompletion;
-use qubit_redact::RedactionTextOutput;
 use qubit_redact::Redactor;
 use tracing::Metadata;
 use tracing::callsite::DefaultCallsite;
@@ -24,6 +21,7 @@ use crate::HttpRequest;
 use crate::HttpRequestBody;
 use crate::HttpResponse;
 use crate::HttpResponseMeta;
+use crate::redact::BodyPreview;
 use crate::redact::RedactedLogger;
 
 const UNRESOLVED_REQUEST_URL: &str = "<unresolved request URL>";
@@ -104,32 +102,44 @@ impl<'a> HttpLogger<'a> {
             return;
         }
 
-        let url = self.request_log_url(request);
-        tracing::trace!("--> {} {}", request.method(), url);
-
         let headers = request.effective_headers_cached().unwrap_or_else(|| request.headers());
-
-        if self.options.log_request_header {
-            let redacted_headers = self
-                .redacted_logger
-                .redactor()
-                .redact_http_headers(headers)
-                .into_text_or_marker("<redaction incomplete>");
-            tracing::trace!("{}", redacted_headers);
+        let mut batch = self.redacted_logger.redactor().batch();
+        let url_handle = request
+            .resolved_url()
+            .ok()
+            .map(|url| batch.redact_http_url(url.as_str()));
+        let header_handle = self
+            .options
+            .log_request_header
+            .then(|| batch.redact_http_headers(headers));
+        let body_preview = self
+            .options
+            .log_request_body
+            .then(|| Self::request_body_for_log(request));
+        let body_handle = match body_preview.as_ref() {
+            Some(RequestBodyLogPreview::Bytes(bytes)) => Some(batch.redact_http_body(
+                BodyPreview::new(bytes, self.options.body_size_limit).capture(),
+                Self::content_type(headers),
+            )),
+            _ => None,
+        };
+        let diagnostics = batch.finish_for_diagnostics("<redaction incomplete>");
+        let url = url_handle
+            .map(|handle| diagnostics.text(handle).as_str().to_owned())
+            .unwrap_or_else(|| UNRESOLVED_REQUEST_URL.to_owned());
+        tracing::trace!("--> {} {}", request.method(), url);
+        if let Some(handle) = header_handle {
+            tracing::trace!("{}", diagnostics.text(handle));
         }
-
-        if self.options.log_request_body {
-            match Self::request_body_for_log(request) {
-                RequestBodyLogPreview::Bytes(bytes) => {
-                    let content_type = Self::content_type(headers);
-                    let text = self.body_log_text(bytes, content_type);
-                    tracing::trace!("Request body: {}", text);
+        if let Some(preview) = body_preview {
+            match (preview, body_handle) {
+                (RequestBodyLogPreview::Bytes(_), Some(handle)) => {
+                    tracing::trace!("Request body: {}", diagnostics.text(handle));
                 }
-                RequestBodyLogPreview::Empty => {
-                    tracing::trace!("Request body: <empty>")
-                }
-                RequestBodyLogPreview::Skipped(reason) => {
-                    tracing::trace!("Request body: {reason}")
+                (RequestBodyLogPreview::Empty, _) => tracing::trace!("Request body: <empty>"),
+                (RequestBodyLogPreview::Skipped(reason), _) => tracing::trace!("Request body: {reason}"),
+                (RequestBodyLogPreview::Bytes(_), None) => {
+                    tracing::trace!("Request body: <redaction incomplete>");
                 }
             }
         }
@@ -152,38 +162,69 @@ impl<'a> HttpLogger<'a> {
             return Ok(());
         }
 
-        let url = self
-            .redacted_logger
-            .redactor()
-            .redact_http_url(response.url().as_str())
-            .into_text_or_marker("<redaction incomplete>");
-        tracing::trace!("<-- {} {}", response.status().as_u16(), url);
-
-        if self.options.log_response_header {
-            let headers = self
-                .redacted_logger
-                .redactor()
-                .redact_http_headers(response.headers())
-                .into_text_or_marker("<redaction incomplete>");
-            tracing::trace!("{}", headers);
-            return self.log_response_body(response).await;
-        }
-
-        self.log_response_body(response).await
-    }
-
-    async fn log_response_body(&self, response: &mut HttpResponse) -> crate::HttpResult<()> {
-        if self.options.log_response_body {
+        let mut batch = self.redacted_logger.redactor().batch();
+        let url_handle = batch.redact_http_url(response.url().as_str());
+        let header_handle = self
+            .options
+            .log_response_header
+            .then(|| batch.redact_http_headers(response.headers()));
+        if self.options.log_response_body && !batch.is_output_exhausted() {
             let content_type = Self::content_type(response.headers()).cloned();
-            if let Some(body) = response.buffered_body_for_logging() {
-                let text = self.body_log_text(body.as_ref(), content_type.as_ref());
-                tracing::trace!("Response body: {}", text,);
+            let mut body_empty = false;
+            let body_handle = if let Some(body) = response.buffered_body_for_logging() {
+                if body.is_empty() {
+                    body_empty = true;
+                    None
+                } else {
+                    Some(batch.redact_http_body(
+                        BodyPreview::new(body.as_ref(), self.options.body_size_limit).capture(),
+                        content_type.as_ref(),
+                    ))
+                }
             } else if response.can_buffer_body_for_logging(self.options.body_size_limit) {
-                let body = response.bytes().await?;
-                let text = self.body_log_text(body.as_ref(), content_type.as_ref());
-                tracing::trace!("Response body: {}", text,);
+                let body = match response.bytes().await {
+                    Ok(body) => body,
+                    Err(error) => {
+                        let diagnostics = batch.finish_for_diagnostics("<redaction incomplete>");
+                        tracing::trace!("<-- {} {}", response.status().as_u16(), diagnostics.text(url_handle));
+                        if let Some(handle) = header_handle {
+                            tracing::trace!("{}", diagnostics.text(handle));
+                        }
+                        return Err(error);
+                    }
+                };
+                if body.is_empty() {
+                    body_empty = true;
+                    None
+                } else {
+                    Some(batch.redact_http_body(
+                        BodyPreview::new(body.as_ref(), self.options.body_size_limit).capture(),
+                        content_type.as_ref(),
+                    ))
+                }
+            } else {
+                None
+            };
+            let diagnostics = batch.finish_for_diagnostics("<redaction incomplete>");
+            tracing::trace!("<-- {} {}", response.status().as_u16(), diagnostics.text(url_handle));
+            if let Some(handle) = header_handle {
+                tracing::trace!("{}", diagnostics.text(handle));
+            }
+            if body_empty {
+                tracing::trace!("Response body: <empty>");
+            } else if let Some(handle) = body_handle {
+                tracing::trace!("Response body: {}", diagnostics.text(handle));
             } else {
                 tracing::trace!("Response body: <skipped: streaming or unknown-size body>");
+            }
+        } else {
+            let diagnostics = batch.finish_for_diagnostics("<redaction incomplete>");
+            tracing::trace!("<-- {} {}", response.status().as_u16(), diagnostics.text(url_handle));
+            if let Some(handle) = header_handle {
+                tracing::trace!("{}", diagnostics.text(handle));
+            }
+            if self.options.log_response_body {
+                tracing::trace!("Response body: <redaction incomplete>");
             }
         }
         Ok(())
@@ -202,20 +243,20 @@ impl<'a> HttpLogger<'a> {
             return;
         }
 
-        let url = self
-            .redacted_logger
-            .redactor()
-            .redact_http_url(response_meta.url().as_str())
-            .into_text_or_marker("<redaction incomplete>");
-        tracing::trace!("<-- {} {} (stream)", response_meta.status().as_u16(), url);
-
-        if self.options.log_response_header {
-            let headers = self
-                .redacted_logger
-                .redactor()
-                .redact_http_headers(response_meta.headers())
-                .into_text_or_marker("<redaction incomplete>");
-            tracing::trace!("{}", headers);
+        let mut batch = self.redacted_logger.redactor().batch();
+        let url_handle = batch.redact_http_url(response_meta.url().as_str());
+        let header_handle = self
+            .options
+            .log_response_header
+            .then(|| batch.redact_http_headers(response_meta.headers()));
+        let diagnostics = batch.finish_for_diagnostics("<redaction incomplete>");
+        tracing::trace!(
+            "<-- {} {} (stream)",
+            response_meta.status().as_u16(),
+            diagnostics.text(url_handle)
+        );
+        if let Some(handle) = header_handle {
+            tracing::trace!("{}", diagnostics.text(handle));
         }
     }
 
@@ -227,79 +268,6 @@ impl<'a> HttpLogger<'a> {
     pub fn is_trace_enabled(&self) -> bool {
         self.options.enabled
             && tracing::dispatcher::get_default(|dispatcher| dispatcher.enabled(&HTTP_LOGGER_ENABLED_METADATA))
-    }
-
-    /// Returns the URL text used by request logging.
-    ///
-    /// # Parameters
-    /// - `request`: Request whose resolved URL should be rendered.
-    ///
-    /// # Returns
-    /// Resolved URL including builder query parameters, or a fixed placeholder
-    /// when URL resolution fails before send.
-    fn request_log_url(&self, request: &HttpRequest) -> String {
-        match request.resolved_url() {
-            Ok(url) => self
-                .redacted_logger
-                .redactor()
-                .redact_http_url(url.as_str())
-                .into_text_or_marker("<redaction incomplete>")
-                .into_string(),
-            Err(_) => UNRESOLVED_REQUEST_URL.to_string(),
-        }
-    }
-
-    /// Returns log text for a body while preserving structured completion
-    /// until the presentation boundary.
-    ///
-    /// # Parameters
-    ///
-    /// * `body` - Complete body bytes offered by the logging layer.
-    /// * `content_type` - Optional native Content-Type used for parser choice.
-    /// * `session` - Shared redaction session for the enclosing TRACE record.
-    ///
-    /// # Returns
-    ///
-    /// `<empty>` for an empty source body. For a non-empty body, `Complete`
-    /// preserves the complete log-safe text, `Truncated` preserves its
-    /// non-empty safe substitute, and `Exhausted` maps empty adapter output to
-    /// [`REDACTION_EXHAUSTED`]. Body status is independent of this completion
-    /// mapping. An exhausted session has terminated input processing, so the
-    /// body adapter does not read further source bytes.
-    fn body_log_text(&self, body: &[u8], content_type: Option<&HeaderValue>) -> String {
-        if body.is_empty() {
-            return "<empty>".to_owned();
-        }
-        let body = self.redacted_logger.body(body, content_type);
-        Self::render_body_redaction(body)
-    }
-
-    /// Maps structured completion to the final logger presentation.
-    ///
-    /// Body status intentionally remains independent: it describes how the
-    /// representation was produced, while only completion determines the
-    /// presentation. `Complete` preserves complete safe text, `Truncated`
-    /// preserves the non-empty safe substitute, and `Exhausted` maps its empty
-    /// text to [`REDACTION_EXHAUSTED`]. Exhaustion is terminal for input
-    /// processing, and the producing adapter has stopped without reading
-    /// further source bytes.
-    ///
-    /// # Parameters
-    ///
-    /// * `redaction` - Structured body result from the shared session.
-    ///
-    /// # Returns
-    ///
-    /// Complete or truncated log-safe text as described above, or the outer
-    /// marker for exhausted results.
-    fn render_body_redaction(redaction: RedactionTextOutput) -> String {
-        match redaction.summary().completion() {
-            RedactionCompletion::Complete | RedactionCompletion::Truncated => {
-                let (text, _) = redaction.into_parts();
-                text.into_string()
-            }
-            RedactionCompletion::Exhausted => "<redaction exhausted>".to_owned(),
-        }
     }
 
     /// Borrows request body content only when body logging is safe.
