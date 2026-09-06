@@ -561,7 +561,7 @@ let request = client
     .build();
 ```
 
-`honor_retry_after(true)` 只在请求级启用。遇到可重试的 429 或 5xx 时，如果响应里有 `Retry-After`，重试执行器会确保下一次尝试至少等待该 header 指定的时间；如果执行器计划的退避时间已经更长，则不会额外等待。
+`honor_retry_after(true)` 只在请求级启用。遇到可重试的 429 或 5xx 时，它会把响应中的 `Retry-After` 值作为提示交给退避策略。默认 HTTP 退避策略将提示作为最小延迟，下一次尝试等待计划退避和提示中的较大值。自定义 `BackoffPolicy` 可以改变这一行为：`ignore_retry_after()` 会忽略提示，`limit_delay(duration)` 则限制最终延迟，即使提示更长也会受此上限约束。
 
 开启重试后，`execute` 会把每次尝试交给 `qubit-retry` 的 `Retry`。HTTP `max_duration` 会映射到 `qubit-retry` 的 `max_total_elapsed`，因此它使用单调时间统计，并包含 attempt 执行、retry 退避 sleep、`Retry-After` sleep 以及 retry 控制路径 listener 时间。可重试错误在耗尽 `max_attempts` 或 `max_duration` 后返回最后一次 HTTP 错误，并在 `message` 中追加耗尽原因；如果错误不满足当前重试白名单或方法策略，执行器会返回 `RetryAborted`，并把被中止的原始 `HttpError` 作为 `source` 保留。
 
@@ -571,8 +571,9 @@ let request = client
 `request_timeout` 或 connect/read/write 超时。返回后才惰性读取的响应体仍不在内置重试范围内。
 
 可重试请求必须能够安全重放。缓冲请求体可重新发送，`streaming_body` 工厂则必须为每次尝试创建新流；
-请求头注入器和拦截器也可能重复执行。`honor_retry_after` 仍保证最小等待时间；提示过长时可能直接耗尽
-续试预算，而不再发送请求。SSE 重连仍禁用内层 HTTP 重试。
+请求头注入器和拦截器也可能重复执行。在默认 HTTP 退避策略下，`honor_retry_after` 将提示作为最小延迟；
+提示过长时可能直接耗尽续试预算，而不再发送请求。自定义提示策略或最终延迟上限可以改变选中的等待时间。
+SSE 重连仍禁用内层 HTTP 重试。
 
 当前版本使用 `qubit-retry` 0.21。应用若与 HTTP/SSE 共享 `RetryPolicy` 或 `BackoffPolicy`，
 须同步升级直接依赖及锁文件。直接消费 retry 结果时，可通过 `RetryError::map_error` 做纯业务载荷转换，
