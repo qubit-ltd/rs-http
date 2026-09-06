@@ -569,6 +569,30 @@ let request = client
 
 When retry is enabled, `execute` runs attempts through `qubit-retry`'s `Retry`. HTTP `max_duration` maps to `qubit-retry`'s `max_total_elapsed`, so it is measured with monotonic time and includes attempt execution, retry backoff sleeps, `Retry-After` sleeps, and retry control-path listener time. Retryable failures that exhaust `max_attempts` or `max_duration` return the last HTTP error with exhaustion context appended to `message`. If the current error does not match the active allowlist or retry policy, the executor returns `RetryAborted` and keeps the aborted original `HttpError` as `source`.
 
+This is a **soft continuation budget**: it can reject a planned delay or the next
+admission, but it neither cancels an in-flight request nor replaces its successful
+result. Ordinary HTTP retry does not set `qubit-retry`'s `attempt_timeout` or
+`flow_timeout`. For example, `max_duration = 1s` can still return a successful
+request that took 2s; use `request_timeout` or the connect/read/write timeout
+settings to bound the corresponding request phase. Bodies returned lazily remain
+outside the built-in retry boundary.
+
+Retryable requests must be safe to replay. Buffered bodies can be sent again;
+`streaming_body` factories must create a fresh stream for each attempt, and header
+injectors/interceptors may run again. `honor_retry_after` retains its minimum-delay
+semantics; an excessive hint can exhaust the continuation budget instead of
+starting another request. SSE reconnect continues to disable inner HTTP retries.
+
+This release uses `qubit-retry` 0.21. Update any direct dependency and its lockfile
+entry when sharing `RetryPolicy` or `BackoffPolicy` with HTTP/SSE. When consuming
+retry results directly, `RetryError::map_error` provides pure payload conversion
+while preserving retry context and completion diagnostics. HTTP's domain error conversion
+still determines the returned `HttpError`; it is not replaced by a generic retry
+error API. If you consume retry results directly, inspect
+`completion_callback_failures()` or use `into_parts_with_diagnostics()` because
+`into_parts()` discards those diagnostics. Exhaustive matches on
+`RetryCallbackPhase` must include `Success` and `TerminalFailure`.
+
 | Scenario | Returned error | Notes |
 | --- | --- | --- |
 | Method policy does not allow replay, such as POST under the default policy | Original single-attempt error | Retry flow is not entered |
@@ -889,7 +913,7 @@ The table below lists every configuration key supported by `HttpClientOptions::f
 | `logging.body_size_limit` | Log body preview byte limit |
 | `retry.enabled` | Enables built-in retry |
 | `retry.max_attempts` | Max attempts, including the first request |
-| `retry.max_duration` | Optional total retry duration limit |
+| `retry.max_duration` | Optional soft continuation budget, including attempts, waits, and retry control callbacks |
 | `retry.delay_strategy` | `NONE`, `FIXED`, `RANDOM`, `EXPONENTIAL_BACKOFF`, or `EXPONENTIAL` |
 | `retry.fixed_delay` | Fixed retry delay |
 | `retry.random_min_delay` | Random delay lower bound |

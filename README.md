@@ -151,10 +151,17 @@ only when the application explicitly accepts removing HTTP context floors.
 
 ## Retry timing boundaries
 
-HTTP retry budgets use qubit-retry 0.20. `max_duration` is a continuation budget,
+HTTP retry budgets use qubit-retry 0.21. `max_duration` is a continuation budget,
 not a hard request timeout: it prevents further attempts while preserving a
 completed successful request. Request timeouts remain configured separately.
 SSE reconnects preserve structured budget errors as HTTP error sources.
+It includes attempt execution, backoff, `Retry-After` waits, and retry control
+callbacks. A request already admitted may succeed after the budget expires.
+Ordinary HTTP retries do not install a retry-layer `attempt_timeout` or
+`flow_timeout`; configure the request/connect/read/write timeouts separately.
+See the [retry guide](doc/user_guide.en.md#automatic-retry) for error mapping and
+request replay requirements. If your application also uses `qubit-retry`
+directly, migrate its dependency to `0.21` so shared retry types agree.
 
 For SSE server-directed reconnects, `server_retry_max_delay` caps the final
 selected delay after jitter and hint merging, with a minimum of one millisecond.
