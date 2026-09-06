@@ -35,7 +35,11 @@ pub struct HttpRetryOptions {
     pub enabled: bool,
     /// Maximum number of attempts, including the first request.
     pub max_attempts: u32,
-    /// Optional maximum total retry duration.
+    /// Optional soft duration budget for admitting retry attempts.
+    ///
+    /// An admitted request may finish after this duration because the budget
+    /// does not cancel in-flight I/O. Use
+    /// [`crate::HttpTimeoutOptions::request_timeout`] to bound each request.
     pub max_duration: Option<Duration>,
     /// Complete validated backoff and jitter policy.
     pub backoff: BackoffPolicy,
@@ -265,9 +269,13 @@ impl HttpRetryOptions {
     ///
     /// HTTP retry has one externally visible duration budget:
     /// [`Self::max_duration`]. It maps to `qubit-retry`'s
-    /// `max_total_elapsed`, so the budget includes attempt time, retry
-    /// sleeps, `Retry-After` sleeps, and retry control-path listener time
-    /// measured with monotonic time.
+    /// `max_total_elapsed`, so the budget includes attempt time, retry sleeps,
+    /// `Retry-After` sleeps, and retry control-path listener time measured
+    /// with monotonic time. This is a soft admission budget: it prevents an
+    /// attempt from starting when the budget is already exhausted or cannot
+    /// accommodate the selected delay, but it does not cancel an in-flight
+    /// request. Configure [`crate::HttpTimeoutOptions::request_timeout`] when
+    /// each individual request needs a hard duration bound.
     ///
     /// # Panics
     /// Panics only if options that already passed [`Self::validate`] cannot be

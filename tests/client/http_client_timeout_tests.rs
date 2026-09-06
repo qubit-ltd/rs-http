@@ -7,18 +7,75 @@
 // =============================================================================
 
 use std::time::Duration;
+use std::time::Instant;
 
 use futures_util::StreamExt;
 use http::Method;
+use http::StatusCode;
 use qubit_http::HttpClientFactory;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
 use qubit_http::RetryHint;
+use qubit_retry::BackoffPolicy;
 use tokio::time::timeout;
 
 use crate::common::ResponseChunk;
 use crate::common::ResponsePlan;
+use crate::common::spawn_multi_shot_server;
 use crate::common::spawn_one_shot_server;
+
+#[tokio::test]
+async fn test_retry_max_duration_allows_admitted_request_to_finish_after_budget() {
+    let retry_delay = Duration::from_millis(50);
+    let max_duration = Duration::from_millis(500);
+    let response_delay = Duration::from_millis(700);
+    let server = spawn_multi_shot_server(vec![
+        ResponsePlan::Immediate {
+            status: 503,
+            headers: vec![],
+            body: b"retryable failure".to_vec(),
+        },
+        ResponsePlan::DelayedStart {
+            delay: response_delay,
+            status: 200,
+            headers: vec![],
+            body: b"late success".to_vec(),
+        },
+    ])
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.request_timeout = Some(Duration::from_secs(2));
+    options.retry.enabled = true;
+    options.retry.max_attempts = 2;
+    options.retry.max_duration = Some(max_duration);
+    options.retry.backoff = BackoffPolicy::fixed(retry_delay);
+    let client = HttpClientFactory::new()
+        .create(options)
+        .expect("client should be created");
+
+    let started_at = Instant::now();
+    let request = client.request(Method::GET, "/admitted-after-budget").build();
+    let response = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .expect("an admitted retry may finish after max_duration");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(
+        started_at.elapsed() > max_duration,
+        "the admitted retry should complete after max_duration"
+    );
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.len(), 2);
+    assert!(captured.iter().all(|request| request.method == "GET"));
+    assert!(captured
+        .iter()
+        .all(|request| request.target == "/admitted-after-budget"));
+}
 
 #[tokio::test]
 async fn test_client_level_request_timeout_triggers_timeout_classification() {
