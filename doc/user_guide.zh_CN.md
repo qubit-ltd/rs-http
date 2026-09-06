@@ -565,6 +565,22 @@ let request = client
 
 开启重试后，`execute` 会把每次尝试交给 `qubit-retry` 的 `Retry`。HTTP `max_duration` 会映射到 `qubit-retry` 的 `max_total_elapsed`，因此它使用单调时间统计，并包含 attempt 执行、retry 退避 sleep、`Retry-After` sleep 以及 retry 控制路径 listener 时间。可重试错误在耗尽 `max_attempts` 或 `max_duration` 后返回最后一次 HTTP 错误，并在 `message` 中追加耗尽原因；如果错误不满足当前重试白名单或方法策略，执行器会返回 `RetryAborted`，并把被中止的原始 `HttpError` 作为 `source` 保留。
 
+这是**软性续试预算**：它可以拒绝计划中的等待或下一次准入，但不会取消正在执行的请求，也不会覆盖成功结果。
+普通 HTTP 重试没有设置 `qubit-retry` 的 `attempt_timeout` 或 `flow_timeout`。例如，
+`max_duration = 1s` 的已准入请求仍可能耗时 2s 后成功；需要限制请求阶段耗时时，应配置
+`request_timeout` 或 connect/read/write 超时。返回后才惰性读取的响应体仍不在内置重试范围内。
+
+可重试请求必须能够安全重放。缓冲请求体可重新发送，`streaming_body` 工厂则必须为每次尝试创建新流；
+请求头注入器和拦截器也可能重复执行。`honor_retry_after` 仍保证最小等待时间；提示过长时可能直接耗尽
+续试预算，而不再发送请求。SSE 重连仍禁用内层 HTTP 重试。
+
+当前版本使用 `qubit-retry` 0.21。应用若与 HTTP/SSE 共享 `RetryPolicy` 或 `BackoffPolicy`，
+须同步升级直接依赖及锁文件。直接消费 retry 结果时，可通过 `RetryError::map_error` 做纯业务载荷转换，
+保留重试上下文和完成诊断；最终 `HttpError` 仍遵循 HTTP 自身的领域转换规则，不改为通用重试错误 API。
+直接消费 retry 结果时，应读取 `completion_callback_failures()` 或调用
+`into_parts_with_diagnostics()`，因为 `into_parts()` 会丢弃这些诊断。
+穷举匹配 `RetryCallbackPhase` 时还需处理 `Success` 和 `TerminalFailure`。
+
 | 场景 | 返回错误 | 说明 |
 | --- | --- | --- |
 | 方法策略不允许重放，例如默认策略下的 POST | 原始单次执行错误 | 不进入重试流程 |
@@ -881,7 +897,7 @@ while let Some(item) = events.next().await {
 | `logging.body_size_limit` | 日志体预览字节数 |
 | `retry.enabled` | 是否启用内置重试 |
 | `retry.max_attempts` | 最大尝试次数，含第一次请求 |
-| `retry.max_duration` | 总重试耗时上限，可选 |
+| `retry.max_duration` | 可选的软性续试预算，包含尝试、等待和重试控制回调 |
 | `retry.delay_strategy` | `NONE`、`FIXED`、`RANDOM`、`EXPONENTIAL_BACKOFF` 或 `EXPONENTIAL` |
 | `retry.fixed_delay` | 固定延迟 |
 | `retry.random_min_delay` | 随机延迟下限 |
