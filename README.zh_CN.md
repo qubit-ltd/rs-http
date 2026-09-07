@@ -30,7 +30,7 @@
 ```toml
 [dependencies]
 qubit-http = "0.13"
-qubit-redact = "0.6"
+qubit-redact = "0.8"
 http = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
@@ -79,7 +79,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 应用启动时使用 `Redactor::replace_application_default(Redactor::new(policy))` 安装默认 redactor；`RedactionPolicy::default()` 始终
 返回固定标准策略。`HttpClientOptions::new()` 会取得构造时默认 redactor 的快照，包括此前已安装的应用策略。既有 client、request、
 response 和 error 会保留原来的 redactor；每个脱敏操作默认使用策略中的诊断预算。如果一个记录需要渲染多个字段，
-可创建 `redactor.batch()`，在 `finish()` 后解析各操作返回的 handle，以共享同一个运行时预算。
+可创建 `redactor.diagnostic_batch()`，在 `finish()` 后解析各操作返回的 handle，以共享同一个运行时预算。
 
 ```rust
 use qubit_http::{HttpClientFactory, HttpClientOptions};
