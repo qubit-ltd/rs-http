@@ -7,14 +7,14 @@
 // =============================================================================
 //! Cancellation ownership for one HTTP attempt invocation.
 
+use crate::HttpCancellationToken;
 use crate::HttpRequest;
-use crate::RetryCancellationToken;
 
 /// Per-call cancellation routing that never escapes into a request clone.
 #[derive(Clone, Debug, Default)]
 pub(in crate::client) struct HttpAttemptExecutionContext {
     /// Original token source exclusively owned by `AsyncRetry`.
-    retry_flow_token: Option<RetryCancellationToken>,
+    retry_flow_token: Option<HttpCancellationToken>,
 }
 
 impl HttpAttemptExecutionContext {
@@ -92,7 +92,7 @@ impl HttpAttemptExecutionContext {
     pub(in crate::client) fn io_cancellation_token<'a>(
         &self,
         request: &'a HttpRequest,
-    ) -> Option<&'a RetryCancellationToken> {
+    ) -> Option<&'a HttpCancellationToken> {
         if self.retry_flow_owns_current_token(request) {
             None
         } else {

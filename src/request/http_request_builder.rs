@@ -21,7 +21,6 @@ use qubit_budget::json::JsonEncodeLimits;
 use qubit_budget::json::JsonEncodeSession;
 use qubit_json::encode::JsonEncoder;
 use qubit_redact::Redactor;
-use qubit_retry::RetryCancellationToken;
 use serde::Serialize;
 use url::Url;
 use url::form_urlencoded;
@@ -32,9 +31,11 @@ use super::http_request_retry_override::HttpRequestRetryOverride;
 use super::parse_header;
 use super::validate_positive_timeout;
 use crate::AsyncHttpHeaderInjector;
+use crate::HttpCancellationToken;
 use crate::HttpClient;
 use crate::HttpError;
 use crate::HttpHeaderInjector;
+use crate::HttpOriginPolicy;
 use crate::HttpRequestBodyByteStream;
 use crate::HttpRequestStreamingBody;
 use crate::HttpResult;
@@ -60,16 +61,17 @@ pub struct HttpRequestBuilder {
     /// Per-request timeout; if unset, the client default applies.
     pub(super) request_timeout: Option<Duration>,
     /// Per-request write timeout used by the send phase.
-    pub(super) write_timeout: Duration,
+    pub(super) send_timeout: Duration,
     /// Per-request read timeout used by buffered/stream response reading.
     pub(super) read_timeout: Duration,
     /// Base URL copied from client options and used by
     /// [`HttpRequest::resolved_url`].
     pub(super) base_url: Option<Url>,
+    pub(super) origin_policy: HttpOriginPolicy,
     /// Whether IPv6 literal hosts are rejected during URL resolution.
     pub(super) ipv4_only: bool,
     /// Optional cancellation token for this request.
-    pub(super) cancellation_token: Option<RetryCancellationToken>,
+    pub(super) cancellation_token: Option<HttpCancellationToken>,
     /// Per-request retry override for one-off retry behavior customization.
     pub(super) retry_override: HttpRequestRetryOverride,
     /// Default headers snapshot from the originating client.
@@ -104,7 +106,7 @@ impl fmt::Debug for HttpRequestBuilder {
             .field("body", &self.body)
             .field("streaming_body", &self.streaming_body.as_ref().map(|_| "present"))
             .field("request_timeout", &self.request_timeout)
-            .field("write_timeout", &self.write_timeout)
+            .field("send_timeout", &self.send_timeout)
             .field("read_timeout", &self.read_timeout)
             .field("base_url", &base_url)
             .field("ipv4_only", &self.ipv4_only)
@@ -140,9 +142,10 @@ impl HttpRequestBuilder {
             body: HttpRequestBody::Empty,
             streaming_body: None,
             request_timeout: options.timeouts.request_timeout,
-            write_timeout: options.timeouts.write_timeout,
+            send_timeout: options.timeouts.send_timeout,
             read_timeout: options.timeouts.read_timeout,
             base_url: options.base_url.clone(),
+            origin_policy: options.origin_policy,
             ipv4_only: options.ipv4_only,
             cancellation_token: None,
             retry_override: HttpRequestRetryOverride::default(),
@@ -508,9 +511,9 @@ impl HttpRequestBuilder {
     ///
     /// # Errors
     /// Returns [`HttpError`] when `timeout` is zero.
-    pub fn write_timeout(mut self, timeout: Duration) -> HttpResult<Self> {
-        validate_positive_timeout("write_timeout", timeout)?;
-        self.write_timeout = timeout;
+    pub fn send_timeout(mut self, timeout: Duration) -> HttpResult<Self> {
+        validate_positive_timeout("send_timeout", timeout)?;
+        self.send_timeout = timeout;
         Ok(self)
     }
 
@@ -564,7 +567,7 @@ impl HttpRequestBuilder {
         self
     }
 
-    /// Binds a [`RetryCancellationToken`] to this request.
+    /// Binds a [`HttpCancellationToken`] to this request.
     ///
     /// # Parameters
     /// - `token`: Cancellation token checked before send and during
@@ -572,7 +575,7 @@ impl HttpRequestBuilder {
     ///
     /// # Returns
     /// `self` for chaining.
-    pub fn cancellation_token(mut self, token: RetryCancellationToken) -> Self {
+    pub fn cancellation_token(mut self, token: HttpCancellationToken) -> Self {
         self.cancellation_token = Some(token);
         self
     }

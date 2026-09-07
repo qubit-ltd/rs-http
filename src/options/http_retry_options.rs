@@ -463,7 +463,7 @@ fn default_retryable_error_kind(kind: HttpErrorKind) -> bool {
         kind,
         HttpErrorKind::ConnectTimeout
             | HttpErrorKind::ReadTimeout
-            | HttpErrorKind::WriteTimeout
+            | HttpErrorKind::SendTimeout
             | HttpErrorKind::RequestTimeout
             | HttpErrorKind::Transport
     )

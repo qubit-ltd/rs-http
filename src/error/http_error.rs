@@ -20,6 +20,7 @@ use qubit_retry::RetryErrorMetadata;
 use url::Url;
 
 use super::HttpErrorKind;
+use super::HttpRetryDiagnostics;
 use super::RetryHint;
 use crate::redact::RedactedDebugger;
 
@@ -46,7 +47,8 @@ pub struct HttpError {
     /// Optional source error.
     pub source: Option<BoxError>,
     /// Retry-flow metadata retained independently from the source chain.
-    pub retry_metadata: Option<RetryErrorMetadata>,
+    pub(crate) retry_metadata: Option<RetryErrorMetadata>,
+    pub(crate) retry_diagnostics: Option<HttpRetryDiagnostics>,
     /// Redactor used when rendering this error with [`Debug`](fmt::Debug) or
     /// [`Display`](fmt::Display).
     pub log_redactor: Redactor,
@@ -107,6 +109,7 @@ impl HttpError {
             retry_after: None,
             source: None,
             retry_metadata: None,
+            retry_diagnostics: None,
             log_redactor: Redactor::application_default(),
         }
     }
@@ -168,8 +171,48 @@ impl HttpError {
         self.retry_metadata.as_ref()
     }
 
-    pub(crate) fn with_retry_metadata(mut self, metadata: RetryErrorMetadata) -> Self {
-        self.retry_metadata = Some(metadata);
+    #[must_use]
+    pub const fn kind(&self) -> HttpErrorKind {
+        self.kind
+    }
+
+    #[must_use]
+    pub const fn method(&self) -> Option<&Method> {
+        self.method.as_ref()
+    }
+
+    #[must_use]
+    pub const fn url(&self) -> Option<&Url> {
+        self.url.as_ref()
+    }
+
+    #[must_use]
+    pub const fn status(&self) -> Option<StatusCode> {
+        self.status
+    }
+
+    #[must_use]
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    #[must_use]
+    pub fn response_body_preview(&self) -> Option<&str> {
+        self.response_body_preview.as_deref()
+    }
+
+    #[must_use]
+    pub const fn retry_after(&self) -> Option<Duration> {
+        self.retry_after
+    }
+
+    #[must_use]
+    pub const fn retry_diagnostics(&self) -> Option<&HttpRetryDiagnostics> {
+        self.retry_diagnostics.as_ref()
+    }
+
+    pub(crate) fn with_retry_diagnostics(mut self, diagnostics: HttpRetryDiagnostics) -> Self {
+        self.retry_diagnostics = Some(diagnostics);
         self
     }
 
@@ -280,15 +323,15 @@ impl HttpError {
         Self::new(HttpErrorKind::ReadTimeout, message)
     }
 
-    /// Builds [`HttpErrorKind::WriteTimeout`].
+    /// Builds [`HttpErrorKind::SendTimeout`].
     ///
     /// # Parameters
     /// - `message`: Timeout context.
     ///
     /// # Returns
     /// New [`HttpError`].
-    pub fn write_timeout(message: impl Into<String>) -> Self {
-        Self::new(HttpErrorKind::WriteTimeout, message)
+    pub fn send_timeout(message: impl Into<String>) -> Self {
+        Self::new(HttpErrorKind::SendTimeout, message)
     }
 
     /// Builds [`HttpErrorKind::RequestTimeout`].
@@ -321,7 +364,7 @@ impl HttpError {
     ///
     /// # Returns
     /// New [`HttpError`] with [`HttpError::status`] set.
-    pub fn status(status: StatusCode, message: impl Into<String>) -> Self {
+    pub fn from_status(status: StatusCode, message: impl Into<String>) -> Self {
         Self::new(HttpErrorKind::Status, message).with_status(status)
     }
 
@@ -369,37 +412,15 @@ impl HttpError {
         Self::new(HttpErrorKind::Cancelled, message)
     }
 
-    /// Builds [`HttpErrorKind::RetryAttemptTimeout`].
+    /// Builds [`HttpErrorKind::RetryBudgetExceeded`].
     ///
     /// # Parameters
     /// - `message`: Attempt timeout context from the retry layer.
     ///
     /// # Returns
     /// New [`HttpError`].
-    pub fn retry_attempt_timeout(message: impl Into<String>) -> Self {
-        Self::new(HttpErrorKind::RetryAttemptTimeout, message)
-    }
-
-    /// Builds [`HttpErrorKind::RetryMaxElapsedExceeded`].
-    ///
-    /// # Parameters
-    /// - `message`: Max elapsed / budget context from the retry layer.
-    ///
-    /// # Returns
-    /// New [`HttpError`].
-    pub fn retry_max_elapsed_exceeded(message: impl Into<String>) -> Self {
-        Self::new(HttpErrorKind::RetryMaxElapsedExceeded, message)
-    }
-
-    /// Builds [`HttpErrorKind::RetryAborted`].
-    ///
-    /// # Parameters
-    /// - `message`: Why the retry policy aborted further attempts.
-    ///
-    /// # Returns
-    /// New [`HttpError`].
-    pub fn retry_aborted(message: impl Into<String>) -> Self {
-        Self::new(HttpErrorKind::RetryAborted, message)
+    pub fn retry_budget_exceeded(message: impl Into<String>) -> Self {
+        Self::new(HttpErrorKind::RetryBudgetExceeded, message)
     }
 
     /// Builds [`HttpErrorKind::Other`].
@@ -422,7 +443,7 @@ impl HttpError {
         match self.kind {
             HttpErrorKind::ConnectTimeout
             | HttpErrorKind::ReadTimeout
-            | HttpErrorKind::WriteTimeout
+            | HttpErrorKind::SendTimeout
             | HttpErrorKind::RequestTimeout
             | HttpErrorKind::Transport => RetryHint::Retryable,
             HttpErrorKind::Status => {

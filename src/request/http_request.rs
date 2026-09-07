@@ -11,6 +11,7 @@ use std::fmt;
 use std::future::Future;
 use std::sync::RwLock;
 use std::time::Duration;
+use std::time::Instant;
 
 use bytes::Bytes;
 use futures_util::stream as futures_stream;
@@ -20,7 +21,6 @@ use http::HeaderValue;
 use http::Method;
 use qubit_function::MutatingFunction;
 use qubit_redact::Redactor;
-use qubit_retry::RetryCancellationToken;
 use reqwest::Response;
 use url::Host;
 use url::Url;
@@ -31,10 +31,12 @@ use super::http_request_retry_override::HttpRequestRetryOverride;
 use super::parse_header;
 use super::validate_positive_timeout;
 use crate::AsyncHttpHeaderInjector;
+use crate::HttpCancellationToken;
 use crate::HttpError;
 use crate::HttpErrorKind;
 use crate::HttpHeaderInjector;
 use crate::HttpLogger;
+use crate::HttpOriginPolicy;
 use crate::HttpRequestStreamingBody;
 use crate::HttpResult;
 use crate::error::ReqwestErrorPhase;
@@ -47,11 +49,11 @@ struct HttpRequestExecutionOptions {
     /// default applies.
     request_timeout: Option<Duration>,
     /// Per-request write timeout used during request sending.
-    write_timeout: Duration,
+    send_timeout: Duration,
     /// Per-request read timeout used during response body reads.
     read_timeout: Duration,
     /// Optional cancellation token checked before send and during I/O phases.
-    cancellation_token: Option<RetryCancellationToken>,
+    cancellation_token: Option<HttpCancellationToken>,
     /// Per-request retry override (enable/disable/method-policy/Retry-After
     /// behavior).
     retry_override: HttpRequestRetryOverride,
@@ -62,6 +64,7 @@ struct HttpRequestExecutionOptions {
 struct HttpRequestContext {
     /// Base URL copied from client options, used to resolve relative `path`.
     base_url: Option<Url>,
+    origin_policy: HttpOriginPolicy,
     /// Whether resolved URLs must avoid IPv6 literal hosts.
     ipv4_only: bool,
     /// Client default headers snapshot captured when this request builder was
@@ -127,7 +130,7 @@ impl fmt::Debug for HttpRequest {
             .field("body", &self.body)
             .field("streaming_body", &self.streaming_body.as_ref().map(|_| "present"))
             .field("request_timeout", &self.execution_options.request_timeout)
-            .field("write_timeout", &self.execution_options.write_timeout)
+            .field("send_timeout", &self.execution_options.send_timeout)
             .field("read_timeout", &self.execution_options.read_timeout)
             .field(
                 "cancellation_token_present",
@@ -164,13 +167,14 @@ impl HttpRequest {
             effective_headers: None,
             execution_options: HttpRequestExecutionOptions {
                 request_timeout: builder.request_timeout,
-                write_timeout: builder.write_timeout,
+                send_timeout: builder.send_timeout,
                 read_timeout: builder.read_timeout,
                 cancellation_token: builder.cancellation_token,
                 retry_override: builder.retry_override,
             },
             context: HttpRequestContext {
                 base_url: builder.base_url,
+                origin_policy: builder.origin_policy,
                 ipv4_only: builder.ipv4_only,
                 default_headers: builder.default_headers,
                 injectors: builder.injectors,
@@ -423,8 +427,8 @@ impl HttpRequest {
 
     /// Returns the write-phase timeout used while sending the request.
     #[inline(always)]
-    pub fn write_timeout(&self) -> Duration {
-        self.execution_options.write_timeout
+    pub fn send_timeout(&self) -> Duration {
+        self.execution_options.send_timeout
     }
 
     /// Sets the write-phase timeout used while sending the request.
@@ -432,9 +436,9 @@ impl HttpRequest {
     /// # Errors
     /// Returns [`HttpError`] when `timeout` is zero.
     #[inline]
-    pub fn set_write_timeout(&mut self, timeout: Duration) -> HttpResult<&mut Self> {
-        validate_positive_timeout("write_timeout", timeout).map_err(|error| self.with_log_redactor(error))?;
-        self.execution_options.write_timeout = timeout;
+    pub fn set_send_timeout(&mut self, timeout: Duration) -> HttpResult<&mut Self> {
+        validate_positive_timeout("send_timeout", timeout).map_err(|error| self.with_log_redactor(error))?;
+        self.execution_options.send_timeout = timeout;
         Ok(self)
     }
 
@@ -524,11 +528,11 @@ impl HttpRequest {
     /// `Some` token checked before send and during I/O; `None` when
     /// cancellation is not wired.
     #[inline(always)]
-    pub fn cancellation_token(&self) -> Option<&RetryCancellationToken> {
+    pub fn cancellation_token(&self) -> Option<&HttpCancellationToken> {
         self.execution_options.cancellation_token.as_ref()
     }
 
-    /// Attaches a [`RetryCancellationToken`] that can abort this request
+    /// Attaches a [`HttpCancellationToken`] that can abort this request
     /// cooperatively.
     ///
     /// # Parameters
@@ -537,7 +541,7 @@ impl HttpRequest {
     /// # Returns
     /// `self` for method chaining.
     #[inline(always)]
-    pub fn set_cancellation_token(&mut self, token: RetryCancellationToken) -> &mut Self {
+    pub fn set_cancellation_token(&mut self, token: HttpCancellationToken) -> &mut Self {
         self.execution_options.cancellation_token = Some(token);
         self
     }
@@ -619,12 +623,12 @@ impl HttpRequest {
     /// - Cooperative cancellation while waiting on the send future.
     /// - Transport failures mapped from reqwest.
     /// - Write timeout when the send future does not complete within
-    ///   `write_timeout`.
+    ///   `send_timeout`.
     pub(crate) async fn send_impl(
         &mut self,
         backend: &reqwest::Client,
         logger: &HttpLogger<'_>,
-        cancellation_token: Option<RetryCancellationToken>,
+        cancellation_token: Option<HttpCancellationToken>,
     ) -> HttpResult<Response> {
         // Effective headers are cached on the request. Each send attempt must
         // invalidate and recompute them so injector output and request
@@ -634,20 +638,22 @@ impl HttpRequest {
         let log_redactor = self.log_redactor().clone();
         let method = self.method().clone();
         let request_url_context = self.resolved_url().ok();
-        let write_timeout = self.execution_options.write_timeout;
+        let send_timeout = self.execution_options.send_timeout;
+        let send_deadline = Instant::now() + send_timeout;
         let headers = Self::await_pre_send_future(
             self.effective_headers(),
-            write_timeout,
+            send_deadline.saturating_duration_since(Instant::now()),
             cancellation_token.clone(),
             &method,
             request_url_context.as_ref(),
             "Request cancelled while preparing request",
-            format!("Write timeout after {:?} while preparing request", write_timeout),
+            format!("Write timeout after {:?} while preparing request", send_timeout),
         )
         .await
         .map_err(|error| error.with_log_redactor(log_redactor.clone()))?
         .clone();
         let url = self.resolved_base_url()?;
+        self.validate_origin_policy(&url)?;
         let request_url = self.resolved_url()?;
         // Log the request after computing effective headers so TRACE logs
         // include the same query string used by the actual send path.
@@ -663,14 +669,14 @@ impl HttpRequest {
         if let Some(streaming_body) = self.streaming_body.as_ref() {
             let body = Self::await_pre_send_future(
                 async { Ok(streaming_body.to_reqwest_body().await) },
-                self.execution_options.write_timeout,
+                send_deadline.saturating_duration_since(Instant::now()),
                 cancellation_token.clone(),
                 &method,
                 Some(&request_url),
                 "Request cancelled while preparing streaming request body",
                 format!(
                     "Write timeout after {:?} while preparing streaming request body",
-                    self.execution_options.write_timeout
+                    self.execution_options.send_timeout
                 ),
             )
             .await
@@ -680,7 +686,7 @@ impl HttpRequest {
             builder = Self::apply_request_body(builder, self.take_body());
         }
 
-        let send_future = tokio::time::timeout(self.execution_options.write_timeout, builder.send());
+        let send_future = tokio::time::timeout(send_deadline.saturating_duration_since(Instant::now()), builder.send());
         let next = if let Some(token) = cancellation_token.as_ref() {
             tokio::select! {
                 _ = token.cancelled() => {
@@ -705,9 +711,9 @@ impl HttpRequest {
                 request_url.clone(),
             )
             .with_log_redactor(log_redactor.clone())),
-            Err(_) => Err(HttpError::write_timeout(format!(
+            Err(_) => Err(HttpError::send_timeout(format!(
                 "Write timeout after {:?} while sending request",
-                self.execution_options.write_timeout
+                self.execution_options.send_timeout
             ))
             .with_method(&method)
             .with_url(&request_url)
@@ -721,7 +727,7 @@ impl HttpRequest {
     /// # Parameters
     /// - `future`: Preparation future, such as async header injection or
     ///   streaming body factory execution.
-    /// - `write_timeout`: Timeout budget reused for send preparation.
+    /// - `send_timeout`: Timeout budget reused for send preparation.
     /// - `cancellation_token`: Optional request cancellation token.
     /// - `method`: Request method for error context.
     /// - `request_url`: Optional resolved request URL for error context.
@@ -733,12 +739,12 @@ impl HttpRequest {
     ///
     /// # Errors
     /// Returns [`HttpErrorKind::Cancelled`] on cancellation,
-    /// [`HttpErrorKind::WriteTimeout`] on timeout, or propagates the future's
+    /// [`HttpErrorKind::SendTimeout`] on timeout, or propagates the future's
     /// own error.
     async fn await_pre_send_future<T, F>(
         future: F,
-        write_timeout: Duration,
-        cancellation_token: Option<RetryCancellationToken>,
+        send_timeout: Duration,
+        cancellation_token: Option<HttpCancellationToken>,
         method: &Method,
         request_url: Option<&Url>,
         cancellation_message: &str,
@@ -747,7 +753,7 @@ impl HttpRequest {
     where
         F: Future<Output = HttpResult<T>>,
     {
-        let timed = tokio::time::timeout(write_timeout, future);
+        let timed = tokio::time::timeout(send_timeout, future);
         let next = if let Some(token) = cancellation_token.as_ref() {
             tokio::select! {
                 _ = token.cancelled() => {
@@ -765,7 +771,7 @@ impl HttpRequest {
 
         match next {
             Ok(result) => result,
-            Err(_) => Err(Self::pre_send_write_timeout_error(timeout_message, method, request_url)),
+            Err(_) => Err(Self::pre_send_send_timeout_error(timeout_message, method, request_url)),
         }
     }
 
@@ -795,8 +801,8 @@ impl HttpRequest {
     ///
     /// # Returns
     /// Write-timeout [`HttpError`] with request context attached.
-    fn pre_send_write_timeout_error(message: String, method: &Method, request_url: Option<&Url>) -> HttpError {
-        let mut error = HttpError::write_timeout(message).with_method(method);
+    fn pre_send_send_timeout_error(message: String, method: &Method, request_url: Option<&Url>) -> HttpError {
+        let mut error = HttpError::send_timeout(message).with_method(method);
         if let Some(request_url) = request_url {
             error = error.with_url(request_url);
         }
@@ -918,6 +924,24 @@ impl HttpRequest {
         Ok(())
     }
 
+    fn validate_origin_policy(&self, url: &Url) -> Result<(), HttpError> {
+        if matches!(self.context.origin_policy, HttpOriginPolicy::SameOrigin) {
+            let Some(base) = self.context.base_url.as_ref() else {
+                return Err(HttpError::new(
+                    HttpErrorKind::OriginPolicy,
+                    "Absolute request URL requires a trusted base URL",
+                ));
+            };
+            if !same_origin(base, url) {
+                return Err(HttpError::new(
+                    HttpErrorKind::OriginPolicy,
+                    "Request URL violates the same-origin policy",
+                ));
+            }
+        }
+        Ok(())
+    }
+
     /// Returns the attempt-scoped merged outbound headers.
     ///
     /// On first call after invalidation, this computes merged headers by
@@ -1012,9 +1036,9 @@ impl HttpRequest {
     pub(crate) fn cancelled_error_if_needed(
         &self,
         message: &str,
-        cancellation_token: Option<&RetryCancellationToken>,
+        cancellation_token: Option<&HttpCancellationToken>,
     ) -> Option<HttpError> {
-        if cancellation_token.is_some_and(RetryCancellationToken::is_cancelled) {
+        if cancellation_token.is_some_and(HttpCancellationToken::is_cancelled) {
             let mut error = HttpError::cancelled(message.to_string()).with_method(&self.method);
             if let Ok(url) = self.resolved_url() {
                 error = error.with_url(&url);
@@ -1065,6 +1089,12 @@ impl HttpRequest {
     fn with_log_redactor(&self, error: HttpError) -> HttpError {
         error.with_log_redactor(self.log_redactor().clone())
     }
+}
+
+fn same_origin(left: &Url, right: &Url) -> bool {
+    left.scheme() == right.scheme()
+        && left.host() == right.host()
+        && left.port_or_known_default() == right.port_or_known_default()
 }
 
 impl Clone for HttpRequest {

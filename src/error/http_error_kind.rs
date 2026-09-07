@@ -27,8 +27,8 @@ pub enum HttpErrorKind {
     ConnectTimeout,
     /// Read timeout.
     ReadTimeout,
-    /// Write timeout.
-    WriteTimeout,
+    /// Request preparation and header-response timeout.
+    SendTimeout,
     /// Whole-request timeout (client/request-level deadline).
     RequestTimeout,
     /// Transport-level request error.
@@ -43,13 +43,14 @@ pub enum HttpErrorKind {
     SseDecode,
     /// Request was cancelled or interrupted.
     Cancelled,
-    /// A single HTTP retry attempt exceeded its configured timeout.
-    RetryAttemptTimeout,
-    /// Total retry elapsed budget was exceeded before a retryable failure was
-    /// recorded.
-    RetryMaxElapsedExceeded,
-    /// Retry stopped because the retry policy decided not to continue (abort).
-    RetryAborted,
+    /// Retry budget was exceeded before an application error was captured.
+    RetryBudgetExceeded,
+    /// Aggregating the response body exceeded its configured limit.
+    ResponseBodyTooLarge,
+    /// The response body stream has already been taken.
+    ResponseBodyAlreadyConsumed,
+    /// The request target violates the configured origin policy.
+    OriginPolicy,
     /// Any other error.
     Other,
 }

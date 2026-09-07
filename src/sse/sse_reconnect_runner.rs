@@ -24,7 +24,6 @@ use qubit_retry::BackoffState;
 use qubit_retry::RetryBudget;
 use qubit_retry::RetryBudgetError;
 use qubit_retry::RetryBudgetExhausted;
-use qubit_retry::RetryCancellationToken;
 use qubit_retry::RetryPolicy;
 
 use super::DEFAULT_SSE_MAX_RECONNECT_DELAY;
@@ -32,6 +31,7 @@ use super::SseControl;
 use super::SseMessageStream;
 use super::SseReconnectOptions;
 use super::SseRecord;
+use crate::HttpCancellationToken;
 use crate::HttpClient;
 use crate::HttpError;
 use crate::HttpErrorKind;
@@ -51,7 +51,7 @@ struct ReconnectRuntime<'a> {
     /// SSE reconnect options controlling server retry and EOF behavior.
     options: &'a SseReconnectOptions,
     /// Optional cancellation token checked while sleeping before reconnect.
-    cancellation_token: Option<&'a RetryCancellationToken>,
+    cancellation_token: Option<&'a HttpCancellationToken>,
     /// Request method used in reconnect cancellation and max-elapsed errors.
     request_method: &'a http::Method,
     /// Request URL used in reconnect cancellation and max-elapsed errors.
@@ -543,7 +543,7 @@ fn should_reconnect_sse_error(error: &HttpError) -> bool {
 /// reconnect sleep window.
 async fn sleep_reconnect_delay(
     delay: Duration,
-    cancellation_token: Option<&RetryCancellationToken>,
+    cancellation_token: Option<&HttpCancellationToken>,
     request_method: &http::Method,
     request_url: Option<&url::Url>,
     log_redactor: &Redactor,
@@ -630,7 +630,7 @@ fn max_elapsed_exceeded_error(
     request_url: Option<&url::Url>,
     log_redactor: &Redactor,
 ) -> HttpError {
-    let mut error = HttpError::retry_max_elapsed_exceeded(format!(
+    let mut error = HttpError::retry_budget_exceeded(format!(
         "SSE reconnect max duration exceeded: {elapsed:?}/{max_elapsed:?}"
     ))
     .with_method(request_method);
@@ -684,7 +684,7 @@ fn operation_elapsed_exceeded_error(
     log_redactor: &Redactor,
 ) -> HttpError {
     let max_elapsed = max_elapsed.expect("operation budget exhaustion requires a configured operation limit");
-    let mut error = HttpError::retry_max_elapsed_exceeded(format!(
+    let mut error = HttpError::retry_budget_exceeded(format!(
         "SSE reconnect max operation duration exceeded: {elapsed:?}/{max_elapsed:?}"
     ))
     .with_method(request_method);
