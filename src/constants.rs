@@ -18,8 +18,8 @@ pub const DEFAULT_CONNECT_TIMEOUT_SECS: u64 = 10;
 /// Default read timeout in seconds.
 pub const DEFAULT_READ_TIMEOUT_SECS: u64 = 120;
 
-/// Default write timeout in seconds.
-pub const DEFAULT_WRITE_TIMEOUT_SECS: u64 = 120;
+/// Default send timeout in seconds.
+pub const DEFAULT_SEND_TIMEOUT_SECS: u64 = 120;
 
 // ---------------------------------------------------------------------------
 // Logging ([`crate::HttpLoggingOptions::default`])

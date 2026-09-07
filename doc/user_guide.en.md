@@ -29,14 +29,14 @@ futures-util = "0.3"
 
 ```rust
 use http::Method;
-use qubit_http::{HttpClientFactory, HttpClientOptions};
+use qubit_http::{HttpClientBuilder, HttpClientOptions};
 ```
 
 ## Quick Start
 
 ```rust
 use http::Method;
-use qubit_http::{HttpClientFactory, HttpClientOptions};
+use qubit_http::{HttpClientBuilder, HttpClientOptions};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -51,7 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     options.set_base_url("https://api.example.com")?;
     options.add_header("x-app", "demo")?;
 
-    let client = HttpClientFactory::new().create(options)?;
+    let client = HttpClientBuilder::new().create(options)?;
     let request = client
         .request(Method::GET, "/users/42")
         .query_param("expand", "profile")
@@ -71,7 +71,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### Default Client
 
 ```rust
-let client = qubit_http::HttpClientFactory::new().create_default()?;
+let client = qubit_http::HttpClientBuilder::new().create_default()?;
 ```
 
 Default behavior:
@@ -101,7 +101,7 @@ Default behavior:
 
 ```rust
 use std::time::Duration;
-use qubit_http::{HttpClientFactory, HttpClientOptions, HttpRetryMethodPolicy};
+use qubit_http::{HttpClientBuilder, HttpClientOptions, HttpRetryMethodPolicy};
 use qubit_retry::BackoffPolicy;
 
 let mut options = HttpClientOptions::new();
@@ -119,19 +119,19 @@ options.retry.backoff = BackoffPolicy::exponential(
 )?;
 options.retry.method_policy = HttpRetryMethodPolicy::IdempotentOnly;
 
-let client = HttpClientFactory::new().create(options)?;
+let client = HttpClientBuilder::new().create(options)?;
 ```
 
 `create` validates options before building the client. Validation includes: all timeout values must be greater than zero; enabled proxies require a non-empty host and non-zero port; a proxy password requires a username; `logging.body_size_limit` must be greater than zero when request or response body logging is enabled; `retry.max_attempts` must be greater than zero; `error_response_preview_limit` must be greater than zero; `user_agent` must be non-empty and a valid header value; SSE line and frame limits must be greater than zero. Backoff and jitter values are validated when constructing `BackoffPolicy`.
 
 ### Loading From qubit-config
 
-`HttpClientOptions::from_config` and `HttpClientFactory::create_from_config` accept any `qubit_config::ConfigReader`. If you pass `config.section("http")`, all keys below are read relative to that prefix.
+`HttpClientOptions::from_config` and `HttpClientBuilder::create_from_config` accept any `qubit_config::ConfigReader`. If you pass `config.section("http")`, all keys below are read relative to that prefix.
 
 ```rust
 use std::time::Duration;
 use qubit_config::Config;
-use qubit_http::HttpClientFactory;
+use qubit_http::HttpClientBuilder;
 
 let mut config = Config::new();
 config.set("http.base_url", "https://api.example.com".to_string())?;
@@ -140,7 +140,7 @@ config.set("http.retry.enabled", true)?;
 config.set("http.retry.delay_strategy", "FIXED".to_string())?;
 config.set("http.retry.fixed_delay", Duration::from_millis(250))?;
 
-let client = HttpClientFactory::new()
+let client = HttpClientBuilder::new()
     .create_from_config(&config.section("http")?)?;
 ```
 
@@ -167,7 +167,7 @@ Common configuration keys:
 | `base_url` | Base URL used to resolve relative request paths |
 | `timeouts.connect_timeout` | Connect timeout |
 | `timeouts.read_timeout` | Per-read wait timeout for body/stream reads |
-| `timeouts.write_timeout` | Pre-send preparation and send-phase timeout |
+| `timeouts.send_timeout` | Pre-send preparation and send-phase timeout |
 | `timeouts.request_timeout` | Optional whole-request timeout |
 | `proxy.enabled` | Enables outbound proxying |
 | `use_env_proxy` | Whether to inherit environment proxies when explicit proxying is disabled |
@@ -261,7 +261,7 @@ Per-request overrides:
 | Method | Purpose |
 | --- | --- |
 | `request_timeout` | Overrides whole-request timeout (reqwest per-request deadline) |
-| `write_timeout` | Overrides pre-send preparation and send-phase timeout |
+| `send_timeout` | Overrides pre-send preparation and send-phase timeout |
 | `read_timeout` | Overrides response body/stream read timeout |
 | `base_url` / `clear_base_url` | Overrides or removes base URL for this request |
 | `ipv4_only` | Overrides IPv4-only URL validation for this request |
@@ -528,13 +528,13 @@ Error categories:
 | Group | Error kinds | Typical meaning |
 | --- | --- | --- |
 | URL / configuration | `InvalidUrl`, `BuildClient`, `ProxyConfig` | URL resolution failed, client construction failed, or proxy options are invalid |
-| Timeout / network | `ConnectTimeout`, `ReadTimeout`, `WriteTimeout`, `RequestTimeout`, `Transport` | Connect/read/write/whole-request timeout or lower-level transport failure |
+| Timeout / network | `ConnectTimeout`, `ReadTimeout`, `SendTimeout`, `RequestTimeout`, `Transport` | Connect/read/write/whole-request timeout or lower-level transport failure |
 | HTTP status | `Status` | A non-2xx status code was returned |
 | Decoding / SSE | `Decode`, `SseProtocol`, `SseDecode` | Body decoding failed, SSE framing was invalid, or an SSE JSON chunk could not be decoded |
-| Retry layer | `RetryAttemptTimeout`, `RetryMaxElapsedExceeded`, `RetryAborted` | The retry executor produced an attempt timeout, elapsed-budget failure, or policy abort |
+| Retry layer | `RetryBudgetExceeded` and `HttpRetryDiagnostics` | Retry budget or terminal-policy diagnostics |
 | Cancellation / fallback | `Cancelled`, `Other` | The request was cancelled, or the failure does not fit another category |
 
-`RetryAttemptTimeout` means one retry-layer attempt exceeded its attempt timeout. `RetryMaxElapsedExceeded` means the total retry elapsed budget was exhausted before a retryable failure was captured. `RetryAborted` means the `qubit-retry` decider stopped early because the current error was not retryable; the complete `RetryError<HttpError>` is retained as `source`, and owns the original `HttpError`.
+`RetryBudgetExceeded` is used only when no application error was captured. Otherwise the original HTTP error kind and status are preserved and `HttpRetryDiagnostics` records the terminal condition; the complete `RetryError<HttpError>` remains available as `source`.
 
 `retry_hint()` marks timeouts, transport errors, 429, and 5xx statuses as retryable hints. The new retry-layer error categories are non-retryable themselves. Actual retry behavior still depends on `HttpRetryOptions` and the method policy.
 
@@ -552,7 +552,7 @@ Default retryability:
 
 You can configure `retry.status_codes` and `retry.error_kinds` allowlists. Once an allowlist is set, only listed statuses or error kinds are retried.
 
-`retry.error_kinds` accepts config names for every `HttpErrorKind`, including `retry_attempt_timeout`, `retry_max_elapsed_exceeded`, and `retry_aborted`. Values are trimmed; hyphenated names such as `read-timeout` are normalized to `read_timeout`. Use lowercase snake_case or the equivalent hyphenated form.
+`retry.error_kinds` accepts config names for every `HttpErrorKind`. Values are trimmed; hyphenated names such as `read-timeout` are normalized to `read_timeout`. Use lowercase snake_case or the equivalent hyphenated form.
 
 Per-request override example:
 
@@ -567,7 +567,7 @@ let request = client
 
 `honor_retry_after(true)` is request-level. For retryable 429 or 5xx responses, it passes the response's `Retry-After` value to the backoff policy as a hint. The default HTTP backoff policy uses this hint as a minimum: the next attempt waits for the longer of the planned backoff and the hint. A custom `BackoffPolicy` can change that behavior: `ignore_retry_after()` ignores the hint, and `limit_delay(duration)` caps the final delay even when the hint is longer.
 
-When retry is enabled, `execute` runs attempts through `qubit-retry`'s `Retry`. HTTP `max_duration` maps to `qubit-retry`'s `max_total_elapsed`, so it is measured with monotonic time and includes attempt execution, retry backoff sleeps, `Retry-After` sleeps, and retry control-path listener time. Retryable failures that exhaust `max_attempts` or `max_duration` return the last HTTP error with exhaustion context appended to `message`. If the current error does not match the active allowlist or retry policy, the executor returns `RetryAborted` and keeps the complete `RetryError<HttpError>` as `source`; its `last_error()` retains the original HTTP failure.
+When retry is enabled, `execute` runs attempts through `qubit-retry`'s `Retry`. HTTP `max_duration` uses monotonic accounting. Retryable failures that exhaust `max_attempts` or `max_duration` preserve the last HTTP error and attach `HttpRetryDiagnostics`; the complete `RetryError<HttpError>` remains available as `source`.
 
 This is a **soft continuation budget**: it can reject a planned delay or the next
 admission, but it neither cancels an in-flight request nor replaces its successful
@@ -585,7 +585,7 @@ continuation budget instead of starting another request. Custom hint policies or
 final delay caps can change the selected delay. SSE reconnect continues to
 disable inner HTTP retries.
 
-This release uses `qubit-retry` 0.22. Update any direct dependency and its lockfile
+This release uses `qubit-retry` 0.23. Update any direct dependency and its lockfile
 entry when sharing `RetryPolicy` or `BackoffPolicy` with HTTP/SSE. When consuming
 retry results directly, `RetryError::map_error` provides pure payload conversion
 while preserving retry context and completion diagnostics. HTTP's domain error conversion
@@ -598,14 +598,14 @@ The old `into_parts_with_diagnostics()` name has been removed. Exhaustive matche
 | Scenario | Returned error | Notes |
 | --- | --- | --- |
 | Method policy does not allow replay, such as POST under the default policy | Original single-attempt error | Retry flow is not entered |
-| Retry flow is active, but the current error is not retryable | `RetryAborted` | `source` retains `RetryError<HttpError>`, which owns the original HTTP error |
+| Retry flow is active, but the current error is not retryable | Original `HttpError` + `Aborted` diagnostics | `source` retains `RetryError<HttpError>` |
 | Retryable failure exhausts `max_attempts` | Last `HttpError` | `message` includes attempts-exhausted context |
-| Retryable failure exhausts `max_duration` | Last `HttpError` or `RetryMaxElapsedExceeded` | Returns the last error if one was captured; otherwise returns `RetryMaxElapsedExceeded` |
+| Retryable failure exhausts `max_duration` | Last `HttpError` or `RetryBudgetExceeded` | Returns the last error if one was captured; otherwise returns `RetryBudgetExceeded` |
 
-To inspect the original status or error kind from `RetryAborted`, downcast the source:
+To inspect status, kind, and retry diagnostics, use the typed getters:
 
 ```rust
-if error.kind == qubit_http::HttpErrorKind::RetryAborted {
+if error.retry_diagnostics().is_some() {
     if let Some(source) = error.source.as_deref() {
         if let Some(retry) = source.downcast_ref::<qubit_retry::RetryError<qubit_http::HttpError>>() {
             if let Some(inner) = retry.last_error() {
@@ -646,7 +646,7 @@ Example:
 ```rust
 use http::Method;
 use qubit_http::{
-    HttpClientFactory,
+    HttpClientBuilder,
     HttpClientOptions,
 };
 use qubit_redact::{RedactionPolicy, Sensitivity};
@@ -663,7 +663,7 @@ let builder = RedactionPolicy::default().to_builder().http(|http| {
 })?;
 options.log_redaction_policy = builder.build()?;
 
-let client = HttpClientFactory::new().create(options)?;
+let client = HttpClientBuilder::new().create(options)?;
 let request = client
     .request(Method::POST, "https://api.example.com/login")
     .query_param("access_token", "secret-token")
@@ -901,7 +901,7 @@ The table below lists every configuration key supported by `HttpClientOptions::f
 | `json.max_output_bytes` | Maximum aggregate encoded JSON/NDJSON request-body bytes, including NDJSON line terminators; defaults to `8388608` |
 | `timeouts.connect_timeout` | Connect timeout |
 | `timeouts.read_timeout` | Per-read wait timeout for body/stream reads |
-| `timeouts.write_timeout` | Pre-send preparation and send-phase timeout |
+| `timeouts.send_timeout` | Pre-send preparation and send-phase timeout |
 | `timeouts.request_timeout` | Optional whole-request timeout |
 | `proxy.enabled` | Enables outbound proxying |
 | `proxy.proxy_type` | `http`, `https`, `socks5`, or `socks5h` |

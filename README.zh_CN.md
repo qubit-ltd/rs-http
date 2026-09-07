@@ -43,7 +43,7 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
 ```rust
 use http::Method;
-use qubit_http::{HttpClientFactory, HttpClientOptions};
+use qubit_http::{HttpClientBuilder, HttpClientOptions};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -51,7 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     options.set_base_url("https://httpbin.org")?;
     options.add_header("x-client-id", "demo")?;
 
-    let client = HttpClientFactory::new().create(options)?;
+    let client = HttpClientBuilder::new().create(options)?;
 
     let request = client
         .request(Method::GET, "/anything")
@@ -82,7 +82,7 @@ response 和 error 会保留原来的 redactor；每个脱敏操作默认使用�
 可创建 `redactor.diagnostic_batch()`，在 `finish()` 后解析各操作返回的 handle，以共享同一个运行时预算。
 
 ```rust
-use qubit_http::{HttpClientFactory, HttpClientOptions};
+use qubit_http::{HttpClientBuilder, HttpClientOptions};
 use qubit_redact::{RedactionPolicy, Sensitivity};
 use qubit_redact::formats::http::UrlPathPolicy;
 
@@ -96,7 +96,7 @@ let builder = RedactionPolicy::default().to_builder().http(|http| {
 })?;
 options.log_redaction_policy = builder.build()?;
 
-let client = HttpClientFactory::new().create(options)?;
+let client = HttpClientBuilder::new().create(options)?;
 ```
 
 `logging.body_size_limit` 是展示限额；结构化 body 解析由 JSON 与结构限额约束，输入与
@@ -124,7 +124,7 @@ let client = HttpClientFactory::new().create(options)?;
 
 | 类型 | 用途 |
 | --- | --- |
-| `HttpClientFactory` | 通过默认配置、显式配置或配置中心创建客户端。 |
+| `HttpClientBuilder` | 通过默认配置、显式配置或配置中心创建客户端。 |
 | `HttpClientOptions` | 保存客户端级默认配置，包括 base URL、请求头、超时、重试、日志、代理、重定向、连接池、JSON value 预算和 SSE 解码。 |
 | `HttpClient` | 执行请求，并应用请求头、注入器、拦截器、重试、日志和 SSE 重连辅助能力。 |
 | `HttpRequestBuilder` | 构建方法、路径、查询参数、请求头、请求体和请求级覆盖项。 |

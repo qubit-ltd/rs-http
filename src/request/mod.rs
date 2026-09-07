@@ -12,6 +12,7 @@
 mod async_http_header_injector;
 mod header_injector;
 mod header_parser;
+mod http_cancellation_token;
 mod http_request;
 mod http_request_body;
 mod http_request_body_byte_stream;
@@ -24,6 +25,7 @@ mod timeout_validation;
 pub use async_http_header_injector::AsyncHttpHeaderInjector;
 pub use header_injector::HttpHeaderInjector;
 pub(crate) use header_parser::parse_header;
+pub use http_cancellation_token::HttpCancellationToken;
 pub use http_request::HttpRequest;
 pub use http_request_body::HttpRequestBody;
 pub use http_request_body_byte_stream::HttpRequestBodyByteStream;

@@ -25,13 +25,14 @@ use qubit_budget::ResourceBudget;
 use qubit_budget::json::JsonValueLimits;
 use qubit_json::decode::JsonDecoder;
 use qubit_redact::Redactor;
-use qubit_retry::RetryCancellationToken;
 use serde::de::DeserializeOwned;
 use url::Url;
 
 use super::HttpResponseMeta;
 use super::HttpResponseOptions;
+use super::http_response_body_state::HttpResponseBodyState;
 use crate::HttpByteStream;
+use crate::HttpCancellationToken;
 use crate::HttpError;
 use crate::HttpErrorKind;
 use crate::HttpResult;
@@ -145,7 +146,7 @@ struct HttpResponseRuntime {
     /// Per-response read timeout inherited from request/client.
     read_timeout: Duration,
     /// Optional cancellation token inherited from request.
-    cancellation_token: Option<RetryCancellationToken>,
+    cancellation_token: Option<HttpCancellationToken>,
     /// Request URL used in read/cancellation error context.
     request_url: Url,
     /// First response body read failure, if the backend stream failed after
@@ -154,7 +155,7 @@ struct HttpResponseRuntime {
 }
 
 impl HttpResponseRuntime {
-    fn new(read_timeout: Duration, cancellation_token: Option<RetryCancellationToken>, request_url: Url) -> Self {
+    fn new(read_timeout: Duration, cancellation_token: Option<HttpCancellationToken>, request_url: Url) -> Self {
         Self {
             read_timeout,
             cancellation_token,
@@ -168,10 +169,8 @@ impl HttpResponseRuntime {
 pub struct HttpResponse {
     /// Response metadata (status, headers, final URL, request method).
     pub(crate) meta: HttpResponseMeta,
-    /// Raw backend response until consumed.
-    backend: Option<reqwest::Response>,
-    /// Cached full body bytes after eager or lazy read.
-    buffered_body: Option<Bytes>,
+    /// Backend, buffered, or already-taken response body.
+    body: HttpResponseBodyState,
     /// Runtime state inherited from request/client.
     runtime: HttpResponseRuntime,
     /// Decode and error-preview options inherited from client options.
@@ -188,6 +187,15 @@ impl fmt::Debug for HttpResponse {
         let url = output.text(url);
         let request_url = output.text(request_url);
         let headers = output.text(headers);
+        let body_state = match &self.body {
+            HttpResponseBodyState::Backend(_) => "backend",
+            HttpResponseBodyState::Buffered(_) => "buffered",
+            HttpResponseBodyState::StreamingTaken => "streaming_taken",
+        };
+        let buffered_body_len = match &self.body {
+            HttpResponseBodyState::Buffered(body) => Some(body.len()),
+            _ => None,
+        };
         formatter
             .debug_struct("HttpResponse")
             .field("status", &self.meta.status())
@@ -195,8 +203,8 @@ impl fmt::Debug for HttpResponse {
             .field("url", &url)
             .field("request_url", &request_url)
             .field("method", self.meta.method())
-            .field("backend_present", &self.backend.is_some())
-            .field("buffered_body_len", &self.buffered_body.as_ref().map(Bytes::len))
+            .field("body_state", &body_state)
+            .field("buffered_body_len", &buffered_body_len)
             .field("read_timeout", &self.runtime.read_timeout)
             .field("cancellation_token_present", &self.runtime.cancellation_token.is_some())
             .field("options", &self.options)
@@ -209,8 +217,7 @@ impl HttpResponse {
     pub fn new(status: StatusCode, headers: HeaderMap, body: Bytes, url: Url, method: Method) -> Self {
         Self {
             meta: HttpResponseMeta::new(status, headers, url.clone(), method),
-            backend: None,
-            buffered_body: Some(body),
+            body: HttpResponseBodyState::Buffered(body),
             runtime: HttpResponseRuntime::new(Duration::from_secs(30), None, url),
             options: HttpResponseOptions::default(),
         }
@@ -221,14 +228,13 @@ impl HttpResponse {
         meta: HttpResponseMeta,
         backend: reqwest::Response,
         read_timeout: Duration,
-        cancellation_token: Option<RetryCancellationToken>,
+        cancellation_token: Option<HttpCancellationToken>,
         request_url: Url,
         options: HttpResponseOptions,
     ) -> Self {
         Self {
             meta,
-            backend: Some(backend),
-            buffered_body: None,
+            body: HttpResponseBodyState::Backend(backend),
             runtime: HttpResponseRuntime::new(read_timeout, cancellation_token, request_url),
             options,
         }
@@ -252,7 +258,7 @@ impl HttpResponse {
     /// request-level cancellation error cannot mask the structured retry
     /// terminal. A successful response keeps using the same token for body and
     /// SSE stream reads.
-    pub(crate) fn set_cancellation_token(&mut self, token: RetryCancellationToken) {
+    pub(crate) fn set_cancellation_token(&mut self, token: HttpCancellationToken) {
         self.runtime.cancellation_token = Some(token);
     }
 
@@ -333,7 +339,7 @@ impl HttpResponse {
             "{} with status {} for {} {}; response body preview: {}",
             message_prefix, status, method, redacted_url, body_preview
         );
-        let mut mapped = HttpError::status(status, message)
+        let mut mapped = HttpError::from_status(status, message)
             .with_method(&method)
             .with_url(&url)
             .with_response_body_preview(body_preview)
@@ -353,8 +359,13 @@ impl HttpResponse {
     /// read.
     pub(crate) async fn into_error_body_preview(mut self, max_bytes: usize) -> HttpResult<String> {
         let limit = max_bytes.max(1);
-        let Some(backend) = self.backend.take() else {
-            return Ok("<empty>".to_string());
+        let state = std::mem::replace(&mut self.body, HttpResponseBodyState::StreamingTaken);
+        let backend = match state {
+            HttpResponseBodyState::Backend(backend) => backend,
+            HttpResponseBodyState::Buffered(body) => {
+                return Ok(String::from_utf8_lossy(&body[..]).into_owned());
+            }
+            HttpResponseBodyState::StreamingTaken => return Ok("<empty>".to_string()),
         };
         let content_type = Self::content_type_header(self.meta.headers());
         self.read_error_body_preview(backend, limit, content_type).await
@@ -368,18 +379,25 @@ impl HttpResponse {
     /// response body exceeds the configured aggregation limit.
     pub async fn bytes(&mut self) -> HttpResult<Bytes> {
         let body_limit = self.options.response_body_size_limit;
-        if let Some(body) = &self.buffered_body {
-            if body.len() > body_limit {
-                return Err(self.response_body_size_limit_error(body.len()));
-            }
-            return Ok(body.clone());
-        }
         if let Some(error) = self.previous_body_read_error() {
             return Err(error);
         }
-        let Some(mut backend) = self.backend.take() else {
-            self.buffered_body = Some(Bytes::new());
-            return Ok(Bytes::new());
+        let state = std::mem::replace(&mut self.body, HttpResponseBodyState::StreamingTaken);
+        let mut backend = match state {
+            HttpResponseBodyState::Buffered(body) => {
+                if body.len() > body_limit {
+                    return Err(self.response_body_size_limit_error(body.len()));
+                }
+                self.body = HttpResponseBodyState::Buffered(body.clone());
+                return Ok(body);
+            }
+            HttpResponseBodyState::Backend(backend) => backend,
+            HttpResponseBodyState::StreamingTaken => {
+                return Err(HttpError::new(
+                    HttpErrorKind::ResponseBodyAlreadyConsumed,
+                    "Response body stream has already been consumed",
+                ));
+            }
         };
 
         let method = self.meta.method().clone();
@@ -434,7 +452,7 @@ impl HttpResponse {
                 }
                 Ok(Ok(None)) => {
                     let body = body.freeze();
-                    self.buffered_body = Some(body.clone());
+                    self.body = HttpResponseBodyState::Buffered(body.clone());
                     return Ok(body);
                 }
                 Ok(Err(error)) => {
@@ -461,10 +479,6 @@ impl HttpResponse {
     /// Returns body as stream; if already buffered, returns stream backed by
     /// cached bytes.
     pub fn stream(&mut self) -> HttpResult<HttpByteStream> {
-        if let Some(body) = self.buffered_body.as_ref() {
-            let bytes = body.clone();
-            return Ok(Box::pin(futures_stream::once(async move { Ok(bytes) })));
-        }
         if let Some(error) = self.previous_body_read_error() {
             return Err(error);
         }
@@ -472,8 +486,18 @@ impl HttpResponse {
         {
             return Err(error);
         }
-        let Some(backend) = self.backend.take() else {
-            return Ok(Box::pin(futures_stream::empty()));
+        let state = std::mem::replace(&mut self.body, HttpResponseBodyState::StreamingTaken);
+        let backend = match state {
+            HttpResponseBodyState::Buffered(body) => {
+                return Ok(Box::pin(futures_stream::once(async move { Ok(body) })));
+            }
+            HttpResponseBodyState::Backend(backend) => backend,
+            HttpResponseBodyState::StreamingTaken => {
+                return Err(HttpError::new(
+                    HttpErrorKind::ResponseBodyAlreadyConsumed,
+                    "Response body stream has already been consumed",
+                ));
+            }
         };
 
         let method = self.meta.method().clone();
@@ -692,7 +716,10 @@ impl HttpResponse {
     /// `Some(&Bytes)` when response body has already been buffered.
     #[inline(always)]
     pub(crate) fn buffered_body_for_logging(&self) -> Option<&Bytes> {
-        self.buffered_body.as_ref()
+        match &self.body {
+            HttpResponseBodyState::Buffered(body) => Some(body),
+            _ => None,
+        }
     }
 
     /// Returns whether logger may safely buffer the full body for logging.
@@ -705,7 +732,7 @@ impl HttpResponse {
     /// `Content-Length`, and declared length is within `body_log_limit`.
     #[inline]
     pub(crate) fn can_buffer_body_for_logging(&self, body_log_limit: usize) -> bool {
-        if self.backend.is_none() {
+        if !matches!(self.body, HttpResponseBodyState::Backend(_)) {
             return false;
         }
         if self.is_sse_response() {
@@ -817,7 +844,7 @@ impl HttpResponse {
             .runtime
             .cancellation_token
             .as_ref()
-            .is_some_and(RetryCancellationToken::is_cancelled)
+            .is_some_and(HttpCancellationToken::is_cancelled)
         {
             Some(
                 HttpError::cancelled(message.to_string())

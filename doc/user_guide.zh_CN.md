@@ -29,14 +29,14 @@ futures-util = "0.3"
 
 ```rust
 use http::Method;
-use qubit_http::{HttpClientFactory, HttpClientOptions};
+use qubit_http::{HttpClientBuilder, HttpClientOptions};
 ```
 
 ## 快速开始
 
 ```rust
 use http::Method;
-use qubit_http::{HttpClientFactory, HttpClientOptions};
+use qubit_http::{HttpClientBuilder, HttpClientOptions};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -51,7 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     options.set_base_url("https://api.example.com")?;
     options.add_header("x-app", "demo")?;
 
-    let client = HttpClientFactory::new().create(options)?;
+    let client = HttpClientBuilder::new().create(options)?;
     let request = client
         .request(Method::GET, "/users/42")
         .query_param("expand", "profile")
@@ -71,7 +71,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### 默认客户端
 
 ```rust
-let client = qubit_http::HttpClientFactory::new().create_default()?;
+let client = qubit_http::HttpClientBuilder::new().create_default()?;
 ```
 
 默认行为：
@@ -101,7 +101,7 @@ let client = qubit_http::HttpClientFactory::new().create_default()?;
 
 ```rust
 use std::time::Duration;
-use qubit_http::{HttpClientFactory, HttpClientOptions, HttpRetryMethodPolicy};
+use qubit_http::{HttpClientBuilder, HttpClientOptions, HttpRetryMethodPolicy};
 use qubit_retry::BackoffPolicy;
 
 let mut options = HttpClientOptions::new();
@@ -119,19 +119,19 @@ options.retry.backoff = BackoffPolicy::exponential(
 )?;
 options.retry.method_policy = HttpRetryMethodPolicy::IdempotentOnly;
 
-let client = HttpClientFactory::new().create(options)?;
+let client = HttpClientBuilder::new().create(options)?;
 ```
 
 `create` 会先执行校验。常见校验包括：超时必须大于 0；启用代理时必须有非空 host 和非 0 port；只有设置 username 时才能设置 password；日志记录请求体或响应体时 `body_size_limit` 必须大于 0；`retry.max_attempts` 必须大于 0；`error_response_preview_limit` 必须大于 0；`user_agent` 不能为空并且必须是合法 header value；SSE 行/帧上限必须大于 0。backoff 与 jitter 在构造 `BackoffPolicy` 时完成校验。
 
 ### 从 qubit-config 读取
 
-`HttpClientOptions::from_config` 和 `HttpClientFactory::create_from_config` 接收任意 `qubit_config::ConfigReader`。如果传入 `config.section("http")`，下面表格中的键都按相对路径读取。
+`HttpClientOptions::from_config` 和 `HttpClientBuilder::create_from_config` 接收任意 `qubit_config::ConfigReader`。如果传入 `config.section("http")`，下面表格中的键都按相对路径读取。
 
 ```rust
 use std::time::Duration;
 use qubit_config::Config;
-use qubit_http::HttpClientFactory;
+use qubit_http::HttpClientBuilder;
 
 let mut config = Config::new();
 config.set("http.base_url", "https://api.example.com".to_string())?;
@@ -140,7 +140,7 @@ config.set("http.retry.enabled", true)?;
 config.set("http.retry.delay_strategy", "FIXED".to_string())?;
 config.set("http.retry.fixed_delay", Duration::from_millis(250))?;
 
-let client = HttpClientFactory::new()
+let client = HttpClientBuilder::new()
     .create_from_config(&config.section("http")?)?;
 ```
 
@@ -163,7 +163,7 @@ let client = HttpClientFactory::new()
 | `base_url` | 相对请求路径的基础 URL |
 | `timeouts.connect_timeout` | 连接超时 |
 | `timeouts.read_timeout` | 读取响应体或流时的单次等待超时 |
-| `timeouts.write_timeout` | 发送前准备和发送阶段超时 |
+| `timeouts.send_timeout` | 发送前准备和发送阶段超时 |
 | `timeouts.request_timeout` | 整体请求超时，可选 |
 | `proxy.enabled` | 是否启用代理 |
 | `use_env_proxy` | 显式代理禁用时，是否继承环境变量代理 |
@@ -257,7 +257,7 @@ assert_eq!(
 | 方法 | 用途 |
 | --- | --- |
 | `request_timeout` | 覆盖整体请求超时（reqwest 单次请求的 deadline） |
-| `write_timeout` | 覆盖发送前准备和发送阶段超时 |
+| `send_timeout` | 覆盖发送前准备和发送阶段超时 |
 | `read_timeout` | 覆盖响应体读取/流读取超时 |
 | `base_url` / `clear_base_url` | 覆盖或清除本次请求 base URL |
 | `ipv4_only` | 覆盖本次请求的 IPv4-only URL 校验 |
@@ -524,13 +524,13 @@ async fn read_sse_examples(client: &qubit_http::HttpClient) -> qubit_http::HttpR
 | 分组 | 错误类型 | 典型含义 |
 | --- | --- | --- |
 | URL / 配置 | `InvalidUrl`, `BuildClient`, `ProxyConfig` | URL 无法解析、客户端构建失败或代理配置非法 |
-| 超时 / 网络 | `ConnectTimeout`, `ReadTimeout`, `WriteTimeout`, `RequestTimeout`, `Transport` | 连接、读取、写入、整体请求超时，或底层传输失败 |
+| 超时 / 网络 | `ConnectTimeout`, `ReadTimeout`, `SendTimeout`, `RequestTimeout`, `Transport` | 连接、读取、写入、整体请求超时，或底层传输失败 |
 | HTTP 状态 | `Status` | 收到非 2xx 状态码 |
 | 解码 / SSE | `Decode`, `SseProtocol`, `SseDecode` | 响应体解码失败、SSE 协议错误或 SSE JSON chunk 解码失败 |
-| 重试层 | `RetryAttemptTimeout`, `RetryMaxElapsedExceeded`, `RetryAborted` | 重试执行器产生的 attempt timeout、总耗时耗尽或策略中止 |
+| 重试层 | `RetryBudgetExceeded` 与 `HttpRetryDiagnostics` | 重试预算或终止策略诊断 |
 | 取消 / 兜底 | `Cancelled`, `Other` | 请求取消，或无法归入其它分类的错误 |
 
-`RetryAttemptTimeout` 表示单次重试尝试超过了重试层配置的 attempt timeout；`RetryMaxElapsedExceeded` 表示重试总耗时预算在尚未捕获可重试错误时已经耗尽；`RetryAborted` 表示 `qubit-retry` 决策器判定当前错误不可重试并提前中止，完整 `RetryError<HttpError>` 会作为 `source` 保留，其内部仍持有原始 `HttpError`。
+只有在尚未捕获业务错误时，重试预算错误才使用 `RetryBudgetExceeded`；如果已有业务错误，则保留其 kind/status，并通过 `HttpRetryDiagnostics` 记录终止原因，完整 `RetryError<HttpError>` 仍作为 `source` 保留。
 
 `retry_hint()` 会把超时、transport、429 和 5xx 状态视为可重试提示，其余默认不可重试。新增的重试层错误分类本身也不可重试。真正是否重试还要结合 `HttpRetryOptions` 和方法策略。
 
@@ -548,7 +548,7 @@ async fn read_sse_examples(client: &qubit_http::HttpClient) -> qubit_http::HttpR
 
 可以用 `retry.status_codes` 和 `retry.error_kinds` 配置白名单。白名单一旦设置，就只重试列出的状态码或错误类型。
 
-`retry.error_kinds` 可使用所有 `HttpErrorKind` 名称的配置形式，包括 `retry_attempt_timeout`、`retry_max_elapsed_exceeded`、`retry_aborted`。配置值会 trim，`read-timeout` 一类连字符形式会归一化为 `read_timeout`；请使用小写 snake_case 或等价的连字符形式。
+`retry.error_kinds` 可使用所有 `HttpErrorKind` 名称的配置形式。配置值会 trim，`read-timeout` 一类连字符形式会归一化为 `read_timeout`；请使用小写 snake_case 或等价的连字符形式。
 
 对单个请求可以覆盖：
 
@@ -563,7 +563,7 @@ let request = client
 
 `honor_retry_after(true)` 只在请求级启用。遇到可重试的 429 或 5xx 时，它会把响应中的 `Retry-After` 值作为提示交给退避策略。默认 HTTP 退避策略将提示作为最小延迟，下一次尝试等待计划退避和提示中的较大值。自定义 `BackoffPolicy` 可以改变这一行为：`ignore_retry_after()` 会忽略提示，`limit_delay(duration)` 则限制最终延迟，即使提示更长也会受此上限约束。
 
-开启重试后，`execute` 会把每次尝试交给 `qubit-retry` 的 `Retry`。HTTP `max_duration` 会映射到 `qubit-retry` 的 `max_total_elapsed`，因此它使用单调时间统计，并包含 attempt 执行、retry 退避 sleep、`Retry-After` sleep 以及 retry 控制路径 listener 时间。可重试错误在耗尽 `max_attempts` 或 `max_duration` 后返回最后一次 HTTP 错误，并在 `message` 中追加耗尽原因；如果错误不满足当前重试白名单或方法策略，执行器会返回 `RetryAborted`，并把完整 `RetryError<HttpError>` 作为 `source` 保留，通过其 `last_error()` 读取原始 HTTP 失败。
+开启重试后，`execute` 会把每次尝试交给 `qubit-retry` 的 `Retry`。HTTP `max_duration` 使用单调时钟统计。可重试错误耗尽 `max_attempts` 或 `max_duration` 后仍返回最后一次 HTTP 错误并附加 `HttpRetryDiagnostics`，完整 `RetryError<HttpError>` 作为 `source` 保留。
 
 这是**软性续试预算**：它可以拒绝计划中的等待或下一次准入，但不会取消正在执行的请求，也不会覆盖成功结果。
 普通 HTTP 重试没有设置 `qubit-retry` 的 `attempt_timeout` 或 `flow_timeout`。例如，
@@ -575,7 +575,7 @@ let request = client
 提示过长时可能直接耗尽续试预算，而不再发送请求。自定义提示策略或最终延迟上限可以改变选中的等待时间。
 SSE 重连仍禁用内层 HTTP 重试。
 
-当前版本使用 `qubit-retry` 0.22。应用若与 HTTP/SSE 共享 `RetryPolicy` 或 `BackoffPolicy`，
+当前版本使用 `qubit-retry` 0.23。应用若与 HTTP/SSE 共享 `RetryPolicy` 或 `BackoffPolicy`，
 须同步升级直接依赖及锁文件。直接消费 retry 结果时，可通过 `RetryError::map_error` 做纯业务载荷转换，
 保留重试上下文和完成诊断；最终 `HttpError` 仍遵循 HTTP 自身的领域转换规则，不改为通用重试错误 API。
 直接消费 retry 结果时，应读取 `completion_callback_failures()` 或调用
@@ -585,14 +585,14 @@ SSE 重连仍禁用内层 HTTP 重试。
 | 场景 | 返回错误 | 说明 |
 | --- | --- | --- |
 | 方法策略不允许重放，例如默认策略下的 POST | 原始单次执行错误 | 不进入重试流程 |
-| 已进入重试流程，但当前错误不可重试 | `RetryAborted` | `source` 保留完整 `RetryError<HttpError>`，其内部持有原始 HTTP 错误 |
+| 已进入重试流程，但当前错误不可重试 | 原始 `HttpError` + `Aborted` 诊断 | `source` 保留完整 `RetryError<HttpError>` |
 | 可重试，但耗尽 `max_attempts` | 最后一次 `HttpError` | `message` 会追加 attempts exhausted 上下文 |
-| 可重试，但耗尽 `max_duration` | 最后一次 `HttpError` 或 `RetryMaxElapsedExceeded` | 已捕获过可重试错误时返回最后一次错误；尚未捕获时返回 `RetryMaxElapsedExceeded` |
+| 可重试，但耗尽 `max_duration` | 最后一次 `HttpError` 或 `RetryBudgetExceeded` | 已捕获错误时返回最后一次错误；尚未捕获时返回 `RetryBudgetExceeded` |
 
-如果需要从 `RetryAborted` 中读取原始状态码或错误分类，可以向下转型 `source`：
+如需读取状态码、错误分类和重试诊断，直接使用类型化 getter：
 
 ```rust
-if error.kind == qubit_http::HttpErrorKind::RetryAborted {
+if error.retry_diagnostics().is_some() {
     if let Some(source) = error.source.as_deref() {
         if let Some(retry) = source.downcast_ref::<qubit_retry::RetryError<qubit_http::HttpError>>() {
             if let Some(inner) = retry.last_error() {
@@ -629,7 +629,7 @@ HTTP 日志使用 `tracing::trace!`。必须同时满足：
 ```rust
 use http::Method;
 use qubit_http::{
-    HttpClientFactory,
+    HttpClientBuilder,
     HttpClientOptions,
 };
 use qubit_redact::{RedactionPolicy, Sensitivity};
@@ -646,7 +646,7 @@ let builder = RedactionPolicy::default().to_builder().http(|http| {
 })?;
 options.log_redaction_policy = builder.build()?;
 
-let client = HttpClientFactory::new().create(options)?;
+let client = HttpClientBuilder::new().create(options)?;
 let request = client
     .request(Method::POST, "https://api.example.com/login")
     .query_param("access_token", "secret-token")
@@ -884,7 +884,7 @@ while let Some(item) = events.next().await {
 | `json.max_output_bytes` | JSON/NDJSON 请求 body 编码后的累计最大字节数（含 NDJSON 行结束符）；默认 `8388608` |
 | `timeouts.connect_timeout` | 连接超时 |
 | `timeouts.read_timeout` | 读取响应体或流时的单次等待超时 |
-| `timeouts.write_timeout` | 发送前准备和发送阶段超时 |
+| `timeouts.send_timeout` | 发送前准备和发送阶段超时 |
 | `timeouts.request_timeout` | 整体请求超时，可选 |
 | `proxy.enabled` | 是否启用代理 |
 | `proxy.proxy_type` | `http`、`https`、`socks5` 或 `socks5h` |

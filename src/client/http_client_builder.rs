@@ -54,16 +54,30 @@ impl Resolve for Ipv4OnlyResolver {
 }
 
 /// Public factory used to build reqwest-backed [`HttpClient`] instances.
-#[derive(Debug, Default, Clone, Copy)]
-pub struct HttpClientFactory;
+#[derive(Debug, Default, Clone)]
+pub struct HttpClientBuilder {
+    options: Option<HttpClientOptions>,
+}
 
-impl HttpClientFactory {
+impl HttpClientBuilder {
     /// Returns a stateless factory instance.
     ///
     /// # Returns
-    /// New [`HttpClientFactory`].
+    /// New [`HttpClientBuilder`].
     pub fn new() -> Self {
-        Self
+        Self { options: None }
+    }
+
+    /// Installs the complete client options value.
+    pub fn options(mut self, options: HttpClientOptions) -> Self {
+        self.options = Some(options);
+        self
+    }
+
+    /// Builds a client from the configured options or defaults.
+    pub fn build(self) -> HttpResult<HttpClient> {
+        let options = self.options.unwrap_or_default();
+        Self::new().create(options)
     }
 
     /// Creates a new [`HttpClient`] with default [`HttpClientOptions`].
@@ -146,7 +160,7 @@ impl HttpClientFactory {
     }
 
     /// Loads [`HttpClientOptions`] from `config`, validates them, then calls
-    /// [`HttpClientFactory::create`].
+    /// [`HttpClientBuilder::create`].
     ///
     /// # Parameters
     /// - `config`: Any [`ConfigReader`] (root [`qubit_config::Config`] or a

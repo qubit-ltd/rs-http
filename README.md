@@ -43,7 +43,7 @@ This example uses `httpbin.org`, so you can run it without starting a local test
 
 ```rust
 use http::Method;
-use qubit_http::{HttpClientFactory, HttpClientOptions};
+use qubit_http::{HttpClientBuilder, HttpClientOptions};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -51,7 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     options.set_base_url("https://httpbin.org")?;
     options.add_header("x-client-id", "demo")?;
 
-    let client = HttpClientFactory::new().create(options)?;
+    let client = HttpClientBuilder::new().create(options)?;
 
     let request = client
         .request(Method::GET, "/anything")
@@ -91,7 +91,7 @@ fields together can use `redactor.diagnostic_batch()` and resolve the returned h
 after `finish()` to share that budget.
 
 ```rust
-use qubit_http::{HttpClientFactory, HttpClientOptions};
+use qubit_http::{HttpClientBuilder, HttpClientOptions};
 use qubit_redact::{RedactionPolicy, Sensitivity};
 use qubit_redact::formats::http::UrlPathPolicy;
 
@@ -105,7 +105,7 @@ let builder = RedactionPolicy::default().to_builder().http(|http| {
 })?;
 options.log_redaction_policy = builder.build()?;
 
-let client = HttpClientFactory::new().create(options)?;
+let client = HttpClientBuilder::new().create(options)?;
 ```
 
 `logging.body_size_limit` is the presentation limit. The policy's
@@ -135,7 +135,7 @@ only when the application explicitly accepts removing HTTP context floors.
 
 | Type | Purpose |
 | --- | --- |
-| `HttpClientFactory` | Creates clients from defaults, explicit options, or config. |
+| `HttpClientBuilder` | Creates clients from defaults, explicit options, or config. |
 | `HttpClientOptions` | Holds client-level defaults for base URL, headers, timeouts, retry, logging, proxy, redirects, connection pool, JSON value limits, and SSE decoding. |
 | `HttpClient` | Executes requests and applies headers, injectors, interceptors, retry, logging, and SSE reconnect helpers. |
 | `HttpRequestBuilder` | Builds method, path, query, headers, body, and request-level overrides. |

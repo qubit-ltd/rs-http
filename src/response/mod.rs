@@ -9,6 +9,7 @@
 
 mod http_byte_stream;
 mod http_response;
+mod http_response_body_state;
 mod http_response_interceptor_context;
 mod http_response_interceptors;
 mod http_response_meta;

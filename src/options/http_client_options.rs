@@ -30,6 +30,7 @@ use super::HttpConfigError;
 use super::from_config_helpers::get_optional_usize;
 use super::from_config_helpers::hashmap_to_headermap;
 use super::http_logging_options::HttpLoggingOptions;
+use super::http_origin_policy::HttpOriginPolicy;
 use super::http_retry_options::HttpRetryOptions;
 use super::http_timeout_options::HttpTimeoutOptions;
 use super::internal::HttpClientLogRedactionConfigInput;
@@ -47,9 +48,11 @@ use crate::sse::DoneMarkerPolicy;
 use crate::sse::SseJsonMode;
 
 /// Aggregated settings for [`crate::HttpClient`] and
-/// [`crate::HttpClientFactory`].
+/// [`crate::HttpClientBuilder`].
 #[derive(Clone)]
 pub struct HttpClientOptions {
+    /// Origin policy applied to absolute request URLs and redirects.
+    pub origin_policy: HttpOriginPolicy,
     /// Optional base URL.
     pub base_url: Option<Url>,
     /// Default request headers.
@@ -108,6 +111,7 @@ impl Default for HttpClientOptions {
     /// Default [`HttpClientOptions`].
     fn default() -> Self {
         Self {
+            origin_policy: HttpOriginPolicy::SameOrigin,
             base_url: None,
             default_headers: HeaderMap::new(),
             timeouts: HttpTimeoutOptions::default(),
