@@ -9,7 +9,7 @@
 use std::time::Duration;
 
 use http::Method;
-use qubit_http::HttpClientFactory;
+use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::ProxyType;
 use tokio::io::AsyncReadExt;
@@ -203,11 +203,11 @@ async fn test_socks5_proxy_forwards_http_request() {
     options.proxy.proxy_type = ProxyType::Socks5;
     options.proxy.host = Some(socks.host().to_string());
     options.proxy.port = Some(socks.port());
-    options.timeouts.write_timeout = Duration::from_secs(3);
+    options.timeouts.send_timeout = Duration::from_secs(3);
     options.timeouts.read_timeout = Duration::from_secs(3);
     options.timeouts.request_timeout = Some(Duration::from_secs(3));
 
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
     let request = client.request(Method::GET, "/socks").build();
     let mut response = timeout(Duration::from_secs(5), client.execute(request))
         .await

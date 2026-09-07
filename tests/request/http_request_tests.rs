@@ -14,7 +14,8 @@ use http::HeaderMap;
 use http::HeaderName;
 use http::HeaderValue;
 use http::Method;
-use qubit_http::HttpClientFactory;
+use qubit_http::HttpCancellationToken;
+use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
 use qubit_http::HttpRequestBody;
@@ -22,14 +23,13 @@ use qubit_http::HttpRequestBodyByteStream;
 use qubit_http::HttpRequestRetryOverride;
 use qubit_http::HttpRequestStreamingBody;
 use qubit_http::HttpRetryMethodPolicy;
-use qubit_http::RetryCancellationToken;
 use qubit_redact::RedactionPolicy;
 use qubit_redact::Sensitivity;
 use qubit_redact::formats::http::UrlPathPolicy;
 use url::Url;
 
 fn new_request(method: Method, path: &str) -> qubit_http::HttpRequest {
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create_default()
         .expect("default options should create client");
     client.request(method, path).build()
@@ -67,7 +67,7 @@ fn test_http_request_setters_update_method_path_query_and_body() {
 
 #[test]
 fn test_http_request_debug_masks_sensitive_values() {
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create_default()
         .expect("default options should create client");
     let request = client
@@ -87,7 +87,7 @@ fn test_http_request_debug_masks_sensitive_values() {
     options
         .set_base_url("https://debug-user:debug-url-secret@example.com/root/?accessToken=debug-base-query-secret")
         .expect("base URL should be valid");
-    let relative_client = HttpClientFactory::new()
+    let relative_client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     let relative_request = relative_client
@@ -110,7 +110,7 @@ fn test_http_request_debug_masks_sensitive_values() {
 
 #[test]
 fn test_http_request_debug_masks_native_sensitive_header_value() {
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create_default()
         .expect("default options should create client");
     let mut headers = HeaderMap::new();
@@ -140,7 +140,7 @@ fn test_http_request_debug_shares_one_redaction_budget() {
         .expect("limits should be valid")
         .build()
         .expect("policy should build");
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     let request = client
@@ -169,7 +169,7 @@ fn test_http_request_debug_honors_url_path_redaction_policy() {
         })
         .expect("test policy should be valid");
     options.log_redaction_policy = policy_builder.build().expect("log redaction policy should be valid");
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     let request = client
@@ -199,7 +199,7 @@ fn test_http_request_debug_honors_explicit_default_field_exclusion() {
         })
         .expect("the test policy input should be valid");
     options.log_redaction_policy = builder.build().expect("log redaction policy should be valid");
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     let request = client
@@ -221,7 +221,7 @@ fn test_http_request_debug_suffix_allow_wins_over_sensitive_suffix() {
         })
         .expect("the test policy input should be valid");
     options.log_redaction_policy = builder.build().expect("log redaction policy should be valid");
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     let request = client
@@ -247,7 +247,7 @@ fn test_http_request_debug_allow_rule_wins_independent_of_builder_order() {
         })
         .expect("the test policy input should be valid");
     options.log_redaction_policy = builder.build().expect("log redaction policy should be valid");
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     let request = client
@@ -265,7 +265,7 @@ fn test_http_request_resolved_url_is_public() {
     options
         .set_base_url("https://api.example.com/root/")
         .expect("base URL should be valid");
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     let request = client
@@ -322,15 +322,15 @@ fn test_http_request_setters_update_headers_timeout_retry_and_cancellation() {
     assert_eq!(request.request_timeout(), None);
 
     request
-        .set_write_timeout(Duration::from_millis(250))
+        .set_send_timeout(Duration::from_millis(250))
         .expect("positive write timeout should be accepted");
     request
         .set_read_timeout(Duration::from_millis(750))
         .expect("positive read timeout should be accepted");
-    assert_eq!(request.write_timeout(), Duration::from_millis(250));
+    assert_eq!(request.send_timeout(), Duration::from_millis(250));
     assert_eq!(request.read_timeout(), Duration::from_millis(750));
 
-    let token = RetryCancellationToken::new();
+    let token = HttpCancellationToken::new();
     request.set_cancellation_token(token.clone());
     assert!(request.cancellation_token().is_some());
     request.clear_cancellation_token();
@@ -351,7 +351,7 @@ fn test_http_request_timeout_setters_reject_zero_and_keep_previous_values() {
         .set_request_timeout(Duration::from_secs(5))
         .expect("positive request timeout should be accepted");
     request
-        .set_write_timeout(Duration::from_millis(250))
+        .set_send_timeout(Duration::from_millis(250))
         .expect("positive write timeout should be accepted");
     request
         .set_read_timeout(Duration::from_millis(750))
@@ -364,12 +364,12 @@ fn test_http_request_timeout_setters_reject_zero_and_keep_previous_values() {
     assert!(request_timeout_error.message.contains("request_timeout"));
     assert_eq!(request.request_timeout(), Some(Duration::from_secs(5)));
 
-    let write_timeout_error = request
-        .set_write_timeout(Duration::ZERO)
+    let send_timeout_error = request
+        .set_send_timeout(Duration::ZERO)
         .expect_err("zero write timeout should be rejected");
-    assert_eq!(write_timeout_error.kind, HttpErrorKind::Other);
-    assert!(write_timeout_error.message.contains("write_timeout"));
-    assert_eq!(request.write_timeout(), Duration::from_millis(250));
+    assert_eq!(send_timeout_error.kind, HttpErrorKind::Other);
+    assert!(send_timeout_error.message.contains("send_timeout"));
+    assert_eq!(request.send_timeout(), Duration::from_millis(250));
 
     let read_timeout_error = request
         .set_read_timeout(Duration::ZERO)
@@ -386,7 +386,7 @@ fn test_http_request_setters_update_resolved_url_for_base_url_and_ipv4_only() {
         .set_base_url("https://api.example.com/v1/")
         .expect("base URL should parse");
 
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     let mut request = client.request(Method::GET, "users").build();

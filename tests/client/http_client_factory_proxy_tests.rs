@@ -9,9 +9,10 @@
 use std::time::Duration;
 
 use http::Method;
-use qubit_http::HttpClientFactory;
+use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
+use qubit_http::HttpOriginPolicy;
 use qubit_http::ProxyType;
 use tokio::time::timeout;
 
@@ -31,6 +32,7 @@ async fn test_http_proxy_forwards_request_and_sends_proxy_auth() {
     let proxy = spawn_simple_proxy_server(ProxyBehavior::ForwardHttp).await;
 
     let mut options = HttpClientOptions::default();
+    options.origin_policy = HttpOriginPolicy::AnyOrigin;
     options.base_url = Some(backend.base_url());
     options.proxy.enabled = true;
     options.proxy.proxy_type = ProxyType::Http;
@@ -38,10 +40,10 @@ async fn test_http_proxy_forwards_request_and_sends_proxy_auth() {
     options.proxy.port = Some(proxy.port());
     options.proxy.username = Some("user".to_string());
     options.proxy.password = Some("pass".to_string());
-    options.timeouts.write_timeout = Duration::from_secs(2);
+    options.timeouts.send_timeout = Duration::from_secs(2);
     options.timeouts.read_timeout = Duration::from_secs(2);
 
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
     let request = client.request(Method::GET, "/via-proxy").build();
     let response = timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -86,10 +88,10 @@ async fn test_proxy_disabled_does_not_use_environment_proxy() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(backend.base_url());
     options.proxy.enabled = false;
-    options.timeouts.write_timeout = Duration::from_secs(2);
+    options.timeouts.send_timeout = Duration::from_secs(2);
     options.timeouts.read_timeout = Duration::from_secs(2);
 
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
     let result = client.execute(client.request(Method::GET, "/direct").build()).await;
 
     std::env::remove_var("HTTP_PROXY");
@@ -108,17 +110,18 @@ async fn test_https_via_http_proxy_uses_connect_tunnel() {
     let proxy = spawn_simple_proxy_server(ProxyBehavior::ConnectProbe).await;
 
     let mut options = HttpClientOptions::default();
+    options.origin_policy = HttpOriginPolicy::AnyOrigin;
     options.proxy.enabled = true;
     options.proxy.proxy_type = ProxyType::Http;
     options.proxy.host = Some(proxy.host().to_string());
     options.proxy.port = Some(proxy.port());
     options.proxy.username = Some("user".to_string());
     options.proxy.password = Some("pass".to_string());
-    options.timeouts.write_timeout = Duration::from_secs(2);
+    options.timeouts.send_timeout = Duration::from_secs(2);
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.request_timeout = Some(Duration::from_secs(2));
 
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
     let request = client.request(Method::GET, "https://example.com/through-proxy").build();
     let error = client.execute(request).await.unwrap_err();
     assert!(

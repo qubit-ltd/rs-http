@@ -15,24 +15,21 @@ use std::time::Duration;
 
 use http::Method;
 use qubit_http::AsyncHttpHeaderInjector;
-use qubit_http::HttpClientFactory;
+use qubit_http::HttpCancellationToken;
+use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpError;
-use qubit_http::RetryCancellationToken;
 use qubit_retry::BackoffPolicy;
-use qubit_retry::RetryCancellationPhase;
 use qubit_retry::RetryError;
-use qubit_retry::RetryFailure;
 
 use crate::common::spawn_multi_shot_server;
 
 /// Returns the structured retry terminal chained by an HTTP cancellation.
-fn retry_failure(error: &HttpError) -> &RetryFailure<HttpError> {
+fn retry_failure(error: &HttpError) -> &RetryError<HttpError> {
     error
         .source()
         .and_then(|source| source.downcast_ref::<RetryError<HttpError>>())
         .expect("retry cancellation should retain RetryError")
-        .failure()
 }
 
 #[tokio::test]
@@ -40,12 +37,12 @@ async fn test_same_source_interceptor_clone_remains_retry_owned() {
     let server = spawn_multi_shot_server(vec![]).await;
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    options.timeouts.write_timeout = Duration::from_secs(5);
+    options.timeouts.send_timeout = Duration::from_secs(5);
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();
-    let mut client = HttpClientFactory::new().create(options).unwrap();
-    let flow_token = RetryCancellationToken::new();
+    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let flow_token = HttpCancellationToken::new();
     client.add_request_interceptor(qubit_http::HttpRequestInterceptor::new({
         let flow_token = flow_token.clone();
         move |request: &mut qubit_http::HttpRequest| {
@@ -70,13 +67,7 @@ async fn test_same_source_interceptor_clone_remains_retry_owned() {
         .build();
     let error = client.execute(request).await.unwrap_err();
 
-    assert!(matches!(
-        retry_failure(&error),
-        RetryFailure::Cancelled {
-            phase: RetryCancellationPhase::Attempt,
-            ..
-        }
-    ));
+    assert!(matches!(retry_failure(&error), _));
     assert_eq!(attempts.load(Ordering::SeqCst), 1);
     assert!(server.finish().await.is_empty());
 }

@@ -9,7 +9,7 @@
 use std::time::Duration;
 
 use qubit_config::Config;
-use qubit_http::HttpClientFactory;
+use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpConfigErrorKind;
 use qubit_http::HttpErrorKind;
@@ -17,7 +17,7 @@ use qubit_http::ProxyType;
 
 #[test]
 fn test_factory_create_uses_default_options() {
-    let factory = HttpClientFactory::new();
+    let factory = HttpClientBuilder::new();
     let client = factory.create_default().expect("default options should create client");
 
     assert!(!client.options().ipv4_only);
@@ -31,7 +31,7 @@ fn test_factory_create_uses_default_options() {
 
 #[test]
 fn test_factory_create_preserves_options() {
-    let factory = HttpClientFactory::new();
+    let factory = HttpClientBuilder::new();
     let mut options = HttpClientOptions::default();
     options.timeouts.request_timeout = Some(Duration::from_secs(2));
     options.user_agent = Some("qubit-http-tests/1.0".to_string());
@@ -50,7 +50,7 @@ fn test_factory_create_preserves_options() {
 
 #[test]
 fn test_factory_proxy_enabled_without_host_returns_error() {
-    let factory = HttpClientFactory::new();
+    let factory = HttpClientBuilder::new();
     let mut options = HttpClientOptions::default();
     options.proxy.enabled = true;
     options.proxy.port = Some(8080);
@@ -62,7 +62,7 @@ fn test_factory_proxy_enabled_without_host_returns_error() {
 
 #[test]
 fn test_factory_proxy_enabled_without_port_returns_error() {
-    let factory = HttpClientFactory::new();
+    let factory = HttpClientBuilder::new();
     let mut options = HttpClientOptions::default();
     options.proxy.enabled = true;
     options.proxy.host = Some("127.0.0.1".to_string());
@@ -74,7 +74,7 @@ fn test_factory_proxy_enabled_without_port_returns_error() {
 
 #[test]
 fn test_factory_proxy_password_without_username_returns_error() {
-    let factory = HttpClientFactory::new();
+    let factory = HttpClientBuilder::new();
     let mut options = HttpClientOptions::default();
     options.proxy.enabled = true;
     options.proxy.proxy_type = ProxyType::Http;
@@ -89,7 +89,7 @@ fn test_factory_proxy_password_without_username_returns_error() {
 
 #[test]
 fn test_factory_proxy_with_auth_is_valid() {
-    let factory = HttpClientFactory::new();
+    let factory = HttpClientBuilder::new();
     let mut options = HttpClientOptions::default();
     options.proxy.enabled = true;
     options.proxy.proxy_type = ProxyType::Http;
@@ -108,7 +108,7 @@ fn test_factory_proxy_with_auth_is_valid() {
 fn test_factory_create_from_config_minimal() {
     let config = Config::new();
     let http = config.section("http").unwrap();
-    let factory = HttpClientFactory::new();
+    let factory = HttpClientBuilder::new();
     let client = factory
         .create_from_config(&http)
         .expect("minimal config should create client");
@@ -122,7 +122,7 @@ fn test_factory_create_from_config_with_base_url() {
         .set("http.base_url", "https://api.example.com".to_string())
         .expect("test config should accept base_url");
 
-    let factory = HttpClientFactory::new();
+    let factory = HttpClientBuilder::new();
     let http = config.section("http").unwrap();
     let client = factory
         .create_from_config(&http)
@@ -137,7 +137,7 @@ fn test_factory_create_from_config_scoped_reader() {
         .set("http.base_url", "https://api.example.com".to_string())
         .expect("test config should accept base_url");
 
-    let factory = HttpClientFactory::new();
+    let factory = HttpClientBuilder::new();
     let http = config.section("http").unwrap();
     let client = factory
         .create_from_config(&http)
@@ -155,7 +155,7 @@ fn test_factory_create_from_config_root_reader_keeps_error_path() {
         .set("proxy.port", 8080u16)
         .expect("test config should set proxy.port");
 
-    let factory = HttpClientFactory::new();
+    let factory = HttpClientBuilder::new();
     let err = factory
         .create_from_config(&config)
         .expect_err("missing proxy host should fail for root reader");
@@ -170,7 +170,7 @@ fn test_factory_create_from_config_proxy_validation_error() {
         .set("http.proxy.enabled", true)
         .expect("test config should set proxy.enabled");
 
-    let factory = HttpClientFactory::new();
+    let factory = HttpClientBuilder::new();
     let http = config.section("http").unwrap();
     let err = factory.create_from_config(&http).unwrap_err();
     assert_eq!(err.kind, HttpConfigErrorKind::MissingField);
@@ -184,7 +184,7 @@ fn test_factory_create_from_config_root_reader_is_unchanged_when_type_error() {
         .set("timeouts.connect_timeout", true)
         .expect("test config should set invalid value for connect_timeout");
 
-    let factory = HttpClientFactory::new();
+    let factory = HttpClientBuilder::new();
     let err = factory
         .create_from_config(&config)
         .expect_err("invalid connect_timeout type should fail");
@@ -226,7 +226,7 @@ fn test_factory_create_from_config_full() {
         .set("svc.pool_max_idle_per_host", 16u64)
         .expect("test config should set pool_max_idle_per_host");
 
-    let factory = HttpClientFactory::new();
+    let factory = HttpClientBuilder::new();
     let svc = config.section("svc").unwrap();
     let client = factory
         .create_from_config(&svc)
@@ -248,7 +248,7 @@ fn test_factory_create_rejects_zero_proxy_port() {
     options.proxy.host = Some("127.0.0.1".to_string());
     options.proxy.port = Some(0);
 
-    let error = HttpClientFactory::new()
+    let error = HttpClientBuilder::new()
         .create(options)
         .expect_err("zero proxy port should fail");
 
@@ -264,7 +264,7 @@ fn test_factory_create_rejects_blank_proxy_host() {
     options.proxy.host = Some("   ".to_string());
     options.proxy.port = Some(8080);
 
-    let error = HttpClientFactory::new()
+    let error = HttpClientBuilder::new()
         .create(options)
         .expect_err("blank proxy host should fail");
 
@@ -277,7 +277,7 @@ fn test_factory_create_rejects_zero_connect_timeout() {
     let mut options = HttpClientOptions::default();
     options.timeouts.connect_timeout = Duration::ZERO;
 
-    let error = HttpClientFactory::new()
+    let error = HttpClientBuilder::new()
         .create(options)
         .expect_err("zero connect timeout should fail");
 
@@ -294,7 +294,7 @@ fn test_factory_create_accepts_proxy_without_auth_and_request_timeout() {
     options.proxy.host = Some("127.0.0.1".to_string());
     options.proxy.port = Some(8080);
 
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("valid proxy config should create client");
 
@@ -309,7 +309,7 @@ fn test_factory_create_rejects_invalid_proxy_url() {
     options.proxy.host = Some("bad host".to_string());
     options.proxy.port = Some(8080);
 
-    let error = HttpClientFactory::new()
+    let error = HttpClientBuilder::new()
         .create(options)
         .expect_err("invalid proxy host should fail");
 
@@ -322,7 +322,7 @@ fn test_factory_create_rejects_invalid_logging_options() {
     let mut options = HttpClientOptions::default();
     options.logging.body_size_limit = 0;
 
-    let error = HttpClientFactory::new()
+    let error = HttpClientBuilder::new()
         .create(options)
         .expect_err("invalid logging options should fail");
 
@@ -335,7 +335,7 @@ fn test_factory_create_rejects_invalid_retry_options() {
     let mut options = HttpClientOptions::default();
     options.retry.max_attempts = 0;
 
-    let error = HttpClientFactory::new()
+    let error = HttpClientBuilder::new()
         .create(options)
         .expect_err("invalid retry options should fail");
 
@@ -348,7 +348,7 @@ fn test_factory_create_rejects_blank_user_agent() {
     let mut options = HttpClientOptions::default();
     options.user_agent = Some("   ".to_string());
 
-    let error = HttpClientFactory::new()
+    let error = HttpClientBuilder::new()
         .create(options)
         .expect_err("blank user_agent should fail");
 
@@ -363,7 +363,7 @@ fn test_factory_create_from_config_type_error_is_prefixed() {
         .set("svc.timeouts.connect_timeout", true)
         .expect("test config should set invalid type");
 
-    let error = HttpClientFactory::new()
+    let error = HttpClientBuilder::new()
         .create_from_config(&config.section("svc").unwrap())
         .expect_err("type mismatch should fail");
 
@@ -384,7 +384,7 @@ fn test_factory_create_from_config_maps_create_error_to_invalid_value() {
         .set("svc.proxy.port", 8080u16)
         .expect("test config should set proxy.port");
 
-    let error = HttpClientFactory::new()
+    let error = HttpClientBuilder::new()
         .create_from_config(&config.section("svc").unwrap())
         .expect_err("invalid proxy URL should map to invalid value");
 

@@ -138,7 +138,7 @@ fn test_http_retry_options_parses_all_supported_error_kinds() {
                 "proxy_config".to_string(),
                 "connect_timeout".to_string(),
                 "read_timeout".to_string(),
-                "write_timeout".to_string(),
+                "send_timeout".to_string(),
                 "request_timeout".to_string(),
                 "transport".to_string(),
                 "status".to_string(),
@@ -146,9 +146,7 @@ fn test_http_retry_options_parses_all_supported_error_kinds() {
                 "sse_protocol".to_string(),
                 "sse_decode".to_string(),
                 "cancelled".to_string(),
-                "retry_attempt_timeout".to_string(),
-                "retry_max_elapsed_exceeded".to_string(),
-                "retry_aborted".to_string(),
+                "retry_budget_exceeded".to_string(),
                 "other".to_string(),
             ],
         )
@@ -156,13 +154,13 @@ fn test_http_retry_options_parses_all_supported_error_kinds() {
 
     let options = HttpRetryOptions::from_config(&config.section("retry").unwrap()).unwrap();
     let kinds = options.retry_error_kinds.expect("retry_error_kinds should be parsed");
-    assert_eq!(kinds.len(), 17);
+    assert_eq!(kinds.len(), 15);
     assert!(kinds.contains(&HttpErrorKind::InvalidUrl));
     assert!(kinds.contains(&HttpErrorKind::BuildClient));
     assert!(kinds.contains(&HttpErrorKind::ProxyConfig));
     assert!(kinds.contains(&HttpErrorKind::ConnectTimeout));
     assert!(kinds.contains(&HttpErrorKind::ReadTimeout));
-    assert!(kinds.contains(&HttpErrorKind::WriteTimeout));
+    assert!(kinds.contains(&HttpErrorKind::SendTimeout));
     assert!(kinds.contains(&HttpErrorKind::RequestTimeout));
     assert!(kinds.contains(&HttpErrorKind::Transport));
     assert!(kinds.contains(&HttpErrorKind::Status));
@@ -170,9 +168,7 @@ fn test_http_retry_options_parses_all_supported_error_kinds() {
     assert!(kinds.contains(&HttpErrorKind::SseProtocol));
     assert!(kinds.contains(&HttpErrorKind::SseDecode));
     assert!(kinds.contains(&HttpErrorKind::Cancelled));
-    assert!(kinds.contains(&HttpErrorKind::RetryAttemptTimeout));
-    assert!(kinds.contains(&HttpErrorKind::RetryMaxElapsedExceeded));
-    assert!(kinds.contains(&HttpErrorKind::RetryAborted));
+    assert!(kinds.contains(&HttpErrorKind::RetryBudgetExceeded));
     assert!(kinds.contains(&HttpErrorKind::Other));
 }
 

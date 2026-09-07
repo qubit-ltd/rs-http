@@ -9,7 +9,7 @@
 use bytes::Bytes;
 use http::HeaderValue;
 use http::Method;
-use qubit_http::HttpClientFactory;
+use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpLogger;
 use qubit_http::HttpLoggingOptions;
@@ -38,7 +38,7 @@ fn test_http_logger_logs_request_body_preview_with_truncation() {
         .expect("test policy should be valid");
     options.log_redaction_policy = policy_builder.build().expect("log redaction policy should be valid");
     let logger = HttpLogger::new(&options);
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create_default()
         .expect("default client should be created");
     let request = client
@@ -83,7 +83,7 @@ fn test_http_body_redaction_reports_truncated_for_bounded_preview() {
 fn test_http_logger_redacts_request_url_query_and_json_body() {
     let options = HttpClientOptions::default();
     let logger = HttpLogger::new(&options);
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create_default()
         .expect("default client should be created");
     let request = client
@@ -107,7 +107,7 @@ fn test_http_logger_redacts_request_url_query_and_json_body() {
 fn test_http_logger_does_not_leak_multipart_body_sensitive_values() {
     let options = HttpClientOptions::default();
     let logger = HttpLogger::new(&options);
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create_default()
         .expect("default client should be created");
     let body = Bytes::from_static(
@@ -130,7 +130,7 @@ fn test_http_logger_does_not_leak_multipart_body_sensitive_values() {
 fn test_http_logger_does_not_leak_multipart_mixed_body_sensitive_values() {
     let options = HttpClientOptions::default();
     let logger = HttpLogger::new(&options);
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create_default()
         .expect("default client should be created");
     let body = Bytes::from_static(

@@ -243,16 +243,16 @@ fn test_http_error_request_timeout_constructor() {
 
 #[test]
 fn test_http_error_retry_layer_constructors_and_retry_hints() {
-    let attempt = HttpError::retry_attempt_timeout("attempt budget");
-    assert_eq!(attempt.kind, HttpErrorKind::RetryAttemptTimeout);
+    let attempt = HttpError::retry_budget_exceeded("attempt budget");
+    assert_eq!(attempt.kind, HttpErrorKind::RetryBudgetExceeded);
     assert_eq!(attempt.retry_hint(), RetryHint::NonRetryable);
 
-    let budget = HttpError::retry_max_elapsed_exceeded("max elapsed");
-    assert_eq!(budget.kind, HttpErrorKind::RetryMaxElapsedExceeded);
+    let budget = HttpError::retry_budget_exceeded("max elapsed");
+    assert_eq!(budget.kind, HttpErrorKind::RetryBudgetExceeded);
     assert_eq!(budget.retry_hint(), RetryHint::NonRetryable);
 
-    let aborted = HttpError::retry_aborted("policy abort");
-    assert_eq!(aborted.kind, HttpErrorKind::RetryAborted);
+    let aborted = HttpError::new(HttpErrorKind::Other, "policy abort");
+    assert_eq!(aborted.kind, HttpErrorKind::Other);
     assert_eq!(aborted.retry_hint(), RetryHint::NonRetryable);
 }
 

@@ -24,9 +24,9 @@ use qubit_http::constants::DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES;
 use qubit_http::constants::DEFAULT_LOG_BODY_SIZE_LIMIT_BYTES;
 use qubit_http::constants::DEFAULT_READ_TIMEOUT_SECS;
 use qubit_http::constants::DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES;
+use qubit_http::constants::DEFAULT_SEND_TIMEOUT_SECS;
 use qubit_http::constants::DEFAULT_SSE_MAX_FRAME_BYTES;
 use qubit_http::constants::DEFAULT_SSE_MAX_LINE_BYTES;
-use qubit_http::constants::DEFAULT_WRITE_TIMEOUT_SECS;
 use qubit_http::sse::DoneMarkerPolicy;
 use qubit_http::sse::SseJsonMode;
 use qubit_redact::RedactionPolicy;
@@ -84,8 +84,8 @@ fn test_http_client_options_defaults() {
         Duration::from_secs(DEFAULT_READ_TIMEOUT_SECS)
     );
     assert_eq!(
-        options.timeouts.write_timeout,
-        Duration::from_secs(DEFAULT_WRITE_TIMEOUT_SECS)
+        options.timeouts.send_timeout,
+        Duration::from_secs(DEFAULT_SEND_TIMEOUT_SECS)
     );
     assert_eq!(options.timeouts.request_timeout, None);
     assert!(!options.proxy.enabled);
@@ -1146,7 +1146,7 @@ fn test_http_client_options_from_root_config_all_sections() {
         .unwrap();
     config.set("timeouts.connect_timeout", Duration::from_secs(3)).unwrap();
     config.set("timeouts.read_timeout", Duration::from_secs(4)).unwrap();
-    config.set("timeouts.write_timeout", Duration::from_secs(5)).unwrap();
+    config.set("timeouts.send_timeout", Duration::from_secs(5)).unwrap();
     config.set("timeouts.request_timeout", Duration::from_secs(6)).unwrap();
     config.set("proxy.enabled", true).unwrap();
     config.set("proxy.host", "proxy.root.example".to_string()).unwrap();

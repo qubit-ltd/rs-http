@@ -14,7 +14,7 @@ use http::HeaderMap;
 use http::Method;
 use http::StatusCode;
 use qubit_budget::json::JsonValueLimits;
-use qubit_http::HttpClientFactory;
+use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
 use qubit_http::HttpResponse;
@@ -114,8 +114,8 @@ async fn test_execute_stream_with_decode_events_end_to_end() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_secs(2);
-    options.timeouts.write_timeout = Duration::from_secs(2);
-    let client = HttpClientFactory::new().create(options).unwrap();
+    options.timeouts.send_timeout = Duration::from_secs(2);
+    let client = HttpClientBuilder::new().create(options).unwrap();
 
     let request = client.request(Method::GET, "/sse").build();
     let stream_response = timeout(Duration::from_secs(3), client.execute(request))
@@ -158,8 +158,8 @@ async fn test_execute_stream_decode_events_reports_read_timeout_when_interrupted
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_millis(80);
-    options.timeouts.write_timeout = Duration::from_secs(1);
-    let client = HttpClientFactory::new().create(options).unwrap();
+    options.timeouts.send_timeout = Duration::from_secs(1);
+    let client = HttpClientBuilder::new().create(options).unwrap();
 
     let request = client.request(Method::GET, "/sse-timeout").build();
     let stream_response = client.execute(request).await.unwrap();
@@ -203,8 +203,8 @@ async fn test_execute_stream_decode_json_chunks_uses_client_default_strict_mode(
     let expected_policy = builder.build().expect("the custom HTTP policy should be valid");
     options.log_redaction_policy = expected_policy.clone();
     options.timeouts.read_timeout = Duration::from_secs(2);
-    options.timeouts.write_timeout = Duration::from_secs(2);
-    let client = HttpClientFactory::new().create(options).unwrap();
+    options.timeouts.send_timeout = Duration::from_secs(2);
+    let client = HttpClientBuilder::new().create(options).unwrap();
 
     let request = client.request(Method::GET, "/sse-strict").build();
     let stream_response = client.execute(request).await.unwrap();
@@ -235,8 +235,8 @@ async fn test_execute_stream_decode_events_uses_client_default_sse_limits() {
     options.base_url = Some(server.base_url());
     options.sse_max_frame_bytes = 16;
     options.timeouts.read_timeout = Duration::from_secs(2);
-    options.timeouts.write_timeout = Duration::from_secs(2);
-    let client = HttpClientFactory::new().create(options).unwrap();
+    options.timeouts.send_timeout = Duration::from_secs(2);
+    let client = HttpClientBuilder::new().create(options).unwrap();
 
     let request = client.request(Method::GET, "/sse-limits").build();
     let stream_response = client.execute(request).await.unwrap();
@@ -264,7 +264,7 @@ async fn test_sse_chunks_apply_client_json_value_limits() {
     options.base_url = Some(server.base_url());
     options.sse_json_mode = SseJsonMode::Strict;
     options.json_value_limits = JsonValueLimits::builder().max_nodes(1).build();
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     let request = client.request(Method::GET, "/sse-json-value-limit").build();
@@ -307,7 +307,7 @@ async fn test_sse_decode_error_preserves_client_redactor_policy() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.log_redaction_policy = expected_policy.clone();
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("the client should be created");
 

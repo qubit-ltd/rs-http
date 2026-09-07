@@ -9,7 +9,7 @@
 use bytes::Bytes;
 use futures_util::stream;
 use http::Method;
-use qubit_http::HttpClientFactory;
+use qubit_http::HttpClientBuilder;
 use qubit_http::HttpRequestBody;
 use qubit_http::HttpRequestBodyByteStream;
 use qubit_http::HttpRequestStreamingBody;
@@ -23,7 +23,7 @@ fn test_http_request_streaming_body_sets_request_body_to_empty_placeholder() {
     });
     assert!(format!("{streaming_body:?}").contains("HttpRequestStreamingBody"));
 
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create_default()
         .expect("default client should be created");
     let request = client

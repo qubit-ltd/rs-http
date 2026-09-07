@@ -14,10 +14,10 @@ use std::task::Waker;
 use std::time::Duration;
 
 use http::Method;
-use qubit_http::HttpClientFactory;
+use qubit_http::HttpCancellationToken;
+use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
-use qubit_http::RetryCancellationToken;
 use qubit_retry::BackoffPolicy;
 use tokio::time::timeout;
 
@@ -39,8 +39,8 @@ async fn test_retry_success_hands_flow_token_to_response() {
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();
-    let client = HttpClientFactory::new().create(options).unwrap();
-    let token = RetryCancellationToken::new();
+    let client = HttpClientBuilder::new().create(options).unwrap();
+    let token = HttpCancellationToken::new();
     let request = client
         .request(Method::GET, "/response-token-handoff")
         .cancellation_token(token.clone())

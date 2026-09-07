@@ -11,7 +11,7 @@ use std::time::Duration;
 use http::Method;
 use http::StatusCode;
 use httpdate::fmt_http_date;
-use qubit_http::HttpClientFactory;
+use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
 use tokio::time::timeout;
@@ -30,7 +30,7 @@ async fn test_execute_maps_retry_after_to_retryable_http_error() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     let request = client.request(Method::GET, "/limited").build();
@@ -66,7 +66,7 @@ async fn test_execute_parses_retry_after_http_date_for_service_unavailable() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     let request = client.request(Method::GET, "/service-unavailable").build();
@@ -101,7 +101,7 @@ async fn test_execute_ignores_invalid_retry_after_for_service_unavailable() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     let request = client
@@ -134,7 +134,7 @@ async fn test_execute_ignores_blank_retry_after_for_service_unavailable() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     let request = client
@@ -160,7 +160,7 @@ async fn test_execute_ignores_blank_retry_after_for_service_unavailable() {
 async fn test_execute_rejects_ipv6_url_when_ipv4_only() {
     let mut options = HttpClientOptions::default();
     options.ipv4_only = true;
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
 
@@ -188,7 +188,7 @@ async fn test_execute_status_error_preview_reports_body_read_failure() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_secs(1);
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     let request = client.request(Method::GET, "/status-preview-read-error").build();

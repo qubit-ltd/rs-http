@@ -13,7 +13,7 @@ use futures_util::StreamExt;
 use http::HeaderMap;
 use http::Method;
 use http::StatusCode;
-use qubit_http::HttpClientFactory;
+use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
 use qubit_http::HttpResponse;
@@ -72,7 +72,7 @@ async fn test_http_stream_response_backend_taken_then_stream_and_bytes_are_empty
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.logging.log_response_body = false;
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
 
@@ -91,19 +91,16 @@ async fn test_http_stream_response_backend_taken_then_stream_and_bytes_are_empty
         "first stream should end after one chunk"
     );
 
-    let mut second_stream = response
-        .stream()
-        .expect("second stream should still return an empty stream");
-    assert!(
-        second_stream.next().await.is_none(),
-        "second stream should be empty after backend is already taken"
-    );
-
-    let bytes = response
+    let second_error = match response.stream() {
+        Err(error) => error,
+        Ok(_) => panic!("second stream must report consumed body"),
+    };
+    assert_eq!(second_error.kind, HttpErrorKind::ResponseBodyAlreadyConsumed);
+    let bytes_error = response
         .bytes()
         .await
-        .expect("bytes after backend taken should resolve to empty");
-    assert!(bytes.is_empty());
+        .expect_err("bytes after stream must report consumed body");
+    assert_eq!(bytes_error.kind, HttpErrorKind::ResponseBodyAlreadyConsumed);
 
     let captured = server.finish().await;
     assert_eq!(captured.target, "/stream-take-backend");
@@ -123,7 +120,7 @@ async fn test_http_response_bytes_remembers_read_failure() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.logging.log_response_body = false;
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
 
@@ -167,7 +164,7 @@ async fn test_http_response_stream_remembers_read_failure() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.logging.log_response_body = false;
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
 
@@ -221,7 +218,7 @@ async fn test_http_response_stream_reports_prior_bytes_read_failure() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.logging.log_response_body = false;
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
 

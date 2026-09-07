@@ -12,7 +12,7 @@ use std::time::Instant;
 use futures_util::StreamExt;
 use http::Method;
 use http::StatusCode;
-use qubit_http::HttpClientFactory;
+use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
 use qubit_http::RetryHint;
@@ -51,7 +51,7 @@ async fn test_retry_max_duration_allows_admitted_request_to_finish_after_budget(
     options.retry.max_attempts = 2;
     options.retry.max_duration = Some(max_duration);
     options.retry.backoff = BackoffPolicy::fixed(retry_delay);
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
 
@@ -91,11 +91,11 @@ async fn test_client_level_request_timeout_triggers_timeout_classification() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    options.timeouts.write_timeout = Duration::from_secs(2);
+    options.timeouts.send_timeout = Duration::from_secs(2);
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.request_timeout = Some(Duration::from_millis(80));
 
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
     let request = client.request(Method::GET, "/request-timeout").build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -118,11 +118,11 @@ async fn test_request_level_timeout_overrides_client_level_timeout() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    options.timeouts.write_timeout = Duration::from_secs(2);
+    options.timeouts.send_timeout = Duration::from_secs(2);
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.request_timeout = Some(Duration::from_secs(5));
 
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
     let request = client
         .request(Method::GET, "/request-timeout-override")
         .request_timeout(Duration::from_millis(80))
@@ -138,7 +138,7 @@ async fn test_request_level_timeout_overrides_client_level_timeout() {
 }
 
 #[tokio::test]
-async fn test_client_level_write_timeout_triggers_write_timeout_error() {
+async fn test_client_level_send_timeout_triggers_send_timeout_error() {
     let server = spawn_one_shot_server(ResponsePlan::DelayedStart {
         delay: Duration::from_millis(250),
         status: 200,
@@ -149,23 +149,23 @@ async fn test_client_level_write_timeout_triggers_write_timeout_error() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    options.timeouts.write_timeout = Duration::from_millis(80);
+    options.timeouts.send_timeout = Duration::from_millis(80);
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.request_timeout = Some(Duration::from_secs(5));
 
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
     let request = client.request(Method::GET, "/client-write-timeout").build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")
         .unwrap_err();
 
-    assert_eq!(error.kind, HttpErrorKind::WriteTimeout);
+    assert_eq!(error.kind, HttpErrorKind::SendTimeout);
     assert_eq!(error.retry_hint(), RetryHint::Retryable);
 }
 
 #[tokio::test]
-async fn test_request_level_write_timeout_overrides_client_level_timeout() {
+async fn test_request_level_send_timeout_overrides_client_level_timeout() {
     let server = spawn_one_shot_server(ResponsePlan::DelayedStart {
         delay: Duration::from_millis(250),
         status: 200,
@@ -176,14 +176,14 @@ async fn test_request_level_write_timeout_overrides_client_level_timeout() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    options.timeouts.write_timeout = Duration::from_secs(2);
+    options.timeouts.send_timeout = Duration::from_secs(2);
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.request_timeout = Some(Duration::from_secs(5));
 
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
     let request = client
         .request(Method::GET, "/request-write-timeout")
-        .write_timeout(Duration::from_millis(80))
+        .send_timeout(Duration::from_millis(80))
         .expect("positive write timeout should be accepted")
         .build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
@@ -191,7 +191,7 @@ async fn test_request_level_write_timeout_overrides_client_level_timeout() {
         .expect("execute timed out")
         .unwrap_err();
 
-    assert_eq!(error.kind, HttpErrorKind::WriteTimeout);
+    assert_eq!(error.kind, HttpErrorKind::SendTimeout);
     assert_eq!(error.retry_hint(), RetryHint::Retryable);
 }
 
@@ -207,11 +207,11 @@ async fn test_timeout_classification_is_retryable_in_deterministic_path() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    options.timeouts.write_timeout = Duration::from_secs(2);
+    options.timeouts.send_timeout = Duration::from_secs(2);
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.request_timeout = Some(Duration::from_millis(80));
 
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
     let request = client.request(Method::GET, "/deterministic-timeout").build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -234,11 +234,11 @@ async fn test_truncated_body_with_request_timeout_context_is_transport_error() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    options.timeouts.write_timeout = Duration::from_secs(2);
+    options.timeouts.send_timeout = Duration::from_secs(2);
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.request_timeout = Some(Duration::from_secs(5));
 
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
     let request = client.request(Method::GET, "/request-timeout-read-phase").build();
     let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -271,11 +271,11 @@ async fn test_reqwest_timeout_during_body_chunk_is_classified_as_read_timeout() 
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    options.timeouts.write_timeout = Duration::from_secs(2);
+    options.timeouts.send_timeout = Duration::from_secs(2);
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.request_timeout = Some(Duration::from_millis(80));
 
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
     let request = client.request(Method::GET, "/request-timeout-body-chunk").build();
     let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -304,11 +304,11 @@ async fn test_request_level_read_timeout_overrides_client_level_for_buffered_exe
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    options.timeouts.write_timeout = Duration::from_secs(2);
+    options.timeouts.send_timeout = Duration::from_secs(2);
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.request_timeout = Some(Duration::from_secs(5));
 
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
     let request = client
         .request(Method::GET, "/request-read-timeout-override-buffered")
         .read_timeout(Duration::from_millis(80))
@@ -344,11 +344,11 @@ async fn test_request_level_read_timeout_overrides_client_level_for_stream_body(
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    options.timeouts.write_timeout = Duration::from_secs(2);
+    options.timeouts.send_timeout = Duration::from_secs(2);
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.request_timeout = Some(Duration::from_secs(5));
 
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
     let request = client
         .request(Method::GET, "/request-read-timeout-override-stream")
         .read_timeout(Duration::from_millis(80))
@@ -397,7 +397,7 @@ async fn test_buffered_bytes_read_timeout_is_applied_per_chunk_wait() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_millis(300);
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
 
     let request = client.request(Method::GET, "/bytes-per-chunk-timeout").build();
     let mut response = timeout(Duration::from_secs(3), client.execute(request))

@@ -9,7 +9,7 @@
 use std::time::Duration;
 
 use http::Method;
-use qubit_http::HttpClientFactory;
+use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
 use tokio::time::timeout;
@@ -18,7 +18,7 @@ use crate::common::ResponsePlan;
 use crate::common::spawn_one_shot_server;
 
 #[tokio::test]
-async fn test_reqwest_error_phase_send_timeout_maps_to_write_timeout() {
+async fn test_reqwest_error_phase_send_timeout_maps_to_send_timeout() {
     let server = spawn_one_shot_server(ResponsePlan::DelayedStart {
         delay: Duration::from_secs(2),
         status: 200,
@@ -29,8 +29,8 @@ async fn test_reqwest_error_phase_send_timeout_maps_to_write_timeout() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    options.timeouts.write_timeout = Duration::from_millis(25);
-    let client = HttpClientFactory::new()
+    options.timeouts.send_timeout = Duration::from_millis(25);
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
 
@@ -39,7 +39,7 @@ async fn test_reqwest_error_phase_send_timeout_maps_to_write_timeout() {
         .await
         .expect_err("delayed first response should exceed send timeout");
 
-    assert_eq!(error.kind, HttpErrorKind::WriteTimeout);
+    assert_eq!(error.kind, HttpErrorKind::SendTimeout);
     assert_eq!(error.method, Some(Method::GET));
 
     timeout(Duration::from_secs(3), server.finish())

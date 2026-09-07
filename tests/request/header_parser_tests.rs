@@ -7,12 +7,12 @@
 // =============================================================================
 
 use http::Method;
-use qubit_http::HttpClientFactory;
+use qubit_http::HttpClientBuilder;
 use qubit_http::HttpErrorKind;
 
 #[test]
 fn test_header_parser_rejects_invalid_builder_header_name() {
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create_default()
         .expect("default client should be created");
 

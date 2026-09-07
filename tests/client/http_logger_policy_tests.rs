@@ -16,7 +16,7 @@ use http::StatusCode;
 use http::header::AUTHORIZATION;
 use http::header::CONTENT_TYPE;
 use http::header::SET_COOKIE;
-use qubit_http::HttpClientFactory;
+use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
 use qubit_http::HttpLogger;
@@ -37,7 +37,7 @@ use crate::common::capture_trace_logs;
 use crate::common::spawn_one_shot_server;
 
 fn logging_request(method: Method, path: &str, headers: HeaderMap, body: HttpRequestBody) -> HttpRequest {
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create_default()
         .expect("default options should create client");
     let base = client.request(method, path).headers(headers);
@@ -236,7 +236,7 @@ fn test_log_stream_response_headers_respects_toggle() {
 
 #[test]
 fn test_log_request_includes_builder_query_params() {
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create_default()
         .expect("default options should create client");
     let logger_options = HttpClientOptions::default();
@@ -381,7 +381,7 @@ fn test_log_request_streaming_body_logged_as_skipped() {
     let mut client_options = HttpClientOptions::default();
     client_options.logging = options;
     let logger = HttpLogger::new(&client_options);
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create_default()
         .expect("default options should create client");
 
@@ -441,7 +441,7 @@ fn test_execute_returns_body_read_error_from_response_logging() {
             let mut options = HttpClientOptions::default();
             options.base_url = Some(server.base_url());
             options.timeouts.read_timeout = std::time::Duration::from_secs(1);
-            let client = HttpClientFactory::new()
+            let client = HttpClientBuilder::new()
                 .create(options)
                 .expect("client should be created");
 
@@ -496,7 +496,7 @@ fn test_execute_skips_trace_response_body_for_streaming_or_unknown_size_body() {
             let mut options = HttpClientOptions::default();
             options.base_url = Some(server.base_url());
             options.timeouts.read_timeout = std::time::Duration::from_millis(80);
-            let client = HttpClientFactory::new()
+            let client = HttpClientBuilder::new()
                 .create(options)
                 .expect("client should be created");
 
@@ -552,7 +552,7 @@ fn test_execute_logs_response_body_when_content_type_only_has_sse_prefix() {
                 })
                 .expect("test policy should be valid");
             options.log_redaction_policy = policy_builder.build().expect("log redaction policy should be valid");
-            let client = HttpClientFactory::new()
+            let client = HttpClientBuilder::new()
                 .create(options)
                 .expect("client should be created");
 
@@ -648,7 +648,7 @@ fn test_log_request_logs_json_form_multipart_ndjson_and_empty_bodies() {
     let mut client_options = HttpClientOptions::default();
     client_options.logging = HttpLoggingOptions::default();
     let logger = HttpLogger::new(&client_options);
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create_default()
         .expect("default options should create client");
 
@@ -744,7 +744,7 @@ fn test_execute_logs_response_body_from_backend_when_trace_enabled() {
 
             let mut options = HttpClientOptions::default();
             options.base_url = Some(server.base_url());
-            let client = HttpClientFactory::new()
+            let client = HttpClientBuilder::new()
                 .create(options)
                 .expect("client should be created");
             let request = client.request(Method::GET, "/logger-backend-path").build();
@@ -764,7 +764,7 @@ fn test_log_request_bytes_body_variant_is_logged() {
     let mut client_options = HttpClientOptions::default();
     client_options.logging = HttpLoggingOptions::default();
     let logger = HttpLogger::new(&client_options);
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create_default()
         .expect("default options should create client");
 
@@ -797,7 +797,7 @@ fn test_log_response_skips_body_when_backend_already_consumed() {
             let mut options = HttpClientOptions::default();
             options.base_url = Some(server.base_url());
             options.logging.enabled = false;
-            let client = HttpClientFactory::new()
+            let client = HttpClientBuilder::new()
                 .create(options)
                 .expect("client should be created");
             let request = client.request(Method::GET, "/consumed-backend").build();
@@ -849,7 +849,7 @@ fn test_log_response_skips_body_for_sse_content_type() {
             let mut options = HttpClientOptions::default();
             options.base_url = Some(server.base_url());
             options.logging.enabled = false;
-            let client = HttpClientFactory::new()
+            let client = HttpClientBuilder::new()
                 .create(options)
                 .expect("client should be created");
             let request = client.request(Method::GET, "/sse-log-skip").build();

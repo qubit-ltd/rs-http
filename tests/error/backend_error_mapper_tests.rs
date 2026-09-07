@@ -9,7 +9,7 @@
 use std::time::Duration;
 
 use http::Method;
-use qubit_http::HttpClientFactory;
+use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
 use tokio::time::timeout;
@@ -31,7 +31,7 @@ async fn test_backend_error_mapper_classifies_body_read_timeout() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_millis(25);
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     let mut response = client
