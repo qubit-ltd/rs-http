@@ -269,7 +269,7 @@ impl HttpRetryOptions {
     ///
     /// HTTP retry has one externally visible duration budget:
     /// [`Self::max_duration`]. It maps to `qubit-retry`'s
-    /// `max_total_elapsed`, so the budget includes attempt time, retry sleeps,
+    /// `total_time_budget`, so the budget includes attempt time, retry sleeps,
     /// `Retry-After` sleeps, and retry control-path listener time measured
     /// with monotonic time. This is a soft admission budget: it prevents an
     /// attempt from starting when the budget is already exhausted or cannot
@@ -285,7 +285,7 @@ impl HttpRetryOptions {
             .max_attempts(self.max_attempts)
             .backoff(self.backoff.clone());
         if let Some(max_duration) = self.max_duration {
-            builder = builder.max_total_elapsed(max_duration);
+            builder = builder.total_time_budget(max_duration);
         }
         builder
             .build()

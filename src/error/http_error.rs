@@ -16,6 +16,7 @@ use http::StatusCode;
 use qubit_error::BoxError;
 use qubit_redact::RedactionPolicy;
 use qubit_redact::Redactor;
+use qubit_retry::RetryErrorMetadata;
 use url::Url;
 
 use super::HttpErrorKind;
@@ -44,6 +45,8 @@ pub struct HttpError {
     pub retry_after: Option<Duration>,
     /// Optional source error.
     pub source: Option<BoxError>,
+    /// Retry-flow metadata retained independently from the source chain.
+    pub retry_metadata: Option<RetryErrorMetadata>,
     /// Redactor used when rendering this error with [`Debug`](fmt::Debug) or
     /// [`Display`](fmt::Display).
     pub log_redactor: Redactor,
@@ -103,6 +106,7 @@ impl HttpError {
             response_body_preview: None,
             retry_after: None,
             source: None,
+            retry_metadata: None,
             log_redactor: Redactor::application_default(),
         }
     }
@@ -155,6 +159,17 @@ impl HttpError {
         E: Error + Send + Sync + 'static,
     {
         self.source = Some(Box::new(source));
+        self
+    }
+
+    /// Returns retry metadata attached by the HTTP retry adapter.
+    #[must_use]
+    pub fn retry_metadata(&self) -> Option<&RetryErrorMetadata> {
+        self.retry_metadata.as_ref()
+    }
+
+    pub(crate) fn with_retry_metadata(mut self, metadata: RetryErrorMetadata) -> Self {
+        self.retry_metadata = Some(metadata);
         self
     }
 

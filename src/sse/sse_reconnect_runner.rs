@@ -135,7 +135,7 @@ impl ReconnectState {
                 ReconnectAction::Fail(Box::new(operation_elapsed_exceeded_error_with_last_error(
                     error,
                     snapshot.operation_elapsed(),
-                    runtime.retry_policy.limits().max_operation_elapsed(),
+                    runtime.retry_policy.admission_limits().operation_time_budget(),
                     runtime.request_method,
                     runtime.request_url,
                     runtime.log_redactor,
@@ -147,8 +147,8 @@ impl ReconnectState {
                     snapshot.total_elapsed(),
                     runtime
                         .retry_policy
-                        .limits()
-                        .max_total_elapsed()
+                        .admission_limits()
+                        .total_time_budget()
                         .expect("total budget exhaustion requires a configured total limit"),
                     runtime.request_method,
                     runtime.request_url,
@@ -182,7 +182,7 @@ impl ReconnectState {
             Err(RetryBudgetError::Exhausted(RetryBudgetExhausted::OperationElapsed)) => {
                 ReconnectAction::Fail(Box::new(operation_elapsed_exceeded_error(
                     snapshot.operation_elapsed(),
-                    runtime.retry_policy.limits().max_operation_elapsed(),
+                    runtime.retry_policy.admission_limits().operation_time_budget(),
                     runtime.request_method,
                     runtime.request_url,
                     runtime.log_redactor,
@@ -193,8 +193,8 @@ impl ReconnectState {
                     snapshot.total_elapsed(),
                     runtime
                         .retry_policy
-                        .limits()
-                        .max_total_elapsed()
+                        .admission_limits()
+                        .total_time_budget()
                         .expect("total budget exhaustion requires a configured total limit"),
                     runtime.request_method,
                     runtime.request_url,
@@ -313,7 +313,7 @@ impl SseReconnectRunner {
             };
             let mut reconnect_state = ReconnectState::new(&retry_policy);
             let clock = StdMonotonicClock::new();
-            let mut retry_budget = match RetryBudget::new(&clock, *retry_policy.limits()) {
+            let mut retry_budget = match RetryBudget::new(&clock, *retry_policy.admission_limits()) {
                 Ok(budget) => budget,
                 Err(error) => {
                     let mut mapped = HttpError::other(format!(
@@ -343,7 +343,7 @@ impl SseReconnectRunner {
                     Err(RetryBudgetError::Exhausted(RetryBudgetExhausted::OperationElapsed)) => {
                         yield Err(operation_elapsed_exceeded_error(
                             retry_snapshot.operation_elapsed(),
-                            retry_policy.limits().max_operation_elapsed(),
+                            retry_policy.admission_limits().operation_time_budget(),
                             runtime.request_method,
                             runtime.request_url,
                             runtime.log_redactor,
@@ -353,7 +353,7 @@ impl SseReconnectRunner {
                     Err(RetryBudgetError::Exhausted(RetryBudgetExhausted::TotalElapsed)) => {
                         yield Err(max_elapsed_exceeded_error(
                             retry_snapshot.total_elapsed(),
-                            retry_policy.limits().max_total_elapsed().expect(
+                            retry_policy.admission_limits().total_time_budget().expect(
                                 "total budget exhaustion requires a configured total limit",
                             ),
                             runtime.request_method,

@@ -20,7 +20,7 @@ use qubit_retry::AttemptFailure;
 use qubit_retry::Retry;
 use qubit_retry::RetryDecision;
 use qubit_retry::RetryError;
-use qubit_retry::RetryFailure;
+use qubit_retry::RetryErrorReason;
 use qubit_retry::RetryLimitKind;
 use qubit_retry::RetryRule;
 use qubit_retry::RetryTimeoutScope;
@@ -596,60 +596,50 @@ impl HttpClient {
         request_method: &http::Method,
         request_url: Option<&url::Url>,
     ) -> HttpError {
-        let attempts = error.context().attempts();
-        match error.failure() {
-            RetryFailure::Cancelled { phase, .. } => {
+        let (metadata, application_error) = error.into_metadata_and_error();
+        let attempts = metadata.context().attempts();
+        let mapped = match metadata.reason() {
+            RetryErrorReason::Cancelled { phase } => {
                 let message = format!("HTTP retry cancelled during {phase}");
-                return Self::retry_cancelled_error(&message, request_method, request_url).with_source(error);
+                Self::retry_cancelled_error(&message, request_method, request_url)
             }
-            RetryFailure::TimedOut { scope, .. } => {
+            RetryErrorReason::TimedOut { scope } => {
                 let message = format!("HTTP retry {scope} timed out after {attempts} attempt(s)");
-                return match scope {
-                    RetryTimeoutScope::Attempt => HttpError::retry_attempt_timeout(message).with_source(error),
-                    RetryTimeoutScope::Flow => HttpError::retry_max_elapsed_exceeded(message).with_source(error),
-                };
-            }
-            RetryFailure::CallbackFailed { callback, .. } => {
-                let message = format!("HTTP retry callback failed after {attempts} attempt(s): {callback}");
-                return HttpError::other(message).with_source(error);
-            }
-            RetryFailure::Infrastructure { failure, .. } => {
-                let message = format!("HTTP retry infrastructure failed after {attempts} attempt(s): {failure}");
-                return HttpError::other(message).with_source(error);
-            }
-            RetryFailure::Aborted { .. } | RetryFailure::Exhausted { .. } => {}
-            _ => {
-                return HttpError::other(format!(
-                    "HTTP retry stopped after {attempts} attempt(s): {}",
-                    error.failure(),
-                ))
-                .with_source(error);
-            }
-        }
-
-        let projected = error.last_error().map(Self::project_attempt_error);
-        let mapped = match error.failure() {
-            RetryFailure::Aborted { .. } => {
-                let projected = projected.expect("HTTP retry abort should preserve its application error");
-                if projected.kind == crate::HttpErrorKind::Cancelled {
-                    projected
-                } else {
-                    Self::map_retry_aborted(projected, attempts, started_at)
+                match scope {
+                    RetryTimeoutScope::Attempt => HttpError::retry_attempt_timeout(message),
+                    RetryTimeoutScope::Flow => HttpError::retry_max_elapsed_exceeded(message),
                 }
             }
-            RetryFailure::Exhausted { limit, .. } => match limit {
+            RetryErrorReason::CallbackFailed { callback } => HttpError::other(format!(
+                "HTTP retry callback failed after {attempts} attempt(s): {callback}",
+            )),
+            RetryErrorReason::Infrastructure { failure } => HttpError::other(format!(
+                "HTTP retry infrastructure failed after {attempts} attempt(s): {failure}",
+            )),
+            RetryErrorReason::Aborted => {
+                let error = application_error.expect("HTTP retry abort should preserve its application error");
+                if error.kind == crate::HttpErrorKind::Cancelled {
+                    error
+                } else {
+                    Self::map_retry_aborted(error, attempts, started_at)
+                }
+            }
+            RetryErrorReason::Exhausted { limit } => match limit {
                 RetryLimitKind::Attempts => {
-                    let projected = projected.expect("HTTP attempt exhaustion should preserve its application error");
-                    Self::map_retry_attempts_exhausted(projected, attempts, max_attempts)
+                    let error = application_error.expect("HTTP attempt exhaustion should preserve its application error");
+                    Self::map_retry_attempts_exhausted(error, attempts, max_attempts)
                 }
                 RetryLimitKind::OperationElapsed | RetryLimitKind::TotalElapsed => {
                     let max_duration = max_duration.expect("HTTP elapsed limit requires max_duration");
-                    Self::map_retry_max_duration_exceeded(started_at, max_duration, projected)
+                    Self::map_retry_max_duration_exceeded(started_at, max_duration, application_error)
                 }
             },
-            _ => unreachable!("non-business retry terminals return above"),
+            _ => HttpError::other(format!(
+                "HTTP retry stopped after {attempts} attempt(s): {}",
+                metadata.reason(),
+            )),
         };
-        mapped.with_source(error)
+        mapped.with_retry_metadata(metadata)
     }
 
     /// Copies domain attributes without consuming the original error chain.
@@ -661,20 +651,6 @@ impl HttpClient {
     /// An HTTP projection with the same request, response, retry hint and log
     /// redactor. The source is attached later as the complete RetryError, which
     /// owns the original attempt error and its backend source without cloning.
-    fn project_attempt_error(error: &HttpError) -> HttpError {
-        HttpError {
-            kind: error.kind,
-            method: error.method.clone(),
-            url: error.url.clone(),
-            status: error.status,
-            message: error.message.clone(),
-            response_body_preview: error.response_body_preview.clone(),
-            retry_after: error.retry_after,
-            source: None,
-            log_redactor: error.log_redactor.clone(),
-        }
-    }
-
     /// Builds a cancellation error for retry wait cancellation.
     ///
     /// # Parameters
@@ -763,8 +739,7 @@ mod tests {
     use qubit_retry::Retry;
     use qubit_retry::RetryContext;
     use qubit_retry::RetryDecision;
-    use qubit_retry::RetryError;
-    use qubit_retry::RetryFailure;
+    use qubit_retry::RetryErrorReason;
     use qubit_retry::RetryObserver;
     use qubit_retry::RetryPolicy;
     use url::Url;
@@ -778,7 +753,7 @@ mod tests {
     struct CompletionPanic;
 
     impl RetryObserver<HttpError> for CompletionPanic {
-        fn on_terminal_failure(&self, _: &RetryFailure<HttpError>, _: &RetryContext) {
+        fn on_terminal_failure(&self, _: &RetryErrorReason, _: &RetryContext) {
             panic!("completion sink unavailable");
         }
     }
@@ -823,13 +798,9 @@ mod tests {
                 })
                 .expect_err("terminal failure");
             let mapped = HttpClient::map_retry_error(terminal, Instant::now(), None, 1, &Method::POST, Some(&url));
-            let retained = mapped
-                .source()
-                .and_then(|source| source.downcast_ref::<RetryError<HttpError>>())
-                .expect("full retry error must be the immediate source");
-            assert_eq!(retained.completion_callback_failures().len(), 1);
-            let original = retained.last_error().expect("original HTTP error");
-            assert_eq!(original.source().expect("backend source").to_string(), "backend error");
+            let metadata = mapped.retry_metadata().expect("retry metadata");
+            assert_eq!(metadata.completion_callback_failures().len(), 1);
+            assert_eq!(mapped.source().expect("backend source").to_string(), "backend error");
             assert_eq!(
                 mapped.kind,
                 if abort {
@@ -838,13 +809,12 @@ mod tests {
                     HttpErrorKind::Status
                 }
             );
-            assert_eq!(mapped.method, original.method);
-            assert_eq!(mapped.url, original.url);
-            assert_eq!(mapped.status, original.status);
-            assert_eq!(mapped.response_body_preview, original.response_body_preview);
-            assert_eq!(mapped.retry_after, original.retry_after);
+            assert_eq!(mapped.method, Some(Method::POST));
+            assert_eq!(mapped.url, Some(url.clone()));
+            assert_eq!(mapped.status, Some(StatusCode::SERVICE_UNAVAILABLE));
+            assert_eq!(mapped.response_body_preview.as_deref(), Some("retry later"));
+            assert_eq!(mapped.retry_after, Some(Duration::from_secs(2)));
             assert!(!format!("{mapped:?}").contains("conversion-secret"));
-            assert!(!format!("{original:?}").contains("conversion-secret"));
         }
     }
 }
