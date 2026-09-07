@@ -136,10 +136,10 @@ impl Default for HttpClientOptions {
 impl fmt::Debug for HttpClientOptions {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let redactor = Redactor::new(self.log_redaction_policy.clone());
-        let mut batch = redactor.batch();
+        let mut batch = redactor.diagnostic_batch();
         let base_url = self.base_url.as_ref().map(|url| batch.redact_http_url(url.as_str()));
         let default_headers = batch.redact_http_headers(&self.default_headers);
-        let output = batch.finish_for_diagnostics("<redaction incomplete>");
+        let output = batch.finish();
         let base_url = base_url.map(|handle| output.text(handle));
         let default_headers = output.text(default_headers);
         formatter

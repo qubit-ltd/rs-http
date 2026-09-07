@@ -107,7 +107,7 @@ pub struct HttpRequest {
 
 impl fmt::Debug for HttpRequest {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut batch = self.context.log_redactor.batch();
+        let mut batch = self.context.log_redactor.diagnostic_batch();
         let url = self.resolved_url().ok().map(|url| batch.redact_http_url(url.as_str()));
         let base_url = self
             .context
@@ -115,7 +115,7 @@ impl fmt::Debug for HttpRequest {
             .as_ref()
             .map(|url| batch.redact_http_url(url.as_str()));
         let headers = batch.redact_http_headers(&self.headers);
-        let output = batch.finish_for_diagnostics("<redaction incomplete>");
+        let output = batch.finish();
         let url = url.map(|handle| output.text(handle));
         let base_url = base_url.map(|handle| output.text(handle));
         let headers = output.text(headers);
