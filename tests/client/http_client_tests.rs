@@ -34,6 +34,7 @@ use qubit_redact::RedactionPolicy;
 use qubit_redact::Sensitivity;
 use qubit_redact::formats::http::TextBodyPolicy;
 use qubit_retry::BackoffPolicy;
+use qubit_retry::RetryError;
 use tokio::time::timeout;
 
 use crate::common::ResponseChunk;
@@ -104,8 +105,10 @@ fn path_with_custom_query(path: &str) -> String {
 fn retry_abort_inner_http(error: &HttpError) -> &HttpError {
     let boxed = error.source.as_ref().expect("retry abort should chain inner error");
     (boxed.as_ref() as &(dyn StdError + 'static))
-        .downcast_ref::<HttpError>()
-        .expect("inner should be HttpError")
+        .downcast_ref::<RetryError<HttpError>>()
+        .expect("source should retain the complete retry error")
+        .last_error()
+        .expect("retry error should retain the HTTP attempt")
 }
 
 #[tokio::test]

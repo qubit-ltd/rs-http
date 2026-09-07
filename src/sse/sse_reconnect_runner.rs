@@ -892,4 +892,42 @@ mod tests {
         state.set_server_retry_delay(Duration::from_secs(10));
         assert_eq!(state.sleep_delay(&runtime), Duration::from_secs(10));
     }
+
+    /// SSE imposes its 1ms floor after the retry policy's final cap.
+    #[test]
+    fn test_final_policy_cap_and_server_hint_preserve_sse_delay_floor() {
+        for jittered in [false, true] {
+            for hint in [Duration::ZERO, Duration::from_secs(10)] {
+                let policy = RetryPolicy::builder()
+                    .backoff(
+                        BackoffPolicy::fixed(Duration::from_secs(2))
+                            .with_bounded_jitter(0.5)
+                            .unwrap()
+                            .use_retry_after_as_minimum()
+                            .limit_delay(Duration::from_nanos(1)),
+                    )
+                    .build()
+                    .unwrap();
+                let options = SseReconnectOptions {
+                    server_retry_max_delay: Some(Duration::ZERO),
+                    apply_jitter_to_server_retry: jittered,
+                    ..SseReconnectOptions::default()
+                };
+                let redactor = Redactor::default();
+                let runtime = ReconnectRuntime {
+                    retry_policy: &policy,
+                    options: &options,
+                    cancellation_token: None,
+                    request_method: &Method::GET,
+                    request_url: None,
+                    log_redactor: &redactor,
+                };
+                let mut state = ReconnectState::new(&policy);
+                state.backoff = policy.backoff().start_with_random_source(Arc::new(MaximumRandom));
+                assert_eq!(state.sleep_delay(&runtime), Duration::from_millis(1));
+                state.set_server_retry_delay(hint);
+                assert_eq!(state.sleep_delay(&runtime), Duration::from_millis(1));
+            }
+        }
+    }
 }
