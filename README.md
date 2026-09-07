@@ -29,8 +29,8 @@ For full examples and advanced options, read the [User Guide](doc/user_guide.en.
 
 ```toml
 [dependencies]
-qubit-http = "0.12"
-qubit-redact = "0.5"
+qubit-http = "0.13"
+qubit-redact = "0.6"
 http = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
@@ -151,7 +151,7 @@ only when the application explicitly accepts removing HTTP context floors.
 
 ## Retry timing boundaries
 
-HTTP retry budgets use qubit-retry 0.21. `max_duration` is a continuation budget,
+HTTP retry budgets use qubit-retry 0.22. `max_duration` is a continuation budget,
 not a hard request timeout: it prevents further attempts while preserving a
 completed successful request. Request timeouts remain configured separately.
 SSE reconnects preserve structured budget errors as HTTP error sources.
@@ -161,13 +161,24 @@ Ordinary HTTP retries do not install a retry-layer `attempt_timeout` or
 `flow_timeout`; configure the request/connect/read/write timeouts separately.
 See the [retry guide](doc/user_guide.en.md#automatic-retry) for error mapping and
 request replay requirements. If your application also uses `qubit-retry`
-directly, migrate its dependency to `0.21` so shared retry types agree.
+directly, migrate its dependency to `0.22` so shared retry types agree.
 
 For SSE server-directed reconnects, `server_retry_max_delay` caps the final
 selected delay after jitter and hint merging, with a minimum of one millisecond.
 It does not cap ordinary HTTP `Retry-After` handling. Backoff policy
 `maximum_delay()` is a base-strategy bound; `.limit_delay(duration)` configures an
 explicit final policy cap. SSE retains its one-millisecond minimum wait.
+
+### Retry source contract in 0.13
+
+Every retry terminal, including Abort and Exhausted, now stores a complete
+`RetryError<HttpError>` as its immediate source. Use `last_error()` or follow
+`Error::source()` to reach the original HTTP/backend error. Outer method, URL,
+status, body preview, retry-after hint and redaction policy remain available;
+kind/message still follow HTTP classification. Completion diagnostics remain on
+the retained retry error. The built-in success path registers no completion
+observers and explicitly discards empty diagnostics. SSE retains its independent
+budget/backoff composition, including its 1ms minimum after the final policy cap.
 
 ## Testing
 

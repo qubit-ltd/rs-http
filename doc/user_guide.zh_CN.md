@@ -1,6 +1,6 @@
 # qubit-http 用户指南
 
-本文档基于当前源码和测试整理，适用于 crate `qubit-http` 0.11，Rust 代码中通过库名 `qubit_http` 使用。
+本文档基于当前源码和测试整理，适用于 crate `qubit-http` 0.13，Rust 代码中通过库名 `qubit_http` 使用。
 
 `qubit-http` 是一个异步 HTTP 客户端基础设施库。它封装 `reqwest`，提供统一的客户端配置、请求构建、响应读取、错误分类、TRACE 日志脱敏、自动重试、代理、IPv4-only 解析、请求/响应拦截器，以及 Server-Sent Events（SSE）解码和重连能力。
 
@@ -530,7 +530,7 @@ async fn read_sse_examples(client: &qubit_http::HttpClient) -> qubit_http::HttpR
 | 重试层 | `RetryAttemptTimeout`, `RetryMaxElapsedExceeded`, `RetryAborted` | 重试执行器产生的 attempt timeout、总耗时耗尽或策略中止 |
 | 取消 / 兜底 | `Cancelled`, `Other` | 请求取消，或无法归入其它分类的错误 |
 
-`RetryAttemptTimeout` 表示单次重试尝试超过了重试层配置的 attempt timeout；`RetryMaxElapsedExceeded` 表示重试总耗时预算在尚未捕获可重试错误时已经耗尽；`RetryAborted` 表示 `qubit-retry` 决策器判定当前错误不可重试并提前中止，原始 `HttpError` 会作为 `source` 链接保留。
+`RetryAttemptTimeout` 表示单次重试尝试超过了重试层配置的 attempt timeout；`RetryMaxElapsedExceeded` 表示重试总耗时预算在尚未捕获可重试错误时已经耗尽；`RetryAborted` 表示 `qubit-retry` 决策器判定当前错误不可重试并提前中止，完整 `RetryError<HttpError>` 会作为 `source` 保留，其内部仍持有原始 `HttpError`。
 
 `retry_hint()` 会把超时、transport、429 和 5xx 状态视为可重试提示，其余默认不可重试。新增的重试层错误分类本身也不可重试。真正是否重试还要结合 `HttpRetryOptions` 和方法策略。
 
@@ -563,7 +563,7 @@ let request = client
 
 `honor_retry_after(true)` 只在请求级启用。遇到可重试的 429 或 5xx 时，它会把响应中的 `Retry-After` 值作为提示交给退避策略。默认 HTTP 退避策略将提示作为最小延迟，下一次尝试等待计划退避和提示中的较大值。自定义 `BackoffPolicy` 可以改变这一行为：`ignore_retry_after()` 会忽略提示，`limit_delay(duration)` 则限制最终延迟，即使提示更长也会受此上限约束。
 
-开启重试后，`execute` 会把每次尝试交给 `qubit-retry` 的 `Retry`。HTTP `max_duration` 会映射到 `qubit-retry` 的 `max_total_elapsed`，因此它使用单调时间统计，并包含 attempt 执行、retry 退避 sleep、`Retry-After` sleep 以及 retry 控制路径 listener 时间。可重试错误在耗尽 `max_attempts` 或 `max_duration` 后返回最后一次 HTTP 错误，并在 `message` 中追加耗尽原因；如果错误不满足当前重试白名单或方法策略，执行器会返回 `RetryAborted`，并把被中止的原始 `HttpError` 作为 `source` 保留。
+开启重试后，`execute` 会把每次尝试交给 `qubit-retry` 的 `Retry`。HTTP `max_duration` 会映射到 `qubit-retry` 的 `max_total_elapsed`，因此它使用单调时间统计，并包含 attempt 执行、retry 退避 sleep、`Retry-After` sleep 以及 retry 控制路径 listener 时间。可重试错误在耗尽 `max_attempts` 或 `max_duration` 后返回最后一次 HTTP 错误，并在 `message` 中追加耗尽原因；如果错误不满足当前重试白名单或方法策略，执行器会返回 `RetryAborted`，并把完整 `RetryError<HttpError>` 作为 `source` 保留，通过其 `last_error()` 读取原始 HTTP 失败。
 
 这是**软性续试预算**：它可以拒绝计划中的等待或下一次准入，但不会取消正在执行的请求，也不会覆盖成功结果。
 普通 HTTP 重试没有设置 `qubit-retry` 的 `attempt_timeout` 或 `flow_timeout`。例如，
@@ -575,17 +575,17 @@ let request = client
 提示过长时可能直接耗尽续试预算，而不再发送请求。自定义提示策略或最终延迟上限可以改变选中的等待时间。
 SSE 重连仍禁用内层 HTTP 重试。
 
-当前版本使用 `qubit-retry` 0.21。应用若与 HTTP/SSE 共享 `RetryPolicy` 或 `BackoffPolicy`，
+当前版本使用 `qubit-retry` 0.22。应用若与 HTTP/SSE 共享 `RetryPolicy` 或 `BackoffPolicy`，
 须同步升级直接依赖及锁文件。直接消费 retry 结果时，可通过 `RetryError::map_error` 做纯业务载荷转换，
 保留重试上下文和完成诊断；最终 `HttpError` 仍遵循 HTTP 自身的领域转换规则，不改为通用重试错误 API。
 直接消费 retry 结果时，应读取 `completion_callback_failures()` 或调用
-`into_parts_with_diagnostics()`，因为 `into_parts()` 会丢弃这些诊断。
+无损的 `into_parts()` 三元组；旧名称 `into_parts_with_diagnostics()` 已删除。
 穷举匹配 `RetryCallbackPhase` 时还需处理 `Success` 和 `TerminalFailure`。
 
 | 场景 | 返回错误 | 说明 |
 | --- | --- | --- |
 | 方法策略不允许重放，例如默认策略下的 POST | 原始单次执行错误 | 不进入重试流程 |
-| 已进入重试流程，但当前错误不可重试 | `RetryAborted` | 原始 `HttpError` 保存在 `source` 中 |
+| 已进入重试流程，但当前错误不可重试 | `RetryAborted` | `source` 保留完整 `RetryError<HttpError>`，其内部持有原始 HTTP 错误 |
 | 可重试，但耗尽 `max_attempts` | 最后一次 `HttpError` | `message` 会追加 attempts exhausted 上下文 |
 | 可重试，但耗尽 `max_duration` | 最后一次 `HttpError` 或 `RetryMaxElapsedExceeded` | 已捕获过可重试错误时返回最后一次错误；尚未捕获时返回 `RetryMaxElapsedExceeded` |
 
@@ -594,8 +594,10 @@ SSE 重连仍禁用内层 HTTP 重试。
 ```rust
 if error.kind == qubit_http::HttpErrorKind::RetryAborted {
     if let Some(source) = error.source.as_deref() {
-        if let Some(inner) = source.downcast_ref::<qubit_http::HttpError>() {
-            eprintln!("original kind={:?}, status={:?}", inner.kind, inner.status);
+        if let Some(retry) = source.downcast_ref::<qubit_retry::RetryError<qubit_http::HttpError>>() {
+            if let Some(inner) = retry.last_error() {
+                eprintln!("original kind={:?}, status={:?}", inner.kind, inner.status);
+            }
         }
     }
 }
