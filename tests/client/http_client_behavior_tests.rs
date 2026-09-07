@@ -25,6 +25,7 @@ use qubit_http::HttpErrorKind;
 use qubit_http::HttpHeaderInjector;
 use qubit_http::HttpRequestInterceptor;
 use qubit_http::HttpResponseInterceptor;
+use qubit_retry::RetryError;
 use tokio::time::timeout;
 
 use crate::common::ResponsePlan;
@@ -33,8 +34,10 @@ use crate::common::spawn_one_shot_server;
 fn retry_abort_inner_http(error: &HttpError) -> &HttpError {
     let boxed = error.source.as_ref().expect("retry abort should chain inner error");
     (boxed.as_ref() as &(dyn StdError + 'static))
-        .downcast_ref::<HttpError>()
-        .expect("inner should be HttpError")
+        .downcast_ref::<RetryError<HttpError>>()
+        .expect("source should retain the complete retry error")
+        .last_error()
+        .expect("retry error should retain the HTTP attempt")
 }
 
 #[test]
