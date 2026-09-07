@@ -180,11 +180,11 @@ pub struct HttpResponse {
 
 impl fmt::Debug for HttpResponse {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut batch = self.options.log_redactor.batch();
+        let mut batch = self.options.log_redactor.diagnostic_batch();
         let url = batch.redact_http_url(self.meta.url().as_str());
         let request_url = batch.redact_http_url(self.runtime.request_url.as_str());
         let headers = batch.redact_http_headers(self.meta.headers());
-        let output = batch.finish_for_diagnostics("<redaction incomplete>");
+        let output = batch.finish();
         let url = output.text(url);
         let request_url = output.text(request_url);
         let headers = output.text(headers);

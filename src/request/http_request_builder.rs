@@ -86,12 +86,12 @@ pub struct HttpRequestBuilder {
 
 impl fmt::Debug for HttpRequestBuilder {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut batch = self.log_redactor.batch();
+        let mut batch = self.log_redactor.diagnostic_batch();
         let url = self.debug_resolved_url().map(|url| batch.redact_http_url(url.as_str()));
         let base_url = self.base_url.as_ref().map(|url| batch.redact_http_url(url.as_str()));
         let headers = batch.redact_http_headers(&self.headers);
         let default_headers = batch.redact_http_headers(&self.default_headers);
-        let output = batch.finish_for_diagnostics("<redaction incomplete>");
+        let output = batch.finish();
         let url = url.map(|handle| output.text(handle));
         let base_url = base_url.map(|handle| output.text(handle));
         let headers = output.text(headers);

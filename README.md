@@ -30,7 +30,7 @@ For full examples and advanced options, read the [User Guide](doc/user_guide.en.
 ```toml
 [dependencies]
 qubit-http = "0.13"
-qubit-redact = "0.6"
+qubit-redact = "0.8"
 http = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
@@ -87,7 +87,7 @@ Install the application default with
 application default installed before construction. Existing clients,
 requests, responses, and errors retain their original redactor. Each redaction
 operation uses the policy's diagnostic budget; callers that render several
-fields together can use `redactor.batch()` and resolve the returned handles
+fields together can use `redactor.diagnostic_batch()` and resolve the returned handles
 after `finish()` to share that budget.
 
 ```rust
