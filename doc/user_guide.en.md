@@ -1,6 +1,6 @@
 # qubit-http User Guide
 
-This guide is based on the current source code and tests. It applies to crate `qubit-http` 0.11, imported from Rust code as `qubit_http`.
+This guide is based on the current source code and tests. It applies to crate `qubit-http` 0.13, imported from Rust code as `qubit_http`.
 
 `qubit-http` is an asynchronous HTTP client infrastructure crate. It wraps `reqwest` and provides unified client options, request building, response reading, error classification, TRACE logging with URL/header/body redaction, retries, proxies, IPv4-only resolution, request/response interceptors, and Server-Sent Events (SSE) decoding and reconnection.
 
@@ -534,7 +534,7 @@ Error categories:
 | Retry layer | `RetryAttemptTimeout`, `RetryMaxElapsedExceeded`, `RetryAborted` | The retry executor produced an attempt timeout, elapsed-budget failure, or policy abort |
 | Cancellation / fallback | `Cancelled`, `Other` | The request was cancelled, or the failure does not fit another category |
 
-`RetryAttemptTimeout` means one retry-layer attempt exceeded its attempt timeout. `RetryMaxElapsedExceeded` means the total retry elapsed budget was exhausted before a retryable failure was captured. `RetryAborted` means the `qubit-retry` decider stopped early because the current error was not retryable; the original `HttpError` is retained as `source`.
+`RetryAttemptTimeout` means one retry-layer attempt exceeded its attempt timeout. `RetryMaxElapsedExceeded` means the total retry elapsed budget was exhausted before a retryable failure was captured. `RetryAborted` means the `qubit-retry` decider stopped early because the current error was not retryable; the complete `RetryError<HttpError>` is retained as `source`, and owns the original `HttpError`.
 
 `retry_hint()` marks timeouts, transport errors, 429, and 5xx statuses as retryable hints. The new retry-layer error categories are non-retryable themselves. Actual retry behavior still depends on `HttpRetryOptions` and the method policy.
 
@@ -567,7 +567,7 @@ let request = client
 
 `honor_retry_after(true)` is request-level. For retryable 429 or 5xx responses, it passes the response's `Retry-After` value to the backoff policy as a hint. The default HTTP backoff policy uses this hint as a minimum: the next attempt waits for the longer of the planned backoff and the hint. A custom `BackoffPolicy` can change that behavior: `ignore_retry_after()` ignores the hint, and `limit_delay(duration)` caps the final delay even when the hint is longer.
 
-When retry is enabled, `execute` runs attempts through `qubit-retry`'s `Retry`. HTTP `max_duration` maps to `qubit-retry`'s `max_total_elapsed`, so it is measured with monotonic time and includes attempt execution, retry backoff sleeps, `Retry-After` sleeps, and retry control-path listener time. Retryable failures that exhaust `max_attempts` or `max_duration` return the last HTTP error with exhaustion context appended to `message`. If the current error does not match the active allowlist or retry policy, the executor returns `RetryAborted` and keeps the aborted original `HttpError` as `source`.
+When retry is enabled, `execute` runs attempts through `qubit-retry`'s `Retry`. HTTP `max_duration` maps to `qubit-retry`'s `max_total_elapsed`, so it is measured with monotonic time and includes attempt execution, retry backoff sleeps, `Retry-After` sleeps, and retry control-path listener time. Retryable failures that exhaust `max_attempts` or `max_duration` return the last HTTP error with exhaustion context appended to `message`. If the current error does not match the active allowlist or retry policy, the executor returns `RetryAborted` and keeps the complete `RetryError<HttpError>` as `source`; its `last_error()` retains the original HTTP failure.
 
 This is a **soft continuation budget**: it can reject a planned delay or the next
 admission, but it neither cancels an in-flight request nor replaces its successful
@@ -585,20 +585,20 @@ continuation budget instead of starting another request. Custom hint policies or
 final delay caps can change the selected delay. SSE reconnect continues to
 disable inner HTTP retries.
 
-This release uses `qubit-retry` 0.21. Update any direct dependency and its lockfile
+This release uses `qubit-retry` 0.22. Update any direct dependency and its lockfile
 entry when sharing `RetryPolicy` or `BackoffPolicy` with HTTP/SSE. When consuming
 retry results directly, `RetryError::map_error` provides pure payload conversion
 while preserving retry context and completion diagnostics. HTTP's domain error conversion
 still determines the returned `HttpError`; it is not replaced by a generic retry
 error API. If you consume retry results directly, inspect
-`completion_callback_failures()` or use `into_parts_with_diagnostics()` because
-`into_parts()` discards those diagnostics. Exhaustive matches on
+`completion_callback_failures()` or use the lossless `into_parts()` triple.
+The old `into_parts_with_diagnostics()` name has been removed. Exhaustive matches on
 `RetryCallbackPhase` must include `Success` and `TerminalFailure`.
 
 | Scenario | Returned error | Notes |
 | --- | --- | --- |
 | Method policy does not allow replay, such as POST under the default policy | Original single-attempt error | Retry flow is not entered |
-| Retry flow is active, but the current error is not retryable | `RetryAborted` | The original `HttpError` is stored in `source` |
+| Retry flow is active, but the current error is not retryable | `RetryAborted` | `source` retains `RetryError<HttpError>`, which owns the original HTTP error |
 | Retryable failure exhausts `max_attempts` | Last `HttpError` | `message` includes attempts-exhausted context |
 | Retryable failure exhausts `max_duration` | Last `HttpError` or `RetryMaxElapsedExceeded` | Returns the last error if one was captured; otherwise returns `RetryMaxElapsedExceeded` |
 
@@ -607,8 +607,10 @@ To inspect the original status or error kind from `RetryAborted`, downcast the s
 ```rust
 if error.kind == qubit_http::HttpErrorKind::RetryAborted {
     if let Some(source) = error.source.as_deref() {
-        if let Some(inner) = source.downcast_ref::<qubit_http::HttpError>() {
-            eprintln!("original kind={:?}, status={:?}", inner.kind, inner.status);
+        if let Some(retry) = source.downcast_ref::<qubit_retry::RetryError<qubit_http::HttpError>>() {
+            if let Some(inner) = retry.last_error() {
+                eprintln!("original kind={:?}, status={:?}", inner.kind, inner.status);
+            }
         }
     }
 }

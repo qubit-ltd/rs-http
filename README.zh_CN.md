@@ -29,8 +29,8 @@
 
 ```toml
 [dependencies]
-qubit-http = "0.12"
-qubit-redact = "0.5"
+qubit-http = "0.13"
+qubit-redact = "0.6"
 http = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
@@ -140,18 +140,26 @@ let client = HttpClientFactory::new().create(options)?;
 
 ## 重试时间边界
 
-HTTP 重试预算已迁移到 qubit-retry 0.21。`max_duration` 控制是否继续尝试，
+HTTP 重试预算已迁移到 qubit-retry 0.22。`max_duration` 控制是否继续尝试，
 不会主动中断当前请求，也不会覆盖已经成功的结果；请求超时需要单独配置。
 SSE 重连会把结构化预算错误保留在 HTTP 错误的 source 中。
 预算计入操作执行、退避、`Retry-After` 等待和重试控制回调。已准入请求可以在预算耗尽后返回成功。
 普通 HTTP 重试没有设置重试层的 `attempt_timeout` 或 `flow_timeout`，需要分别配置
 request/connect/read/write 超时。错误转换与请求重放约束见[重试指南](doc/user_guide.zh_CN.md#自动重试)。
-如果应用也直接使用 `qubit-retry`，应同步升级到 `0.21`，避免共享重试类型的版本不一致。
+如果应用也直接使用 `qubit-retry`，应同步升级到 `0.22`，避免共享重试类型的版本不一致。
 
 SSE 使用服务端提示重连时，`server_retry_max_delay` 限制抖动和提示合并后的
 最终延迟，最小有效上限为 1 毫秒。该限制不影响普通 HTTP 的 `Retry-After`。
 退避策略的 `maximum_delay()` 只描述基础延迟；需要最终策略上限时使用
 `.limit_delay(duration)`。SSE 本身仍保留至少 1 毫秒的等待。
+
+### 0.13 的 retry source 契约
+
+所有重试终态（包括 Abort 和 Exhausted）的直接 source 现在都是完整 `RetryError<HttpError>`。
+通过 `last_error()` 或标准 `Error::source()` 链读取原始 HTTP/后端错误。
+外层保留 method、URL、status、body preview、retry-after 和脱敏策略，kind/message 仍按 HTTP 领域语义映射。
+完成诊断保存在该 retry 错误中。内置成功路径不注册完成观察者，因此显式丢弃空诊断。
+SSE 仍独立组合预算与退避，保留最终 policy cap 之后至少 1ms 的领域约束。
 
 ## 测试
 
