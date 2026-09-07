@@ -103,7 +103,7 @@ impl<'a> HttpLogger<'a> {
         }
 
         let headers = request.effective_headers_cached().unwrap_or_else(|| request.headers());
-        let mut batch = self.redacted_logger.redactor().batch();
+        let mut batch = self.redacted_logger.redactor().diagnostic_batch();
         let url_handle = request
             .resolved_url()
             .ok()
@@ -123,7 +123,7 @@ impl<'a> HttpLogger<'a> {
             )),
             _ => None,
         };
-        let diagnostics = batch.finish_for_diagnostics("<redaction incomplete>");
+        let diagnostics = batch.finish();
         let url = url_handle
             .map(|handle| diagnostics.text(handle).as_str().to_owned())
             .unwrap_or_else(|| UNRESOLVED_REQUEST_URL.to_owned());
@@ -162,7 +162,7 @@ impl<'a> HttpLogger<'a> {
             return Ok(());
         }
 
-        let mut batch = self.redacted_logger.redactor().batch();
+        let mut batch = self.redacted_logger.redactor().diagnostic_batch();
         let url_handle = batch.redact_http_url(response.url().as_str());
         let header_handle = self
             .options
@@ -185,7 +185,7 @@ impl<'a> HttpLogger<'a> {
                 let body = match response.bytes().await {
                     Ok(body) => body,
                     Err(error) => {
-                        let diagnostics = batch.finish_for_diagnostics("<redaction incomplete>");
+                        let diagnostics = batch.finish();
                         tracing::trace!("<-- {} {}", response.status().as_u16(), diagnostics.text(url_handle));
                         if let Some(handle) = header_handle {
                             tracing::trace!("{}", diagnostics.text(handle));
@@ -205,7 +205,7 @@ impl<'a> HttpLogger<'a> {
             } else {
                 None
             };
-            let diagnostics = batch.finish_for_diagnostics("<redaction incomplete>");
+            let diagnostics = batch.finish();
             tracing::trace!("<-- {} {}", response.status().as_u16(), diagnostics.text(url_handle));
             if let Some(handle) = header_handle {
                 tracing::trace!("{}", diagnostics.text(handle));
@@ -218,7 +218,7 @@ impl<'a> HttpLogger<'a> {
                 tracing::trace!("Response body: <skipped: streaming or unknown-size body>");
             }
         } else {
-            let diagnostics = batch.finish_for_diagnostics("<redaction incomplete>");
+            let diagnostics = batch.finish();
             tracing::trace!("<-- {} {}", response.status().as_u16(), diagnostics.text(url_handle));
             if let Some(handle) = header_handle {
                 tracing::trace!("{}", diagnostics.text(handle));
@@ -243,13 +243,13 @@ impl<'a> HttpLogger<'a> {
             return;
         }
 
-        let mut batch = self.redacted_logger.redactor().batch();
+        let mut batch = self.redacted_logger.redactor().diagnostic_batch();
         let url_handle = batch.redact_http_url(response_meta.url().as_str());
         let header_handle = self
             .options
             .log_response_header
             .then(|| batch.redact_http_headers(response_meta.headers()));
-        let diagnostics = batch.finish_for_diagnostics("<redaction incomplete>");
+        let diagnostics = batch.finish();
         tracing::trace!(
             "<-- {} {} (stream)",
             response_meta.status().as_u16(),
