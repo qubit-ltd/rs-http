@@ -14,7 +14,7 @@ use std::time::Duration;
 use bytes::Bytes;
 use futures_util::stream;
 use http::Method;
-use qubit_http::HttpClientFactory;
+use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpRequestBodyByteStream;
 use qubit_http::HttpRetryMethodPolicy;
@@ -36,7 +36,7 @@ async fn test_execute_with_form_body_and_query_headers_timeout() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
 
@@ -78,7 +78,7 @@ async fn test_execute_with_multipart_body_and_query_headers_timeout() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
 
@@ -127,7 +127,7 @@ async fn test_execute_with_ndjson_body_and_query_headers_timeout() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
 
@@ -169,7 +169,7 @@ async fn test_execute_with_stream_body_uses_chunked_transfer_encoding() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
 
@@ -208,7 +208,7 @@ async fn test_execute_with_stream_body_uses_chunked_transfer_encoding_without_ea
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
 
@@ -254,7 +254,7 @@ async fn test_execute_with_streaming_body_factory_supports_retry_rebuild() {
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();
     options.retry.method_policy = HttpRetryMethodPolicy::AllMethods;
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
 
@@ -295,13 +295,13 @@ async fn test_execute_with_streaming_body_factory_supports_retry_rebuild() {
 }
 
 #[tokio::test]
-async fn test_streaming_body_factory_preparation_respects_write_timeout() {
+async fn test_streaming_body_factory_preparation_respects_send_timeout() {
     let server = spawn_multi_shot_server(vec![]).await;
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    options.timeouts.write_timeout = Duration::from_millis(50);
-    let client = HttpClientFactory::new()
+    options.timeouts.send_timeout = Duration::from_millis(50);
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
 
@@ -319,7 +319,7 @@ async fn test_streaming_body_factory_preparation_respects_write_timeout() {
         .expect("execute timed out")
         .expect_err("streaming body preparation should hit write timeout");
 
-    assert_eq!(error.kind, qubit_http::HttpErrorKind::WriteTimeout);
+    assert_eq!(error.kind, qubit_http::HttpErrorKind::SendTimeout);
     assert!(error.message.contains("streaming request body"));
 
     let captured = timeout(Duration::from_secs(3), server.finish())

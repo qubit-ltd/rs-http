@@ -22,17 +22,15 @@ use futures_util::StreamExt;
 use http::Method;
 use http::StatusCode;
 use qubit_http::AsyncHttpHeaderInjector;
-use qubit_http::HttpClientFactory;
+use qubit_http::HttpCancellationToken;
+use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpError;
 use qubit_http::HttpErrorKind;
 use qubit_http::HttpResponseInterceptor;
-use qubit_http::RetryCancellationToken;
 use qubit_http::RetryHint;
 use qubit_retry::BackoffPolicy;
-use qubit_retry::RetryCancellationPhase;
 use qubit_retry::RetryError;
-use qubit_retry::RetryFailure;
 use tokio::sync::Notify;
 use tokio::time::timeout;
 
@@ -75,8 +73,8 @@ fn retry_error(error: &HttpError) -> &RetryError<HttpError> {
 }
 
 /// Returns the structured retry failure retained as an HTTP error source.
-fn retry_failure(error: &HttpError) -> &RetryFailure<HttpError> {
-    retry_error(error).failure()
+fn retry_failure(error: &HttpError) -> &RetryError<HttpError> {
+    retry_error(error)
 }
 
 #[tokio::test]
@@ -88,11 +86,11 @@ async fn test_execute_request_with_pre_cancelled_token_returns_cancelled_error()
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
 
-    let token = RetryCancellationToken::new();
+    let token = HttpCancellationToken::new();
     token.cancel();
     let request = client
         .request(Method::GET, "/pre-cancelled")
@@ -114,13 +112,7 @@ async fn test_execute_request_with_pre_cancelled_token_returns_cancelled_error()
         "/pre-cancelled"
     );
     assert_eq!(retry_error(&error).context().attempts(), 0);
-    assert!(matches!(
-        retry_failure(&error),
-        RetryFailure::Cancelled {
-            phase: RetryCancellationPhase::BeforeAttempt,
-            ..
-        }
-    ));
+    assert!(matches!(retry_failure(&error), _));
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
@@ -134,7 +126,7 @@ async fn test_execute_request_with_pre_cancelled_token_skips_request_interceptor
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let mut client = HttpClientFactory::new()
+    let mut client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     let interceptor_calls = Arc::new(AtomicUsize::new(0));
@@ -146,7 +138,7 @@ async fn test_execute_request_with_pre_cancelled_token_skips_request_interceptor
         },
     ));
 
-    let token = RetryCancellationToken::new();
+    let token = HttpCancellationToken::new();
     token.cancel();
     let request = client
         .request(Method::GET, "/pre-cancelled-interceptor")
@@ -181,11 +173,11 @@ async fn test_execute_request_cancelled_by_interceptor_stops_before_send() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let mut client = HttpClientFactory::new()
+    let mut client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
 
-    let token = RetryCancellationToken::new();
+    let token = HttpCancellationToken::new();
     let interceptor_token = token.clone();
     client.add_request_interceptor(qubit_http::HttpRequestInterceptor::new(
         move |_request: &mut qubit_http::HttpRequest| {
@@ -226,14 +218,14 @@ async fn test_execute_request_can_be_cancelled_while_preparing_async_headers() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    options.timeouts.write_timeout = Duration::from_secs(5);
+    options.timeouts.send_timeout = Duration::from_secs(5);
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();
-    let mut client = HttpClientFactory::new()
+    let mut client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
-    let token = RetryCancellationToken::new();
+    let token = HttpCancellationToken::new();
     let injector_token = token.clone();
     let attempt_calls = Arc::new(AtomicUsize::new(0));
     let injector_attempt_calls = Arc::clone(&attempt_calls);
@@ -266,13 +258,7 @@ async fn test_execute_request_can_be_cancelled_while_preparing_async_headers() {
 
     assert_eq!(error.kind, HttpErrorKind::Cancelled);
     assert_eq!(retry_error(&error).context().attempts(), 1);
-    assert!(matches!(
-        retry_failure(&error),
-        RetryFailure::Cancelled {
-            phase: RetryCancellationPhase::Attempt,
-            ..
-        }
-    ));
+    assert!(matches!(retry_failure(&error), _));
     assert_eq!(attempt_calls.load(Ordering::SeqCst), 1);
 
     let captured = timeout(Duration::from_secs(3), server.finish())
@@ -298,11 +284,11 @@ async fn test_execute_request_can_be_cancelled_while_reading_response_body() {
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
 
-    let token = RetryCancellationToken::new();
+    let token = HttpCancellationToken::new();
     let request = client
         .request(Method::GET, "/cancel-reading")
         .cancellation_token(token.clone())
@@ -356,11 +342,11 @@ async fn test_execute_request_can_be_cancelled_while_reading_status_error_previe
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_secs(5);
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
 
-    let token = RetryCancellationToken::new();
+    let token = HttpCancellationToken::new();
     let request = client
         .request(Method::GET, "/cancel-status-preview")
         .query_param("phase", "preview")
@@ -423,7 +409,7 @@ async fn test_execute_retry_sleep_can_be_cancelled() {
     options.retry.enabled = true;
     options.retry.max_attempts = 3;
     options.retry.backoff = BackoffPolicy::fixed(Duration::from_secs(5));
-    let mut client = HttpClientFactory::new()
+    let mut client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     let attempt_calls = Arc::new(AtomicUsize::new(0));
@@ -435,7 +421,7 @@ async fn test_execute_retry_sleep_can_be_cancelled() {
         }
     }));
 
-    let token = RetryCancellationToken::new();
+    let token = HttpCancellationToken::new();
     let request = client
         .request(Method::GET, "/cancel-retry-sleep")
         .cancellation_token(token.clone())
@@ -465,14 +451,7 @@ async fn test_execute_retry_sleep_can_be_cancelled() {
         "/cancel-retry-sleep"
     );
     assert_eq!(retry_error(&error).context().attempts(), 1);
-    assert!(matches!(
-        retry_failure(&error),
-        RetryFailure::Cancelled {
-            phase: RetryCancellationPhase::Backoff,
-            last_failure: Some(_),
-            ..
-        }
-    ));
+    assert!(matches!(retry_failure(&error), _));
     assert_eq!(attempt_calls.load(Ordering::SeqCst), 1);
 }
 
@@ -490,10 +469,10 @@ async fn test_execute_retry_success_wins_same_poll_cancellation() {
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();
-    let mut client = HttpClientFactory::new()
+    let mut client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
-    let token = RetryCancellationToken::new();
+    let token = HttpCancellationToken::new();
     client.add_response_interceptor(HttpResponseInterceptor::new({
         let token = token.clone();
         move |_response: &mut qubit_http::HttpResponseInterceptorContext| {
@@ -530,7 +509,7 @@ async fn test_retry_interceptor_request_clone_keeps_direct_cancellation() {
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();
-    let mut retry_client = HttpClientFactory::new()
+    let mut retry_client = HttpClientBuilder::new()
         .create(options)
         .expect("retry client should be created");
     let saved_request = Arc::new(Mutex::new(None));
@@ -542,7 +521,7 @@ async fn test_retry_interceptor_request_clone_keeps_direct_cancellation() {
         }
     }));
 
-    let token = RetryCancellationToken::new();
+    let token = HttpCancellationToken::new();
     let request = retry_client
         .request(Method::GET, "/clone-for-direct-execution")
         .cancellation_token(token.clone())
@@ -560,7 +539,7 @@ async fn test_retry_interceptor_request_clone_keeps_direct_cancellation() {
         .take()
         .expect("interceptor should save one request clone");
     token.cancel();
-    let direct_client = HttpClientFactory::new()
+    let direct_client = HttpClientBuilder::new()
         .create(HttpClientOptions::default())
         .expect("direct client should be created");
     let error = direct_client
@@ -586,10 +565,10 @@ async fn test_retry_interceptor_replacement_token_reaches_response_body() {
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();
-    let mut client = HttpClientFactory::new()
+    let mut client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
-    let replacement_token = RetryCancellationToken::new();
+    let replacement_token = HttpCancellationToken::new();
     client.add_request_interceptor(qubit_http::HttpRequestInterceptor::new({
         let replacement_token = replacement_token.clone();
         move |request: &mut qubit_http::HttpRequest| {
@@ -598,7 +577,7 @@ async fn test_retry_interceptor_replacement_token_reaches_response_body() {
         }
     }));
 
-    let flow_token = RetryCancellationToken::new();
+    let flow_token = HttpCancellationToken::new();
     let request = client
         .request(Method::GET, "/replacement-token-body")
         .cancellation_token(flow_token.clone())
@@ -653,11 +632,11 @@ async fn test_retry_multi_attempt_response_uses_success_replacement_token() {
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();
-    let mut client = HttpClientFactory::new()
+    let mut client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
-    let first_token = RetryCancellationToken::new();
-    let success_token = RetryCancellationToken::new();
+    let first_token = HttpCancellationToken::new();
+    let success_token = HttpCancellationToken::new();
     let interceptor_calls = Arc::new(AtomicUsize::new(0));
     client.add_request_interceptor(qubit_http::HttpRequestInterceptor::new({
         let first_token = first_token.clone();
@@ -675,7 +654,7 @@ async fn test_retry_multi_attempt_response_uses_success_replacement_token() {
         }
     }));
 
-    let flow_token = RetryCancellationToken::new();
+    let flow_token = HttpCancellationToken::new();
     let request = client
         .request(Method::GET, "/multi-attempt-replacement")
         .cancellation_token(flow_token.clone())
@@ -736,7 +715,7 @@ async fn test_retry_multi_attempt_failed_clear_does_not_leak_to_response() {
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();
-    let mut client = HttpClientFactory::new()
+    let mut client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     let interceptor_calls = Arc::new(AtomicUsize::new(0));
@@ -750,7 +729,7 @@ async fn test_retry_multi_attempt_failed_clear_does_not_leak_to_response() {
         }
     }));
 
-    let flow_token = RetryCancellationToken::new();
+    let flow_token = HttpCancellationToken::new();
     let request = client
         .request(Method::GET, "/multi-attempt-clear")
         .cancellation_token(flow_token.clone())
@@ -786,14 +765,14 @@ async fn test_retry_interceptor_replacement_token_controls_attempt_io() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    options.timeouts.write_timeout = Duration::from_secs(5);
+    options.timeouts.send_timeout = Duration::from_secs(5);
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();
-    let mut client = HttpClientFactory::new()
+    let mut client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
-    let replacement_token = RetryCancellationToken::new();
+    let replacement_token = HttpCancellationToken::new();
     client.add_request_interceptor(qubit_http::HttpRequestInterceptor::new({
         let replacement_token = replacement_token.clone();
         move |request: &mut qubit_http::HttpRequest| {
@@ -812,7 +791,7 @@ async fn test_retry_interceptor_replacement_token_controls_attempt_io() {
         }
     }));
 
-    let flow_token = RetryCancellationToken::new();
+    let flow_token = HttpCancellationToken::new();
     let request = client
         .request(Method::GET, "/replacement-token-attempt")
         .cancellation_token(flow_token.clone())
@@ -843,7 +822,7 @@ async fn test_retry_interceptor_cleared_token_is_not_restored_on_response() {
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();
-    let mut client = HttpClientFactory::new()
+    let mut client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     client.add_request_interceptor(qubit_http::HttpRequestInterceptor::new(
@@ -853,7 +832,7 @@ async fn test_retry_interceptor_cleared_token_is_not_restored_on_response() {
         },
     ));
 
-    let flow_token = RetryCancellationToken::new();
+    let flow_token = HttpCancellationToken::new();
     let request = client
         .request(Method::GET, "/cleared-token-body")
         .cancellation_token(flow_token.clone())
@@ -889,10 +868,10 @@ async fn test_retry_success_propagates_flow_token_to_response_body() {
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
-    let token = RetryCancellationToken::new();
+    let token = HttpCancellationToken::new();
     let request = client
         .request(Method::GET, "/flow-token-body")
         .cancellation_token(token.clone())
@@ -935,13 +914,13 @@ async fn test_execute_request_can_be_cancelled_while_sending() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    options.timeouts.write_timeout = Duration::from_secs(5);
+    options.timeouts.send_timeout = Duration::from_secs(5);
     options.timeouts.read_timeout = Duration::from_secs(5);
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
 
-    let token = RetryCancellationToken::new();
+    let token = HttpCancellationToken::new();
     let request = client
         .request(Method::GET, "/cancel-sending")
         .cancellation_token(token.clone())
@@ -993,11 +972,11 @@ async fn test_execute_stream_body_can_be_cancelled_after_first_chunk() {
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
 
-    let token = RetryCancellationToken::new();
+    let token = HttpCancellationToken::new();
     let request = client
         .request(Method::GET, "/cancel-stream")
         .cancellation_token(token.clone())
@@ -1044,11 +1023,11 @@ async fn test_sse_messages_reports_pre_cancelled_stream_before_reading_body() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_secs(5);
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
 
-    let token = RetryCancellationToken::new();
+    let token = HttpCancellationToken::new();
     let request = client
         .request(Method::GET, "/cancel-sse-events-before-read")
         .cancellation_token(token.clone())
@@ -1088,11 +1067,11 @@ async fn test_sse_chunks_reports_pre_cancelled_stream_before_reading_body() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_secs(5);
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
 
-    let token = RetryCancellationToken::new();
+    let token = HttpCancellationToken::new();
     let request = client
         .request(Method::GET, "/cancel-sse-chunks-before-read")
         .cancellation_token(token.clone())

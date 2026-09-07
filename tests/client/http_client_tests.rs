@@ -23,11 +23,12 @@ use http::header::AUTHORIZATION;
 use http::header::CONTENT_TYPE;
 use http::header::HeaderName;
 use qubit_budget::json::JsonValueLimits;
-use qubit_http::HttpClientFactory;
+use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpError;
 use qubit_http::HttpErrorKind;
 use qubit_http::HttpHeaderInjector;
+use qubit_http::HttpOriginPolicy;
 use qubit_http::HttpResponseInterceptor;
 use qubit_http::HttpRetryMethodPolicy;
 use qubit_redact::RedactionPolicy;
@@ -124,7 +125,7 @@ async fn test_execute_success_with_header_injector_and_request_override() {
     options.base_url = Some(server.base_url());
     options.add_header("x-order", "default").unwrap();
 
-    let factory = HttpClientFactory::new();
+    let factory = HttpClientBuilder::new();
     let mut client = factory.create(options).unwrap();
     client.add_header_injector(HttpHeaderInjector::new(|headers: &mut http::HeaderMap| {
         headers.insert(HeaderName::from_static("x-order"), HeaderValue::from_static("injector"));
@@ -174,7 +175,7 @@ async fn test_execute_json_applies_configured_value_limits() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.json_value_limits = JsonValueLimits::builder().max_nodes(1).build();
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     let request = client.request(Method::GET, "/json-value-limit").build();
@@ -204,7 +205,7 @@ async fn test_execute_bytes_rejects_response_body_larger_than_configured_limit()
     options.response_body_size_limit = 3;
     let expected_url = server.base_url().join("/body-limit").expect("test URL should resolve");
 
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     let request = client.request(Method::GET, "/body-limit").build();
@@ -247,7 +248,7 @@ async fn test_execute_bytes_chunked_response_reports_total_observed_size_on_limi
     options.base_url = Some(server.base_url());
     options.response_body_size_limit = 3;
 
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     let request = client.request(Method::GET, "/body-limit-chunked").build();
@@ -281,7 +282,7 @@ async fn test_execute_bytes_accepts_response_body_at_configured_limit() {
     options.base_url = Some(server.base_url());
     options.response_body_size_limit = 3;
 
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     let request = client.request(Method::GET, "/body-at-limit").build();
@@ -309,7 +310,7 @@ async fn test_execute_maps_non_success_status_to_http_error() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
 
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
     let request = client.request(Method::GET, "/health").build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -335,7 +336,7 @@ async fn test_execute_maps_non_success_status_to_http_error() {
 
 #[tokio::test]
 async fn test_execute_relative_path_without_base_url_returns_invalid_url() {
-    let client = HttpClientFactory::new().create_default().unwrap();
+    let client = HttpClientBuilder::new().create_default().unwrap();
     let request = client.request(Method::GET, "/relative/path").build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -353,7 +354,7 @@ fn test_request_builder_inherits_client_default_options() {
     options.ipv4_only = true;
     options.timeouts.request_timeout = Some(Duration::from_secs(2));
 
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     let request = client.request(Method::GET, "/timeout-default").build();
@@ -375,7 +376,7 @@ fn test_request_builder_methods_override_client_default_options() {
     options.ipv4_only = true;
     options.timeouts.request_timeout = Some(Duration::from_secs(2));
 
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
 
@@ -396,7 +397,7 @@ fn test_request_builder_methods_override_client_default_options() {
 }
 
 #[tokio::test]
-async fn test_execute_write_timeout() {
+async fn test_execute_send_timeout() {
     let server = spawn_one_shot_server(ResponsePlan::DelayedStart {
         delay: Duration::from_millis(250),
         status: 200,
@@ -407,17 +408,17 @@ async fn test_execute_write_timeout() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    options.timeouts.write_timeout = Duration::from_millis(80);
+    options.timeouts.send_timeout = Duration::from_millis(80);
     options.timeouts.read_timeout = Duration::from_secs(1);
 
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
     let request = client.request(Method::GET, "/delayed").build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")
         .unwrap_err();
 
-    assert_eq!(error.kind, HttpErrorKind::WriteTimeout);
+    assert_eq!(error.kind, HttpErrorKind::SendTimeout);
     assert_eq!(error.method, Some(Method::GET));
 
     let captured = timeout(Duration::from_secs(3), server.finish())
@@ -439,10 +440,10 @@ async fn test_execute_read_timeout_on_buffered_body() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    options.timeouts.write_timeout = Duration::from_secs(1);
+    options.timeouts.send_timeout = Duration::from_secs(1);
     options.timeouts.read_timeout = Duration::from_millis(80);
 
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
     let request = client.request(Method::GET, "/slow-body").build();
     let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -480,7 +481,7 @@ async fn test_execute_stream_success_reads_all_chunks() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
 
     let request = client.request(Method::GET, "/stream").build();
     let mut stream_response = timeout(Duration::from_secs(3), client.execute(request))
@@ -526,9 +527,9 @@ async fn test_execute_stream_read_timeout() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_millis(80);
-    options.timeouts.write_timeout = Duration::from_secs(1);
+    options.timeouts.send_timeout = Duration::from_secs(1);
 
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
     let request = client.request(Method::GET, "/stream-timeout").build();
     let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -560,7 +561,7 @@ async fn test_execute_with_text_body_and_request_timeout() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
 
     let request = client
         .request(Method::POST, "/text")
@@ -598,7 +599,7 @@ async fn test_execute_with_bytes_body() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
 
     let request = client
         .request(Method::PUT, "/bytes")
@@ -634,7 +635,7 @@ async fn test_execute_stream_post_json_body_with_query_and_timeout() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
 
     let request = client
         .request(Method::POST, "/stream-post")
@@ -685,7 +686,7 @@ async fn test_execute_stream_with_text_body() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
 
     let request = client
         .request(Method::POST, "/stream-text")
@@ -734,7 +735,7 @@ async fn test_execute_stream_with_bytes_body() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
 
     let request = client
         .request(Method::PUT, "/stream-bytes")
@@ -775,7 +776,7 @@ async fn test_execute_stream_maps_non_success_status_to_http_error() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
     let request = client.request(Method::GET, "/stream-status").build();
 
     let error = timeout(Duration::from_secs(3), client.execute(request))
@@ -812,7 +813,7 @@ async fn test_execute_non_success_error_body_preview_is_truncated_by_limit() {
     options.base_url = Some(server.base_url());
     options.error_response_preview_limit = 8;
 
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
     let request = client.request(Method::GET, "/status-truncated").build();
     let error = client.execute(request).await.unwrap_err();
 
@@ -831,7 +832,7 @@ async fn test_execute_non_utf8_content_type_redacts_error_body_preview() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     let request = client.request(Method::GET, "/status-non-utf8-content-type").build();
@@ -859,7 +860,7 @@ async fn test_execute_truncated_binary_error_preview_has_unknown_total_length() 
     options.base_url = Some(server.base_url());
     options.error_response_preview_limit = 4;
 
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
     let request = client.request(Method::GET, "/status-truncated-binary").build();
     let error = client.execute(request).await.unwrap_err();
 
@@ -881,7 +882,7 @@ async fn test_execute_non_success_error_body_preview_is_not_truncated_at_exact_l
     options.base_url = Some(server.base_url());
     options.error_response_preview_limit = body.len();
 
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
     let request = client.request(Method::GET, "/status-exact-preview-limit").build();
     let error = client.execute(request).await.unwrap_err();
 
@@ -917,7 +918,7 @@ async fn test_execute_response_metadata_debug_uses_custom_log_policy() {
 
     let captured_context_debug = Arc::new(Mutex::new(None));
     let captured_context_debug_for_interceptor = Arc::clone(&captured_context_debug);
-    let mut client = HttpClientFactory::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().create(options).unwrap();
     client.add_response_interceptor(HttpResponseInterceptor::new(
         move |context: &mut qubit_http::HttpResponseInterceptorContext| {
             *captured_context_debug_for_interceptor
@@ -957,7 +958,7 @@ async fn test_execute_non_success_error_body_preview_redacts_json_fields() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
 
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
     let request = client.request(Method::GET, "/status-sensitive-body").build();
     let error = client.execute(request).await.unwrap_err();
 
@@ -980,7 +981,7 @@ async fn test_execute_non_success_text_body_preview_redacts_by_default() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
 
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     let error = client
@@ -1013,7 +1014,7 @@ async fn test_execute_non_success_text_body_pass_through_uses_same_policy_snapsh
     options.base_url = Some(server.base_url());
     options.log_redaction_policy = policy;
 
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     let error = client
@@ -1048,7 +1049,9 @@ async fn test_execute_status_error_message_redacts_sensitive_url_parts() {
         .expect("URL should accept password");
     url.set_fragment(Some("fragment-secret"));
 
-    let client = HttpClientFactory::new().create_default().unwrap();
+    let mut options = HttpClientOptions::default();
+    options.origin_policy = HttpOriginPolicy::AnyOrigin;
+    let client = HttpClientBuilder::new().create(options).unwrap();
     let request = client.request(Method::GET, url.as_str()).build();
     let error = client.execute(request).await.unwrap_err();
 
@@ -1086,7 +1089,7 @@ async fn test_execute_non_success_error_body_preview_truncates_when_limit_reache
     options.base_url = Some(server.base_url());
     options.error_response_preview_limit = 3;
 
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
     let request = client.request(Method::GET, "/status-truncated-next-chunk").build();
     let error = client.execute(request).await.unwrap_err();
 
@@ -1109,7 +1112,7 @@ async fn test_execute_error_body_preview_limit_is_decoupled_from_logging_limit()
     options.logging.body_size_limit = 4;
     options.error_response_preview_limit = 12;
 
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
     let request = client.request(Method::GET, "/status-decoupled-limit").build();
     let error = client.execute(request).await.unwrap_err();
 
@@ -1130,7 +1133,7 @@ async fn test_execute_non_success_error_body_preview_for_binary_body() {
     options.base_url = Some(server.base_url());
     options.error_response_preview_limit = 16;
 
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
     let request = client.request(Method::GET, "/status-binary").build();
     let error = client.execute(request).await.unwrap_err();
 
@@ -1150,7 +1153,7 @@ async fn test_execute_non_success_error_body_preview_for_empty_body() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
 
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
     let request = client.request(Method::GET, "/status-empty").build();
     let error = client.execute(request).await.unwrap_err();
 
@@ -1172,9 +1175,9 @@ async fn test_execute_non_success_error_body_preview_timeout_placeholder() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_millis(30);
-    options.timeouts.write_timeout = Duration::from_secs(1);
+    options.timeouts.send_timeout = Duration::from_secs(1);
 
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
     let request = client.request(Method::GET, "/status-timeout").build();
     let error = client.execute(request).await.unwrap_err();
 
@@ -1201,7 +1204,7 @@ async fn test_execute_maps_truncated_response_body_to_transport_error() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
     let request = client.request(Method::GET, "/truncated-body").build();
     let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -1233,7 +1236,7 @@ async fn test_buffered_body_read_error_uses_custom_query_policy() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.log_redaction_policy = custom_query_redaction_policy();
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     let path = path_with_custom_query("/buffered-read-policy");
@@ -1264,7 +1267,7 @@ async fn test_execute_maps_truncated_response_stream_to_transport_error() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
     let request = client.request(Method::GET, "/truncated-stream").build();
     let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -1308,7 +1311,7 @@ async fn test_stream_read_error_uses_custom_query_policy() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.log_redaction_policy = custom_query_redaction_policy();
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     let path = path_with_custom_query("/stream-read-policy");
@@ -1347,7 +1350,7 @@ async fn test_remembered_body_read_error_restores_custom_query_policy() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.log_redaction_policy = custom_query_redaction_policy();
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     let path = path_with_custom_query("/remembered-read-policy");
@@ -1401,7 +1404,7 @@ async fn test_execute_retries_retryable_status_until_success() {
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();
-    let mut client = HttpClientFactory::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().create(options).unwrap();
     client.add_header_injector(HttpHeaderInjector::new(move |headers: &mut http::HeaderMap| {
         let mut count = injector_count_clone.lock().unwrap();
         *count += 1;
@@ -1444,7 +1447,7 @@ async fn test_execute_does_not_retry_non_retryable_status() {
     options.retry.enabled = true;
     options.retry.max_attempts = 3;
     options.retry.backoff = BackoffPolicy::immediate();
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
 
     let request = client.request(Method::GET, "/bad-request").build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
@@ -1452,7 +1455,7 @@ async fn test_execute_does_not_retry_non_retryable_status() {
         .expect("execute timed out")
         .unwrap_err();
 
-    assert_eq!(error.kind, HttpErrorKind::RetryAborted);
+    assert_eq!(error.kind, HttpErrorKind::Status);
     let inner = retry_abort_inner_http(&error);
     assert_eq!(inner.kind, HttpErrorKind::Status);
     assert_eq!(inner.status, Some(StatusCode::BAD_REQUEST));
@@ -1489,7 +1492,7 @@ async fn test_execute_returns_last_error_after_retry_attempts_exhausted() {
     options.retry.enabled = true;
     options.retry.max_attempts = 3;
     options.retry.backoff = BackoffPolicy::immediate();
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
 
     let request = client.request(Method::GET, "/exhausted").build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
@@ -1522,7 +1525,7 @@ async fn test_execute_retry_max_duration_returns_last_error_after_retry_delay() 
     options.retry.max_attempts = 3;
     options.retry.max_duration = Some(Duration::from_millis(100));
     options.retry.backoff = BackoffPolicy::fixed(Duration::from_millis(120));
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
 
     let request = client.request(Method::GET, "/max-duration-after").build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
@@ -1556,7 +1559,7 @@ async fn test_execute_retry_in_flight_max_duration_does_not_panic() {
     options.retry.max_attempts = 3;
     options.retry.max_duration = Some(Duration::from_secs(1));
     options.retry.backoff = BackoffPolicy::immediate();
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("HTTP client should build");
 
@@ -1592,7 +1595,7 @@ async fn test_execute_retry_max_duration_zero_reports_no_retryable_failure() {
     options.retry.max_attempts = 3;
     options.retry.max_duration = Some(Duration::ZERO);
     options.retry.backoff = BackoffPolicy::immediate();
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
 
     let request = client.request(Method::GET, "/max-duration-zero").build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
@@ -1600,7 +1603,7 @@ async fn test_execute_retry_max_duration_zero_reports_no_retryable_failure() {
         .expect("execute timed out")
         .unwrap_err();
 
-    assert_eq!(error.kind, HttpErrorKind::RetryMaxElapsedExceeded);
+    assert_eq!(error.kind, HttpErrorKind::RetryBudgetExceeded);
     assert!(error.message.contains("before a retryable error was captured"));
 
     let captured = timeout(Duration::from_secs(3), server.finish())
@@ -1623,7 +1626,7 @@ async fn test_execute_does_not_retry_post_by_default() {
     options.retry.enabled = true;
     options.retry.max_attempts = 3;
     options.retry.backoff = BackoffPolicy::immediate();
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
 
     let request = client.request(Method::POST, "/post-default").build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
@@ -1662,7 +1665,7 @@ async fn test_execute_retries_post_when_all_methods_policy_is_enabled() {
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();
     options.retry.method_policy = HttpRetryMethodPolicy::AllMethods;
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
 
     let request = client.request(Method::POST, "/post-all").build();
     let response = timeout(Duration::from_secs(3), client.execute(request))
@@ -1680,7 +1683,7 @@ async fn test_execute_retries_post_when_all_methods_policy_is_enabled() {
 }
 
 #[tokio::test]
-async fn test_execute_retries_write_timeout_until_success() {
+async fn test_execute_retries_send_timeout_until_success() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::DelayedStart {
             delay: Duration::from_millis(120),
@@ -1698,11 +1701,11 @@ async fn test_execute_retries_write_timeout_until_success() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    options.timeouts.write_timeout = Duration::from_millis(30);
+    options.timeouts.send_timeout = Duration::from_millis(30);
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
 
     let request = client.request(Method::GET, "/write-timeout-retry").build();
     let mut response = timeout(Duration::from_secs(3), client.execute(request))
@@ -1743,7 +1746,7 @@ async fn test_execute_stream_retries_initial_status_until_success() {
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
 
     let request = client.request(Method::GET, "/stream-retry").build();
     let mut response = timeout(Duration::from_secs(3), client.execute(request))
@@ -1791,7 +1794,7 @@ async fn test_execute_stream_does_not_retry_after_stream_is_returned() {
     options.retry.enabled = true;
     options.retry.max_attempts = 3;
     options.retry.backoff = BackoffPolicy::immediate();
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
 
     let request = client.request(Method::GET, "/stream-read-timeout").build();
     let mut response = timeout(Duration::from_secs(3), client.execute(request))
@@ -1820,8 +1823,10 @@ async fn test_execute_connect_refused_maps_to_transport_error() {
     let addr = listener.local_addr().expect("listener should expose a local address");
     drop(listener);
 
-    let client = HttpClientFactory::new()
-        .create_default()
+    let mut options = HttpClientOptions::default();
+    options.origin_policy = HttpOriginPolicy::AnyOrigin;
+    let client = HttpClientBuilder::new()
+        .create(options)
         .expect("default client should be created");
     let target = format!("http://{addr}/refused");
     let request = client.request(Method::GET, &target).build();
@@ -1840,8 +1845,9 @@ async fn test_send_error_uses_custom_query_policy() {
     drop(listener);
 
     let mut options = HttpClientOptions::default();
+    options.origin_policy = HttpOriginPolicy::AnyOrigin;
     options.log_redaction_policy = custom_query_redaction_policy();
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     let target = format!("http://{addr}/send-policy?{CUSTOM_QUERY_FIELD}={CUSTOM_QUERY_SECRET}");

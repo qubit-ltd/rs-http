@@ -12,7 +12,7 @@ use http::header::AUTHORIZATION;
 use http::header::CONTENT_TYPE;
 use http::header::HeaderName;
 use http::header::HeaderValue;
-use qubit_http::HttpClientFactory;
+use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpLogger;
 use qubit_http::HttpLoggingOptions;
@@ -31,7 +31,7 @@ fn capture_request_header_logs(name: HeaderName, value: HeaderValue) -> String {
     let mut headers = HeaderMap::new();
     headers.insert(name, value);
 
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create_default()
         .expect("default options should create client");
     let request = client

@@ -7,7 +7,7 @@
 // =============================================================================
 
 use http::Method;
-use qubit_http::HttpClientFactory;
+use qubit_http::HttpClientBuilder;
 use qubit_http::HttpError;
 use qubit_http::HttpErrorKind;
 use qubit_http::HttpRequestInterceptor;
@@ -16,7 +16,7 @@ use url::Url;
 
 #[test]
 fn test_request_interceptors_apply_uses_parsed_path_when_resolved_url_cache_missing() {
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create_default()
         .expect("default options should create client");
     let mut request = client.request(Method::GET, "http://[::1]/resource").build();
@@ -38,7 +38,7 @@ fn test_request_interceptors_apply_uses_parsed_path_when_resolved_url_cache_miss
 
 #[test]
 fn test_request_interceptors_apply_keeps_url_empty_when_path_is_not_absolute() {
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create_default()
         .expect("default options should create client");
     let mut request = client.request(Method::GET, "/relative-only").build();
@@ -59,7 +59,7 @@ fn test_request_interceptors_apply_keeps_url_empty_when_path_is_not_absolute() {
 
 #[test]
 fn test_request_interceptors_apply_preserves_existing_error_url() {
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create_default()
         .expect("default options should create client");
     let mut request = client.request(Method::GET, "/relative-only").build();

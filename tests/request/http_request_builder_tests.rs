@@ -16,12 +16,12 @@ use http::Method;
 use http::header::CONTENT_TYPE;
 use qubit_budget::json::JsonEncodeLimits;
 use qubit_budget::json::JsonResource;
-use qubit_http::HttpClientFactory;
+use qubit_http::HttpCancellationToken;
+use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
 use qubit_http::HttpRequestBody;
 use qubit_http::HttpRetryMethodPolicy;
-use qubit_http::RetryCancellationToken;
 use qubit_json::encode::JsonEncodeError;
 use qubit_json::encode::JsonEncodeErrorKind;
 use qubit_json::encode::JsonSerializationErrorKind;
@@ -42,7 +42,7 @@ impl serde::Serialize for FailingSerialize {
 }
 
 fn new_builder(method: Method, path: &str) -> qubit_http::HttpRequestBuilder {
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create_default()
         .expect("default options should create client");
     client.request(method, path)
@@ -71,7 +71,7 @@ fn test_request_builder_debug_masks_sensitive_values() {
         HeaderValue::from_static("debug-default-header-secret"),
     );
     options.default_headers = default_headers;
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
 
@@ -83,7 +83,7 @@ fn test_request_builder_debug_masks_sensitive_values() {
         .text_body("debug-text-secret")
         .request_timeout(Duration::from_secs(1))
         .expect("positive timeout should be accepted")
-        .cancellation_token(RetryCancellationToken::new());
+        .cancellation_token(HttpCancellationToken::new());
     let absolute = client.request(Method::GET, "https://debug-user:debug-url-secret@example.com/path");
 
     let debug = format!("{relative:?}\n{absolute:?}");
@@ -105,7 +105,7 @@ fn test_request_builder_copies_base_url_and_ipv4_only_defaults() {
     options.set_base_url("https://api.example.com/v1/").unwrap();
     options.ipv4_only = true;
 
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     let request = client.request(Method::GET, "users").build();
@@ -117,43 +117,43 @@ fn test_request_builder_copies_base_url_and_ipv4_only_defaults() {
 }
 
 #[test]
-fn test_request_builder_copies_write_timeout_default_from_client_options() {
+fn test_request_builder_copies_send_timeout_default_from_client_options() {
     let mut options = HttpClientOptions::default();
-    options.timeouts.write_timeout = Duration::from_millis(321);
+    options.timeouts.send_timeout = Duration::from_millis(321);
 
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     let request = client.request(Method::GET, "/v1/default-write-timeout").build();
 
-    assert_eq!(request.write_timeout(), Duration::from_millis(321));
+    assert_eq!(request.send_timeout(), Duration::from_millis(321));
 }
 
 #[test]
-fn test_request_builder_write_timeout_overrides_default_from_options() {
+fn test_request_builder_send_timeout_overrides_default_from_options() {
     let mut options = HttpClientOptions::default();
-    options.timeouts.write_timeout = Duration::from_secs(2);
+    options.timeouts.send_timeout = Duration::from_secs(2);
 
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     let request = client
         .request(Method::GET, "/v1/override-write-timeout")
-        .write_timeout(Duration::from_millis(88))
+        .send_timeout(Duration::from_millis(88))
         .expect("positive write timeout should be accepted")
         .build();
 
-    assert_eq!(request.write_timeout(), Duration::from_millis(88));
+    assert_eq!(request.send_timeout(), Duration::from_millis(88));
 }
 
 #[test]
-fn test_request_builder_write_timeout_rejects_zero() {
+fn test_request_builder_send_timeout_rejects_zero() {
     let error = new_builder(Method::GET, "/v1/zero-write-timeout")
-        .write_timeout(Duration::ZERO)
+        .send_timeout(Duration::ZERO)
         .expect_err("zero write timeout should be rejected");
 
     assert_eq!(error.kind, HttpErrorKind::Other);
-    assert!(error.message.contains("write_timeout"));
+    assert!(error.message.contains("send_timeout"));
     assert!(error.message.contains("greater than zero"));
 }
 
@@ -162,7 +162,7 @@ fn test_request_builder_copies_read_timeout_default_from_client_options() {
     let mut options = HttpClientOptions::default();
     options.timeouts.read_timeout = Duration::from_millis(432);
 
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     let request = client.request(Method::GET, "/v1/default-read-timeout").build();
@@ -175,7 +175,7 @@ fn test_request_builder_read_timeout_overrides_default_from_options() {
     let mut options = HttpClientOptions::default();
     options.timeouts.read_timeout = Duration::from_secs(2);
 
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     let request = client
@@ -204,7 +204,7 @@ fn test_request_builder_base_url_method_overrides_default_from_options() {
     options.set_base_url("https://api.example.com/v1/").unwrap();
 
     let override_base = url::Url::parse("https://override.example.com/root/").unwrap();
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     let request = client
@@ -220,7 +220,7 @@ fn test_request_builder_ipv4_only_method_overrides_default_from_options() {
     let mut options = HttpClientOptions::default();
     options.ipv4_only = true;
 
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     let request = client.request(Method::GET, "users").ipv4_only(false).build();
@@ -233,7 +233,7 @@ fn test_request_builder_clear_base_url_method_overrides_default_from_options() {
     let mut options = HttpClientOptions::default();
     options.set_base_url("https://api.example.com/v1/").unwrap();
 
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     let request = client.request(Method::GET, "users").clear_base_url().build();
@@ -332,7 +332,7 @@ fn test_request_builder_json_body_with_limits_rejects_excess_output() {
 fn test_request_builder_json_body_uses_client_encode_limits() {
     let mut options = HttpClientOptions::new();
     options.json_encode_limits = JsonEncodeLimits::builder().max_output_bytes(3).build();
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("options should create client");
 
@@ -512,7 +512,7 @@ fn test_request_builder_disable_retry_override() {
 
 #[test]
 fn test_request_builder_sets_cancellation_token() {
-    let token = RetryCancellationToken::new();
+    let token = HttpCancellationToken::new();
     let request = new_builder(Method::GET, "/v1/cancel")
         .cancellation_token(token.clone())
         .build();

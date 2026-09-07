@@ -9,7 +9,7 @@
 use std::time::Duration;
 
 use http::Method;
-use qubit_http::HttpClientFactory;
+use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
 use tokio::time::timeout;
@@ -21,7 +21,7 @@ use crate::common::spawn_one_shot_server;
 fn test_ipv4_only_option_is_preserved_in_client_options() {
     let mut options = HttpClientOptions::default();
     options.ipv4_only = true;
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
     assert!(client.options().ipv4_only);
 }
 
@@ -42,10 +42,10 @@ async fn test_ipv4_only_with_localhost_request_is_accessible() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(localhost_url);
     options.ipv4_only = true;
-    options.timeouts.write_timeout = Duration::from_secs(2);
+    options.timeouts.send_timeout = Duration::from_secs(2);
     options.timeouts.read_timeout = Duration::from_secs(2);
 
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
     let request = client.request(Method::GET, "/ipv4-check").build();
     let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -59,10 +59,10 @@ async fn test_ipv4_only_with_localhost_request_is_accessible() {
 async fn test_ipv4_only_rejects_ipv6_literal_request_url() {
     let mut options = HttpClientOptions::default();
     options.ipv4_only = true;
-    options.timeouts.write_timeout = Duration::from_secs(1);
+    options.timeouts.send_timeout = Duration::from_secs(1);
     options.timeouts.read_timeout = Duration::from_secs(1);
 
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
     let request = client.request(Method::GET, "http://[::1]:18080/ipv6").build();
     let error = client.execute(request).await.unwrap_err();
 
@@ -78,7 +78,7 @@ fn test_ipv4_only_rejects_ipv6_literal_proxy_host() {
     options.proxy.host = Some("[::1]".to_string());
     options.proxy.port = Some(8080);
 
-    let error = HttpClientFactory::new().create(options).unwrap_err();
+    let error = HttpClientBuilder::new().create(options).unwrap_err();
 
     assert_eq!(error.kind, HttpErrorKind::ProxyConfig);
     assert!(error.message.contains("not allowed when ipv4_only=true"));
@@ -91,10 +91,10 @@ async fn test_ipv4_only_fails_on_hostname_without_ipv4_address() {
         .set_base_url("http://ip6-localhost")
         .expect("base URL should parse");
     options.ipv4_only = true;
-    options.timeouts.write_timeout = Duration::from_secs(1);
+    options.timeouts.send_timeout = Duration::from_secs(1);
     options.timeouts.read_timeout = Duration::from_secs(1);
 
-    let client = HttpClientFactory::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
     let request = client.request(Method::GET, "/only-ipv6").build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -102,7 +102,7 @@ async fn test_ipv4_only_fails_on_hostname_without_ipv4_address() {
         .unwrap_err();
 
     assert!(
-        matches!(error.kind, HttpErrorKind::Transport | HttpErrorKind::WriteTimeout),
+        matches!(error.kind, HttpErrorKind::Transport | HttpErrorKind::SendTimeout),
         "expected IPv4-only DNS failure to be transport or write timeout, got {:?}",
         error.kind
     );

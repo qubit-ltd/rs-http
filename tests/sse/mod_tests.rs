@@ -65,7 +65,7 @@ fn test_sse_reconnect_options_new_matches_default() {
 #[test]
 fn test_sse_reconnect_options_default_backoff_parameters() {
     let options = SseReconnectOptions::default();
-    assert_eq!(options.retry.limits().max_attempts().get(), 4);
+    assert_eq!(options.retry.admission_limits().max_attempts().get(), 4);
     assert_eq!(options.retry.backoff().maximum_delay(), Some(Duration::from_secs(30)),);
 }
 

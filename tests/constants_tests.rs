@@ -11,15 +11,15 @@ use qubit_http::constants::DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES;
 use qubit_http::constants::DEFAULT_LOG_BODY_SIZE_LIMIT_BYTES;
 use qubit_http::constants::DEFAULT_READ_TIMEOUT_SECS;
 use qubit_http::constants::DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES;
+use qubit_http::constants::DEFAULT_SEND_TIMEOUT_SECS;
 use qubit_http::constants::DEFAULT_SSE_MAX_FRAME_BYTES;
 use qubit_http::constants::DEFAULT_SSE_MAX_LINE_BYTES;
-use qubit_http::constants::DEFAULT_WRITE_TIMEOUT_SECS;
 
 #[test]
 fn test_constants_keep_expected_http_defaults() {
     assert_eq!(DEFAULT_CONNECT_TIMEOUT_SECS, 10);
     assert_eq!(DEFAULT_READ_TIMEOUT_SECS, 120);
-    assert_eq!(DEFAULT_WRITE_TIMEOUT_SECS, 120);
+    assert_eq!(DEFAULT_SEND_TIMEOUT_SECS, 120);
     assert_eq!(DEFAULT_LOG_BODY_SIZE_LIMIT_BYTES, 16 * 1024);
     assert_eq!(DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES, 16 * 1024);
     assert_eq!(DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES, 8 * 1024 * 1024);

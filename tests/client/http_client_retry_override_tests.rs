@@ -16,7 +16,7 @@ use std::time::Instant;
 use futures_util::StreamExt;
 use http::Method;
 use http::StatusCode;
-use qubit_http::HttpClientFactory;
+use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
 use qubit_http::HttpRetryMethodPolicy;
@@ -49,7 +49,7 @@ async fn test_request_retry_override_force_enable_and_all_methods_for_post() {
     options.retry.enabled = false;
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
 
@@ -86,7 +86,7 @@ async fn test_request_retry_override_disable_retry_skips_client_retry_policy() {
     options.retry.enabled = true;
     options.retry.max_attempts = 3;
     options.retry.backoff = BackoffPolicy::immediate();
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
 
@@ -126,7 +126,7 @@ async fn test_request_retry_override_method_policy_allows_post_without_global_ov
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();
     options.retry.method_policy = HttpRetryMethodPolicy::IdempotentOnly;
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
 
@@ -167,7 +167,7 @@ async fn test_request_retry_override_honor_retry_after_waits_before_retrying() {
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
 
@@ -214,7 +214,7 @@ async fn test_request_retry_override_honor_retry_after_waits_before_retrying_on_
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
 
@@ -265,7 +265,7 @@ async fn test_request_retry_override_honor_retry_after_waits_before_body_stream_
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
 
@@ -320,7 +320,7 @@ async fn test_request_retry_override_honor_retry_after_without_header_does_not_a
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
 
@@ -367,7 +367,7 @@ async fn test_request_retry_override_honor_retry_after_does_not_block_runtime_th
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();
-    let client = HttpClientFactory::new()
+    let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
 
