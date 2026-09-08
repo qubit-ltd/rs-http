@@ -12,6 +12,8 @@
 //! [`HttpClient::execute_once`]; retry policy comes from
 //! [`crate::HttpClientOptions::retry`] unless overridden per request.
 
+use std::error::Error;
+use std::fmt;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -46,6 +48,17 @@ use crate::HttpResponseInterceptor;
 use crate::HttpResponseInterceptors;
 use crate::HttpResponseMeta;
 use crate::HttpResult;
+
+#[derive(Debug)]
+struct HttpRetryApplicationSource(String);
+
+impl fmt::Display for HttpRetryApplicationSource {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl Error for HttpRetryApplicationSource {}
 use crate::HttpRetryDiagnostics;
 use crate::HttpRetryOptions;
 use crate::HttpRetryTermination;
@@ -607,7 +620,14 @@ impl HttpClient {
             RetryErrorReason::Cancelled { .. } => HttpRetryTermination::Cancelled,
             _ => HttpRetryTermination::Aborted,
         };
-        mapped.with_retry_diagnostics(HttpRetryDiagnostics::new(attempts, started_at.elapsed(), termination))
+        let mut mapped =
+            mapped.with_retry_diagnostics(HttpRetryDiagnostics::new(attempts, started_at.elapsed(), termination));
+        if mapped.source().is_none() {
+            if let Some(last_error) = error.last_error() {
+                mapped = mapped.with_source(HttpRetryApplicationSource(last_error.to_string()));
+            }
+        }
+        mapped
     }
 
     fn project_http_error(error: &HttpError) -> HttpError {
