@@ -11,14 +11,16 @@
 use std::time::Duration;
 
 use bytes::Bytes;
+use futures_util::Stream;
 use futures_util::StreamExt as _;
 use http::HeaderMap;
 use http::Method;
+use http::StatusCode;
 use qubit_http::HttpResponse;
 use qubit_http::HttpResult;
 use qubit_http::sse::SseReconnectOptions;
 
-async fn collect_results<T>(stream: impl futures_util::Stream<Item = HttpResult<T>>) -> Vec<T> {
+async fn collect_results<T>(stream: impl Stream<Item = HttpResult<T>>) -> Vec<T> {
     stream
         .map(|item| item.expect("unexpected stream error in test"))
         .collect::<Vec<_>>()
@@ -28,7 +30,7 @@ async fn collect_results<T>(stream: impl futures_util::Stream<Item = HttpResult<
 fn stream_response_from_chunks(chunks: Vec<&'static str>) -> HttpResponse {
     let body = chunks.join("");
     HttpResponse::new(
-        http::StatusCode::OK,
+        StatusCode::OK,
         HeaderMap::new(),
         Bytes::from(body),
         url::Url::parse("https://example.com/stream").unwrap(),

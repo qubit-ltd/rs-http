@@ -8,6 +8,7 @@
 
 use http::Method;
 use qubit_http::HttpClientBuilder;
+use qubit_http::HttpRequest;
 use qubit_http::HttpRequestInterceptor;
 use qubit_http::HttpRequestInterceptors;
 
@@ -18,13 +19,13 @@ fn test_http_request_interceptors_apply_in_insertion_order() {
         .expect("default client should be created");
     let mut request = client.request(Method::GET, "https://example.com/").build();
     let mut interceptors = HttpRequestInterceptors::new();
-    interceptors.push(HttpRequestInterceptor::new(|request: &mut qubit_http::HttpRequest| {
+    interceptors.push(HttpRequestInterceptor::new(|request: &mut HttpRequest| {
         request
             .set_header("x-first", "1")
             .expect("first header should be valid");
         Ok(())
     }));
-    interceptors.push(HttpRequestInterceptor::new(|request: &mut qubit_http::HttpRequest| {
+    interceptors.push(HttpRequestInterceptor::new(|request: &mut HttpRequest| {
         let first = request
             .headers()
             .get("x-first")

@@ -18,6 +18,7 @@ use qubit_http::HttpCancellationToken;
 use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
+use qubit_http::HttpRequest;
 use qubit_http::HttpRequestBody;
 use qubit_http::HttpRequestBodyByteStream;
 use qubit_http::HttpRequestRetryOverride;
@@ -28,7 +29,7 @@ use qubit_redact::Sensitivity;
 use qubit_redact::formats::http::UrlPathPolicy;
 use url::Url;
 
-fn new_request(method: Method, path: &str) -> qubit_http::HttpRequest {
+fn new_request(method: Method, path: &str) -> HttpRequest {
     let client = HttpClientBuilder::new()
         .create_default()
         .expect("default options should create client");

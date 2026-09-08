@@ -9,6 +9,7 @@
 use std::str::FromStr;
 use std::time::Duration;
 
+use http::Method;
 use http::StatusCode;
 use qubit_argument::ArgumentResult;
 use qubit_argument::require_that;
@@ -211,7 +212,7 @@ impl HttpRetryOptions {
     ///
     /// # Returns
     /// `true` if retry is enabled and the method policy allows replay.
-    pub fn allows_method(&self, method: &http::Method) -> bool {
+    pub fn allows_method(&self, method: &Method) -> bool {
         self.enabled && self.method_policy.allows_method(method)
     }
 

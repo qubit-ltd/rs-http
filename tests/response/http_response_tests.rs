@@ -14,6 +14,8 @@ use http::StatusCode;
 use http::header::RETRY_AFTER;
 use qubit_http::HttpErrorKind;
 use qubit_http::HttpResponse;
+use qubit_json::decode::DiagnosticPolicy;
+use qubit_json::decode::JsonDecodeError;
 use url::Url;
 
 use crate::common::SensitiveChoice;
@@ -208,11 +210,8 @@ async fn test_http_response_json_redacts_deserializer_value() {
     let source =
         std::error::Error::source(&error).expect("HTTP JSON decode errors must retain the redacted decoder source");
     let decode_error = source
-        .downcast_ref::<qubit_json::decode::JsonDecodeError>()
+        .downcast_ref::<JsonDecodeError>()
         .expect("HTTP JSON decode source must be JsonDecodeError");
-    assert_eq!(
-        decode_error.diagnostic_policy(),
-        qubit_json::decode::DiagnosticPolicy::Redacted,
-    );
+    assert_eq!(decode_error.diagnostic_policy(), DiagnosticPolicy::Redacted,);
     assert!(!decode_error.to_string().contains(SECRET));
 }

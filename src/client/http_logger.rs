@@ -9,11 +9,17 @@
 //!
 //! Encapsulates request and response logging behavior.
 
+use http::HeaderMap;
+use http::HeaderValue;
 use http::header::CONTENT_TYPE;
 use qubit_redact::Redactor;
+use tracing::Level;
 use tracing::Metadata;
 use tracing::callsite::DefaultCallsite;
+use tracing::dispatcher::get_default;
+use tracing::metadata;
 use tracing::metadata::Kind;
+use tracing::trace;
 
 use crate::HttpClientOptions;
 use crate::HttpLoggingOptions;
@@ -31,10 +37,10 @@ const STREAMING_REQUEST_BODY_SKIPPED: &str = "<skipped: streaming request body>"
 /// shared interest caching that can change while thread-local subscribers are
 /// installed concurrently.
 static HTTP_LOGGER_ENABLED_CALLSITE: DefaultCallsite = DefaultCallsite::new(&HTTP_LOGGER_ENABLED_METADATA);
-static HTTP_LOGGER_ENABLED_METADATA: Metadata<'static> = tracing::metadata! {
+static HTTP_LOGGER_ENABLED_METADATA: Metadata<'static> = metadata! {
     name: "qubit_http_logger_enabled",
     target: module_path!(),
-    level: tracing::Level::TRACE,
+    level: Level::TRACE,
     fields: &[],
     callsite: &HTTP_LOGGER_ENABLED_CALLSITE,
     kind: Kind::EVENT,
@@ -127,19 +133,19 @@ impl<'a> HttpLogger<'a> {
         let url = url_handle
             .map(|handle| diagnostics.text(handle).as_str().to_owned())
             .unwrap_or_else(|| UNRESOLVED_REQUEST_URL.to_owned());
-        tracing::trace!("--> {} {}", request.method(), url);
+        trace!("--> {} {}", request.method(), url);
         if let Some(handle) = header_handle {
-            tracing::trace!("{}", diagnostics.text(handle));
+            trace!("{}", diagnostics.text(handle));
         }
         if let Some(preview) = body_preview {
             match (preview, body_handle) {
                 (RequestBodyLogPreview::Bytes(_), Some(handle)) => {
-                    tracing::trace!("Request body: {}", diagnostics.text(handle));
+                    trace!("Request body: {}", diagnostics.text(handle));
                 }
-                (RequestBodyLogPreview::Empty, _) => tracing::trace!("Request body: <empty>"),
-                (RequestBodyLogPreview::Skipped(reason), _) => tracing::trace!("Request body: {reason}"),
+                (RequestBodyLogPreview::Empty, _) => trace!("Request body: <empty>"),
+                (RequestBodyLogPreview::Skipped(reason), _) => trace!("Request body: {reason}"),
                 (RequestBodyLogPreview::Bytes(_), None) => {
-                    tracing::trace!("Request body: <redaction incomplete>");
+                    trace!("Request body: <redaction incomplete>");
                 }
             }
         }
@@ -186,9 +192,9 @@ impl<'a> HttpLogger<'a> {
                     Ok(body) => body,
                     Err(error) => {
                         let diagnostics = batch.finish();
-                        tracing::trace!("<-- {} {}", response.status().as_u16(), diagnostics.text(url_handle));
+                        trace!("<-- {} {}", response.status().as_u16(), diagnostics.text(url_handle));
                         if let Some(handle) = header_handle {
-                            tracing::trace!("{}", diagnostics.text(handle));
+                            trace!("{}", diagnostics.text(handle));
                         }
                         return Err(error);
                     }
@@ -206,25 +212,25 @@ impl<'a> HttpLogger<'a> {
                 None
             };
             let diagnostics = batch.finish();
-            tracing::trace!("<-- {} {}", response.status().as_u16(), diagnostics.text(url_handle));
+            trace!("<-- {} {}", response.status().as_u16(), diagnostics.text(url_handle));
             if let Some(handle) = header_handle {
-                tracing::trace!("{}", diagnostics.text(handle));
+                trace!("{}", diagnostics.text(handle));
             }
             if body_empty {
-                tracing::trace!("Response body: <empty>");
+                trace!("Response body: <empty>");
             } else if let Some(handle) = body_handle {
-                tracing::trace!("Response body: {}", diagnostics.text(handle));
+                trace!("Response body: {}", diagnostics.text(handle));
             } else {
-                tracing::trace!("Response body: <skipped: streaming or unknown-size body>");
+                trace!("Response body: <skipped: streaming or unknown-size body>");
             }
         } else {
             let diagnostics = batch.finish();
-            tracing::trace!("<-- {} {}", response.status().as_u16(), diagnostics.text(url_handle));
+            trace!("<-- {} {}", response.status().as_u16(), diagnostics.text(url_handle));
             if let Some(handle) = header_handle {
-                tracing::trace!("{}", diagnostics.text(handle));
+                trace!("{}", diagnostics.text(handle));
             }
             if self.options.log_response_body {
-                tracing::trace!("Response body: <redaction incomplete>");
+                trace!("Response body: <redaction incomplete>");
             }
         }
         Ok(())
@@ -250,13 +256,13 @@ impl<'a> HttpLogger<'a> {
             .log_response_header
             .then(|| batch.redact_http_headers(response_meta.headers()));
         let diagnostics = batch.finish();
-        tracing::trace!(
+        trace!(
             "<-- {} {} (stream)",
             response_meta.status().as_u16(),
             diagnostics.text(url_handle)
         );
         if let Some(handle) = header_handle {
-            tracing::trace!("{}", diagnostics.text(handle));
+            trace!("{}", diagnostics.text(handle));
         }
     }
 
@@ -266,8 +272,7 @@ impl<'a> HttpLogger<'a> {
     /// # Returns
     /// `true` when logging is enabled and TRACE is active.
     pub fn is_trace_enabled(&self) -> bool {
-        self.options.enabled
-            && tracing::dispatcher::get_default(|dispatcher| dispatcher.enabled(&HTTP_LOGGER_ENABLED_METADATA))
+        self.options.enabled && get_default(|dispatcher| dispatcher.enabled(&HTTP_LOGGER_ENABLED_METADATA))
     }
 
     /// Borrows request body content only when body logging is safe.
@@ -301,7 +306,7 @@ impl<'a> HttpLogger<'a> {
     /// # Returns
     /// `Some` when Content-Type is present, including when its value is not
     /// valid UTF-8; otherwise `None`.
-    fn content_type(headers: &http::HeaderMap) -> Option<&http::HeaderValue> {
+    fn content_type(headers: &HeaderMap) -> Option<&HeaderValue> {
         headers.get(CONTENT_TYPE)
     }
 }

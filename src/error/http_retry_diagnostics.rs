@@ -25,16 +25,19 @@ impl HttpRetryDiagnostics {
         }
     }
 
+    /// Returns the number of attempts made by the retry flow.
     #[must_use]
     pub const fn attempts(&self) -> u32 {
         self.attempts
     }
 
+    /// Returns the elapsed duration of the retry flow.
     #[must_use]
     pub const fn elapsed(&self) -> Duration {
         self.elapsed
     }
 
+    /// Returns the reason the retry flow terminated.
     #[must_use]
     pub const fn termination(&self) -> HttpRetryTermination {
         self.termination

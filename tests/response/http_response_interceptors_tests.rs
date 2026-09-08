@@ -7,9 +7,11 @@
 // =============================================================================
 
 use http::HeaderMap;
+use http::HeaderValue;
 use http::Method;
 use http::StatusCode;
 use qubit_http::HttpResponseInterceptor;
+use qubit_http::HttpResponseInterceptorContext;
 use qubit_http::HttpResponseInterceptors;
 use qubit_http::HttpResponseMeta;
 use url::Url;
@@ -18,10 +20,10 @@ use url::Url;
 fn test_http_response_interceptors_clear_removes_registered_callbacks() {
     let mut interceptors = HttpResponseInterceptors::new();
     interceptors.push(HttpResponseInterceptor::new(
-        |context: &mut qubit_http::HttpResponseInterceptorContext| {
+        |context: &mut HttpResponseInterceptorContext| {
             context
                 .headers_mut()
-                .insert("x-interceptor", http::HeaderValue::from_static("called"));
+                .insert("x-interceptor", HeaderValue::from_static("called"));
             Ok(())
         },
     ));

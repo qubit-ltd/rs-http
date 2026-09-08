@@ -13,12 +13,16 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
+use http::HeaderMap;
 use http::Method;
 use qubit_http::AsyncHttpHeaderInjector;
 use qubit_http::HttpCancellationToken;
 use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpError;
+use qubit_http::HttpRequest;
+use qubit_http::HttpRequestInterceptor;
+use qubit_http::HttpResult;
 use qubit_retry::BackoffPolicy;
 use qubit_retry::RetryError;
 
@@ -43,9 +47,9 @@ async fn test_same_source_interceptor_clone_remains_retry_owned() {
     options.retry.backoff = BackoffPolicy::immediate();
     let mut client = HttpClientBuilder::new().create(options).unwrap();
     let flow_token = HttpCancellationToken::new();
-    client.add_request_interceptor(qubit_http::HttpRequestInterceptor::new({
+    client.add_request_interceptor(HttpRequestInterceptor::new({
         let flow_token = flow_token.clone();
-        move |request: &mut qubit_http::HttpRequest| {
+        move |request: &mut HttpRequest| {
             request.set_cancellation_token(flow_token.clone());
             Ok(())
         }
@@ -54,10 +58,10 @@ async fn test_same_source_interceptor_clone_remains_retry_owned() {
     client.add_async_header_injector(AsyncHttpHeaderInjector::new({
         let flow_token = flow_token.clone();
         let attempts = Arc::clone(&attempts);
-        move |_headers: &mut http::HeaderMap| {
+        move |_headers: &mut HeaderMap| {
             flow_token.cancel();
             attempts.fetch_add(1, Ordering::SeqCst);
-            Box::pin(std::future::pending::<qubit_http::HttpResult<()>>())
+            Box::pin(std::future::pending::<HttpResult<()>>())
         }
     }));
 

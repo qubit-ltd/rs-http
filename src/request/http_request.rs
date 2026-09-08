@@ -21,6 +21,9 @@ use http::HeaderValue;
 use http::Method;
 use qubit_function::MutatingFunction;
 use qubit_redact::Redactor;
+use reqwest::Body;
+use reqwest::Client;
+use reqwest::RequestBuilder;
 use reqwest::Response;
 use url::Host;
 use url::Url;
@@ -626,7 +629,7 @@ impl HttpRequest {
     ///   `send_timeout`.
     pub(crate) async fn send_impl(
         &mut self,
-        backend: &reqwest::Client,
+        backend: &Client,
         logger: &HttpLogger<'_>,
         cancellation_token: Option<HttpCancellationToken>,
     ) -> HttpResult<Response> {
@@ -1060,7 +1063,7 @@ impl HttpRequest {
     /// # Returns
     /// The same builder with an appropriate `.body(...)` applied (or unchanged
     /// for [`HttpRequestBody::Empty`]).
-    fn apply_request_body(builder: reqwest::RequestBuilder, body: HttpRequestBody) -> reqwest::RequestBuilder {
+    fn apply_request_body(builder: RequestBuilder, body: HttpRequestBody) -> RequestBuilder {
         match body {
             HttpRequestBody::Empty => builder,
             HttpRequestBody::Bytes(bytes)
@@ -1070,7 +1073,7 @@ impl HttpRequest {
             | HttpRequestBody::Ndjson(bytes) => builder.body(bytes),
             HttpRequestBody::Stream(chunks) => {
                 let body_stream = futures_stream::iter(chunks.into_iter().map(Result::<Bytes, std::io::Error>::Ok));
-                builder.body(reqwest::Body::wrap_stream(body_stream))
+                builder.body(Body::wrap_stream(body_stream))
             }
             HttpRequestBody::Text(text) => builder.body(text),
         }

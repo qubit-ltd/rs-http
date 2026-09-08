@@ -19,6 +19,7 @@ use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
 use qubit_retry::BackoffPolicy;
+use tokio::pin;
 use tokio::time::timeout;
 
 use crate::common::ResponsePlan;
@@ -47,7 +48,7 @@ async fn test_retry_success_hands_flow_token_to_response() {
         .build();
     let mut response = client.execute(request).await.unwrap();
     let body = response.bytes();
-    tokio::pin!(body);
+    pin!(body);
     let waker = Waker::noop();
     let mut context = Context::from_waker(waker);
     assert!(body.as_mut().poll(&mut context).is_pending());

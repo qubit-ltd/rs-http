@@ -13,6 +13,7 @@ use std::time::Duration;
 
 use async_stream::stream;
 use bytes::Bytes;
+use bytes::BytesMut;
 use futures_util::StreamExt;
 use futures_util::stream as futures_stream;
 use http::HeaderMap;
@@ -25,6 +26,7 @@ use qubit_budget::ResourceBudget;
 use qubit_budget::json::JsonValueLimits;
 use qubit_json::decode::JsonDecoder;
 use qubit_redact::Redactor;
+use qubit_redact::formats::http::BodyCapture;
 use serde::de::DeserializeOwned;
 use url::Url;
 
@@ -417,7 +419,7 @@ impl HttpResponse {
                 return Err(error);
             }
         }
-        let mut body = bytes::BytesMut::new();
+        let mut body = BytesMut::new();
         let mut body_budget = ResourceBudget::new("response body", body_limit);
 
         loop {
@@ -914,14 +916,13 @@ impl HttpResponse {
         }
         let capture = if truncated {
             source_len.map_or_else(
-                || qubit_redact::formats::http::BodyCapture::truncated_unknown(bytes),
+                || BodyCapture::truncated_unknown(bytes),
                 |total_len| {
-                    qubit_redact::formats::http::BodyCapture::truncated(bytes, total_len)
-                        .unwrap_or_else(|_| qubit_redact::formats::http::BodyCapture::truncated_unknown(bytes))
+                    BodyCapture::truncated(bytes, total_len).unwrap_or_else(|_| BodyCapture::truncated_unknown(bytes))
                 },
             )
         } else {
-            qubit_redact::formats::http::BodyCapture::complete(bytes)
+            BodyCapture::complete(bytes)
         };
         let body = log_redactor.redact_http_body(capture, content_type);
         body.into_text_or_marker("<redaction incomplete>").into_string()

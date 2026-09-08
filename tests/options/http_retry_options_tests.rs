@@ -8,6 +8,7 @@
 
 use std::time::Duration;
 
+use http::Method;
 use http::StatusCode;
 use qubit_config::Config;
 use qubit_http::HttpConfigErrorKind;
@@ -34,8 +35,8 @@ fn test_http_retry_options_none_policy_disables_retries() {
     options.enabled = true;
     options.method_policy = HttpRetryMethodPolicy::None;
 
-    assert!(!options.allows_method(&http::Method::GET));
-    assert!(!options.allows_method(&http::Method::POST));
+    assert!(!options.allows_method(&Method::GET));
+    assert!(!options.allows_method(&Method::POST));
 }
 
 #[test]

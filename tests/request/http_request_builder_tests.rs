@@ -14,6 +14,7 @@ use http::HeaderMap;
 use http::HeaderValue;
 use http::Method;
 use http::header::CONTENT_TYPE;
+use http::header::HeaderName;
 use qubit_budget::json::JsonEncodeLimits;
 use qubit_budget::json::JsonResource;
 use qubit_http::HttpCancellationToken;
@@ -21,18 +22,20 @@ use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
 use qubit_http::HttpRequestBody;
+use qubit_http::HttpRequestBuilder;
 use qubit_http::HttpRetryMethodPolicy;
 use qubit_json::encode::JsonEncodeError;
 use qubit_json::encode::JsonEncodeErrorKind;
 use qubit_json::encode::JsonSerializationErrorKind;
 use qubit_redact::RedactionPolicy;
 use qubit_redact::Sensitivity;
+use serde::Serialize;
 use serde::ser::Error as _;
 use serde::ser::Serializer;
 
 struct FailingSerialize;
 
-impl serde::Serialize for FailingSerialize {
+impl Serialize for FailingSerialize {
     fn serialize<S>(&self, _serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -41,7 +44,7 @@ impl serde::Serialize for FailingSerialize {
     }
 }
 
-fn new_builder(method: Method, path: &str) -> qubit_http::HttpRequestBuilder {
+fn new_builder(method: Method, path: &str) -> HttpRequestBuilder {
     let client = HttpClientBuilder::new()
         .create_default()
         .expect("default options should create client");
@@ -283,7 +286,7 @@ fn test_request_builder_text_body_sets_content_type() {
 
 #[test]
 fn test_request_builder_json_body_sets_content_type_and_payload() {
-    #[derive(serde::Serialize)]
+    #[derive(Serialize)]
     struct Payload {
         name: String,
         value: i32,
@@ -397,10 +400,7 @@ fn test_request_builder_stream_body_preserves_chunk_order() {
 fn test_request_builder_query_params_headers_and_text_body_preserve_existing_content_type() {
     let mut headers = HeaderMap::new();
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("text/custom; charset=utf-8"));
-    headers.insert(
-        http::header::HeaderName::from_static("x-extra"),
-        HeaderValue::from_static("present"),
-    );
+    headers.insert(HeaderName::from_static("x-extra"), HeaderValue::from_static("present"));
 
     let request = new_builder(Method::POST, "/v1/text")
         .query_params([("a", "1"), ("b", "2")])
@@ -500,7 +500,7 @@ fn test_request_builder_retry_override_options() {
 
 #[test]
 fn test_request_builder_disable_retry_override() {
-    let request = new_builder(http::Method::POST, "/v1/retry-disable")
+    let request = new_builder(Method::POST, "/v1/retry-disable")
         .disable_retry()
         .honor_retry_after(false)
         .build();
@@ -863,7 +863,7 @@ fn test_request_builder_multipart_body_rejects_non_utf8_existing_content_type() 
 
 #[test]
 fn test_request_builder_ndjson_body_sets_content_type_and_serializes_lines() {
-    #[derive(serde::Serialize)]
+    #[derive(Serialize)]
     struct Record {
         id: i32,
     }
@@ -891,7 +891,7 @@ fn test_request_builder_ndjson_body_sets_content_type_and_serializes_lines() {
 
 #[test]
 fn test_request_builder_ndjson_body_with_limits_counts_line_terminators() {
-    #[derive(serde::Serialize)]
+    #[derive(Serialize)]
     struct Record {
         id: i32,
     }
@@ -932,7 +932,7 @@ fn test_request_builder_ndjson_body_serialization_failure_returns_decode_error()
 
 #[test]
 fn test_request_builder_ndjson_body_preserves_existing_content_type() {
-    #[derive(serde::Serialize)]
+    #[derive(Serialize)]
     struct Record {
         id: i32,
     }
@@ -955,7 +955,7 @@ fn test_request_builder_ndjson_body_preserves_existing_content_type() {
 
 #[test]
 fn test_request_builder_ndjson_body_allows_empty_records() {
-    #[derive(serde::Serialize)]
+    #[derive(Serialize)]
     struct Record {
         id: i32,
     }

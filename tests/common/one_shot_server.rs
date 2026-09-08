@@ -16,7 +16,11 @@ use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
+use tokio::spawn;
 use tokio::sync::oneshot;
+use tokio::task::JoinHandle;
+use tokio::time::sleep;
+use tokio::time::timeout;
 use url::Url;
 
 /// Captured inbound request details.
@@ -111,7 +115,7 @@ pub struct OneShotServer {
     response_started_rx: oneshot::Receiver<()>,
     response_permit_tx: Option<oneshot::Sender<()>>,
     request_rx: oneshot::Receiver<CapturedRequest>,
-    join_handle: tokio::task::JoinHandle<()>,
+    join_handle: JoinHandle<()>,
 }
 
 /// Handle to a test server that serves a fixed sequence of responses.
@@ -119,7 +123,7 @@ pub struct OneShotServer {
 pub struct MultiShotServer {
     base_url: Url,
     request_rx: oneshot::Receiver<Vec<CapturedRequest>>,
-    join_handle: tokio::task::JoinHandle<()>,
+    join_handle: JoinHandle<()>,
 }
 
 impl OneShotServer {
@@ -204,7 +208,7 @@ async fn spawn_one_shot_server_impl(plan: ResponsePlan, block_response: bool) ->
     let mut response_permit_rx = block_response.then_some(response_permit_rx);
     let (request_tx, request_rx) = oneshot::channel::<CapturedRequest>();
 
-    let join_handle = tokio::spawn(async move {
+    let join_handle = spawn(async move {
         let accept_result = listener.accept().await;
         let (mut stream, _) = match accept_result {
             Ok(result) => result,
@@ -250,7 +254,7 @@ pub async fn spawn_multi_shot_server(plans: Vec<ResponsePlan>) -> MultiShotServe
     let base_url = Url::parse(&format!("http://{addr}/")).expect("failed to build base URL");
     let (request_tx, request_rx) = oneshot::channel::<Vec<CapturedRequest>>();
 
-    let join_handle = tokio::spawn(async move {
+    let join_handle = spawn(async move {
         let mut handles = Vec::with_capacity(plans.len());
         for (index, plan) in plans.into_iter().enumerate() {
             let accept_result = listener.accept().await;
@@ -259,7 +263,7 @@ pub async fn spawn_multi_shot_server(plans: Vec<ResponsePlan>) -> MultiShotServe
                 Err(error) => panic!("multi-shot test server failed to accept connection: {error}"),
             };
 
-            handles.push(tokio::spawn(async move {
+            handles.push(spawn(async move {
                 let request = read_request(&mut stream)
                     .await
                     .expect("failed to read request in multi-shot test server");
@@ -296,14 +300,12 @@ async fn read_request(stream: &mut TcpStream) -> std::io::Result<CapturedRequest
     let mut buffer = Vec::new();
     let header_end_index = loop {
         let mut chunk = [0_u8; 1024];
-        let read_size = tokio::time::timeout(read_timeout, stream.read(&mut chunk))
-            .await
-            .map_err(|_| {
-                std::io::Error::new(
-                    std::io::ErrorKind::TimedOut,
-                    "timed out while waiting for request headers",
-                )
-            })??;
+        let read_size = timeout(read_timeout, stream.read(&mut chunk)).await.map_err(|_| {
+            std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "timed out while waiting for request headers",
+            )
+        })??;
         if read_size == 0 {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::UnexpectedEof,
@@ -375,7 +377,7 @@ async fn write_response(
             headers,
             body,
         } => {
-            tokio::time::sleep(delay).await;
+            sleep(delay).await;
             write_fixed_response(stream, status, headers, body).await?;
             signal_response_started(&mut response_started_tx);
         }
@@ -393,7 +395,7 @@ async fn write_response(
             stream.write_all(&prefix).await?;
             stream.flush().await?;
             signal_response_started(&mut response_started_tx);
-            tokio::time::sleep(delay).await;
+            sleep(delay).await;
         }
         ResponsePlan::Chunked {
             status,
@@ -413,7 +415,7 @@ async fn write_response(
 
             for (index, chunk) in chunks.into_iter().enumerate() {
                 if !chunk.delay.is_zero() {
-                    tokio::time::sleep(chunk.delay).await;
+                    sleep(chunk.delay).await;
                 }
                 let length_line = format!("{:X}\r\n", chunk.bytes.len());
                 stream.write_all(length_line.as_bytes()).await?;

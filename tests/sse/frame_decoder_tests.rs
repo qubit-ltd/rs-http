@@ -7,13 +7,16 @@
 // =============================================================================
 
 use bytes::Bytes;
+use futures_util::Stream;
 use futures_util::StreamExt;
 use http::HeaderMap;
 use http::Method;
+use http::StatusCode;
+use qubit_http::HttpErrorKind;
 use qubit_http::HttpResponse;
 use qubit_http::HttpResult;
 
-async fn collect_results<T>(stream: impl futures_util::Stream<Item = HttpResult<T>>) -> Vec<T> {
+async fn collect_results<T>(stream: impl Stream<Item = HttpResult<T>>) -> Vec<T> {
     stream
         .map(|item| item.expect("unexpected stream error in test"))
         .collect::<Vec<_>>()
@@ -23,7 +26,7 @@ async fn collect_results<T>(stream: impl futures_util::Stream<Item = HttpResult<
 fn stream_response_from_chunks(chunks: Vec<&'static str>) -> HttpResponse {
     let body = chunks.join("");
     HttpResponse::new(
-        http::StatusCode::OK,
+        StatusCode::OK,
         HeaderMap::new(),
         Bytes::from(body),
         url::Url::parse("https://example.com/stream").unwrap(),
@@ -83,7 +86,7 @@ async fn test_decode_frames_rejects_frame_exceeding_max_bytes() {
     let mut events = response.sse_max_line_bytes(128).sse_max_frame_bytes(12).sse_messages();
     let error = events.next().await.unwrap().unwrap_err();
 
-    assert_eq!(error.kind, qubit_http::HttpErrorKind::SseProtocol);
+    assert_eq!(error.kind, HttpErrorKind::SseProtocol);
     assert!(error.message.contains("max_frame_bytes"));
 }
 

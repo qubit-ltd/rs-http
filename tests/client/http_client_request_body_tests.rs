@@ -16,9 +16,11 @@ use futures_util::stream;
 use http::Method;
 use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
+use qubit_http::HttpErrorKind;
 use qubit_http::HttpRequestBodyByteStream;
 use qubit_http::HttpRetryMethodPolicy;
 use qubit_retry::BackoffPolicy;
+use tokio::time::sleep;
 use tokio::time::timeout;
 
 use crate::common::ResponsePlan;
@@ -309,7 +311,7 @@ async fn test_streaming_body_factory_preparation_respects_send_timeout() {
         .request(Method::POST, "/streaming-body-timeout")
         .streaming_body(|| {
             Box::pin(async move {
-                tokio::time::sleep(Duration::from_secs(5)).await;
+                sleep(Duration::from_secs(5)).await;
                 Box::pin(stream::empty::<Result<Bytes, std::io::Error>>()) as HttpRequestBodyByteStream
             })
         })
@@ -319,7 +321,7 @@ async fn test_streaming_body_factory_preparation_respects_send_timeout() {
         .expect("execute timed out")
         .expect_err("streaming body preparation should hit write timeout");
 
-    assert_eq!(error.kind, qubit_http::HttpErrorKind::SendTimeout);
+    assert_eq!(error.kind, HttpErrorKind::SendTimeout);
     assert!(error.message.contains("streaming request body"));
 
     let captured = timeout(Duration::from_secs(3), server.finish())

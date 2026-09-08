@@ -19,6 +19,7 @@ use std::task::Waker;
 use std::time::Duration;
 
 use futures_util::StreamExt;
+use http::HeaderMap;
 use http::Method;
 use http::StatusCode;
 use qubit_http::AsyncHttpHeaderInjector;
@@ -27,11 +28,18 @@ use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpError;
 use qubit_http::HttpErrorKind;
+use qubit_http::HttpRequest;
+use qubit_http::HttpRequestInterceptor;
 use qubit_http::HttpResponseInterceptor;
+use qubit_http::HttpResponseInterceptorContext;
+use qubit_http::HttpResult;
 use qubit_http::RetryHint;
 use qubit_retry::BackoffPolicy;
 use qubit_retry::RetryError;
+use tokio::pin;
+use tokio::select;
 use tokio::sync::Notify;
+use tokio::time::advance;
 use tokio::time::timeout;
 
 use crate::common::ResponseChunk;
@@ -131,12 +139,10 @@ async fn test_execute_request_with_pre_cancelled_token_skips_request_interceptor
         .expect("client should be created");
     let interceptor_calls = Arc::new(AtomicUsize::new(0));
     let interceptor_calls_clone = Arc::clone(&interceptor_calls);
-    client.add_request_interceptor(qubit_http::HttpRequestInterceptor::new(
-        move |_request: &mut qubit_http::HttpRequest| {
-            interceptor_calls_clone.fetch_add(1, Ordering::Relaxed);
-            Ok(())
-        },
-    ));
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
+        interceptor_calls_clone.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+    }));
 
     let token = HttpCancellationToken::new();
     token.cancel();
@@ -179,12 +185,10 @@ async fn test_execute_request_cancelled_by_interceptor_stops_before_send() {
 
     let token = HttpCancellationToken::new();
     let interceptor_token = token.clone();
-    client.add_request_interceptor(qubit_http::HttpRequestInterceptor::new(
-        move |_request: &mut qubit_http::HttpRequest| {
-            interceptor_token.cancel();
-            Ok(())
-        },
-    ));
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
+        interceptor_token.cancel();
+        Ok(())
+    }));
 
     let request = client
         .request(Method::GET, "/cancelled-by-interceptor")
@@ -229,21 +233,19 @@ async fn test_execute_request_can_be_cancelled_while_preparing_async_headers() {
     let injector_token = token.clone();
     let attempt_calls = Arc::new(AtomicUsize::new(0));
     let injector_attempt_calls = Arc::clone(&attempt_calls);
-    client.add_request_interceptor(qubit_http::HttpRequestInterceptor::new(
-        |request: &mut qubit_http::HttpRequest| {
-            assert!(
-                request.cancellation_token().is_some(),
-                "retry attempts must retain the shared public token"
-            );
-            Ok(())
-        },
-    ));
-    client.add_async_header_injector(AsyncHttpHeaderInjector::new(move |_headers: &mut http::HeaderMap| {
+    client.add_request_interceptor(HttpRequestInterceptor::new(|request: &mut HttpRequest| {
+        assert!(
+            request.cancellation_token().is_some(),
+            "retry attempts must retain the shared public token"
+        );
+        Ok(())
+    }));
+    client.add_async_header_injector(AsyncHttpHeaderInjector::new(move |_headers: &mut HeaderMap| {
         let injector_token = injector_token.clone();
         injector_attempt_calls.fetch_add(1, Ordering::SeqCst);
         Box::pin(async move {
             injector_token.cancel();
-            std::future::pending::<qubit_http::HttpResult<()>>().await
+            std::future::pending::<HttpResult<()>>().await
         })
     }));
 
@@ -298,7 +300,7 @@ async fn test_execute_request_can_be_cancelled_while_reading_response_body() {
         .expect("execute timed out")
         .expect("request should start");
     let body = response.bytes();
-    tokio::pin!(body);
+    pin!(body);
     let waker = Waker::noop();
     let mut context = Context::from_waker(waker);
     assert!(
@@ -353,8 +355,8 @@ async fn test_execute_request_can_be_cancelled_while_reading_status_error_previe
         .cancellation_token(token.clone())
         .build();
     let execution = client.execute(request);
-    tokio::pin!(execution);
-    tokio::select! {
+    pin!(execution);
+    select! {
         () = server.wait_until_request_received() => {}
         result = &mut execution => {
             panic!("request completed before server response: {result:?}");
@@ -413,9 +415,9 @@ async fn test_execute_retry_sleep_can_be_cancelled() {
         .create(options)
         .expect("client should be created");
     let attempt_calls = Arc::new(AtomicUsize::new(0));
-    client.add_request_interceptor(qubit_http::HttpRequestInterceptor::new({
+    client.add_request_interceptor(HttpRequestInterceptor::new({
         let attempt_calls = Arc::clone(&attempt_calls);
-        move |_request: &mut qubit_http::HttpRequest| {
+        move |_request: &mut HttpRequest| {
             attempt_calls.fetch_add(1, Ordering::SeqCst);
             Err(HttpError::transport("deterministic retry failure"))
         }
@@ -427,13 +429,13 @@ async fn test_execute_retry_sleep_can_be_cancelled() {
         .cancellation_token(token.clone())
         .build();
     let future = client.execute(request);
-    tokio::pin!(future);
+    pin!(future);
     let waker = Waker::noop();
     let mut context = Context::from_waker(waker);
     assert!(future.as_mut().poll(&mut context).is_pending());
 
     token.cancel();
-    tokio::time::advance(Duration::from_secs(5)).await;
+    advance(Duration::from_secs(5)).await;
     let error = match future.as_mut().poll(&mut context) {
         Poll::Ready(Err(error)) => error,
         Poll::Ready(Ok(_)) => panic!("cancelled backoff must not retry"),
@@ -475,7 +477,7 @@ async fn test_execute_retry_success_wins_same_poll_cancellation() {
     let token = HttpCancellationToken::new();
     client.add_response_interceptor(HttpResponseInterceptor::new({
         let token = token.clone();
-        move |_response: &mut qubit_http::HttpResponseInterceptorContext| {
+        move |_response: &mut HttpResponseInterceptorContext| {
             token.cancel();
             Ok(())
         }
@@ -513,9 +515,9 @@ async fn test_retry_interceptor_request_clone_keeps_direct_cancellation() {
         .create(options)
         .expect("retry client should be created");
     let saved_request = Arc::new(Mutex::new(None));
-    retry_client.add_request_interceptor(qubit_http::HttpRequestInterceptor::new({
+    retry_client.add_request_interceptor(HttpRequestInterceptor::new({
         let saved_request = Arc::clone(&saved_request);
-        move |request: &mut qubit_http::HttpRequest| {
+        move |request: &mut HttpRequest| {
             *saved_request.lock().expect("saved request lock") = Some(request.clone());
             Ok(())
         }
@@ -569,9 +571,9 @@ async fn test_retry_interceptor_replacement_token_reaches_response_body() {
         .create(options)
         .expect("client should be created");
     let replacement_token = HttpCancellationToken::new();
-    client.add_request_interceptor(qubit_http::HttpRequestInterceptor::new({
+    client.add_request_interceptor(HttpRequestInterceptor::new({
         let replacement_token = replacement_token.clone();
-        move |request: &mut qubit_http::HttpRequest| {
+        move |request: &mut HttpRequest| {
             request.set_cancellation_token(replacement_token.clone());
             Ok(())
         }
@@ -587,7 +589,7 @@ async fn test_retry_interceptor_replacement_token_reaches_response_body() {
         .await
         .expect("retry-enabled request should return response headers");
     let body = response.bytes();
-    tokio::pin!(body);
+    pin!(body);
     let waker = Waker::noop();
     let mut context = Context::from_waker(waker);
     assert!(body.as_mut().poll(&mut context).is_pending());
@@ -638,11 +640,11 @@ async fn test_retry_multi_attempt_response_uses_success_replacement_token() {
     let first_token = HttpCancellationToken::new();
     let success_token = HttpCancellationToken::new();
     let interceptor_calls = Arc::new(AtomicUsize::new(0));
-    client.add_request_interceptor(qubit_http::HttpRequestInterceptor::new({
+    client.add_request_interceptor(HttpRequestInterceptor::new({
         let first_token = first_token.clone();
         let success_token = success_token.clone();
         let interceptor_calls = Arc::clone(&interceptor_calls);
-        move |request: &mut qubit_http::HttpRequest| {
+        move |request: &mut HttpRequest| {
             let attempt = interceptor_calls.fetch_add(1, Ordering::SeqCst);
             let token = if attempt == 0 {
                 first_token.clone()
@@ -665,7 +667,7 @@ async fn test_retry_multi_attempt_response_uses_success_replacement_token() {
         .expect("second attempt should return a response");
     assert_eq!(interceptor_calls.load(Ordering::SeqCst), 2);
     let body = response.bytes();
-    tokio::pin!(body);
+    pin!(body);
     let waker = Waker::noop();
     let mut context = Context::from_waker(waker);
     assert!(body.as_mut().poll(&mut context).is_pending());
@@ -719,9 +721,9 @@ async fn test_retry_multi_attempt_failed_clear_does_not_leak_to_response() {
         .create(options)
         .expect("client should be created");
     let interceptor_calls = Arc::new(AtomicUsize::new(0));
-    client.add_request_interceptor(qubit_http::HttpRequestInterceptor::new({
+    client.add_request_interceptor(HttpRequestInterceptor::new({
         let interceptor_calls = Arc::clone(&interceptor_calls);
-        move |request: &mut qubit_http::HttpRequest| {
+        move |request: &mut HttpRequest| {
             if interceptor_calls.fetch_add(1, Ordering::SeqCst) == 0 {
                 request.clear_cancellation_token();
             }
@@ -740,7 +742,7 @@ async fn test_retry_multi_attempt_failed_clear_does_not_leak_to_response() {
         .expect("second attempt should return a response");
     assert_eq!(interceptor_calls.load(Ordering::SeqCst), 2);
     let body = response.bytes();
-    tokio::pin!(body);
+    pin!(body);
     let waker = Waker::noop();
     let mut context = Context::from_waker(waker);
     assert!(body.as_mut().poll(&mut context).is_pending());
@@ -773,9 +775,9 @@ async fn test_retry_interceptor_replacement_token_controls_attempt_io() {
         .create(options)
         .expect("client should be created");
     let replacement_token = HttpCancellationToken::new();
-    client.add_request_interceptor(qubit_http::HttpRequestInterceptor::new({
+    client.add_request_interceptor(HttpRequestInterceptor::new({
         let replacement_token = replacement_token.clone();
-        move |request: &mut qubit_http::HttpRequest| {
+        move |request: &mut HttpRequest| {
             request.set_cancellation_token(replacement_token.clone());
             Ok(())
         }
@@ -784,10 +786,10 @@ async fn test_retry_interceptor_replacement_token_controls_attempt_io() {
     client.add_async_header_injector(AsyncHttpHeaderInjector::new({
         let replacement_token = replacement_token.clone();
         let attempt_calls = Arc::clone(&attempt_calls);
-        move |_headers: &mut http::HeaderMap| {
+        move |_headers: &mut HeaderMap| {
             replacement_token.cancel();
             attempt_calls.fetch_add(1, Ordering::SeqCst);
-            Box::pin(std::future::pending::<qubit_http::HttpResult<()>>())
+            Box::pin(std::future::pending::<HttpResult<()>>())
         }
     }));
 
@@ -825,12 +827,10 @@ async fn test_retry_interceptor_cleared_token_is_not_restored_on_response() {
     let mut client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
-    client.add_request_interceptor(qubit_http::HttpRequestInterceptor::new(
-        |request: &mut qubit_http::HttpRequest| {
-            request.clear_cancellation_token();
-            Ok(())
-        },
-    ));
+    client.add_request_interceptor(HttpRequestInterceptor::new(|request: &mut HttpRequest| {
+        request.clear_cancellation_token();
+        Ok(())
+    }));
 
     let flow_token = HttpCancellationToken::new();
     let request = client
@@ -881,7 +881,7 @@ async fn test_retry_success_propagates_flow_token_to_response_body() {
         .await
         .expect("retry-enabled request should return response headers");
     let body = response.bytes();
-    tokio::pin!(body);
+    pin!(body);
     let waker = Waker::noop();
     let mut context = Context::from_waker(waker);
     assert!(body.as_mut().poll(&mut context).is_pending());
@@ -926,8 +926,8 @@ async fn test_execute_request_can_be_cancelled_while_sending() {
         .cancellation_token(token.clone())
         .build();
     let execution = client.execute(request);
-    tokio::pin!(execution);
-    tokio::select! {
+    pin!(execution);
+    select! {
         () = server.wait_until_request_received() => {}
         result = &mut execution => {
             panic!("send completed before cancellation: {result:?}");

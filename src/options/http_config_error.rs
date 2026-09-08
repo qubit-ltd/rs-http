@@ -12,7 +12,9 @@
 use std::error::Error;
 use std::fmt;
 
+use qubit_argument::ArgumentError;
 use qubit_argument::ArgumentErrorKind;
+use qubit_config::ConfigError;
 
 use super::HttpConfigErrorKind;
 
@@ -133,14 +135,14 @@ impl Error for HttpConfigError {
     }
 }
 
-impl From<qubit_argument::ArgumentError> for HttpConfigError {
+impl From<ArgumentError> for HttpConfigError {
     /// Converts structured argument validation failures into invalid HTTP
     /// configuration values.
     ///
     /// The argument path is retained. Caller-defined validation messages are
     /// preserved without embedding the path; other structured kinds use a
     /// pathless fallback diagnostic.
-    fn from(error: qubit_argument::ArgumentError) -> Self {
+    fn from(error: ArgumentError) -> Self {
         let (kind, message) = match error.kind() {
             ArgumentErrorKind::Missing => (
                 HttpConfigErrorKind::MissingField,
@@ -162,7 +164,7 @@ impl From<qubit_argument::ArgumentError> for HttpConfigError {
     }
 }
 
-impl From<qubit_config::ConfigError> for HttpConfigError {
+impl From<ConfigError> for HttpConfigError {
     /// Converts a `qubit_config::ConfigError`, mapping typed failures to
     /// [`HttpConfigErrorKind::TypeError`] when the source carries a property
     /// key.
@@ -172,7 +174,7 @@ impl From<qubit_config::ConfigError> for HttpConfigError {
     ///
     /// # Returns
     /// Equivalent [`HttpConfigError`].
-    fn from(e: qubit_config::ConfigError) -> Self {
+    fn from(e: ConfigError) -> Self {
         use qubit_config::ConfigErrorKind;
         let kind = e.kind();
         let path = e.path().unwrap_or_default().to_owned();

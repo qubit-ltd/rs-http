@@ -15,15 +15,20 @@
 use std::time::Duration;
 use std::time::Instant;
 
+use http::HeaderMap;
+use http::Method;
+use qubit_config::ConfigReader;
 use qubit_redact::Redactor;
 use qubit_retry::AttemptFailure;
 use qubit_retry::Retry;
+use qubit_retry::RetryContext;
 use qubit_retry::RetryDecision;
 use qubit_retry::RetryError;
 use qubit_retry::RetryErrorReason;
 use qubit_retry::RetryLimitKind;
 use qubit_retry::RetryRule;
 use qubit_retry::RetryTimeoutScope;
+use url::Url;
 
 use super::internal::HttpAttemptExecutionContext;
 use super::internal::HttpAttemptResponse;
@@ -84,7 +89,7 @@ struct HttpRetryRule {
 }
 
 impl RetryRule<HttpError> for HttpRetryRule {
-    fn decide(&self, failure: &AttemptFailure<HttpError>, _context: &qubit_retry::RetryContext) -> RetryDecision {
+    fn decide(&self, failure: &AttemptFailure<HttpError>, _context: &RetryContext) -> RetryDecision {
         let AttemptFailure::Error(error) = failure else {
             return RetryDecision::UseDefault;
         };
@@ -107,7 +112,7 @@ impl HttpClient {
     }
 
     /// Builds a client from configuration.
-    pub fn from_config<R: qubit_config::ConfigReader + ?Sized>(config: &R) -> Result<Self, crate::HttpConfigError> {
+    pub fn from_config<R: ConfigReader + ?Sized>(config: &R) -> Result<Self, crate::HttpConfigError> {
         HttpClientBuilder::new().create_from_config(config)
     }
 
@@ -260,7 +265,7 @@ impl HttpClient {
     /// A new [`HttpRequestBuilder`] borrowing this client for defaults; it is
     /// not sent until built and passed to [`HttpClient::execute`] (or related
     /// APIs).
-    pub fn request(&self, method: http::Method, path: &str) -> HttpRequestBuilder {
+    pub fn request(&self, method: Method, path: &str) -> HttpRequestBuilder {
         HttpRequestBuilder::new(method, path, self)
     }
 
@@ -271,7 +276,7 @@ impl HttpClient {
     ///
     /// # Returns
     /// Owned [`http::HeaderMap`] copy of [`HttpClientOptions`] default headers.
-    pub(crate) fn headers_snapshot(&self) -> http::HeaderMap {
+    pub(crate) fn headers_snapshot(&self) -> HeaderMap {
         self.options.default_headers.clone()
     }
 
@@ -544,8 +549,8 @@ impl HttpClient {
         started_at: Instant,
         max_duration: Option<Duration>,
         max_attempts: u32,
-        request_method: &http::Method,
-        request_url: Option<&url::Url>,
+        request_method: &Method,
+        request_url: Option<&Url>,
     ) -> HttpError {
         let application_error = error.last_error().map(Self::project_http_error);
         let attempts = error.context().attempts();
@@ -640,7 +645,7 @@ impl HttpClient {
     /// # Returns
     /// [`HttpErrorKind::Cancelled`](crate::HttpErrorKind::Cancelled) with
     /// request context.
-    fn retry_cancelled_error(message: &str, method: &http::Method, url: Option<&url::Url>) -> HttpError {
+    fn retry_cancelled_error(message: &str, method: &Method, url: Option<&Url>) -> HttpError {
         let mut error = HttpError::cancelled(message).with_method(method);
         if let Some(url) = url {
             error = error.with_url(url);

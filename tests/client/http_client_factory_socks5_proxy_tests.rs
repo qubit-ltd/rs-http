@@ -16,7 +16,9 @@ use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
+use tokio::spawn;
 use tokio::sync::oneshot;
+use tokio::task::JoinHandle;
 use tokio::time::timeout;
 
 use crate::common::ResponsePlan;
@@ -26,7 +28,7 @@ use crate::common::spawn_one_shot_server;
 struct SocksServer {
     host: String,
     port: u16,
-    join_handle: tokio::task::JoinHandle<()>,
+    join_handle: JoinHandle<()>,
     target_rx: oneshot::Receiver<(String, u16)>,
 }
 
@@ -53,7 +55,7 @@ async fn spawn_socks5_server() -> SocksServer {
     let addr = listener.local_addr().expect("failed to query socks5 address");
     let (target_tx, target_rx) = oneshot::channel::<(String, u16)>();
 
-    let join_handle = tokio::spawn(async move {
+    let join_handle = spawn(async move {
         let (mut stream, _) = listener.accept().await.expect("failed to accept socks5");
         let (host, port) = socks5_handshake_and_target(&mut stream)
             .await
