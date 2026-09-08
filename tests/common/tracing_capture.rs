@@ -10,6 +10,7 @@ use std::io;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use tracing_subscriber::fmt;
 use tracing_subscriber::fmt::MakeWriter;
 
 #[derive(Clone)]
@@ -50,7 +51,7 @@ where
     let buffer = Arc::new(Mutex::new(Vec::new()));
     let writer = SharedWriter { buffer: buffer.clone() };
 
-    let subscriber = tracing_subscriber::fmt()
+    let subscriber = fmt()
         .with_max_level(tracing::Level::TRACE)
         .without_time()
         .with_ansi(false)

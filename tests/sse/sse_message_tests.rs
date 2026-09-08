@@ -7,9 +7,15 @@
 // =============================================================================
 //! Tests for `src/sse/sse_message.rs`.
 
+use qubit_budget::BudgetError;
+use qubit_budget::MeasuredBudgetError;
+use qubit_budget::json::JsonResource;
 use qubit_http::HttpErrorKind;
 use qubit_http::sse::SseJsonMode;
 use qubit_http::sse::SseMessage;
+use qubit_json::decode::DiagnosticPolicy;
+use qubit_json::decode::JsonDecodeError;
+use qubit_json::decode::JsonDecodeErrorKind;
 
 use crate::common::SensitiveChoice;
 use crate::common::capture_trace_logs;
@@ -66,18 +72,18 @@ fn test_sse_message_decode_json_uses_safe_default_depth_limit() {
         .expect_err("default SSE JSON depth limit must reject deep input");
     let source = std::error::Error::source(&error).expect("SSE JSON budget failure should retain its source");
     let decode_error = source
-        .downcast_ref::<qubit_json::decode::JsonDecodeError>()
+        .downcast_ref::<JsonDecodeError>()
         .expect("source should be a JSON decode error");
 
     assert_eq!(error.kind, HttpErrorKind::SseDecode);
     assert!(matches!(
         decode_error.budget_error(),
-        Some(qubit_budget::MeasuredBudgetError::Budget(
-            qubit_budget::BudgetError::LimitExceeded {
-                resource: qubit_budget::json::JsonResource::Depth,
+        Some(MeasuredBudgetError::Budget(
+            BudgetError::LimitExceeded {
+                resource: JsonResource::Depth,
                 ..
-            } | qubit_budget::BudgetError::Insufficient {
-                resource: qubit_budget::json::JsonResource::Depth,
+            } | BudgetError::Insufficient {
+                resource: JsonResource::Depth,
                 ..
             }
         ))
@@ -100,11 +106,11 @@ fn test_sse_message_decode_json_with_mode_lenient_propagates_budget_error() {
         .expect_err("lenient mode must propagate JSON budget failures");
     let source = std::error::Error::source(&error).expect("the SSE error must retain its JSON source");
     let decode_error = source
-        .downcast_ref::<qubit_json::decode::JsonDecodeError>()
+        .downcast_ref::<JsonDecodeError>()
         .expect("the source must be a JSON decode error");
 
     assert_eq!(error.kind, HttpErrorKind::SseDecode);
-    assert_eq!(decode_error.kind(), qubit_json::decode::JsonDecodeErrorKind::Budget);
+    assert_eq!(decode_error.kind(), JsonDecodeErrorKind::Budget);
 }
 
 #[test]
@@ -204,11 +210,8 @@ fn test_sse_message_decode_json_redacts_deserializer_value() {
     let source =
         std::error::Error::source(&error).expect("SSE JSON decode errors must retain the redacted decoder source");
     let decode_error = source
-        .downcast_ref::<qubit_json::decode::JsonDecodeError>()
+        .downcast_ref::<JsonDecodeError>()
         .expect("SSE JSON decode source must be JsonDecodeError");
-    assert_eq!(
-        decode_error.diagnostic_policy(),
-        qubit_json::decode::DiagnosticPolicy::Redacted,
-    );
+    assert_eq!(decode_error.diagnostic_policy(), DiagnosticPolicy::Redacted,);
     assert!(!decode_error.to_string().contains(SECRET));
 }

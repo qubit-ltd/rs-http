@@ -10,6 +10,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
 
+use http::HeaderMap;
 use http::HeaderValue;
 use http::Method;
 use http::StatusCode;
@@ -17,6 +18,8 @@ use http::header::HeaderName;
 use qubit_http::AsyncHttpHeaderInjector;
 use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
+use qubit_http::HttpError;
+use qubit_http::HttpErrorKind;
 use qubit_http::HttpHeaderInjector;
 use tokio::time::timeout;
 
@@ -42,12 +45,12 @@ async fn test_async_header_injector_runs_after_sync_injector_with_stable_order()
     let mut client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
-    client.add_header_injector(HttpHeaderInjector::new(move |headers: &mut http::HeaderMap| {
+    client.add_header_injector(HttpHeaderInjector::new(move |headers: &mut HeaderMap| {
         sync_order.lock().unwrap().push("sync".to_string());
         headers.insert(HeaderName::from_static("x-flow"), HeaderValue::from_static("sync"));
         Ok(())
     }));
-    client.add_async_header_injector(AsyncHttpHeaderInjector::new(move |headers: &mut http::HeaderMap| {
+    client.add_async_header_injector(AsyncHttpHeaderInjector::new(move |headers: &mut HeaderMap| {
         let async_order = async_order.clone();
         Box::pin(async move {
             async_order.lock().unwrap().push("async".to_string());
@@ -82,8 +85,8 @@ async fn test_async_header_injector_failure_short_circuits_request() {
     let mut client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
-    client.add_async_header_injector(AsyncHttpHeaderInjector::new(|_headers: &mut http::HeaderMap| {
-        Box::pin(async move { Err(qubit_http::HttpError::other("async injector failed")) })
+    client.add_async_header_injector(AsyncHttpHeaderInjector::new(|_headers: &mut HeaderMap| {
+        Box::pin(async move { Err(HttpError::other("async injector failed")) })
     }));
 
     let request = client.request(Method::GET, "/async-fail").build();
@@ -91,7 +94,7 @@ async fn test_async_header_injector_failure_short_circuits_request() {
         .await
         .expect("execute timed out")
         .expect_err("request should fail on async injector");
-    assert_eq!(error.kind, qubit_http::HttpErrorKind::Other);
+    assert_eq!(error.kind, HttpErrorKind::Other);
     assert!(error.message.contains("async injector failed"));
 
     let captured = timeout(Duration::from_secs(3), server.finish())
@@ -114,7 +117,7 @@ async fn test_clear_async_header_injectors_removes_async_mutation() {
     let mut client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
-    client.add_async_header_injector(AsyncHttpHeaderInjector::new(|headers: &mut http::HeaderMap| {
+    client.add_async_header_injector(AsyncHttpHeaderInjector::new(|headers: &mut HeaderMap| {
         Box::pin(async move {
             headers.insert(
                 HeaderName::from_static("x-removed"),

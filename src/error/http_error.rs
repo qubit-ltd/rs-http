@@ -171,41 +171,49 @@ impl HttpError {
         self.retry_metadata.as_ref()
     }
 
+    /// Returns the classified kind of this HTTP error.
     #[must_use]
     pub const fn kind(&self) -> HttpErrorKind {
         self.kind
     }
 
+    /// Returns the HTTP method associated with the failed request, if known.
     #[must_use]
     pub const fn method(&self) -> Option<&Method> {
         self.method.as_ref()
     }
 
+    /// Returns the request URL associated with the failed request, if known.
     #[must_use]
     pub const fn url(&self) -> Option<&Url> {
         self.url.as_ref()
     }
 
+    /// Returns the response status associated with the error, if available.
     #[must_use]
     pub const fn status(&self) -> Option<StatusCode> {
         self.status
     }
 
+    /// Returns the human-readable error message.
     #[must_use]
     pub fn message(&self) -> &str {
         &self.message
     }
 
+    /// Returns the redacted response-body preview, if one was captured.
     #[must_use]
     pub fn response_body_preview(&self) -> Option<&str> {
         self.response_body_preview.as_deref()
     }
 
+    /// Returns the server-provided retry delay, if one was parsed.
     #[must_use]
     pub const fn retry_after(&self) -> Option<Duration> {
         self.retry_after
     }
 
+    /// Returns retry diagnostics attached to the final error, if available.
     #[must_use]
     pub const fn retry_diagnostics(&self) -> Option<&HttpRetryDiagnostics> {
         self.retry_diagnostics.as_ref()

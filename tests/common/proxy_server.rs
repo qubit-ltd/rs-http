@@ -13,7 +13,11 @@ use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
+use tokio::spawn;
 use tokio::sync::oneshot;
+use tokio::task::JoinHandle;
+use tokio::time::sleep;
+use tokio::time::timeout;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProxyCapturedRequest {
@@ -35,7 +39,7 @@ pub struct SimpleProxyServer {
     host: String,
     port: u16,
     request_rx: oneshot::Receiver<ProxyCapturedRequest>,
-    join_handle: tokio::task::JoinHandle<()>,
+    join_handle: JoinHandle<()>,
 }
 
 impl SimpleProxyServer {
@@ -63,7 +67,7 @@ pub async fn spawn_simple_proxy_server(behavior: ProxyBehavior) -> SimpleProxySe
     let port = addr.port();
     let (request_tx, request_rx) = oneshot::channel::<ProxyCapturedRequest>();
 
-    let join_handle = tokio::spawn(async move {
+    let join_handle = spawn(async move {
         let (mut client_stream, _) = listener
             .accept()
             .await
@@ -84,7 +88,7 @@ pub async fn spawn_simple_proxy_server(behavior: ProxyBehavior) -> SimpleProxySe
                     write_simple_response(&mut client_stream, 200, b"")
                         .await
                         .expect("proxy server failed to write connect response");
-                    tokio::time::sleep(Duration::from_millis(50)).await;
+                    sleep(Duration::from_millis(50)).await;
                 } else {
                     write_simple_response(&mut client_stream, 400, b"expected CONNECT")
                         .await
@@ -117,7 +121,7 @@ async fn read_http_request(stream: &mut TcpStream) -> std::io::Result<ProxyCaptu
     let mut buffer = Vec::new();
     let header_end = loop {
         let mut chunk = [0_u8; 1024];
-        let read_size = tokio::time::timeout(Duration::from_secs(3), stream.read(&mut chunk))
+        let read_size = timeout(Duration::from_secs(3), stream.read(&mut chunk))
             .await
             .map_err(|_| {
                 std::io::Error::new(

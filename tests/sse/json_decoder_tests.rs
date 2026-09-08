@@ -8,10 +8,13 @@
 //! Tests for `src/sse/json_decoder.rs`.
 
 use bytes::Bytes;
+use futures_util::Stream;
 use futures_util::StreamExt;
 use http::HeaderMap;
 use http::Method;
+use http::StatusCode;
 use qubit_budget::json::JsonValueLimits;
+use qubit_http::HttpErrorKind;
 use qubit_http::HttpResponse;
 use qubit_http::HttpResult;
 use qubit_http::sse::DoneMarkerPolicy;
@@ -23,7 +26,7 @@ struct TestChunk {
     value: i32,
 }
 
-async fn collect_results<T>(stream: impl futures_util::Stream<Item = HttpResult<T>>) -> Vec<T> {
+async fn collect_results<T>(stream: impl Stream<Item = HttpResult<T>>) -> Vec<T> {
     stream
         .map(|item| item.expect("unexpected stream error in test"))
         .collect::<Vec<_>>()
@@ -33,7 +36,7 @@ async fn collect_results<T>(stream: impl futures_util::Stream<Item = HttpResult<
 fn stream_response_from_chunks(chunks: Vec<&'static str>) -> HttpResponse {
     let body = chunks.join("");
     HttpResponse::new(
-        http::StatusCode::OK,
+        StatusCode::OK,
         HeaderMap::new(),
         Bytes::from(body),
         url::Url::parse("https://example.com/stream").unwrap(),
@@ -66,7 +69,7 @@ async fn test_decode_json_chunks_strict_fails_on_bad_json() {
 
     let second = stream.next().await.unwrap();
     let error = second.unwrap_err();
-    assert_eq!(error.kind, qubit_http::HttpErrorKind::SseDecode);
+    assert_eq!(error.kind, HttpErrorKind::SseDecode);
 }
 
 #[tokio::test]
@@ -80,7 +83,7 @@ async fn test_decode_json_chunks_strict_error_includes_message_context() {
 
     let error = stream.next().await.unwrap().unwrap_err();
 
-    assert_eq!(error.kind, qubit_http::HttpErrorKind::SseDecode);
+    assert_eq!(error.kind, HttpErrorKind::SseDecode);
     assert!(error.message.contains("event=Some(\"response.delta\")"));
     assert!(error.message.contains("last_event_id=Some(\"evt-42\")"));
 }
@@ -110,7 +113,7 @@ async fn test_decode_json_chunks_with_limits_reports_sse_protocol_error() {
         .sse_chunks::<TestChunk>();
 
     let error = stream.next().await.unwrap().unwrap_err();
-    assert_eq!(error.kind, qubit_http::HttpErrorKind::SseProtocol);
+    assert_eq!(error.kind, HttpErrorKind::SseProtocol);
     assert!(error.message.contains("max_frame_bytes"));
 }
 
@@ -128,7 +131,7 @@ async fn test_decode_json_chunks_applies_response_json_value_limits() {
         .expect("stream should produce a result")
         .expect_err("response JSON node limit must reject the SSE payload");
 
-    assert_eq!(error.kind, qubit_http::HttpErrorKind::SseDecode);
+    assert_eq!(error.kind, HttpErrorKind::SseDecode);
 }
 
 /// Regression: `sse_json_mode` → `sse_done_marker_policy` →

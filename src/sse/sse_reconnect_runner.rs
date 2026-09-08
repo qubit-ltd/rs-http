@@ -14,6 +14,7 @@ use std::time::Duration;
 
 use async_stream::stream;
 use futures_util::StreamExt;
+use http::Method;
 use http::header::CONTENT_TYPE;
 use http::header::HeaderName;
 use http::header::HeaderValue;
@@ -25,12 +26,13 @@ use qubit_retry::RetryBudget;
 use qubit_retry::RetryBudgetError;
 use qubit_retry::RetryBudgetExhausted;
 use qubit_retry::RetryPolicy;
+use url::Url;
 
-use super::DEFAULT_SSE_MAX_RECONNECT_DELAY;
 use super::SseControl;
 use super::SseMessageStream;
 use super::SseReconnectOptions;
 use super::SseRecord;
+use super::sse_reconnect_options::DEFAULT_SSE_MAX_RECONNECT_DELAY;
 use crate::HttpCancellationToken;
 use crate::HttpClient;
 use crate::HttpError;
@@ -53,9 +55,9 @@ struct ReconnectRuntime<'a> {
     /// Optional cancellation token checked while sleeping before reconnect.
     cancellation_token: Option<&'a HttpCancellationToken>,
     /// Request method used in reconnect cancellation and max-elapsed errors.
-    request_method: &'a http::Method,
+    request_method: &'a Method,
     /// Request URL used in reconnect cancellation and max-elapsed errors.
-    request_url: Option<&'a url::Url>,
+    request_url: Option<&'a Url>,
     /// Shared request redactor used by reconnect-generated errors.
     log_redactor: &'a Redactor,
 }
@@ -544,8 +546,8 @@ fn should_reconnect_sse_error(error: &HttpError) -> bool {
 async fn sleep_reconnect_delay(
     delay: Duration,
     cancellation_token: Option<&HttpCancellationToken>,
-    request_method: &http::Method,
-    request_url: Option<&url::Url>,
+    request_method: &Method,
+    request_url: Option<&Url>,
     log_redactor: &Redactor,
 ) -> HttpResult<()> {
     if let Some(token) = cancellation_token {
@@ -626,8 +628,8 @@ fn default_server_retry_max_delay(retry_policy: &RetryPolicy) -> Duration {
 fn max_elapsed_exceeded_error(
     elapsed: Duration,
     max_elapsed: Duration,
-    request_method: &http::Method,
-    request_url: Option<&url::Url>,
+    request_method: &Method,
+    request_url: Option<&Url>,
     log_redactor: &Redactor,
 ) -> HttpError {
     let mut error = HttpError::retry_budget_exceeded(format!(
@@ -657,8 +659,8 @@ fn max_elapsed_exceeded_error_with_last_error(
     last_error: HttpError,
     elapsed: Duration,
     max_elapsed: Duration,
-    request_method: &http::Method,
-    request_url: Option<&url::Url>,
+    request_method: &Method,
+    request_url: Option<&Url>,
     log_redactor: &Redactor,
 ) -> HttpError {
     let error = max_elapsed_exceeded_error(elapsed, max_elapsed, request_method, request_url, log_redactor);
@@ -679,8 +681,8 @@ fn max_elapsed_exceeded_error_with_last_error(
 fn operation_elapsed_exceeded_error(
     elapsed: Duration,
     max_elapsed: Option<Duration>,
-    request_method: &http::Method,
-    request_url: Option<&url::Url>,
+    request_method: &Method,
+    request_url: Option<&Url>,
     log_redactor: &Redactor,
 ) -> HttpError {
     let max_elapsed = max_elapsed.expect("operation budget exhaustion requires a configured operation limit");
@@ -710,8 +712,8 @@ fn operation_elapsed_exceeded_error_with_last_error(
     last_error: HttpError,
     elapsed: Duration,
     max_elapsed: Option<Duration>,
-    request_method: &http::Method,
-    request_url: Option<&url::Url>,
+    request_method: &Method,
+    request_url: Option<&Url>,
     log_redactor: &Redactor,
 ) -> HttpError {
     let error = operation_elapsed_exceeded_error(elapsed, max_elapsed, request_method, request_url, log_redactor);

@@ -10,6 +10,7 @@ use http::Method;
 use qubit_http::HttpClientBuilder;
 use qubit_http::HttpError;
 use qubit_http::HttpErrorKind;
+use qubit_http::HttpRequest;
 use qubit_http::HttpRequestInterceptor;
 use qubit_http::HttpRequestInterceptors;
 use url::Url;
@@ -24,7 +25,7 @@ fn test_request_interceptors_apply_uses_parsed_path_when_resolved_url_cache_miss
     assert!(request.resolved_url().is_err());
 
     let mut interceptors = HttpRequestInterceptors::new();
-    interceptors.push(HttpRequestInterceptor::new(|_request: &mut qubit_http::HttpRequest| {
+    interceptors.push(HttpRequestInterceptor::new(|_request: &mut HttpRequest| {
         Err(HttpError::other("request interceptor failed unexpectedly"))
     }));
 
@@ -45,7 +46,7 @@ fn test_request_interceptors_apply_keeps_url_empty_when_path_is_not_absolute() {
     assert!(request.resolved_url().is_err());
 
     let mut interceptors = HttpRequestInterceptors::new();
-    interceptors.push(HttpRequestInterceptor::new(|_request: &mut qubit_http::HttpRequest| {
+    interceptors.push(HttpRequestInterceptor::new(|_request: &mut HttpRequest| {
         Err(HttpError::other("request interceptor failed"))
     }));
 
@@ -68,9 +69,7 @@ fn test_request_interceptors_apply_preserves_existing_error_url() {
     let mut interceptors = HttpRequestInterceptors::new();
     interceptors.push(HttpRequestInterceptor::new({
         let expected_url = expected_url.clone();
-        move |_request: &mut qubit_http::HttpRequest| {
-            Err(HttpError::other("request interceptor failed").with_url(&expected_url))
-        }
+        move |_request: &mut HttpRequest| Err(HttpError::other("request interceptor failed").with_url(&expected_url))
     }));
 
     let error = interceptors

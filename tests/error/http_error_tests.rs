@@ -8,6 +8,7 @@
 
 use std::error::Error;
 
+use http::Method;
 use http::StatusCode;
 use qubit_http::HttpError;
 use qubit_http::HttpErrorKind;
@@ -20,15 +21,33 @@ use qubit_redact::formats::http::UrlPathPolicy;
 fn test_http_error_builder_methods() {
     let url = url::Url::parse("https://example.com/test").unwrap();
     let error = HttpError::new(HttpErrorKind::Decode, "decode failure")
-        .with_method(&http::Method::POST)
+        .with_method(&Method::POST)
         .with_url(&url)
         .with_status(StatusCode::BAD_GATEWAY);
 
     assert_eq!(error.kind, HttpErrorKind::Decode);
-    assert_eq!(error.method, Some(http::Method::POST));
+    assert_eq!(error.method, Some(Method::POST));
     assert_eq!(error.url, Some(url));
     assert_eq!(error.status, Some(StatusCode::BAD_GATEWAY));
     assert!(error.message.contains("decode failure"));
+}
+
+#[test]
+fn test_http_error_accessors_expose_optional_context() {
+    let url = url::Url::parse("https://example.com/accessors").unwrap();
+    let error = HttpError::new(HttpErrorKind::Decode, "accessor failure")
+        .with_method(&Method::GET)
+        .with_url(&url)
+        .with_status(StatusCode::BAD_REQUEST);
+
+    assert_eq!(error.kind(), HttpErrorKind::Decode);
+    assert_eq!(error.method(), Some(&Method::GET));
+    assert_eq!(error.url(), Some(&url));
+    assert_eq!(error.status(), Some(StatusCode::BAD_REQUEST));
+    assert_eq!(error.message(), "accessor failure");
+    assert_eq!(error.response_body_preview(), None);
+    assert_eq!(error.retry_after(), None);
+    assert_eq!(error.retry_diagnostics(), None);
 }
 
 #[test]
@@ -40,7 +59,7 @@ fn test_http_error_debug_masks_sensitive_url_values() {
     let error = HttpError::transport(
         "transport failed for https://debug-user:debug-url-secret@example.com/path?accessToken=debug-query-secret#debug-fragment-secret",
     )
-    .with_method(&http::Method::GET)
+    .with_method(&Method::GET)
     .with_url(&url);
 
     let debug = format!("{error:?}");

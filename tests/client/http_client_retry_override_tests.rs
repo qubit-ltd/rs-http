@@ -21,6 +21,8 @@ use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
 use qubit_http::HttpRetryMethodPolicy;
 use qubit_retry::BackoffPolicy;
+use tokio::spawn;
+use tokio::time::sleep;
 use tokio::time::timeout;
 
 use crate::common::ResponseChunk;
@@ -375,9 +377,9 @@ async fn test_request_retry_override_honor_retry_after_does_not_block_runtime_th
     let stop_ticker = Arc::new(AtomicBool::new(false));
     let tick_count_for_task = Arc::clone(&tick_count);
     let stop_ticker_for_task = Arc::clone(&stop_ticker);
-    let ticker = tokio::spawn(async move {
+    let ticker = spawn(async move {
         while !stop_ticker_for_task.load(Ordering::Relaxed) {
-            tokio::time::sleep(Duration::from_millis(50)).await;
+            sleep(Duration::from_millis(50)).await;
             tick_count_for_task.fetch_add(1, Ordering::Relaxed);
         }
     });

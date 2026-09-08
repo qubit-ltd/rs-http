@@ -13,6 +13,8 @@ use std::net::SocketAddr;
 use qubit_config::ConfigReader;
 use qubit_error::BoxError;
 use qubit_error::IntoBoxError;
+use reqwest::Client;
+use reqwest::Proxy;
 use reqwest::dns::Addrs;
 use reqwest::dns::Name;
 use reqwest::dns::Resolve;
@@ -99,7 +101,7 @@ impl HttpClientBuilder {
     pub fn create(&self, options: HttpClientOptions) -> HttpResult<HttpClient> {
         options.validate().map_err(map_validation_error)?;
 
-        let mut builder = reqwest::Client::builder();
+        let mut builder = Client::builder();
 
         builder = builder.connect_timeout(options.timeouts.connect_timeout);
         if let Some(request_timeout) = options.timeouts.request_timeout {
@@ -138,7 +140,7 @@ impl HttpClientBuilder {
                 .expect("proxy.port must exist after HttpClientOptions::validate");
 
             let proxy_url = format!("{}://{}:{}", options.proxy.proxy_type.scheme(), host, port);
-            let mut proxy = reqwest::Proxy::all(&proxy_url)
+            let mut proxy = Proxy::all(&proxy_url)
                 .map_err(|error| HttpError::proxy_config(format!("Invalid proxy URL '{}': {}", proxy_url, error)))?;
 
             if let Some(username) = options.proxy.username.clone() {

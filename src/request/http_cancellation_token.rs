@@ -6,34 +6,40 @@
 
 use std::future::Future;
 
+use qubit_retry::RetryCancellationToken;
+
 /// Cancellation token owned by the HTTP API.
 #[derive(Clone, Debug, Default)]
 pub struct HttpCancellationToken {
-    inner: qubit_retry::RetryCancellationToken,
+    inner: RetryCancellationToken,
 }
 
 impl HttpCancellationToken {
+    /// Creates a token in the not-cancelled state.
     #[must_use = "await the cancellation future"]
     pub fn new() -> Self {
         Self {
-            inner: qubit_retry::RetryCancellationToken::new(),
+            inner: RetryCancellationToken::new(),
         }
     }
 
+    /// Marks this token as cancelled and wakes waiters.
     pub fn cancel(&self) {
         self.inner.cancel();
     }
 
+    /// Returns whether cancellation has been requested.
     #[must_use]
     pub fn is_cancelled(&self) -> bool {
         self.inner.is_cancelled()
     }
 
+    /// Returns a future that completes when this token is cancelled.
     pub fn cancelled(&self) -> impl Future<Output = ()> + '_ {
         self.inner.cancelled()
     }
 
-    pub(crate) fn inner(&self) -> &qubit_retry::RetryCancellationToken {
+    pub(crate) fn inner(&self) -> &RetryCancellationToken {
         &self.inner
     }
 

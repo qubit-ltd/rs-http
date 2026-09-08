@@ -8,8 +8,11 @@
 
 use qubit_config::Config;
 use qubit_config::ConfigError;
+use qubit_config::ConfigErrorKind;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpConfigErrorKind;
+use qubit_http::HttpLoggingOptions;
+use qubit_http::ProxyOptions;
 
 /// Header conversion failures retain the original structured config error.
 #[test]
@@ -62,9 +65,9 @@ fn test_from_config_rejects_unknown_owned_keys() {
         assert_eq!(error.path, path);
         let source = std::error::Error::source(&error)
             .expect("structured configuration error")
-            .downcast_ref::<qubit_config::ConfigError>()
+            .downcast_ref::<ConfigError>()
             .expect("config source");
-        assert_eq!(source.kind(), qubit_config::ConfigErrorKind::UnknownProperty);
+        assert_eq!(source.kind(), ConfigErrorKind::UnknownProperty);
     }
 }
 
@@ -95,11 +98,11 @@ fn test_from_config_resolves_domain_paths_without_prefix_guessing() {
 fn test_from_config_validates_proxy_and_logging_at_their_scope() {
     let mut config = Config::new();
     config.set("service.proxy.enabled", true).expect("enabled proxy");
-    let error = qubit_http::ProxyOptions::from_config(&config.section("service.proxy").expect("section"))
+    let error = ProxyOptions::from_config(&config.section("service.proxy").expect("section"))
         .expect_err("enabled proxy requires host");
     assert_eq!(error.path, "service.proxy.host");
     config.set("service.logging.body_size_limit", 0u64).expect("zero limit");
-    let error = qubit_http::HttpLoggingOptions::from_config(&config.section("service.logging").expect("section"))
+    let error = HttpLoggingOptions::from_config(&config.section("service.logging").expect("section"))
         .expect_err("body logging requires positive limit");
     assert_eq!(error.path, "service.logging.body_size_limit");
 }

@@ -24,8 +24,10 @@ use qubit_http::HttpError;
 use qubit_http::HttpErrorKind;
 use qubit_http::HttpHeaderInjector;
 use qubit_http::HttpOriginPolicy;
+use qubit_http::HttpRequest;
 use qubit_http::HttpRequestInterceptor;
 use qubit_http::HttpResponseInterceptor;
+use qubit_http::HttpResponseInterceptorContext;
 use qubit_retry::RetryError;
 use tokio::time::timeout;
 
@@ -180,12 +182,12 @@ async fn test_request_interceptor_order_is_stable_and_clear_works() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server1.base_url());
     let mut client = HttpClientBuilder::new().create(options).unwrap();
-    client.add_request_interceptor(HttpRequestInterceptor::new(|request: &mut qubit_http::HttpRequest| {
+    client.add_request_interceptor(HttpRequestInterceptor::new(|request: &mut HttpRequest| {
         request.set_typed_header(HeaderName::from_static("x-request-seq"), HeaderValue::from_static("A"));
         request.add_query_param("request_interceptor", "first");
         Ok(())
     }));
-    client.add_request_interceptor(HttpRequestInterceptor::new(|request: &mut qubit_http::HttpRequest| {
+    client.add_request_interceptor(HttpRequestInterceptor::new(|request: &mut HttpRequest| {
         request.set_typed_header(HeaderName::from_static("x-request-seq"), HeaderValue::from_static("B"));
         request.add_query_param("request_interceptor", "second");
         Ok(())
@@ -211,7 +213,7 @@ async fn test_request_interceptor_order_is_stable_and_clear_works() {
     let mut options2 = HttpClientOptions::default();
     options2.base_url = Some(server2.base_url());
     let mut client2 = HttpClientBuilder::new().create(options2).unwrap();
-    client2.add_request_interceptor(HttpRequestInterceptor::new(|request: &mut qubit_http::HttpRequest| {
+    client2.add_request_interceptor(HttpRequestInterceptor::new(|request: &mut HttpRequest| {
         request.set_typed_header(
             HeaderName::from_static("x-request-cleared"),
             HeaderValue::from_static("yes"),
@@ -231,7 +233,7 @@ async fn test_failing_request_interceptor_short_circuits_before_url_resolution()
     let mut client = HttpClientBuilder::new()
         .create_default()
         .expect("default options should create client");
-    client.add_request_interceptor(HttpRequestInterceptor::new(|_request: &mut qubit_http::HttpRequest| {
+    client.add_request_interceptor(HttpRequestInterceptor::new(|_request: &mut HttpRequest| {
         Err(HttpError::other("request blocked by interceptor"))
     }));
 
@@ -261,7 +263,7 @@ async fn test_response_interceptor_order_is_stable_and_short_circuits() {
     let events = Arc::new(Mutex::new(Vec::new()));
     let first_events = Arc::clone(&events);
     client.add_response_interceptor(HttpResponseInterceptor::new(
-        move |_meta: &mut qubit_http::HttpResponseInterceptorContext| {
+        move |_meta: &mut HttpResponseInterceptorContext| {
             first_events
                 .lock()
                 .expect("lock response interceptor events for first")
@@ -271,7 +273,7 @@ async fn test_response_interceptor_order_is_stable_and_short_circuits() {
     ));
     let second_events = Arc::clone(&events);
     client.add_response_interceptor(HttpResponseInterceptor::new(
-        move |_meta: &mut qubit_http::HttpResponseInterceptorContext| {
+        move |_meta: &mut HttpResponseInterceptorContext| {
             second_events
                 .lock()
                 .expect("lock response interceptor events for second")
@@ -305,7 +307,7 @@ async fn test_clear_response_interceptors_restores_success_path() {
     options.base_url = Some(server.base_url());
     let mut client = HttpClientBuilder::new().create(options).unwrap();
     client.add_response_interceptor(HttpResponseInterceptor::new(
-        |_meta: &mut qubit_http::HttpResponseInterceptorContext| Err(HttpError::other("should be cleared")),
+        |_meta: &mut HttpResponseInterceptorContext| Err(HttpError::other("should be cleared")),
     ));
     client.clear_response_interceptors();
 
@@ -329,7 +331,7 @@ async fn test_execute_applies_response_interceptor_for_unconsumed_body() {
     let called = Arc::new(AtomicUsize::new(0));
     let called_for_interceptor = Arc::clone(&called);
     client.add_response_interceptor(HttpResponseInterceptor::new(
-        move |_meta: &mut qubit_http::HttpResponseInterceptorContext| {
+        move |_meta: &mut HttpResponseInterceptorContext| {
             called_for_interceptor.fetch_add(1, Ordering::Relaxed);
             Ok(())
         },
@@ -358,7 +360,7 @@ async fn test_request_url_can_differ_from_response_meta_url() {
         url::Url::parse("https://interceptor.example/rewritten").expect("static interceptor URL should parse");
     let rewritten_url_for_interceptor = rewritten_url.clone();
     client.add_response_interceptor(HttpResponseInterceptor::new(
-        move |context: &mut qubit_http::HttpResponseInterceptorContext| {
+        move |context: &mut HttpResponseInterceptorContext| {
             context.set_url(rewritten_url_for_interceptor.clone());
             Ok(())
         },
@@ -476,7 +478,7 @@ async fn test_request_url_is_used_in_buffered_read_error() {
         .expect("request URL should join");
     let expected_url_for_interceptor = interceptor_url.clone();
     client.add_response_interceptor(HttpResponseInterceptor::new(
-        move |context: &mut qubit_http::HttpResponseInterceptorContext| {
+        move |context: &mut HttpResponseInterceptorContext| {
             context.set_url(expected_url_for_interceptor.clone());
             Ok(())
         },
@@ -509,12 +511,10 @@ async fn test_retry_status_code_allowlist_can_disable_retry_for_503() {
     let mut client = HttpClientBuilder::new().create(options).unwrap();
     let attempts = Arc::new(AtomicUsize::new(0));
     let attempts_for_interceptor = Arc::clone(&attempts);
-    client.add_request_interceptor(HttpRequestInterceptor::new(
-        move |_request: &mut qubit_http::HttpRequest| {
-            attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
-            Ok(())
-        },
-    ));
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
+        attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+    }));
 
     let request = client.request(Method::GET, "/retry-status-filter").build();
     let error = client.execute(request).await.unwrap_err();
@@ -543,12 +543,10 @@ async fn test_retry_status_code_allowlist_can_enable_retry_for_503() {
     let mut client = HttpClientBuilder::new().create(options).unwrap();
     let attempts = Arc::new(AtomicUsize::new(0));
     let attempts_for_interceptor = Arc::clone(&attempts);
-    client.add_request_interceptor(HttpRequestInterceptor::new(
-        move |_request: &mut qubit_http::HttpRequest| {
-            attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
-            Ok(())
-        },
-    ));
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
+        attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+    }));
 
     let request = client.request(Method::GET, "/retry-status-allow").build();
     let error = client.execute(request).await.unwrap_err();
@@ -569,12 +567,10 @@ async fn test_retry_error_kind_allowlist_can_disable_transport_retry() {
     let mut client = HttpClientBuilder::new().create(options).unwrap();
     let attempts = Arc::new(AtomicUsize::new(0));
     let attempts_for_interceptor = Arc::clone(&attempts);
-    client.add_request_interceptor(HttpRequestInterceptor::new(
-        move |_request: &mut qubit_http::HttpRequest| {
-            attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
-            Ok(())
-        },
-    ));
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
+        attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+    }));
 
     let request = client
         .request(Method::GET, "http://127.0.0.1:9/retry-kind-filter")

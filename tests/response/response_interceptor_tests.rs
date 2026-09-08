@@ -26,7 +26,7 @@ use url::Url;
 fn test_response_interceptor_apply_receives_context() {
     let seen = Arc::new(Mutex::new(None));
     let seen_for_interceptor = Arc::clone(&seen);
-    let interceptor = HttpResponseInterceptor::new(move |context: &mut qubit_http::HttpResponseInterceptorContext| {
+    let interceptor = HttpResponseInterceptor::new(move |context: &mut HttpResponseInterceptorContext| {
         let header = context
             .headers()
             .get("x-check")
@@ -75,7 +75,7 @@ fn test_response_interceptor_apply_receives_context() {
 
 #[test]
 fn test_response_interceptor_context_allows_header_mutation_without_status_mutation() {
-    let interceptor = HttpResponseInterceptor::new(|context: &mut qubit_http::HttpResponseInterceptorContext| {
+    let interceptor = HttpResponseInterceptor::new(|context: &mut HttpResponseInterceptorContext| {
         context
             .headers_mut()
             .insert("x-intercepted", HeaderValue::from_static("yes"));
@@ -111,7 +111,7 @@ fn test_response_interceptor_context_allows_header_mutation_without_status_mutat
 
 #[test]
 fn test_response_interceptor_apply_propagates_error() {
-    let interceptor = HttpResponseInterceptor::new(|_meta: &mut qubit_http::HttpResponseInterceptorContext| {
+    let interceptor = HttpResponseInterceptor::new(|_meta: &mut HttpResponseInterceptorContext| {
         Err(HttpError::other("response interceptor failure"))
     });
     let meta = HttpResponseMeta::new(
@@ -133,9 +133,7 @@ fn test_response_interceptor_apply_propagates_error() {
 fn test_response_interceptors_apply_enriches_error_context() {
     let mut interceptors = HttpResponseInterceptors::new();
     interceptors.push(HttpResponseInterceptor::new(
-        |_meta: &mut qubit_http::HttpResponseInterceptorContext| {
-            Err(HttpError::other("response interceptor list failure"))
-        },
+        |_meta: &mut HttpResponseInterceptorContext| Err(HttpError::other("response interceptor list failure")),
     ));
     let mut meta = HttpResponseMeta::new(
         StatusCode::ACCEPTED,
@@ -160,7 +158,7 @@ fn test_response_interceptors_apply_preserves_existing_error_context() {
     let mut interceptors = HttpResponseInterceptors::new();
     interceptors.push(HttpResponseInterceptor::new({
         let existing_url = existing_url.clone();
-        move |_meta: &mut qubit_http::HttpResponseInterceptorContext| {
+        move |_meta: &mut HttpResponseInterceptorContext| {
             Err(HttpError::other("response interceptor list failure")
                 .with_status(StatusCode::BAD_GATEWAY)
                 .with_method(&Method::PATCH)
@@ -185,7 +183,7 @@ fn test_response_interceptors_apply_preserves_existing_error_context() {
 
 #[test]
 fn test_response_interceptor_clone_and_debug() {
-    let interceptor = HttpResponseInterceptor::new(|_meta: &mut qubit_http::HttpResponseInterceptorContext| Ok(()));
+    let interceptor = HttpResponseInterceptor::new(|_meta: &mut HttpResponseInterceptorContext| Ok(()));
     let cloned = interceptor.clone();
 
     let output = format!("{:?}", cloned);

@@ -28,6 +28,7 @@ use qubit_http::HttpResponse;
 use qubit_http::HttpResponseMeta;
 use qubit_redact::RedactionPolicy;
 use qubit_redact::formats::http::TextBodyPolicy;
+use tokio::runtime::Builder;
 use tokio::time::timeout;
 use url::Url;
 
@@ -118,7 +119,7 @@ fn test_log_response_masks_sensitive_headers() {
             Url::parse("https://example.com/data").unwrap(),
             Method::GET,
         );
-        let runtime = tokio::runtime::Builder::new_current_thread()
+        let runtime = Builder::new_current_thread()
             .enable_all()
             .build()
             .expect("failed to build tokio runtime");
@@ -146,7 +147,7 @@ fn test_log_response_masks_sensitive_response_url() {
                 .expect("response URL should parse"),
             Method::GET,
         );
-        let runtime = tokio::runtime::Builder::new_current_thread()
+        let runtime = Builder::new_current_thread()
             .enable_all()
             .build()
             .expect("failed to build tokio runtime");
@@ -200,7 +201,7 @@ fn test_log_response_binary_body_and_truncation() {
             Url::parse("https://example.com/bin").unwrap(),
             Method::GET,
         );
-        let runtime = tokio::runtime::Builder::new_current_thread()
+        let runtime = Builder::new_current_thread()
             .enable_all()
             .build()
             .expect("failed to build tokio runtime");
@@ -341,7 +342,7 @@ fn test_log_response_text_body_redacts_by_default() {
             Url::parse("https://example.com/text").expect("response URL should parse"),
             Method::GET,
         );
-        let runtime = tokio::runtime::Builder::new_current_thread()
+        let runtime = Builder::new_current_thread()
             .enable_all()
             .build()
             .expect("failed to build tokio runtime");
@@ -424,7 +425,7 @@ fn test_log_request_hides_raw_path_when_url_resolution_fails() {
 #[test]
 fn test_execute_returns_body_read_error_from_response_logging() {
     let logs = capture_trace_logs(|| {
-        let runtime = tokio::runtime::Builder::new_current_thread()
+        let runtime = Builder::new_current_thread()
             .enable_all()
             .build()
             .expect("failed to build tokio runtime");
@@ -471,7 +472,7 @@ fn test_execute_returns_body_read_error_from_response_logging() {
 #[test]
 fn test_execute_skips_trace_response_body_for_streaming_or_unknown_size_body() {
     let logs = capture_trace_logs(|| {
-        let runtime = tokio::runtime::Builder::new_current_thread()
+        let runtime = Builder::new_current_thread()
             .enable_all()
             .build()
             .expect("failed to build tokio runtime");
@@ -530,7 +531,7 @@ fn test_execute_skips_trace_response_body_for_streaming_or_unknown_size_body() {
 #[test]
 fn test_execute_logs_response_body_when_content_type_only_has_sse_prefix() {
     let logs = capture_trace_logs(|| {
-        let runtime = tokio::runtime::Builder::new_current_thread()
+        let runtime = Builder::new_current_thread()
             .enable_all()
             .build()
             .expect("failed to build tokio runtime");
@@ -715,7 +716,7 @@ fn test_log_response_empty_body_renders_empty_placeholder() {
             Url::parse("https://example.com/empty-response").expect("URL should parse"),
             Method::GET,
         );
-        let runtime = tokio::runtime::Builder::new_current_thread()
+        let runtime = Builder::new_current_thread()
             .enable_all()
             .build()
             .expect("failed to build tokio runtime");
@@ -728,7 +729,7 @@ fn test_log_response_empty_body_renders_empty_placeholder() {
 
 #[test]
 fn test_execute_logs_response_body_from_backend_when_trace_enabled() {
-    let runtime = tokio::runtime::Builder::new_current_thread()
+    let runtime = Builder::new_current_thread()
         .enable_all()
         .build()
         .expect("failed to build tokio runtime");
@@ -780,7 +781,7 @@ fn test_log_request_bytes_body_variant_is_logged() {
 
 #[test]
 fn test_log_response_skips_body_when_backend_already_consumed() {
-    let runtime = tokio::runtime::Builder::new_current_thread()
+    let runtime = Builder::new_current_thread()
         .enable_all()
         .build()
         .expect("failed to build tokio runtime");
@@ -829,7 +830,7 @@ fn test_log_response_skips_body_when_backend_already_consumed() {
 
 #[test]
 fn test_log_response_skips_body_for_sse_content_type() {
-    let runtime = tokio::runtime::Builder::new_current_thread()
+    let runtime = Builder::new_current_thread()
         .enable_all()
         .build()
         .expect("failed to build tokio runtime");
