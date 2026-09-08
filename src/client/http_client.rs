@@ -493,7 +493,7 @@ impl HttpClient {
         let request_method = request.method().clone();
         let request_url = request.resolved_url().ok();
         let retry_request = request.clone();
-        let mut async_retry = retry_policy.asynchronous();
+        let mut async_retry = retry_policy.tokio();
         if let Some(token) = cancellation_token.as_ref() {
             async_retry = async_retry.cancellation_token(token.inner().clone());
         }
