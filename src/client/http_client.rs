@@ -22,7 +22,7 @@ use http::Method;
 use qubit_config::ConfigReader;
 use qubit_redact::Redactor;
 use qubit_retry::AttemptFailure;
-use qubit_retry::Retry;
+use qubit_retry::RetryConfig;
 use qubit_retry::RetryContext;
 use qubit_retry::RetryDecision;
 use qubit_retry::RetryError;
@@ -30,6 +30,7 @@ use qubit_retry::RetryErrorReason;
 use qubit_retry::RetryLimitKind;
 use qubit_retry::RetryRule;
 use qubit_retry::RetryTimeoutScope;
+use qubit_retry::TokioRetry;
 use url::Url;
 
 use super::internal::HttpAttemptExecutionContext;
@@ -481,19 +482,21 @@ impl HttpClient {
         let retry_policy = options.to_executor_policy();
         let started_at = Instant::now();
 
-        let retry_policy = Retry::<HttpError>::builder(retry_policy)
+        let retry_config = RetryConfig::<HttpError>::builder()
+            .policy(retry_policy)
             .rule(HttpRetryRule {
                 options: options.clone(),
                 honor_retry_after,
             })
-            .build();
+            .build()
+            .expect("validated HTTP retry options should build");
 
         let cancellation_token = request.cancellation_token().cloned();
         let attempt_context = HttpAttemptExecutionContext::retry(&request);
         let request_method = request.method().clone();
         let request_url = request.resolved_url().ok();
         let retry_request = request.clone();
-        let mut async_retry = retry_policy.tokio();
+        let mut async_retry = TokioRetry::new(&retry_config);
         if let Some(token) = cancellation_token.as_ref() {
             async_retry = async_retry.cancellation_token(token.inner().clone());
         }
@@ -741,6 +744,7 @@ mod tests {
     use qubit_redact::Sensitivity;
     use qubit_retry::AttemptFailure;
     use qubit_retry::Retry;
+    use qubit_retry::RetryConfig;
     use qubit_retry::RetryContext;
     use qubit_retry::RetryDecision;
     use qubit_retry::RetryError;
@@ -768,17 +772,18 @@ mod tests {
     fn test_retry_conversion_retains_complete_source_and_http_fields() {
         for abort in [false, true] {
             let url = Url::parse("https://example.test/request?tenant_marker=conversion-secret").expect("valid URL");
-            let retry =
-                Retry::<HttpError>::builder(RetryPolicy::builder().max_attempts(1).build().expect("valid policy"))
-                    .observer(CompletionPanic)
-                    .rule(move |_: &AttemptFailure<HttpError>, _: &RetryContext| {
-                        if abort {
-                            RetryDecision::Abort
-                        } else {
-                            RetryDecision::Retry
-                        }
-                    })
-                    .build();
+            let retry = RetryConfig::<HttpError>::builder()
+                .policy(RetryPolicy::builder().max_attempts(1).build().expect("valid policy"))
+                .observer(CompletionPanic)
+                .rule(move |_: &AttemptFailure<HttpError>, _: &RetryContext| {
+                    if abort {
+                        RetryDecision::Abort
+                    } else {
+                        RetryDecision::Retry
+                    }
+                })
+                .build()
+                .expect("valid retry config");
             let redaction = RedactionPolicy::default()
                 .to_builder()
                 .http(|http| {
@@ -787,8 +792,7 @@ mod tests {
                 .unwrap()
                 .build()
                 .unwrap();
-            let terminal = retry
-                .sync()
+            let terminal = Retry::new(&retry)
                 .run(|| {
                     let mut error =
                         HttpError::other("service unavailable").with_source(io::Error::other("backend error"));
