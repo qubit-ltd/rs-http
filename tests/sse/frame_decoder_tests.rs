@@ -15,6 +15,7 @@ use http::StatusCode;
 use qubit_http::HttpErrorKind;
 use qubit_http::HttpResponse;
 use qubit_http::HttpResult;
+use tokio::test as tokio_test;
 
 async fn collect_results<T>(stream: impl Stream<Item = HttpResult<T>>) -> Vec<T> {
     stream
@@ -34,7 +35,7 @@ fn stream_response_from_chunks(chunks: Vec<&'static str>) -> HttpResponse {
     )
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_decode_messages_does_not_emit_retry_only_control_frame() {
     let response = stream_response_from_chunks(vec!["retry: 100\n", "\n", "data: hello\n", "\n"]);
     let messages = collect_results(response.sse_messages()).await;
@@ -43,7 +44,7 @@ async fn test_decode_messages_does_not_emit_retry_only_control_frame() {
     assert_eq!(messages[0].data, "hello");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_decode_messages_applies_control_only_id_to_next_message() {
     let response = stream_response_from_chunks(vec!["id: resume-token\n", "\n", "data: hello\n", "\n"]);
     let messages = collect_results(response.sse_messages()).await;
@@ -52,7 +53,7 @@ async fn test_decode_messages_applies_control_only_id_to_next_message() {
     assert_eq!(messages[0].last_event_id.as_deref(), Some("resume-token"));
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_decode_frames_allows_field_without_colon_as_field_name() {
     let response = stream_response_from_chunks(vec!["data\n", "\n"]);
     let events = collect_results(response.sse_messages()).await;
@@ -62,7 +63,7 @@ async fn test_decode_frames_allows_field_without_colon_as_field_name() {
     assert_eq!(events[0].event, None);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_decode_frames_handles_invalid_retry_value_as_known_field() {
     let response = stream_response_from_chunks(vec!["data: hi\n", "retry: bad\n", "\n"]);
     let events = collect_results(response.sse_messages()).await;
@@ -71,7 +72,7 @@ async fn test_decode_frames_handles_invalid_retry_value_as_known_field() {
     assert_eq!(events[0].data, "hi");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_decode_frames_ignores_unknown_field_name() {
     let response = stream_response_from_chunks(vec!["unknown: ignored\n", "data: value\n", "\n"]);
     let events = collect_results(response.sse_messages()).await;
@@ -80,7 +81,7 @@ async fn test_decode_frames_ignores_unknown_field_name() {
     assert_eq!(events[0].data, "value");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_decode_frames_rejects_frame_exceeding_max_bytes() {
     let response = stream_response_from_chunks(vec!["data: 12345\n", "data: 67890\n", "\n"]);
     let mut events = response.sse_max_line_bytes(128).sse_max_frame_bytes(12).sse_messages();
@@ -90,7 +91,7 @@ async fn test_decode_frames_rejects_frame_exceeding_max_bytes() {
     assert!(error.message.contains("max_frame_bytes"));
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_decode_frames_accepts_frame_at_max_bytes() {
     let response = stream_response_from_chunks(vec!["data: value\n", "\n"]);
     let mut events = response
@@ -108,7 +109,7 @@ async fn test_decode_frames_accepts_frame_at_max_bytes() {
     assert!(events.next().await.is_none());
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_decode_frames_ignores_comment_lines() {
     let response = stream_response_from_chunks(vec![": heartbeat\n", "data: hello\n", "\n"]);
     let events = collect_results(response.sse_max_line_bytes(128).sse_max_frame_bytes(64).sse_messages()).await;
@@ -117,7 +118,7 @@ async fn test_decode_frames_ignores_comment_lines() {
     assert_eq!(events[0].data, "hello");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_decode_frames_emits_last_event_without_trailing_blank_line() {
     let response = stream_response_from_chunks(vec!["data: final"]);
     let events = collect_results(response.sse_messages()).await;
@@ -126,7 +127,7 @@ async fn test_decode_frames_emits_last_event_without_trailing_blank_line() {
     assert_eq!(events[0].data, "final");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_decode_frames_accepts_field_value_without_space_after_colon() {
     let response = stream_response_from_chunks(vec!["event:update\n", "data:value\n", "\n"]);
     let events = collect_results(response.sse_messages()).await;

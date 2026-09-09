@@ -17,6 +17,7 @@ use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
 use qubit_http::HttpResponse;
+use tokio::test as tokio_test;
 use tokio::time::timeout;
 use url::Url;
 
@@ -41,7 +42,7 @@ fn test_http_stream_response_is_success_and_new() {
     assert!(debug.contains("url"));
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_http_stream_response_into_stream_consumes_body() {
     let mut response = HttpResponse::new(
         StatusCode::OK,
@@ -60,7 +61,7 @@ async fn test_http_stream_response_into_stream_consumes_body() {
     assert_eq!(chunks, vec![Bytes::from_static(b"part-1part-2")]);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_http_stream_response_backend_taken_then_stream_and_bytes_are_empty() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
@@ -106,7 +107,7 @@ async fn test_http_stream_response_backend_taken_then_stream_and_bytes_are_empty
     assert_eq!(captured.target, "/stream-take-backend");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_http_response_bytes_remembers_read_failure() {
     let server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
         status: 200,
@@ -150,7 +151,7 @@ async fn test_http_response_bytes_remembers_read_failure() {
     assert_eq!(captured.target, "/bytes-read-failure");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_http_response_stream_remembers_read_failure() {
     let server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
         status: 200,
@@ -204,7 +205,7 @@ async fn test_http_response_stream_remembers_read_failure() {
     assert_eq!(captured.target, "/stream-read-failure");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_http_response_stream_reports_prior_bytes_read_failure() {
     let server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
         status: 200,

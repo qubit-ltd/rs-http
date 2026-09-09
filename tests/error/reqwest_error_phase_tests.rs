@@ -12,12 +12,13 @@ use http::Method;
 use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
+use tokio::test as tokio_test;
 use tokio::time::timeout;
 
 use crate::common::ResponsePlan;
 use crate::common::spawn_one_shot_server;
 
-#[tokio::test]
+#[tokio_test]
 async fn test_reqwest_error_phase_send_timeout_maps_to_send_timeout() {
     let server = spawn_one_shot_server(ResponsePlan::DelayedStart {
         delay: Duration::from_secs(2),

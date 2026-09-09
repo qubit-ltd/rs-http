@@ -14,6 +14,7 @@ use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
 use qubit_http::HttpOriginPolicy;
 use qubit_http::ProxyType;
+use tokio::test as tokio_test;
 use tokio::time::timeout;
 
 use crate::common::ProxyBehavior;
@@ -21,7 +22,7 @@ use crate::common::ResponsePlan;
 use crate::common::spawn_one_shot_server;
 use crate::common::spawn_simple_proxy_server;
 
-#[tokio::test]
+#[tokio_test]
 async fn test_http_proxy_forwards_request_and_sends_proxy_auth() {
     let backend = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
@@ -71,7 +72,7 @@ async fn test_http_proxy_forwards_request_and_sends_proxy_auth() {
     assert!(!backend_captured.headers.contains_key("proxy-authorization"));
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_proxy_disabled_does_not_use_environment_proxy() {
     let backend = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
@@ -105,7 +106,7 @@ async fn test_proxy_disabled_does_not_use_environment_proxy() {
     assert_eq!(backend_captured.target, "/direct");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_https_via_http_proxy_uses_connect_tunnel() {
     let proxy = spawn_simple_proxy_server(ProxyBehavior::ConnectProbe).await;
 

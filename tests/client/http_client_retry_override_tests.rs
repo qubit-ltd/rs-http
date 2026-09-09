@@ -22,6 +22,7 @@ use qubit_http::HttpErrorKind;
 use qubit_http::HttpRetryMethodPolicy;
 use qubit_retry::BackoffPolicy;
 use tokio::spawn;
+use tokio::test as tokio_test;
 use tokio::time::sleep;
 use tokio::time::timeout;
 
@@ -30,7 +31,7 @@ use crate::common::ResponsePlan;
 use crate::common::spawn_multi_shot_server;
 use crate::common::spawn_one_shot_server;
 
-#[tokio::test]
+#[tokio_test]
 async fn test_request_retry_override_force_enable_and_all_methods_for_post() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Immediate {
@@ -74,7 +75,7 @@ async fn test_request_retry_override_force_enable_and_all_methods_for_post() {
     assert_eq!(captured[1].method, "POST");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_request_retry_override_disable_retry_skips_client_retry_policy() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 503,
@@ -106,7 +107,7 @@ async fn test_request_retry_override_disable_retry_skips_client_retry_policy() {
     assert_eq!(captured.target, "/disable-retry");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_request_retry_override_method_policy_allows_post_without_global_override() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Immediate {
@@ -148,7 +149,7 @@ async fn test_request_retry_override_method_policy_allows_post_without_global_ov
     assert_eq!(captured.len(), 2);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_request_retry_override_honor_retry_after_waits_before_retrying() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Immediate {
@@ -195,7 +196,7 @@ async fn test_request_retry_override_honor_retry_after_waits_before_retrying() {
     assert_eq!(captured.len(), 2);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_request_retry_override_honor_retry_after_waits_before_retrying_on_503() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Immediate {
@@ -242,7 +243,7 @@ async fn test_request_retry_override_honor_retry_after_waits_before_retrying_on_
     assert_eq!(captured.len(), 2);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_request_retry_override_honor_retry_after_waits_before_body_stream_retrying() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Immediate {
@@ -301,7 +302,7 @@ async fn test_request_retry_override_honor_retry_after_waits_before_body_stream_
     assert_eq!(captured.len(), 2);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_request_retry_override_honor_retry_after_without_header_does_not_add_delay() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Immediate {
@@ -348,7 +349,7 @@ async fn test_request_retry_override_honor_retry_after_without_header_does_not_a
     assert_eq!(captured.len(), 2);
 }
 
-#[tokio::test(flavor = "current_thread")]
+#[tokio_test(flavor = "current_thread")]
 async fn test_request_retry_override_honor_retry_after_does_not_block_runtime_thread() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Immediate {

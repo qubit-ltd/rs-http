@@ -13,9 +13,10 @@ use http::Method;
 use http::StatusCode;
 use qubit_http::HttpErrorKind;
 use qubit_http::HttpResponse;
+use tokio::test as tokio_test;
 use url::Url;
 
-#[tokio::test]
+#[tokio_test]
 async fn test_http_response_options_clamp_sse_line_limit_to_at_least_one() {
     let response = HttpResponse::new(
         StatusCode::OK,

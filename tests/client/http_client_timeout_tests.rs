@@ -17,6 +17,7 @@ use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
 use qubit_http::RetryHint;
 use qubit_retry::BackoffPolicy;
+use tokio::test as tokio_test;
 use tokio::time::timeout;
 
 use crate::common::ResponseChunk;
@@ -24,7 +25,7 @@ use crate::common::ResponsePlan;
 use crate::common::spawn_multi_shot_server;
 use crate::common::spawn_one_shot_server;
 
-#[tokio::test]
+#[tokio_test]
 async fn test_retry_max_duration_allows_admitted_request_to_finish_after_budget() {
     let retry_delay = Duration::from_millis(50);
     let max_duration = Duration::from_millis(500);
@@ -79,7 +80,7 @@ async fn test_retry_max_duration_allows_admitted_request_to_finish_after_budget(
     );
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_client_level_request_timeout_triggers_timeout_classification() {
     let server = spawn_one_shot_server(ResponsePlan::DelayedStart {
         delay: Duration::from_millis(250),
@@ -106,7 +107,7 @@ async fn test_client_level_request_timeout_triggers_timeout_classification() {
     assert_eq!(error.retry_hint(), RetryHint::Retryable);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_request_level_timeout_overrides_client_level_timeout() {
     let server = spawn_one_shot_server(ResponsePlan::DelayedStart {
         delay: Duration::from_millis(250),
@@ -137,7 +138,7 @@ async fn test_request_level_timeout_overrides_client_level_timeout() {
     assert_eq!(error.retry_hint(), RetryHint::Retryable);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_client_level_send_timeout_triggers_send_timeout_error() {
     let server = spawn_one_shot_server(ResponsePlan::DelayedStart {
         delay: Duration::from_millis(250),
@@ -164,7 +165,7 @@ async fn test_client_level_send_timeout_triggers_send_timeout_error() {
     assert_eq!(error.retry_hint(), RetryHint::Retryable);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_request_level_send_timeout_overrides_client_level_timeout() {
     let server = spawn_one_shot_server(ResponsePlan::DelayedStart {
         delay: Duration::from_millis(250),
@@ -195,7 +196,7 @@ async fn test_request_level_send_timeout_overrides_client_level_timeout() {
     assert_eq!(error.retry_hint(), RetryHint::Retryable);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_timeout_classification_is_retryable_in_deterministic_path() {
     let server = spawn_one_shot_server(ResponsePlan::DelayedStart {
         delay: Duration::from_millis(250),
@@ -221,7 +222,7 @@ async fn test_timeout_classification_is_retryable_in_deterministic_path() {
     assert_eq!(error.retry_hint(), RetryHint::Retryable);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_truncated_body_with_request_timeout_context_is_transport_error() {
     let server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
         status: 200,
@@ -250,7 +251,7 @@ async fn test_truncated_body_with_request_timeout_context_is_transport_error() {
     assert_eq!(error.retry_hint(), RetryHint::Retryable);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_reqwest_timeout_during_body_chunk_is_classified_as_read_timeout() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
@@ -291,7 +292,7 @@ async fn test_reqwest_timeout_during_body_chunk_is_classified_as_read_timeout() 
     assert_eq!(captured.target, "/request-timeout-body-chunk");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_request_level_read_timeout_overrides_client_level_for_buffered_execute() {
     let server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
         status: 200,
@@ -323,7 +324,7 @@ async fn test_request_level_read_timeout_overrides_client_level_for_buffered_exe
     assert_eq!(error.kind, HttpErrorKind::ReadTimeout);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_request_level_read_timeout_overrides_client_level_for_stream_body() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
@@ -375,7 +376,7 @@ async fn test_request_level_read_timeout_overrides_client_level_for_stream_body(
     assert_eq!(timeout_error.kind, HttpErrorKind::ReadTimeout);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_buffered_bytes_read_timeout_is_applied_per_chunk_wait() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,

@@ -21,13 +21,14 @@ use qubit_http::HttpClientOptions;
 use qubit_http::HttpError;
 use qubit_http::HttpErrorKind;
 use qubit_http::HttpHeaderInjector;
+use tokio::test as tokio_test;
 use tokio::time::timeout;
 
 use crate::common::ResponsePlan;
 use crate::common::spawn_multi_shot_server;
 use crate::common::spawn_one_shot_server;
 
-#[tokio::test]
+#[tokio_test]
 async fn test_async_header_injector_runs_after_sync_injector_with_stable_order() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
@@ -76,7 +77,7 @@ async fn test_async_header_injector_runs_after_sync_injector_with_stable_order()
     );
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_async_header_injector_failure_short_circuits_request() {
     let server = spawn_multi_shot_server(vec![]).await;
 
@@ -103,7 +104,7 @@ async fn test_async_header_injector_failure_short_circuits_request() {
     assert!(captured.is_empty());
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_clear_async_header_injectors_removes_async_mutation() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,

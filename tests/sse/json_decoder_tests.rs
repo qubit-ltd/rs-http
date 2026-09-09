@@ -20,6 +20,7 @@ use qubit_http::HttpResult;
 use qubit_http::sse::DoneMarkerPolicy;
 use qubit_http::sse::SseChunk;
 use qubit_http::sse::SseJsonMode;
+use tokio::test as tokio_test;
 
 #[derive(Debug, serde::Deserialize, PartialEq, Eq)]
 struct TestChunk {
@@ -44,7 +45,7 @@ fn stream_response_from_chunks(chunks: Vec<&'static str>) -> HttpResponse {
     )
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_decode_json_chunks_lenient_skips_bad_json_and_respects_done() {
     let response = stream_response_from_chunks(vec![
         "data: {\"value\": 1}\n\n",
@@ -59,7 +60,7 @@ async fn test_decode_json_chunks_lenient_skips_bad_json_and_respects_done() {
     assert_eq!(chunks[1], SseChunk::Done);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_decode_json_chunks_strict_fails_on_bad_json() {
     let response = stream_response_from_chunks(vec!["data: {\"value\": 1}\n\n", "data: malformed-json\n\n"]);
     let mut stream = response.sse_json_mode(SseJsonMode::Strict).sse_chunks::<TestChunk>();
@@ -72,7 +73,7 @@ async fn test_decode_json_chunks_strict_fails_on_bad_json() {
     assert_eq!(error.kind, HttpErrorKind::SseDecode);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_decode_json_chunks_strict_error_includes_message_context() {
     let response = stream_response_from_chunks(vec![
         "event: response.delta\n",
@@ -88,7 +89,7 @@ async fn test_decode_json_chunks_strict_error_includes_message_context() {
     assert!(error.message.contains("last_event_id=Some(\"evt-42\")"));
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_decode_json_chunks_with_custom_done_marker() {
     let response = stream_response_from_chunks(vec!["data: {\"value\": 2}\n\n", "data: <END>\n\n"]);
     let chunks = collect_results(
@@ -103,7 +104,7 @@ async fn test_decode_json_chunks_with_custom_done_marker() {
     assert_eq!(chunks[1], SseChunk::Done);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_decode_json_chunks_with_limits_reports_sse_protocol_error() {
     let response = stream_response_from_chunks(vec!["data: {\"value\": 1}\n", "data: {\"value\": 2}\n", "\n"]);
     let mut stream = response
@@ -117,7 +118,7 @@ async fn test_decode_json_chunks_with_limits_reports_sse_protocol_error() {
     assert!(error.message.contains("max_frame_bytes"));
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_decode_json_chunks_applies_response_json_value_limits() {
     let response = stream_response_from_chunks(vec!["data: {\"value\": 1}\n\n"]);
     let mut stream = response
@@ -138,7 +139,7 @@ async fn test_decode_json_chunks_applies_response_json_value_limits() {
 /// `sse_max_line_bytes` → `sse_max_frame_bytes` → `sse_chunks()` must compile
 /// and decode using that chain (see user guide “Configure `sse_chunks`
 /// options”).
-#[tokio::test]
+#[tokio_test]
 async fn test_regression_sse_chunks_chain_setters_before_decode() {
     let response = stream_response_from_chunks(vec!["data: {\"value\": 7}\n\n"]);
     let chunks = collect_results(

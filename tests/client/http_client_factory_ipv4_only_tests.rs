@@ -12,6 +12,7 @@ use http::Method;
 use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
+use tokio::test as tokio_test;
 use tokio::time::timeout;
 
 use crate::common::ResponsePlan;
@@ -25,7 +26,7 @@ fn test_ipv4_only_option_is_preserved_in_client_options() {
     assert!(client.options().ipv4_only);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_ipv4_only_with_localhost_request_is_accessible() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
@@ -55,7 +56,7 @@ async fn test_ipv4_only_with_localhost_request_is_accessible() {
     assert_eq!(response.text().await.unwrap(), "ipv4-only-ok");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_ipv4_only_rejects_ipv6_literal_request_url() {
     let mut options = HttpClientOptions::default();
     options.ipv4_only = true;
@@ -84,7 +85,7 @@ fn test_ipv4_only_rejects_ipv6_literal_proxy_host() {
     assert!(error.message.contains("not allowed when ipv4_only=true"));
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_ipv4_only_fails_on_hostname_without_ipv4_address() {
     let mut options = HttpClientOptions::default();
     options

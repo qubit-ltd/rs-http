@@ -19,6 +19,7 @@ use http::StatusCode;
 use qubit_http::HttpResponse;
 use qubit_http::HttpResult;
 use qubit_http::sse::SseReconnectOptions;
+use tokio::test as tokio_test;
 
 async fn collect_results<T>(stream: impl Stream<Item = HttpResult<T>>) -> Vec<T> {
     stream
@@ -38,7 +39,7 @@ fn stream_response_from_chunks(chunks: Vec<&'static str>) -> HttpResponse {
     )
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_decode_messages_parses_fields_and_multiline_data() {
     let response = stream_response_from_chunks(vec![
         "event: message\r\nid: evt-1\r\ndata: line-1\r\ndata: line-2\r\nretry: 123\r\n\r\n",
@@ -51,7 +52,7 @@ async fn test_decode_messages_parses_fields_and_multiline_data() {
     assert_eq!(events[0].data, "line-1\nline-2");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_decode_messages_ignores_comment_lines() {
     let response = stream_response_from_chunks(vec![": keep-alive\n", "data: {\"value\": 7}\n", "\n"]);
     let events = collect_results(response.sse_messages()).await;

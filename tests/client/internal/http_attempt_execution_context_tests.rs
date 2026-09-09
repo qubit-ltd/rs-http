@@ -25,6 +25,7 @@ use qubit_http::HttpRequestInterceptor;
 use qubit_http::HttpResult;
 use qubit_retry::BackoffPolicy;
 use qubit_retry::RetryError;
+use tokio::test as tokio_test;
 
 use crate::common::spawn_multi_shot_server;
 
@@ -36,7 +37,7 @@ fn retry_failure(error: &HttpError) -> &RetryError<HttpError> {
         .expect("retry cancellation should retain RetryError")
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_same_source_interceptor_clone_remains_retry_owned() {
     let server = spawn_multi_shot_server(vec![]).await;
     let mut options = HttpClientOptions::default();

@@ -16,11 +16,12 @@ use qubit_http::HttpErrorKind;
 use qubit_http::HttpResponse;
 use qubit_json::decode::DiagnosticPolicy;
 use qubit_json::decode::JsonDecodeError;
+use tokio::test as tokio_test;
 use url::Url;
 
 use crate::common::SensitiveChoice;
 
-#[tokio::test]
+#[tokio_test]
 async fn test_http_response_text_decode_error_contains_status_and_url() {
     let mut response = HttpResponse::new(
         StatusCode::OK,
@@ -61,7 +62,7 @@ fn test_http_response_debug_masks_sensitive_values() {
     assert!(debug.contains("****"));
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_http_response_json_decode_error_contains_status_and_url() {
     let mut response = HttpResponse::new(
         StatusCode::OK,
@@ -138,7 +139,7 @@ fn test_http_response_retry_after_hint_handles_applicable_status_and_past_date()
     assert_eq!(success.retry_after_hint(), None);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_http_response_text_success_returns_body() {
     let mut response = HttpResponse::new(
         StatusCode::OK,
@@ -152,7 +153,7 @@ async fn test_http_response_text_success_returns_body() {
     assert_eq!(text, "hello");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_http_response_json_success_decodes_value() {
     let mut response = HttpResponse::new(
         StatusCode::OK,
@@ -169,7 +170,7 @@ async fn test_http_response_json_success_decodes_value() {
     assert_eq!(value["n"], 42);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_http_response_json_rejects_markdown_fence() {
     let mut response = HttpResponse::new(
         StatusCode::OK,
@@ -187,7 +188,7 @@ async fn test_http_response_json_rejects_markdown_fence() {
     assert_eq!(error.status, Some(StatusCode::OK));
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_http_response_json_redacts_deserializer_value() {
     const SECRET: &str = "HTTP_TOP_SECRET";
     let mut response = HttpResponse::new(
