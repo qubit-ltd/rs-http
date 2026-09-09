@@ -10,6 +10,7 @@ use std::time::Duration;
 
 use qubit_budget::json::JsonValueLimits;
 use qubit_config::Config;
+use qubit_config::ConfigError;
 use qubit_config::options::InterpolationSources;
 use qubit_config::options::ReadPolicy;
 use qubit_datatype::DataType;
@@ -463,6 +464,15 @@ fn test_http_client_options_empty_header_value_from_config_is_prefixed() {
 
     assert_eq!(err.kind, HttpConfigErrorKind::TypeError);
     assert_eq!(err.path, "http.default_headers.x-empty");
+    let source = std::error::Error::source(&err)
+        .and_then(|source| source.downcast_ref::<ConfigError>())
+        .expect("HTTP error must retain its configuration source");
+    let missing = source
+        .value_missing()
+        .expect("unset header retains value missing facts");
+    assert!(missing.is_unset());
+    assert_eq!(missing.source_type(), Some(DataType::String));
+    assert_eq!(missing.target_type(), Some(DataType::String));
 }
 
 #[test]
