@@ -11,8 +11,9 @@ use http::HeaderValue;
 use qubit_http::AsyncHttpHeaderInjector;
 use qubit_http::HttpError;
 use qubit_http::HttpErrorKind;
+use tokio::test as tokio_test;
 
-#[tokio::test]
+#[tokio_test]
 async fn test_async_header_injector_apply_updates_header_map() {
     let injector = AsyncHttpHeaderInjector::new(|headers: &mut HeaderMap| {
         Box::pin(async move {
@@ -30,7 +31,7 @@ async fn test_async_header_injector_apply_updates_header_map() {
     assert_eq!(headers.get("x-async").expect("x-async header should be injected"), "ok");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_async_header_injector_apply_propagates_error() {
     let injector = AsyncHttpHeaderInjector::new(|_headers: &mut HeaderMap| {
         Box::pin(async move { Err(HttpError::other("injector failed")) })
@@ -42,7 +43,7 @@ async fn test_async_header_injector_apply_propagates_error() {
     assert!(error.message.contains("injector failed"));
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_async_header_injector_clone_keeps_same_behavior() {
     let injector = AsyncHttpHeaderInjector::new(|headers: &mut HeaderMap| {
         Box::pin(async move {

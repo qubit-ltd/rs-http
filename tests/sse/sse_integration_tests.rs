@@ -22,6 +22,7 @@ use qubit_http::sse::SseChunk;
 use qubit_http::sse::SseJsonMode;
 use qubit_redact::RedactionPolicy;
 use qubit_redact::Sensitivity;
+use tokio::test as tokio_test;
 use tokio::time::timeout;
 
 use crate::common::ResponseChunk;
@@ -44,7 +45,7 @@ fn stream_response_from_chunks(chunks: Vec<Vec<u8>>) -> HttpResponse {
     )
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_decode_events_reports_sse_protocol_error_on_non_utf8_line() {
     let response = stream_response_from_chunks(vec![vec![0xFF, b'\n']]);
     let mut events = response.sse_messages();
@@ -52,7 +53,7 @@ async fn test_decode_events_reports_sse_protocol_error_on_non_utf8_line() {
     assert_eq!(error.kind, HttpErrorKind::SseProtocol);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_decode_events_handles_chunk_boundaries_and_trailing_flush() {
     let response = stream_response_from_chunks(vec![
         b"data: {\"val".to_vec(),
@@ -69,7 +70,7 @@ async fn test_decode_events_handles_chunk_boundaries_and_trailing_flush() {
     assert_eq!(second.data, "{\"value\":2}");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_decode_events_reports_frame_limit_error() {
     let response = stream_response_from_chunks(vec![b"data: one\ndata: two\n\n".to_vec()]);
     let mut events = response.sse_max_line_bytes(1024).sse_max_frame_bytes(8).sse_messages();
@@ -80,7 +81,7 @@ async fn test_decode_events_reports_frame_limit_error() {
 /// Regression: `sse_max_line_bytes` → `sse_max_frame_bytes` → `sse_messages()`
 /// must compile and apply limits from the same chain (see user guide “Configure
 /// `sse_messages` options”).
-#[tokio::test]
+#[tokio_test]
 async fn test_regression_sse_messages_chain_setters_before_decode() {
     let response = stream_response_from_chunks(vec![b"data: ok\n\n".to_vec()]);
     let mut events = response
@@ -92,7 +93,7 @@ async fn test_regression_sse_messages_chain_setters_before_decode() {
     assert!(events.next().await.is_none());
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_stream_with_decode_events_end_to_end() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
@@ -136,7 +137,7 @@ async fn test_execute_stream_with_decode_events_end_to_end() {
     assert_eq!(captured.target, "/sse");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_stream_decode_events_reports_read_timeout_when_interrupted() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
@@ -172,7 +173,7 @@ async fn test_execute_stream_decode_events_reports_read_timeout_when_interrupted
     assert_eq!(error.kind, HttpErrorKind::ReadTimeout);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_stream_decode_json_chunks_uses_client_default_strict_mode() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
@@ -218,7 +219,7 @@ async fn test_execute_stream_decode_json_chunks_uses_client_default_strict_mode(
     assert_eq!(error.log_redactor.policy(), &expected_policy);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_stream_decode_events_uses_client_default_sse_limits() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
@@ -247,7 +248,7 @@ async fn test_execute_stream_decode_events_uses_client_default_sse_limits() {
     assert!(error.message.contains("max_frame_bytes"));
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_sse_chunks_apply_client_json_value_limits() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
@@ -284,7 +285,7 @@ async fn test_sse_chunks_apply_client_json_value_limits() {
 
 /// Verifies SSE decoding errors retain the client redactor snapshot instead of
 /// rebuilding a default redactor after the response has been created.
-#[tokio::test]
+#[tokio_test]
 async fn test_sse_decode_error_preserves_client_redactor_policy() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,

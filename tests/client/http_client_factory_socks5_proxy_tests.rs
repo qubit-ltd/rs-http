@@ -19,6 +19,7 @@ use tokio::net::TcpStream;
 use tokio::spawn;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
+use tokio::test as tokio_test;
 use tokio::time::timeout;
 
 use crate::common::ResponsePlan;
@@ -189,7 +190,7 @@ fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     haystack.windows(needle.len()).position(|window| window == needle)
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_socks5_proxy_forwards_http_request() {
     let backend = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,

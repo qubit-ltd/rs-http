@@ -29,6 +29,7 @@ use qubit_http::HttpRequestInterceptor;
 use qubit_http::HttpResponseInterceptor;
 use qubit_http::HttpResponseInterceptorContext;
 use qubit_retry::RetryError;
+use tokio::test as tokio_test;
 use tokio::time::timeout;
 
 use crate::common::ResponsePlan;
@@ -57,7 +58,7 @@ fn test_http_client_debug_includes_options_and_injectors() {
     assert!(output.contains("injectors"));
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_absolute_url_request_bypasses_base_url_join() {
     let target_server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
@@ -87,7 +88,7 @@ async fn test_absolute_url_request_bypasses_base_url_join() {
     assert_eq!(captured.target, "/absolute");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_returns_invalid_url_for_bad_relative_path() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(url::Url::parse("https://example.com/api/").expect("static base_url in test should parse"));
@@ -105,7 +106,7 @@ async fn test_execute_returns_invalid_url_for_bad_relative_path() {
     assert!(error.message.contains("Failed to resolve path 'http://[::1'"));
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_header_injector_order_is_stable_and_clear_works() {
     let server1 = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
@@ -150,7 +151,7 @@ async fn test_header_injector_order_is_stable_and_clear_works() {
     assert!(!captured2.headers.contains_key("x-seq"));
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_failing_header_injector_short_circuits_request() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
@@ -171,7 +172,7 @@ async fn test_failing_header_injector_short_circuits_request() {
     assert!(error.message.contains("inject failed"));
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_request_interceptor_order_is_stable_and_clear_works() {
     let server1 = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
@@ -228,7 +229,7 @@ async fn test_request_interceptor_order_is_stable_and_clear_works() {
     assert!(!captured2.headers.contains_key("x-request-cleared"));
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_failing_request_interceptor_short_circuits_before_url_resolution() {
     let mut client = HttpClientBuilder::new()
         .create_default()
@@ -248,7 +249,7 @@ async fn test_failing_request_interceptor_short_circuits_before_url_resolution()
     assert_eq!(error_url.as_str(), "http://127.0.0.1:1/request-interceptor-blocked");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_response_interceptor_order_is_stable_and_short_circuits() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
@@ -295,7 +296,7 @@ async fn test_response_interceptor_order_is_stable_and_short_circuits() {
     );
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_clear_response_interceptors_restores_success_path() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
@@ -316,7 +317,7 @@ async fn test_clear_response_interceptors_restores_success_path() {
     assert_eq!(response.status().as_u16(), 200);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_applies_response_interceptor_for_unconsumed_body() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
@@ -343,7 +344,7 @@ async fn test_execute_applies_response_interceptor_for_unconsumed_body() {
     assert_eq!(called.load(Ordering::Relaxed), 1);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_request_url_can_differ_from_response_meta_url() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
@@ -381,7 +382,7 @@ async fn test_request_url_can_differ_from_response_meta_url() {
     assert_eq!(captured.target, "/request-url-diff");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_request_url_includes_builder_query_params() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
@@ -412,7 +413,7 @@ async fn test_request_url_includes_builder_query_params() {
     assert_eq!(captured.target, "/request-url-query?existing=1&added=two+words");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_status_error_url_includes_builder_query_params() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: StatusCode::SERVICE_UNAVAILABLE.as_u16(),
@@ -446,7 +447,7 @@ async fn test_status_error_url_includes_builder_query_params() {
     assert_eq!(captured.target, "/status-query?attempt=1");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_request_url_is_used_in_buffered_read_error() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
@@ -494,7 +495,7 @@ async fn test_request_url_is_used_in_buffered_read_error() {
     assert_eq!(captured.target, "/context-url-timeout");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_retry_status_code_allowlist_can_disable_retry_for_503() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: StatusCode::SERVICE_UNAVAILABLE.as_u16(),
@@ -525,7 +526,7 @@ async fn test_retry_status_code_allowlist_can_disable_retry_for_503() {
     assert_eq!(attempts.load(Ordering::Relaxed), 1);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_retry_status_code_allowlist_can_enable_retry_for_503() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: StatusCode::SERVICE_UNAVAILABLE.as_u16(),
@@ -556,7 +557,7 @@ async fn test_retry_status_code_allowlist_can_enable_retry_for_503() {
     assert_eq!(attempts.load(Ordering::Relaxed), 2);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_retry_error_kind_allowlist_can_disable_transport_retry() {
     let mut options = HttpClientOptions::default();
     options.origin_policy = HttpOriginPolicy::AnyOrigin;
@@ -585,7 +586,7 @@ async fn test_retry_error_kind_allowlist_can_disable_transport_retry() {
     assert_eq!(attempts.load(Ordering::Relaxed), 1);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_add_header_applies_client_default_header() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
@@ -604,7 +605,7 @@ async fn test_add_header_applies_client_default_header() {
     assert_eq!(captured.headers.get("x-client"), Some(&"default".to_string()));
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_add_headers_is_atomic_and_request_header_still_overrides() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
@@ -635,7 +636,7 @@ async fn test_add_headers_is_atomic_and_request_header_still_overrides() {
     assert_eq!(captured.headers.get("x-order"), Some(&"request".to_string()));
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_add_headers_invalid_batch_does_not_partially_apply() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
@@ -659,7 +660,7 @@ async fn test_add_headers_invalid_batch_does_not_partially_apply() {
     assert!(!captured.headers.contains_key("x-valid"));
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_add_header_invalid_value_does_not_apply() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
@@ -681,7 +682,7 @@ async fn test_add_header_invalid_value_does_not_apply() {
     assert!(!captured.headers.contains_key("x-bad"));
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_add_header_injector_still_overrides_client_default_header() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
@@ -704,7 +705,7 @@ async fn test_add_header_injector_still_overrides_client_default_header() {
     assert_eq!(captured.headers.get("x-order"), Some(&"injector".to_string()));
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_clone_default_headers_are_independent_after_creation() {
     let server_original = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,

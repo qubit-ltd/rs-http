@@ -9,12 +9,14 @@
 use http::HeaderMap;
 use http::HeaderValue;
 use qubit_http::AsyncHttpHeaderInjector;
+use tokio::task;
+use tokio::test as tokio_test;
 
-#[tokio::test]
+#[tokio_test]
 async fn test_async_http_header_injector_runs_async_mutation() {
     let injector = AsyncHttpHeaderInjector::new(|headers: &mut HeaderMap| {
         Box::pin(async move {
-            tokio::task::yield_now().await;
+            task::yield_now().await;
             headers.insert("x-token", HeaderValue::from_static("fresh"));
             Ok(())
         })

@@ -40,6 +40,7 @@ use qubit_retry::BackoffPolicy;
 use qubit_retry::RetryError;
 use tokio::pin;
 use tokio::select;
+use tokio::test as tokio_test;
 use tokio::time::timeout;
 
 use crate::common::ResponseChunk;
@@ -116,7 +117,7 @@ fn retry_abort_inner_http(error: &HttpError) -> &HttpError {
         .expect("retry error should retain the HTTP attempt")
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_success_with_header_injector_and_request_override() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
@@ -167,7 +168,7 @@ async fn test_execute_success_with_header_injector_and_request_override() {
     assert!(captured.headers.contains_key("content-length"));
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_json_applies_configured_value_limits() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
@@ -195,7 +196,7 @@ async fn test_execute_json_applies_configured_value_limits() {
     assert_eq!(captured.target, "/json-value-limit");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_bytes_rejects_response_body_larger_than_configured_limit() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
@@ -229,7 +230,7 @@ async fn test_execute_bytes_rejects_response_body_larger_than_configured_limit()
     assert_eq!(captured.target, "/body-limit");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_bytes_chunked_response_reports_total_observed_size_on_limit_exceeded() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
@@ -273,7 +274,7 @@ async fn test_execute_bytes_chunked_response_reports_total_observed_size_on_limi
     assert_eq!(captured.target, "/body-limit-chunked");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_bytes_accepts_response_body_at_configured_limit() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
@@ -302,7 +303,7 @@ async fn test_execute_bytes_accepts_response_body_at_configured_limit() {
     assert_eq!(captured.target, "/body-at-limit");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_maps_non_success_status_to_http_error() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 503,
@@ -338,7 +339,7 @@ async fn test_execute_maps_non_success_status_to_http_error() {
     assert_eq!(captured.target, "/health");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_relative_path_without_base_url_returns_invalid_url() {
     let client = HttpClientBuilder::new().create_default().unwrap();
     let request = client.request(Method::GET, "/relative/path").build();
@@ -400,7 +401,7 @@ fn test_request_builder_methods_override_client_default_options() {
     assert_eq!(request.request_timeout(), Some(Duration::from_secs(5)));
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_send_timeout() {
     let server = spawn_one_shot_server(ResponsePlan::DelayedStart {
         delay: Duration::from_millis(250),
@@ -431,7 +432,7 @@ async fn test_execute_send_timeout() {
     assert_eq!(captured.target, "/delayed");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_read_timeout_on_buffered_body() {
     let server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
         status: 200,
@@ -464,7 +465,7 @@ async fn test_execute_read_timeout_on_buffered_body() {
     assert_eq!(captured.target, "/slow-body");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_stream_success_reads_all_chunks() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
@@ -509,7 +510,7 @@ async fn test_execute_stream_success_reads_all_chunks() {
     assert_eq!(captured.target, "/stream");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_stream_read_timeout() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
@@ -554,7 +555,7 @@ async fn test_execute_stream_read_timeout() {
     assert_eq!(captured.target, "/stream-timeout");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_with_text_body_and_request_timeout() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
@@ -592,7 +593,7 @@ async fn test_execute_with_text_body_and_request_timeout() {
     assert_eq!(captured.body, b"hello text");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_with_bytes_body() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
@@ -624,7 +625,7 @@ async fn test_execute_with_bytes_body() {
     assert_eq!(captured.body, vec![1_u8, 2, 3, 4]);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_stream_post_json_body_with_query_and_timeout() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
@@ -675,7 +676,7 @@ async fn test_execute_stream_post_json_body_with_query_and_timeout() {
     assert_eq!(json["hello"], "stream");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_stream_with_text_body() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
@@ -724,7 +725,7 @@ async fn test_execute_stream_with_text_body() {
     assert_eq!(captured.body, b"hello stream");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_stream_with_bytes_body() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
@@ -769,7 +770,7 @@ async fn test_execute_stream_with_bytes_body() {
     assert_eq!(captured.body, vec![9_u8, 8, 7]);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_stream_maps_non_success_status_to_http_error() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 503,
@@ -803,7 +804,7 @@ async fn test_execute_stream_maps_non_success_status_to_http_error() {
     assert_eq!(captured.target, "/stream-status");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_non_success_error_body_preview_is_truncated_by_limit() {
     let body = "abcdefghijklmnopqrstuvwxyz";
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
@@ -825,7 +826,7 @@ async fn test_execute_non_success_error_body_preview_is_truncated_by_limit() {
     assert_eq!(error.response_body_preview.as_deref(), Some("<redaction incomplete>"));
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_non_utf8_content_type_redacts_error_body_preview() {
     let server = spawn_one_shot_server(ResponsePlan::ImmediateRawHeaders {
         status: 500,
@@ -851,7 +852,7 @@ async fn test_execute_non_utf8_content_type_redacts_error_body_preview() {
     assert!(!error.message.contains("unclassified-response-secret"));
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_truncated_binary_error_preview_has_unknown_total_length() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 500,
@@ -872,7 +873,7 @@ async fn test_execute_truncated_binary_error_preview_has_unknown_total_length() 
     assert_eq!(error.response_body_preview.as_deref(), Some("<redaction incomplete>"),);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_non_success_error_body_preview_is_not_truncated_at_exact_limit() {
     let body = "abcdefgh";
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
@@ -897,7 +898,7 @@ async fn test_execute_non_success_error_body_preview_is_not_truncated_at_exact_l
     );
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_response_metadata_debug_uses_custom_log_policy() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
@@ -950,7 +951,7 @@ async fn test_execute_response_metadata_debug_uses_custom_log_policy() {
     }
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_non_success_error_body_preview_redacts_json_fields() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 400,
@@ -974,7 +975,7 @@ async fn test_execute_non_success_error_body_preview_redacts_json_fields() {
     assert!(!error.message.contains("secret"));
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_non_success_text_body_preview_redacts_by_default() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 400,
@@ -998,7 +999,7 @@ async fn test_execute_non_success_text_body_preview_redacts_by_default() {
     assert!(!error.message.contains("status-text-secret"));
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_non_success_text_body_pass_through_uses_same_policy_snapshot() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 400,
@@ -1036,7 +1037,7 @@ async fn test_execute_non_success_text_body_pass_through_uses_same_policy_snapsh
     assert!(error.message.contains("accessToken=****"));
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_status_error_message_redacts_sensitive_url_parts() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 401,
@@ -1070,7 +1071,7 @@ async fn test_execute_status_error_message_redacts_sensitive_url_parts() {
     assert_eq!(captured.target, "/status-sensitive-url?accessToken=query-secret");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_non_success_error_body_preview_truncates_when_limit_reached_before_next_chunk() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 500,
@@ -1101,7 +1102,7 @@ async fn test_execute_non_success_error_body_preview_truncates_when_limit_reache
     assert_eq!(error.response_body_preview.as_deref(), Some("<redaction incomplete>"));
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_error_body_preview_limit_is_decoupled_from_logging_limit() {
     let body = "abcdefghijklmnopqrstuvwxyz";
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
@@ -1124,7 +1125,7 @@ async fn test_execute_error_body_preview_limit_is_decoupled_from_logging_limit()
     assert_eq!(error.response_body_preview.as_deref(), Some("<redaction incomplete>"));
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_non_success_error_body_preview_for_binary_body() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 500,
@@ -1145,7 +1146,7 @@ async fn test_execute_non_success_error_body_preview_for_binary_body() {
     assert_eq!(error.response_body_preview.as_deref(), Some("<binary 6 bytes>"));
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_non_success_error_body_preview_for_empty_body() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 500,
@@ -1165,7 +1166,7 @@ async fn test_execute_non_success_error_body_preview_for_empty_body() {
     assert_eq!(error.response_body_preview.as_deref(), Some("<empty>"));
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_non_success_error_body_preview_timeout_placeholder() {
     let server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
         status: 500,
@@ -1195,7 +1196,7 @@ async fn test_execute_non_success_error_body_preview_timeout_placeholder() {
     );
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_maps_truncated_response_body_to_transport_error() {
     let server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
         status: 200,
@@ -1226,7 +1227,7 @@ async fn test_execute_maps_truncated_response_body_to_transport_error() {
     assert_eq!(captured.target, "/truncated-body");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_buffered_body_read_error_uses_custom_query_policy() {
     let server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
         status: 200,
@@ -1258,7 +1259,7 @@ async fn test_buffered_body_read_error_uses_custom_query_policy() {
     assert_eq!(captured.target, path);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_maps_truncated_response_stream_to_transport_error() {
     let server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
         status: 200,
@@ -1301,7 +1302,7 @@ async fn test_execute_maps_truncated_response_stream_to_transport_error() {
     assert_eq!(captured.target, "/truncated-stream");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_stream_read_error_uses_custom_query_policy() {
     let server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
         status: 200,
@@ -1340,7 +1341,7 @@ async fn test_stream_read_error_uses_custom_query_policy() {
     assert_eq!(captured.target, path);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_remembered_body_read_error_restores_custom_query_policy() {
     let server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
         status: 200,
@@ -1385,7 +1386,7 @@ async fn test_remembered_body_read_error_restores_custom_query_policy() {
     assert_eq!(captured.target, path);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_retries_retryable_status_until_success() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Immediate {
@@ -1437,7 +1438,7 @@ async fn test_execute_retries_retryable_status_until_success() {
     assert_eq!(captured[1].headers.get("x-attempt"), Some(&"2".to_string()));
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_does_not_retry_non_retryable_status() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 400,
@@ -1470,7 +1471,7 @@ async fn test_execute_does_not_retry_non_retryable_status() {
     assert_eq!(captured.target, "/bad-request");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_returns_last_error_after_retry_attempts_exhausted() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Immediate {
@@ -1514,7 +1515,7 @@ async fn test_execute_returns_last_error_after_retry_attempts_exhausted() {
     assert_eq!(captured.len(), 3);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_retry_max_duration_returns_last_error_after_retry_delay() {
     let server = spawn_multi_shot_server(vec![ResponsePlan::Immediate {
         status: 503,
@@ -1547,7 +1548,7 @@ async fn test_execute_retry_max_duration_returns_last_error_after_retry_delay() 
     assert_eq!(captured.len(), 1);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_retry_in_flight_max_duration_does_not_panic() {
     let mut server = spawn_one_shot_server(ResponsePlan::DelayedStart {
         delay: Duration::from_millis(1_500),
@@ -1589,7 +1590,7 @@ async fn test_execute_retry_in_flight_max_duration_does_not_panic() {
     assert_eq!(captured.target, "/in-flight-timeout");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_retry_max_duration_zero_reports_no_retryable_failure() {
     let server = spawn_multi_shot_server(vec![]).await;
 
@@ -1616,7 +1617,7 @@ async fn test_execute_retry_max_duration_zero_reports_no_retryable_failure() {
     assert!(captured.is_empty());
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_does_not_retry_post_by_default() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 500,
@@ -1647,7 +1648,7 @@ async fn test_execute_does_not_retry_post_by_default() {
     assert_eq!(captured.method, "POST");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_retries_post_when_all_methods_policy_is_enabled() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Immediate {
@@ -1686,7 +1687,7 @@ async fn test_execute_retries_post_when_all_methods_policy_is_enabled() {
     assert_eq!(captured[1].method, "POST");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_retries_send_timeout_until_success() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::DelayedStart {
@@ -1725,7 +1726,7 @@ async fn test_execute_retries_send_timeout_until_success() {
     assert_eq!(captured.len(), 2);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_stream_retries_initial_status_until_success() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Immediate {
@@ -1773,7 +1774,7 @@ async fn test_execute_stream_retries_initial_status_until_success() {
     assert_eq!(captured.len(), 2);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_stream_does_not_retry_after_stream_is_returned() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
@@ -1821,7 +1822,7 @@ async fn test_execute_stream_does_not_retry_after_stream_is_returned() {
     assert_eq!(captured.target, "/stream-read-timeout");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_connect_refused_maps_to_transport_error() {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("ephemeral listener bind should work");
     let addr = listener.local_addr().expect("listener should expose a local address");
@@ -1842,7 +1843,7 @@ async fn test_execute_connect_refused_maps_to_transport_error() {
     assert_eq!(error.kind, HttpErrorKind::Transport);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_send_error_uses_custom_query_policy() {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("ephemeral listener bind should work");
     let addr = listener.local_addr().expect("listener should expose a local address");

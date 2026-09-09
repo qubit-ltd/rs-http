@@ -39,6 +39,7 @@ use qubit_retry::RetryError;
 use tokio::pin;
 use tokio::select;
 use tokio::sync::Notify;
+use tokio::test as tokio_test;
 use tokio::time::advance;
 use tokio::time::timeout;
 
@@ -85,7 +86,7 @@ fn retry_failure(error: &HttpError) -> &RetryError<HttpError> {
     retry_error(error)
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_request_with_pre_cancelled_token_returns_cancelled_error() {
     let server = spawn_multi_shot_server(vec![]).await;
 
@@ -128,7 +129,7 @@ async fn test_execute_request_with_pre_cancelled_token_returns_cancelled_error()
     assert!(captured.is_empty());
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_request_with_pre_cancelled_token_skips_request_interceptors() {
     let server = spawn_multi_shot_server(vec![]).await;
 
@@ -173,7 +174,7 @@ async fn test_execute_request_with_pre_cancelled_token_skips_request_interceptor
     assert!(captured.is_empty());
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_request_cancelled_by_interceptor_stops_before_send() {
     let server = spawn_multi_shot_server(vec![]).await;
 
@@ -216,7 +217,7 @@ async fn test_execute_request_cancelled_by_interceptor_stops_before_send() {
     assert!(captured.is_empty());
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_request_can_be_cancelled_while_preparing_async_headers() {
     let server = spawn_multi_shot_server(vec![]).await;
 
@@ -269,7 +270,7 @@ async fn test_execute_request_can_be_cancelled_while_preparing_async_headers() {
     assert!(captured.is_empty());
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_request_can_be_cancelled_while_reading_response_body() {
     let server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
         status: 200,
@@ -322,7 +323,7 @@ async fn test_execute_request_can_be_cancelled_while_reading_response_body() {
     assert_eq!(captured.target, "/cancel-reading");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_request_can_be_cancelled_while_reading_status_error_preview() {
     let mut server = spawn_blocked_one_shot_server(ResponsePlan::Chunked {
         status: 503,
@@ -402,7 +403,7 @@ async fn test_execute_request_can_be_cancelled_while_reading_status_error_previe
     assert_eq!(captured.target, "/cancel-status-preview?phase=preview");
 }
 
-#[tokio::test(start_paused = true)]
+#[tokio_test(start_paused = true)]
 async fn test_execute_retry_sleep_can_be_cancelled() {
     let mut options = HttpClientOptions::default();
     options
@@ -457,7 +458,7 @@ async fn test_execute_retry_sleep_can_be_cancelled() {
     assert_eq!(attempt_calls.load(Ordering::SeqCst), 1);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_retry_success_wins_same_poll_cancellation() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
@@ -497,7 +498,7 @@ async fn test_execute_retry_success_wins_same_poll_cancellation() {
     assert_eq!(captured.target, "/success-cancel-race");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_retry_interceptor_request_clone_keeps_direct_cancellation() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
@@ -551,7 +552,7 @@ async fn test_retry_interceptor_request_clone_keeps_direct_cancellation() {
     assert_eq!(error.kind, HttpErrorKind::Cancelled);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_retry_interceptor_replacement_token_reaches_response_body() {
     let server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
         status: 200,
@@ -611,7 +612,7 @@ async fn test_retry_interceptor_replacement_token_reaches_response_body() {
     assert_eq!(captured.target, "/replacement-token-body");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_retry_multi_attempt_response_uses_success_replacement_token() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Immediate {
@@ -694,7 +695,7 @@ async fn test_retry_multi_attempt_response_uses_success_replacement_token() {
     assert_eq!(captured.len(), 2);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_retry_multi_attempt_failed_clear_does_not_leak_to_response() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Immediate {
@@ -761,7 +762,7 @@ async fn test_retry_multi_attempt_failed_clear_does_not_leak_to_response() {
     assert_eq!(captured.len(), 2);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_retry_interceptor_replacement_token_controls_attempt_io() {
     let server = spawn_multi_shot_server(vec![]).await;
 
@@ -810,7 +811,7 @@ async fn test_retry_interceptor_replacement_token_controls_attempt_io() {
     assert!(captured.is_empty());
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_retry_interceptor_cleared_token_is_not_restored_on_response() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
@@ -852,7 +853,7 @@ async fn test_retry_interceptor_cleared_token_is_not_restored_on_response() {
     assert_eq!(captured.target, "/cleared-token-body");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_retry_success_propagates_flow_token_to_response_body() {
     let server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
         status: 200,
@@ -902,7 +903,7 @@ async fn test_retry_success_propagates_flow_token_to_response_body() {
     assert_eq!(captured.target, "/flow-token-body");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_request_can_be_cancelled_while_sending() {
     let mut server = spawn_one_shot_server(ResponsePlan::DelayedStart {
         delay: Duration::from_secs(2),
@@ -947,7 +948,7 @@ async fn test_execute_request_can_be_cancelled_while_sending() {
     assert_eq!(captured.target, "/cancel-sending");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_stream_body_can_be_cancelled_after_first_chunk() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
@@ -1010,7 +1011,7 @@ async fn test_execute_stream_body_can_be_cancelled_after_first_chunk() {
     assert_eq!(captured.target, "/cancel-stream");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_sse_messages_reports_pre_cancelled_stream_before_reading_body() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
@@ -1054,7 +1055,7 @@ async fn test_sse_messages_reports_pre_cancelled_stream_before_reading_body() {
     assert_eq!(captured.target, "/cancel-sse-events-before-read");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_sse_chunks_reports_pre_cancelled_stream_before_reading_body() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,

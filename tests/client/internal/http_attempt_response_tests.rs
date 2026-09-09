@@ -20,12 +20,13 @@ use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
 use qubit_retry::BackoffPolicy;
 use tokio::pin;
+use tokio::test as tokio_test;
 use tokio::time::timeout;
 
 use crate::common::ResponsePlan;
 use crate::common::spawn_one_shot_server;
 
-#[tokio::test]
+#[tokio_test]
 async fn test_retry_success_hands_flow_token_to_response() {
     let server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
         status: 200,

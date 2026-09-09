@@ -13,6 +13,7 @@ use http::Method;
 use http::StatusCode;
 use qubit_http::HttpErrorKind;
 use qubit_http::HttpResponse;
+use tokio::test as tokio_test;
 
 fn stream_response_from_chunks(chunks: Vec<String>) -> HttpResponse {
     let body = chunks.join("");
@@ -25,7 +26,7 @@ fn stream_response_from_chunks(chunks: Vec<String>) -> HttpResponse {
     )
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_decode_events_accepts_cr_only_line_endings() {
     let response = stream_response_from_chunks(vec!["data: one\r\rdata: two\r\r".to_string()]);
     let mut events = response.sse_max_line_bytes(64).sse_max_frame_bytes(1024).sse_messages();
@@ -37,7 +38,7 @@ async fn test_decode_events_accepts_cr_only_line_endings() {
     assert!(events.next().await.is_none());
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_decode_events_accepts_crlf_split_across_chunks() {
     let response = stream_response_from_chunks(vec![
         "data: one\r".to_string(),
@@ -55,7 +56,7 @@ async fn test_decode_events_accepts_crlf_split_across_chunks() {
     assert!(events.next().await.is_none());
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_decode_events_accepts_dense_mixed_line_endings_in_one_chunk() {
     let response =
         stream_response_from_chunks(vec!["event: add\ndata: one\n\revent: add\rdata: two\r\r\n".to_string()]);
@@ -71,7 +72,7 @@ async fn test_decode_events_accepts_dense_mixed_line_endings_in_one_chunk() {
     assert!(events.next().await.is_none());
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_decode_events_with_limits_rejects_line_exceeding_max_bytes() {
     let long_line = format!("data: {}\n\n", "a".repeat(64));
     let response = stream_response_from_chunks(vec![long_line]);
@@ -82,7 +83,7 @@ async fn test_decode_events_with_limits_rejects_line_exceeding_max_bytes() {
     assert!(error.message.contains("max_line_bytes"));
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_decode_events_rejects_invalid_utf8_line() {
     let response = HttpResponse::new(
         StatusCode::OK,
@@ -99,7 +100,7 @@ async fn test_decode_events_rejects_invalid_utf8_line() {
     assert!(error.message.contains("UTF-8"));
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_decode_events_with_limits_accepts_line_within_max_bytes() {
     let response = stream_response_from_chunks(vec!["data: ok\n\n".to_string()]);
     let mut events = response.sse_max_line_bytes(64).sse_max_frame_bytes(1024).sse_messages();
@@ -109,7 +110,7 @@ async fn test_decode_events_with_limits_accepts_line_within_max_bytes() {
     assert!(events.next().await.is_none());
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_decode_events_with_limits_accepts_line_at_max_bytes() {
     let response = stream_response_from_chunks(vec!["data: ok\n\n".to_string()]);
     let mut events = response

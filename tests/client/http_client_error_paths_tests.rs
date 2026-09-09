@@ -14,12 +14,13 @@ use httpdate::fmt_http_date;
 use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
+use tokio::test as tokio_test;
 use tokio::time::timeout;
 
 use crate::common::ResponsePlan;
 use crate::common::spawn_one_shot_server;
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_maps_retry_after_to_retryable_http_error() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 429,
@@ -54,7 +55,7 @@ async fn test_execute_maps_retry_after_to_retryable_http_error() {
     assert_eq!(captured.target, "/limited");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_parses_retry_after_http_date_for_service_unavailable() {
     let retry_after_value = fmt_http_date(std::time::SystemTime::now() + Duration::from_secs(3));
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
@@ -90,7 +91,7 @@ async fn test_execute_parses_retry_after_http_date_for_service_unavailable() {
     assert_eq!(captured.target, "/service-unavailable");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_ignores_invalid_retry_after_for_service_unavailable() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 503,
@@ -123,7 +124,7 @@ async fn test_execute_ignores_invalid_retry_after_for_service_unavailable() {
     assert_eq!(captured.target, "/service-unavailable-invalid-retry-after");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_ignores_blank_retry_after_for_service_unavailable() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 503,
@@ -156,7 +157,7 @@ async fn test_execute_ignores_blank_retry_after_for_service_unavailable() {
     assert_eq!(captured.target, "/service-unavailable-blank-retry-after");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_rejects_ipv6_url_when_ipv4_only() {
     let mut options = HttpClientOptions::default();
     options.ipv4_only = true;
@@ -174,7 +175,7 @@ async fn test_execute_rejects_ipv6_url_when_ipv4_only() {
     assert!(error.message.contains("IPv6 literal host is not allowed"));
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_status_error_preview_reports_body_read_failure() {
     let server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
         status: 503,

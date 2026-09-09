@@ -37,6 +37,7 @@ use qubit_http::sse::SseReconnectOptions;
 use qubit_retry::BackoffPolicy;
 use qubit_retry::RetryPolicy;
 use tokio::pin;
+use tokio::test as tokio_test;
 use tokio::time::timeout;
 
 use crate::common::ResponseChunk;
@@ -81,7 +82,7 @@ fn build_retry_policy(max_reconnects: u32, max_elapsed: Option<Duration>, backof
     builder.build().unwrap()
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_sse_with_reconnect_propagates_last_event_id() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Chunked {
@@ -137,7 +138,7 @@ async fn test_execute_sse_with_reconnect_propagates_last_event_id() {
     assert_eq!(requests[1].headers.get("last-event-id"), Some(&"evt-1".to_string()));
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_sse_with_reconnect_honors_server_retry_delay() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Chunked {
@@ -193,7 +194,7 @@ async fn test_execute_sse_with_reconnect_honors_server_retry_delay() {
     assert_eq!(requests.len(), 2);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_sse_with_reconnect_server_retry_overrides_once_and_preserves_backoff_progression() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Chunked {
@@ -293,7 +294,7 @@ async fn test_execute_sse_with_reconnect_server_retry_overrides_once_and_preserv
     );
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_sse_with_reconnect_caps_server_retry_delay() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Chunked {
@@ -369,7 +370,7 @@ async fn test_execute_sse_with_reconnect_caps_server_retry_delay() {
     );
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_sse_with_reconnect_derives_server_retry_cap_from_delay_strategy() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Chunked {
@@ -449,7 +450,7 @@ async fn test_execute_sse_with_reconnect_derives_server_retry_cap_from_delay_str
     );
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_sse_with_reconnect_can_disable_server_retry_jitter() {
     let reconnect_count: usize = 8;
     let mut plans = Vec::with_capacity(reconnect_count + 1);
@@ -546,7 +547,7 @@ async fn test_execute_sse_with_reconnect_can_disable_server_retry_jitter() {
     }
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_sse_with_reconnect_respects_retry_max_elapsed() {
     let server = spawn_multi_shot_server(vec![ResponsePlan::Immediate {
         status: 500,
@@ -602,7 +603,7 @@ async fn test_execute_sse_with_reconnect_respects_retry_max_elapsed() {
     assert_eq!(captured.len(), 1);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_sse_with_reconnect_checks_max_elapsed_before_eof_reconnect_sleep() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
@@ -653,7 +654,7 @@ async fn test_execute_sse_with_reconnect_checks_max_elapsed_before_eof_reconnect
     assert_eq!(captured.target, "/sse-max-elapsed-before-eof-reconnect");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_sse_with_reconnect_sleep_can_be_cancelled() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
@@ -720,7 +721,7 @@ async fn test_execute_sse_with_reconnect_sleep_can_be_cancelled() {
     assert_eq!(captured.target, "/sse-cancel-reconnect-sleep");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_sse_with_reconnect_disables_inner_http_retry() {
     let mut options = HttpClientOptions::default();
     options
@@ -764,7 +765,7 @@ async fn test_execute_sse_with_reconnect_disables_inner_http_retry() {
     );
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_sse_with_reconnect_fails_fast_on_non_sse_content_type() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
@@ -804,7 +805,7 @@ async fn test_execute_sse_with_reconnect_fails_fast_on_non_sse_content_type() {
     assert_eq!(captured.target, "/sse-content-type-check");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_sse_with_reconnect_fails_fast_on_missing_content_type() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
@@ -844,7 +845,7 @@ async fn test_execute_sse_with_reconnect_fails_fast_on_missing_content_type() {
     assert_eq!(captured.target, "/sse-missing-content-type");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_sse_with_reconnect_fails_fast_on_non_utf8_content_type() {
     let server = spawn_one_shot_server(ResponsePlan::ImmediateRawHeaders {
         status: 200,
@@ -891,7 +892,7 @@ async fn test_execute_sse_with_reconnect_fails_fast_on_non_utf8_content_type() {
     assert_eq!(captured.target, "/sse-non-utf8-content-type");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_sse_with_reconnect_rejects_content_type_prefix_collision() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
@@ -936,7 +937,7 @@ async fn test_execute_sse_with_reconnect_rejects_content_type_prefix_collision()
     assert_eq!(captured.target, "/sse-content-type-prefix-collision");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_sse_with_reconnect_uses_custom_backoff_parameters() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Chunked {
@@ -998,7 +999,7 @@ async fn test_execute_sse_with_reconnect_uses_custom_backoff_parameters() {
     assert_eq!(requests.len(), 3);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_sse_with_reconnect_does_not_retry_non_retryable_protocol_error() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
@@ -1044,7 +1045,7 @@ async fn test_execute_sse_with_reconnect_does_not_retry_non_retryable_protocol_e
     assert_eq!(captured.target, "/sse-protocol-error");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_sse_with_reconnect_reports_invalid_last_event_id_header_value() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
@@ -1088,7 +1089,7 @@ async fn test_execute_sse_with_reconnect_reports_invalid_last_event_id_header_va
     assert_eq!(captured.target, "/sse-invalid-last-event-id");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_sse_with_reconnect_retries_on_unexpected_eof_message() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
@@ -1140,7 +1141,7 @@ async fn test_execute_sse_with_reconnect_retries_on_unexpected_eof_message() {
     assert_eq!(captured.target, "/sse-unexpected-eof");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_sse_with_reconnect_retries_on_unexpected_eof_source_message() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
@@ -1193,7 +1194,7 @@ async fn test_execute_sse_with_reconnect_retries_on_unexpected_eof_source_messag
     assert_eq!(captured.target, "/sse-unexpected-eof-source");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_sse_with_reconnect_does_not_retry_non_eof_source_error() {
     let mut options = HttpClientOptions::default();
     options
@@ -1226,7 +1227,7 @@ async fn test_execute_sse_with_reconnect_does_not_retry_non_eof_source_error() {
     assert_eq!(attempts.load(Ordering::Relaxed), 1);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_sse_with_reconnect_does_not_retry_cancelled_error() {
     let mut options = HttpClientOptions::default();
     options
@@ -1259,7 +1260,7 @@ async fn test_execute_sse_with_reconnect_does_not_retry_cancelled_error() {
     assert_eq!(attempts.load(Ordering::Relaxed), 1);
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_sse_with_reconnect_reports_cancelled_stream_before_reading_body() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,

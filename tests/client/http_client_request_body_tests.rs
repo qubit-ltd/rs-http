@@ -20,6 +20,7 @@ use qubit_http::HttpErrorKind;
 use qubit_http::HttpRequestBodyByteStream;
 use qubit_http::HttpRetryMethodPolicy;
 use qubit_retry::BackoffPolicy;
+use tokio::test as tokio_test;
 use tokio::time::sleep;
 use tokio::time::timeout;
 
@@ -27,7 +28,7 @@ use crate::common::ResponsePlan;
 use crate::common::spawn_multi_shot_server;
 use crate::common::spawn_one_shot_server;
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_with_form_body_and_query_headers_timeout() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
@@ -69,7 +70,7 @@ async fn test_execute_with_form_body_and_query_headers_timeout() {
     assert!(body.contains("city=shanghai"));
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_with_multipart_body_and_query_headers_timeout() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
@@ -112,7 +113,7 @@ async fn test_execute_with_multipart_body_and_query_headers_timeout() {
     assert_eq!(captured.body, payload.to_vec());
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_with_ndjson_body_and_query_headers_timeout() {
     #[derive(serde::Serialize)]
     struct Record {
@@ -160,7 +161,7 @@ async fn test_execute_with_ndjson_body_and_query_headers_timeout() {
     assert_eq!(body, "{\"id\":1,\"name\":\"alpha\"}\n{\"id\":2,\"name\":\"beta\"}\n");
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_with_stream_body_uses_chunked_transfer_encoding() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
@@ -199,7 +200,7 @@ async fn test_execute_with_stream_body_uses_chunked_transfer_encoding() {
     assert_eq!(captured.headers.get("transfer-encoding"), Some(&"chunked".to_string()));
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_with_stream_body_uses_chunked_transfer_encoding_without_eager_read() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
@@ -234,7 +235,7 @@ async fn test_execute_with_stream_body_uses_chunked_transfer_encoding_without_ea
     assert_eq!(captured.headers.get("transfer-encoding"), Some(&"chunked".to_string()));
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_execute_with_streaming_body_factory_supports_retry_rebuild() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Immediate {
@@ -296,7 +297,7 @@ async fn test_execute_with_streaming_body_factory_supports_retry_rebuild() {
     );
 }
 
-#[tokio::test]
+#[tokio_test]
 async fn test_streaming_body_factory_preparation_respects_send_timeout() {
     let server = spawn_multi_shot_server(vec![]).await;
 
