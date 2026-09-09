@@ -180,6 +180,7 @@ impl From<ConfigError> for HttpConfigError {
         let path = e.path().unwrap_or_default().to_owned();
         let msg = e.to_string();
         let mut result = match kind {
+            ConfigErrorKind::Value if e.value_missing().is_some() => HttpConfigError::type_error(path, msg),
             ConfigErrorKind::TypeMismatch | ConfigErrorKind::Conversion | ConfigErrorKind::PropertyHasNoValue => {
                 HttpConfigError::type_error(path, msg)
             }
