@@ -13,7 +13,7 @@ use crate::HttpRequest;
 /// Per-call cancellation routing that never escapes into a request clone.
 #[derive(Clone, Debug, Default)]
 pub(in crate::client) struct HttpAttemptExecutionContext {
-    /// Original token source exclusively owned by `AsyncRetry`.
+    /// Original token source exclusively owned by `TokioRetry`.
     retry_flow_token: Option<HttpCancellationToken>,
 }
 
@@ -41,7 +41,7 @@ impl HttpAttemptExecutionContext {
         }
     }
 
-    /// Returns whether `AsyncRetry` still owns the request's current token.
+    /// Returns whether `TokioRetry` still owns the request's current token.
     ///
     /// Setting another clone of the original token keeps the same cancellation
     /// source under the retry controller. Only a genuinely independent source
@@ -78,7 +78,7 @@ impl HttpAttemptExecutionContext {
 
     /// Selects the token owned by request I/O for this attempt.
     ///
-    /// The retry-flow source is excluded because `AsyncRetry` owns its terminal
+    /// The retry-flow source is excluded because `TokioRetry` owns its terminal
     /// classification. A genuinely independent interceptor replacement is
     /// effective for attempt I/O and response reads.
     ///
@@ -88,7 +88,7 @@ impl HttpAttemptExecutionContext {
     /// # Returns
     /// `Some` for a direct request token or an independent interceptor
     /// replacement. Returns `None` when the token is absent or belongs to the
-    /// retry flow and is therefore owned by `AsyncRetry`.
+    /// retry flow and is therefore owned by `TokioRetry`.
     pub(in crate::client) fn io_cancellation_token<'a>(
         &self,
         request: &'a HttpRequest,
