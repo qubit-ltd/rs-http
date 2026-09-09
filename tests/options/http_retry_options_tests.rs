@@ -16,6 +16,39 @@ use qubit_http::HttpErrorKind;
 use qubit_http::HttpRetryMethodPolicy;
 use qubit_http::HttpRetryOptions;
 
+/// Invalid backoff values retain the selected configuration scope.
+#[test]
+fn test_retry_backoff_validation_errors_keep_scoped_paths() {
+    for strategy in ["random", "exponential", "fixed"] {
+        let mut config = Config::new();
+        config.set("client.retry.delay_strategy", strategy).unwrap();
+        match strategy {
+            "random" => {
+                config
+                    .set("client.retry.random_min_delay", Duration::from_secs(2))
+                    .unwrap();
+                config
+                    .set("client.retry.random_max_delay", Duration::from_secs(1))
+                    .unwrap();
+            }
+            "exponential" => {
+                config.set("client.retry.backoff_multiplier", 0.5_f64).unwrap();
+            }
+            _ => {
+                config.set("client.retry.jitter_factor", 2.0_f64).unwrap();
+            }
+        }
+        let error = HttpRetryOptions::from_config(&config.section("client.retry").unwrap()).unwrap_err();
+        assert_eq!(error.kind, HttpConfigErrorKind::InvalidValue);
+        assert!(error.path.starts_with("client.retry."), "{}", error.path);
+    }
+    let mut config = Config::new();
+    config.set("client.retry.max_attempts", 0_u32).unwrap();
+    let error = HttpRetryOptions::from_config(&config.section("client.retry").unwrap()).unwrap_err();
+    assert_eq!(error.kind, HttpConfigErrorKind::InvalidValue);
+    assert_eq!(error.path, "client.retry.max_attempts");
+}
+
 #[test]
 fn test_http_retry_options_alias_exponential_dash_normalizes_to_exponential_backoff() {
     let mut config = Config::new();

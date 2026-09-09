@@ -842,6 +842,7 @@ fn reconnect_budget_error(error: RetryBudgetError, runtime: &ReconnectRuntime<'_
 
 #[cfg(test)]
 mod tests {
+    use std::error::Error;
     use std::sync::Arc;
     use std::time::Duration;
 
@@ -850,10 +851,35 @@ mod tests {
     use qubit_retry::BackoffPolicy;
     use qubit_retry::RetryPolicy;
     use qubit_retry::RetryRandomSource;
+    use url::Url;
 
     use super::ReconnectRuntime;
     use super::ReconnectState;
     use super::SseReconnectOptions;
+    use super::operation_elapsed_exceeded_error_with_last_error;
+    use crate::HttpError;
+    use crate::HttpErrorKind;
+
+    /// Exhausting the operation budget retains the last response's diagnostics.
+    #[test]
+    fn test_operation_budget_error_preserves_last_error_context() {
+        let url = Url::parse("https://example.test/events").unwrap();
+        let last = HttpError::other("connection closed")
+            .with_method(&Method::POST)
+            .with_url(&url);
+        let error = operation_elapsed_exceeded_error_with_last_error(
+            last,
+            Duration::from_secs(2),
+            Some(Duration::from_secs(1)),
+            &Method::GET,
+            Some(&url),
+            &Redactor::default(),
+        );
+        assert_eq!(error.kind, HttpErrorKind::RetryBudgetExceeded);
+        assert_eq!(error.method, Some(Method::POST));
+        assert_eq!(error.url.as_ref(), Some(&url));
+        assert_eq!(error.source().unwrap().to_string(), "connection closed");
+    }
 
     struct MaximumRandom;
     impl RetryRandomSource for MaximumRandom {
