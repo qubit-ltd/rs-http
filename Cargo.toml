@@ -47,7 +47,7 @@ tokio = { version = "1.52", features = ["time", "net", "macros"] }
 async-stream = "0.3"
 futures-util = "0.3"
 
-qubit-config = { path = "../rs-config", version = "0.14", default-features = false }
+qubit-config = { version = "0.14", default-features = false }
 qubit-budget = { version = "0.5", features = ["json"] }
 qubit-clock = { version = "0.13" }
 qubit-argument = "0.4"
