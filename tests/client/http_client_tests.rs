@@ -402,7 +402,7 @@ fn test_request_builder_methods_override_client_default_options() {
 }
 
 #[tokio_test]
-async fn test_execute_send_timeout() {
+async fn test_execute_response_header_timeout() {
     let server = spawn_one_shot_server(ResponsePlan::DelayedStart {
         delay: Duration::from_millis(250),
         status: 200,
@@ -413,7 +413,7 @@ async fn test_execute_send_timeout() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    options.timeouts.send_timeout = Duration::from_millis(80);
+    options.timeouts.response_header_timeout = Duration::from_millis(80);
     options.timeouts.read_timeout = Duration::from_secs(1);
 
     let client = HttpClientBuilder::new().create(options).unwrap();
@@ -423,7 +423,7 @@ async fn test_execute_send_timeout() {
         .expect("execute timed out")
         .unwrap_err();
 
-    assert_eq!(error.kind, HttpErrorKind::SendTimeout);
+    assert_eq!(error.kind, HttpErrorKind::ResponseHeaderTimeout);
     assert_eq!(error.method, Some(Method::GET));
 
     let captured = timeout(Duration::from_secs(3), server.finish())
@@ -445,7 +445,7 @@ async fn test_execute_read_timeout_on_buffered_body() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    options.timeouts.send_timeout = Duration::from_secs(1);
+    options.timeouts.response_header_timeout = Duration::from_secs(1);
     options.timeouts.read_timeout = Duration::from_millis(80);
 
     let client = HttpClientBuilder::new().create(options).unwrap();
@@ -532,7 +532,7 @@ async fn test_execute_stream_read_timeout() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_millis(80);
-    options.timeouts.send_timeout = Duration::from_secs(1);
+    options.timeouts.response_header_timeout = Duration::from_secs(1);
 
     let client = HttpClientBuilder::new().create(options).unwrap();
     let request = client.request(Method::GET, "/stream-timeout").build();
@@ -1180,7 +1180,7 @@ async fn test_execute_non_success_error_body_preview_timeout_placeholder() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_millis(30);
-    options.timeouts.send_timeout = Duration::from_secs(1);
+    options.timeouts.response_header_timeout = Duration::from_secs(1);
 
     let client = HttpClientBuilder::new().create(options).unwrap();
     let request = client.request(Method::GET, "/status-timeout").build();
@@ -1688,7 +1688,7 @@ async fn test_execute_retries_post_when_all_methods_policy_is_enabled() {
 }
 
 #[tokio_test]
-async fn test_execute_retries_send_timeout_until_success() {
+async fn test_execute_retries_response_header_timeout_until_success() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::DelayedStart {
             delay: Duration::from_millis(120),
@@ -1706,7 +1706,7 @@ async fn test_execute_retries_send_timeout_until_success() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    options.timeouts.send_timeout = Duration::from_millis(30);
+    options.timeouts.response_header_timeout = Duration::from_millis(30);
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();

@@ -298,12 +298,12 @@ async fn test_execute_with_streaming_body_factory_supports_retry_rebuild() {
 }
 
 #[tokio_test]
-async fn test_streaming_body_factory_preparation_respects_send_timeout() {
+async fn test_streaming_body_factory_preparation_respects_response_header_timeout() {
     let server = spawn_multi_shot_server(vec![]).await;
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    options.timeouts.send_timeout = Duration::from_millis(50);
+    options.timeouts.response_header_timeout = Duration::from_millis(50);
     let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
@@ -322,7 +322,7 @@ async fn test_streaming_body_factory_preparation_respects_send_timeout() {
         .expect("execute timed out")
         .expect_err("streaming body preparation should hit write timeout");
 
-    assert_eq!(error.kind, HttpErrorKind::SendTimeout);
+    assert_eq!(error.kind, HttpErrorKind::ResponseHeaderTimeout);
     assert!(error.message.contains("streaming request body"));
 
     let captured = timeout(Duration::from_secs(3), server.finish())

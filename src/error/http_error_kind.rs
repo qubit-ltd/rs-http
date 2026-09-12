@@ -28,7 +28,7 @@ pub enum HttpErrorKind {
     /// Read timeout.
     ReadTimeout,
     /// Request preparation and header-response timeout.
-    SendTimeout,
+    ResponseHeaderTimeout,
     /// Whole-request timeout (client/request-level deadline).
     RequestTimeout,
     /// Transport-level request error.

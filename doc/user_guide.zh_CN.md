@@ -162,7 +162,7 @@ let client = HttpClientBuilder::new()
 | `base_url` | 相对请求路径的基础 URL |
 | `timeouts.connect_timeout` | 连接超时 |
 | `timeouts.read_timeout` | 读取响应体或流时的单次等待超时 |
-| `timeouts.send_timeout` | 发送前准备和发送阶段超时 |
+| `timeouts.response_header_timeout` | 发送前准备和发送阶段超时 |
 | `timeouts.request_timeout` | 整体请求超时，可选 |
 | `proxy.enabled` | 是否启用代理 |
 | `use_env_proxy` | 显式代理禁用时，是否继承环境变量代理 |
@@ -256,7 +256,7 @@ assert_eq!(
 | 方法 | 用途 |
 | --- | --- |
 | `request_timeout` | 覆盖整体请求超时（reqwest 单次请求的 deadline） |
-| `send_timeout` | 覆盖发送前准备和发送阶段超时 |
+| `response_header_timeout` | 覆盖发送前准备和发送阶段超时 |
 | `read_timeout` | 覆盖响应体读取/流读取超时 |
 | `base_url` / `clear_base_url` | 覆盖或清除本次请求 base URL |
 | `ipv4_only` | 覆盖本次请求的 IPv4-only URL 校验 |
@@ -523,7 +523,7 @@ async fn read_sse_examples(client: &qubit_http::HttpClient) -> qubit_http::HttpR
 | 分组 | 错误类型 | 典型含义 |
 | --- | --- | --- |
 | URL / 配置 | `InvalidUrl`, `BuildClient`, `ProxyConfig` | URL 无法解析、客户端构建失败或代理配置非法 |
-| 超时 / 网络 | `ConnectTimeout`, `ReadTimeout`, `SendTimeout`, `RequestTimeout`, `Transport` | 连接、读取、写入、整体请求超时，或底层传输失败 |
+| 超时 / 网络 | `ConnectTimeout`, `ReadTimeout`, `ResponseHeaderTimeout`, `RequestTimeout`, `Transport` | 连接、读取、写入、整体请求超时，或底层传输失败 |
 | HTTP 状态 | `Status` | 收到非 2xx 状态码 |
 | 解码 / SSE | `Decode`, `SseProtocol`, `SseDecode` | 响应体解码失败、SSE 协议错误或 SSE JSON chunk 解码失败 |
 | 重试层 | `RetryBudgetExceeded` 与 `HttpRetryDiagnostics` | 重试预算或终止策略诊断 |
@@ -883,7 +883,7 @@ while let Some(item) = events.next().await {
 | `json.max_output_bytes` | JSON/NDJSON 请求 body 编码后的累计最大字节数（含 NDJSON 行结束符）；默认 `8388608` |
 | `timeouts.connect_timeout` | 连接超时 |
 | `timeouts.read_timeout` | 读取响应体或流时的单次等待超时 |
-| `timeouts.send_timeout` | 发送前准备和发送阶段超时 |
+| `timeouts.response_header_timeout` | 发送前准备和发送阶段超时 |
 | `timeouts.request_timeout` | 整体请求超时，可选 |
 | `proxy.enabled` | 是否启用代理 |
 | `proxy.proxy_type` | `http`、`https`、`socks5` 或 `socks5h` |

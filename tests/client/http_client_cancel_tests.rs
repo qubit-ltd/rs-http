@@ -223,7 +223,7 @@ async fn test_execute_request_can_be_cancelled_while_preparing_async_headers() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    options.timeouts.send_timeout = Duration::from_secs(5);
+    options.timeouts.response_header_timeout = Duration::from_secs(5);
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();
@@ -768,7 +768,7 @@ async fn test_retry_interceptor_replacement_token_controls_attempt_io() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    options.timeouts.send_timeout = Duration::from_secs(5);
+    options.timeouts.response_header_timeout = Duration::from_secs(5);
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();
@@ -915,7 +915,7 @@ async fn test_execute_request_can_be_cancelled_while_sending() {
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    options.timeouts.send_timeout = Duration::from_secs(5);
+    options.timeouts.response_header_timeout = Duration::from_secs(5);
     options.timeouts.read_timeout = Duration::from_secs(5);
     let client = HttpClientBuilder::new()
         .create(options)

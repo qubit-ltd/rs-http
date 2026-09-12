@@ -52,7 +52,7 @@ struct HttpRequestExecutionOptions {
     /// default applies.
     request_timeout: Option<Duration>,
     /// Per-request write timeout used during request sending.
-    send_timeout: Duration,
+    response_header_timeout: Duration,
     /// Per-request read timeout used during response body reads.
     read_timeout: Duration,
     /// Optional cancellation token checked before send and during I/O phases.
@@ -133,7 +133,10 @@ impl fmt::Debug for HttpRequest {
             .field("body", &self.body)
             .field("streaming_body", &self.streaming_body.as_ref().map(|_| "present"))
             .field("request_timeout", &self.execution_options.request_timeout)
-            .field("send_timeout", &self.execution_options.send_timeout)
+            .field(
+                "response_header_timeout",
+                &self.execution_options.response_header_timeout,
+            )
             .field("read_timeout", &self.execution_options.read_timeout)
             .field(
                 "cancellation_token_present",
@@ -170,7 +173,7 @@ impl HttpRequest {
             effective_headers: None,
             execution_options: HttpRequestExecutionOptions {
                 request_timeout: builder.request_timeout,
-                send_timeout: builder.send_timeout,
+                response_header_timeout: builder.response_header_timeout,
                 read_timeout: builder.read_timeout,
                 cancellation_token: builder.cancellation_token,
                 retry_override: builder.retry_override,
@@ -430,8 +433,8 @@ impl HttpRequest {
 
     /// Returns the write-phase timeout used while sending the request.
     #[inline(always)]
-    pub fn send_timeout(&self) -> Duration {
-        self.execution_options.send_timeout
+    pub fn response_header_timeout(&self) -> Duration {
+        self.execution_options.response_header_timeout
     }
 
     /// Sets the write-phase timeout used while sending the request.
@@ -439,9 +442,9 @@ impl HttpRequest {
     /// # Errors
     /// Returns [`HttpError`] when `timeout` is zero.
     #[inline]
-    pub fn set_send_timeout(&mut self, timeout: Duration) -> HttpResult<&mut Self> {
-        validate_positive_timeout("send_timeout", timeout).map_err(|error| self.with_log_redactor(error))?;
-        self.execution_options.send_timeout = timeout;
+    pub fn set_response_header_timeout(&mut self, timeout: Duration) -> HttpResult<&mut Self> {
+        validate_positive_timeout("response_header_timeout", timeout).map_err(|error| self.with_log_redactor(error))?;
+        self.execution_options.response_header_timeout = timeout;
         Ok(self)
     }
 
@@ -626,7 +629,7 @@ impl HttpRequest {
     /// - Cooperative cancellation while waiting on the send future.
     /// - Transport failures mapped from reqwest.
     /// - Write timeout when the send future does not complete within
-    ///   `send_timeout`.
+    ///   `response_header_timeout`.
     pub(crate) async fn send_impl(
         &mut self,
         backend: &Client,
@@ -641,8 +644,8 @@ impl HttpRequest {
         let log_redactor = self.log_redactor().clone();
         let method = self.method().clone();
         let request_url_context = self.resolved_url().ok();
-        let send_timeout = self.execution_options.send_timeout;
-        let send_deadline = Instant::now() + send_timeout;
+        let response_header_timeout = self.execution_options.response_header_timeout;
+        let send_deadline = Instant::now() + response_header_timeout;
         let headers = Self::await_pre_send_future(
             self.effective_headers(),
             send_deadline.saturating_duration_since(Instant::now()),
@@ -650,7 +653,10 @@ impl HttpRequest {
             &method,
             request_url_context.as_ref(),
             "Request cancelled while preparing request",
-            format!("Write timeout after {:?} while preparing request", send_timeout),
+            format!(
+                "Write timeout after {:?} while preparing request",
+                response_header_timeout
+            ),
         )
         .await
         .map_err(|error| error.with_log_redactor(log_redactor.clone()))?
@@ -679,7 +685,7 @@ impl HttpRequest {
                 "Request cancelled while preparing streaming request body",
                 format!(
                     "Write timeout after {:?} while preparing streaming request body",
-                    self.execution_options.send_timeout
+                    self.execution_options.response_header_timeout
                 ),
             )
             .await
@@ -714,9 +720,9 @@ impl HttpRequest {
                 request_url.clone(),
             )
             .with_log_redactor(log_redactor.clone())),
-            Err(_) => Err(HttpError::send_timeout(format!(
+            Err(_) => Err(HttpError::response_header_timeout(format!(
                 "Write timeout after {:?} while sending request",
-                self.execution_options.send_timeout
+                self.execution_options.response_header_timeout
             ))
             .with_method(&method)
             .with_url(&request_url)
@@ -730,7 +736,7 @@ impl HttpRequest {
     /// # Parameters
     /// - `future`: Preparation future, such as async header injection or
     ///   streaming body factory execution.
-    /// - `send_timeout`: Timeout budget reused for send preparation.
+    /// - `response_header_timeout`: Timeout budget reused for send preparation.
     /// - `cancellation_token`: Optional request cancellation token.
     /// - `method`: Request method for error context.
     /// - `request_url`: Optional resolved request URL for error context.
@@ -742,11 +748,11 @@ impl HttpRequest {
     ///
     /// # Errors
     /// Returns [`HttpErrorKind::Cancelled`] on cancellation,
-    /// [`HttpErrorKind::SendTimeout`] on timeout, or propagates the future's
-    /// own error.
+    /// [`HttpErrorKind::ResponseHeaderTimeout`] on timeout, or propagates the
+    /// future's own error.
     async fn await_pre_send_future<T, F>(
         future: F,
-        send_timeout: Duration,
+        response_header_timeout: Duration,
         cancellation_token: Option<HttpCancellationToken>,
         method: &Method,
         request_url: Option<&Url>,
@@ -756,7 +762,7 @@ impl HttpRequest {
     where
         F: Future<Output = HttpResult<T>>,
     {
-        let timed = tokio::time::timeout(send_timeout, future);
+        let timed = tokio::time::timeout(response_header_timeout, future);
         let next = if let Some(token) = cancellation_token.as_ref() {
             tokio::select! {
                 _ = token.cancelled() => {
@@ -774,7 +780,11 @@ impl HttpRequest {
 
         match next {
             Ok(result) => result,
-            Err(_) => Err(Self::pre_send_send_timeout_error(timeout_message, method, request_url)),
+            Err(_) => Err(Self::pre_send_response_header_timeout_error(
+                timeout_message,
+                method,
+                request_url,
+            )),
         }
     }
 
@@ -804,8 +814,12 @@ impl HttpRequest {
     ///
     /// # Returns
     /// Write-timeout [`HttpError`] with request context attached.
-    fn pre_send_send_timeout_error(message: String, method: &Method, request_url: Option<&Url>) -> HttpError {
-        let mut error = HttpError::send_timeout(message).with_method(method);
+    fn pre_send_response_header_timeout_error(
+        message: String,
+        method: &Method,
+        request_url: Option<&Url>,
+    ) -> HttpError {
+        let mut error = HttpError::response_header_timeout(message).with_method(method);
         if let Some(request_url) = request_url {
             error = error.with_url(request_url);
         }

@@ -42,7 +42,7 @@ async fn test_same_source_interceptor_clone_remains_retry_owned() {
     let server = spawn_multi_shot_server(vec![]).await;
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    options.timeouts.send_timeout = Duration::from_secs(5);
+    options.timeouts.response_header_timeout = Duration::from_secs(5);
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();

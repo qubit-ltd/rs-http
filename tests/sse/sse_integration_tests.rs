@@ -115,7 +115,7 @@ async fn test_execute_stream_with_decode_events_end_to_end() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_secs(2);
-    options.timeouts.send_timeout = Duration::from_secs(2);
+    options.timeouts.response_header_timeout = Duration::from_secs(2);
     let client = HttpClientBuilder::new().create(options).unwrap();
 
     let request = client.request(Method::GET, "/sse").build();
@@ -159,7 +159,7 @@ async fn test_execute_stream_decode_events_reports_read_timeout_when_interrupted
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_millis(80);
-    options.timeouts.send_timeout = Duration::from_secs(1);
+    options.timeouts.response_header_timeout = Duration::from_secs(1);
     let client = HttpClientBuilder::new().create(options).unwrap();
 
     let request = client.request(Method::GET, "/sse-timeout").build();
@@ -204,7 +204,7 @@ async fn test_execute_stream_decode_json_chunks_uses_client_default_strict_mode(
     let expected_policy = builder.build().expect("the custom HTTP policy should be valid");
     options.log_redaction_policy = expected_policy.clone();
     options.timeouts.read_timeout = Duration::from_secs(2);
-    options.timeouts.send_timeout = Duration::from_secs(2);
+    options.timeouts.response_header_timeout = Duration::from_secs(2);
     let client = HttpClientBuilder::new().create(options).unwrap();
 
     let request = client.request(Method::GET, "/sse-strict").build();
@@ -236,7 +236,7 @@ async fn test_execute_stream_decode_events_uses_client_default_sse_limits() {
     options.base_url = Some(server.base_url());
     options.sse_max_frame_bytes = 16;
     options.timeouts.read_timeout = Duration::from_secs(2);
-    options.timeouts.send_timeout = Duration::from_secs(2);
+    options.timeouts.response_header_timeout = Duration::from_secs(2);
     let client = HttpClientBuilder::new().create(options).unwrap();
 
     let request = client.request(Method::GET, "/sse-limits").build();

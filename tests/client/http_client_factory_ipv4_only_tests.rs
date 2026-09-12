@@ -43,7 +43,7 @@ async fn test_ipv4_only_with_localhost_request_is_accessible() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(localhost_url);
     options.ipv4_only = true;
-    options.timeouts.send_timeout = Duration::from_secs(2);
+    options.timeouts.response_header_timeout = Duration::from_secs(2);
     options.timeouts.read_timeout = Duration::from_secs(2);
 
     let client = HttpClientBuilder::new().create(options).unwrap();
@@ -60,7 +60,7 @@ async fn test_ipv4_only_with_localhost_request_is_accessible() {
 async fn test_ipv4_only_rejects_ipv6_literal_request_url() {
     let mut options = HttpClientOptions::default();
     options.ipv4_only = true;
-    options.timeouts.send_timeout = Duration::from_secs(1);
+    options.timeouts.response_header_timeout = Duration::from_secs(1);
     options.timeouts.read_timeout = Duration::from_secs(1);
 
     let client = HttpClientBuilder::new().create(options).unwrap();
@@ -92,7 +92,7 @@ async fn test_ipv4_only_fails_on_hostname_without_ipv4_address() {
         .set_base_url("http://ip6-localhost")
         .expect("base URL should parse");
     options.ipv4_only = true;
-    options.timeouts.send_timeout = Duration::from_secs(1);
+    options.timeouts.response_header_timeout = Duration::from_secs(1);
     options.timeouts.read_timeout = Duration::from_secs(1);
 
     let client = HttpClientBuilder::new().create(options).unwrap();
@@ -103,7 +103,10 @@ async fn test_ipv4_only_fails_on_hostname_without_ipv4_address() {
         .unwrap_err();
 
     assert!(
-        matches!(error.kind, HttpErrorKind::Transport | HttpErrorKind::SendTimeout),
+        matches!(
+            error.kind,
+            HttpErrorKind::Transport | HttpErrorKind::ResponseHeaderTimeout
+        ),
         "expected IPv4-only DNS failure to be transport or write timeout, got {:?}",
         error.kind
     );

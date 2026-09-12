@@ -29,7 +29,7 @@ fn test_timeout_options_all_fields() {
         .set("http.timeouts.read_timeout", Duration::from_secs(30))
         .unwrap();
     config
-        .set("http.timeouts.send_timeout", Duration::from_secs(20))
+        .set("http.timeouts.response_header_timeout", Duration::from_secs(20))
         .unwrap();
     config
         .set("http.timeouts.request_timeout", Duration::from_secs(60))
@@ -38,7 +38,7 @@ fn test_timeout_options_all_fields() {
     let opts = HttpTimeoutOptions::from_config(&config.section("http.timeouts").unwrap()).unwrap();
     assert_eq!(opts.connect_timeout, Duration::from_secs(5));
     assert_eq!(opts.read_timeout, Duration::from_secs(30));
-    assert_eq!(opts.send_timeout, Duration::from_secs(20));
+    assert_eq!(opts.response_header_timeout, Duration::from_secs(20));
     assert_eq!(opts.request_timeout, Some(Duration::from_secs(60)));
 }
 
@@ -84,14 +84,14 @@ fn test_timeout_options_invalid_read_timeout_type_is_prefixed() {
 }
 
 #[test]
-fn test_timeout_options_invalid_send_timeout_type_is_prefixed() {
+fn test_timeout_options_invalid_response_header_timeout_type_is_prefixed() {
     let mut config = Config::new();
-    config.set("t.send_timeout", "invalid").unwrap();
+    config.set("t.response_header_timeout", "invalid").unwrap();
 
     let err = HttpTimeoutOptions::from_config(&config.section("t").unwrap()).unwrap_err();
 
     assert_eq!(err.kind, HttpConfigErrorKind::TypeError);
-    assert_eq!(err.path, "t.send_timeout");
+    assert_eq!(err.path, "t.response_header_timeout");
 }
 
 #[test]
