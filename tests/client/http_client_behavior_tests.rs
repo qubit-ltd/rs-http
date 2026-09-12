@@ -89,6 +89,48 @@ async fn test_absolute_url_request_bypasses_base_url_join() {
 }
 
 #[tokio_test]
+async fn test_default_client_executes_absolute_url_without_base_url() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 200,
+        headers: vec![],
+        body: b"ok".to_vec(),
+    })
+    .await;
+    let client = HttpClientBuilder::new().create_default().unwrap();
+    let request = client
+        .request(Method::GET, &format!("{}absolute-default", server.base_url()))
+        .build();
+    let response = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(server.finish().await.target, "/absolute-default");
+}
+
+#[tokio_test]
+async fn test_default_client_rejects_relative_path_without_base_url() {
+    let client = HttpClientBuilder::new().create_default().unwrap();
+    let error = client
+        .execute(client.request(Method::GET, "/relative").build())
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind, HttpErrorKind::InvalidUrl);
+}
+
+#[tokio_test]
+async fn test_same_origin_rejects_absolute_url_different_from_configured_base() {
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(url::Url::parse("http://127.0.0.1:1/").unwrap());
+    let client = HttpClientBuilder::new().create(options).unwrap();
+    let error = client
+        .execute(client.request(Method::GET, "http://127.0.0.1:2/cross-origin").build())
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind, HttpErrorKind::OriginPolicy);
+}
+
+#[tokio_test]
 async fn test_execute_returns_invalid_url_for_bad_relative_path() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(url::Url::parse("https://example.com/api/").expect("static base_url in test should parse"));
