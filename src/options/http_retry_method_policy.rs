@@ -35,6 +35,17 @@ pub enum HttpRetryMethodPolicy {
 }
 
 impl HttpRetryMethodPolicy {
+    /// Parses a configuration value into a retry method policy.
+    ///
+    /// # Parameters
+    /// - `value`: Case-insensitive configuration value to parse.
+    ///
+    /// # Returns
+    /// The matching retry method policy.
+    ///
+    /// # Errors
+    /// Returns [`HttpConfigError`] when `value` is not a supported policy
+    /// spelling.
     pub(super) fn from_config_value(value: &str) -> Result<Self, HttpConfigError> {
         Self::from_str(value.trim()).map_err(|_| {
             HttpConfigError::invalid_value("method_policy", format!("Unsupported retry method policy: {value}"))

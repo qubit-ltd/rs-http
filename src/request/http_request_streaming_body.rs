@@ -13,8 +13,10 @@ use std::sync::Arc;
 
 use super::http_request_body_byte_stream::HttpRequestBodyByteStream;
 
+/// Future that produces one request-body byte stream.
 type HttpRequestBodyStreamFactoryFuture = Pin<Box<dyn Future<Output = HttpRequestBodyByteStream> + Send + 'static>>;
 
+/// Factory callback that produces a fresh stream for each request attempt.
 type HttpRequestBodyStreamFactoryFn = dyn Fn() -> HttpRequestBodyStreamFactoryFuture + Send + Sync + 'static;
 
 /// Deferred streaming upload body source.
