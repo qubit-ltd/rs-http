@@ -1,6 +1,8 @@
 # qubit-http 用户指南
 
-本文档基于当前源码和测试整理，适用于 crate `qubit-http` 0.13，Rust 代码中通过库名 `qubit_http` 使用。
+[English](user_guide.en.md) | [README](../README.zh_CN.md) | [API 文档](https://docs.rs/qubit-http)
+
+本文档基于当前源码和测试整理，适用于 crate `qubit-http` 0.14，Rust 代码中通过库名 `qubit_http` 使用。
 
 `qubit-http` 是一个异步 HTTP 客户端基础设施库。它封装 `reqwest`，提供统一的客户端配置、请求构建、响应读取、错误分类、TRACE 日志脱敏、自动重试、代理、IPv4-only 解析、请求/响应拦截器，以及 Server-Sent Events（SSE）解码和重连能力。
 
@@ -13,11 +15,15 @@
 | 排查失败 | 「错误模型」「自动重试」「日志脱敏」 |
 | 使用流式响应或 SSE | 「读取响应」「SSE 解码」 |
 
+## 概念模型
+
+`HttpClient` 持有跨请求共享的执行策略；`HttpRequest` 组合方法、URL、请求头、请求体和请求级覆盖项。`execute` 应用客户端策略，并且只在状态码为 2xx 时返回 `HttpResponse`；拿到响应后，可以先检查元数据，再选择一种响应体读取方式。响应返回前发生的可重试失败属于内置重试边界；响应返回后读取流时出现的错误则由调用方处理。
+
 ## 安装与导入
 
 ```toml
 [dependencies]
-qubit-http = "0.11"
+qubit-http = "0.14"
 qubit-redact = "0.8"
 http = "1.4"
 qubit-config = { path = "../rs-config", version = "0.14", default-features = false }
@@ -37,29 +43,22 @@ use qubit_http::{HttpClientBuilder, HttpClientOptions};
 ```rust
 use http::Method;
 use qubit_http::{HttpClientBuilder, HttpClientOptions};
-use serde::Deserialize;
-
-#[derive(Debug, Deserialize)]
-struct User {
-    id: u64,
-    name: String,
-}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut options = HttpClientOptions::new();
-    options.set_base_url("https://api.example.com")?;
+    options.set_base_url("https://httpbin.org")?;
     options.add_header("x-app", "demo")?;
 
     let client = HttpClientBuilder::new().create(options)?;
     let request = client
-        .request(Method::GET, "/users/42")
-        .query_param("expand", "profile")
+        .request(Method::GET, "/anything")
+        .query_param("from", "user-guide")
         .build();
 
     let mut response = client.execute(request).await?;
-    let user: User = response.json().await?;
-    println!("{user:?}");
+    println!("status = {}", response.status());
+    println!("body = {}", response.text().await?);
     Ok(())
 }
 ```
