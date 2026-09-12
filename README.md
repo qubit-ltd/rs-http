@@ -72,8 +72,10 @@ snapshot. Its `http()` view contains only HTTP context differences; the base
 field rules, masking, and static limits are shared with every other adapter.
 The canonical `qubit_redact::Redactor` handles URL userinfo, fragments, query
 fields, native-sensitive headers, structured bodies, and hard body budgets.
-Non-root URL paths, opaque text, and unkeyed JSON values are redacted by
-default.
+The standard policy preserves URL paths for diagnostics. Choose
+`RedactionPolicy::strict()` or `UrlPathPolicy::Redact` when paths may contain
+opaque identifiers or credentials; sensitive query values, headers, and
+structured body fields remain protected by their configured rules.
 
 `RedactionPolicy::builder()` starts with empty application rules and the
 standard floor. Use `RedactionPolicy::default().to_builder()` to extend the
@@ -151,7 +153,7 @@ only when the application explicitly accepts removing HTTP context floors.
 
 ## Retry timing boundaries
 
-HTTP retry budgets use qubit-retry 0.23. `max_duration` is a continuation budget,
+HTTP retry budgets use qubit-retry 0.24. `max_duration` is a continuation budget,
 not a hard request timeout: it prevents further attempts while preserving a
 completed successful request. Request timeouts remain configured separately.
 SSE reconnects preserve structured budget errors as HTTP error sources.
@@ -161,7 +163,7 @@ Ordinary HTTP retries do not install a retry-layer `attempt_timeout` or
 `flow_timeout`; configure the request/connect/read/write timeouts separately.
 See the [retry guide](doc/user_guide.en.md#automatic-retry) for error mapping and
 request replay requirements. If your application also uses `qubit-retry`
-directly, migrate its dependency to `0.23` so shared retry types agree.
+directly, use `0.24` so shared retry types agree.
 
 For SSE server-directed reconnects, `server_retry_max_delay` caps the final
 selected delay after jitter and hint merging, with a minimum of one millisecond.
