@@ -161,8 +161,8 @@ impl<'a> HttpLogger<'a> {
     /// `Ok(())` on success; no-op when disabled or TRACE off.
     ///
     /// # Errors
-    /// Returns [`crate::HttpError`] when reading the response body for logging
-    /// fails.
+    /// This method does not read an unconsumed response body, so body read
+    /// failures remain visible to the caller that consumes the response.
     pub async fn log_response(&self, response: &mut HttpResponse) -> crate::HttpResult<()> {
         if !self.is_trace_enabled() {
             return Ok(());
@@ -187,27 +187,6 @@ impl<'a> HttpLogger<'a> {
                         content_type.as_ref(),
                     ))
                 }
-            } else if response.can_buffer_body_for_logging(self.options.body_size_limit) {
-                let body = match response.bytes().await {
-                    Ok(body) => body,
-                    Err(error) => {
-                        let diagnostics = batch.finish();
-                        trace!("<-- {} {}", response.status().as_u16(), diagnostics.text(url_handle));
-                        if let Some(handle) = header_handle {
-                            trace!("{}", diagnostics.text(handle));
-                        }
-                        return Err(error);
-                    }
-                };
-                if body.is_empty() {
-                    body_empty = true;
-                    None
-                } else {
-                    Some(batch.redact_http_body(
-                        BodyPreview::new(body.as_ref(), self.options.body_size_limit).capture(),
-                        content_type.as_ref(),
-                    ))
-                }
             } else {
                 None
             };
@@ -221,7 +200,7 @@ impl<'a> HttpLogger<'a> {
             } else if let Some(handle) = body_handle {
                 trace!("Response body: {}", diagnostics.text(handle));
             } else {
-                trace!("Response body: <skipped: streaming or unknown-size body>");
+                trace!("Response body: <skipped: body not yet consumed>");
             }
         } else {
             let diagnostics = batch.finish();
@@ -230,7 +209,7 @@ impl<'a> HttpLogger<'a> {
                 trace!("{}", diagnostics.text(handle));
             }
             if self.options.log_response_body {
-                trace!("Response body: <redaction incomplete>");
+                trace!("Response body: <skipped: body not yet consumed>");
             }
         }
         Ok(())

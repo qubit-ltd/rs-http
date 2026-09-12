@@ -641,6 +641,9 @@ impl HttpClient {
         projected.status = error.status;
         projected.response_body_preview = error.response_body_preview.clone();
         projected.retry_after = error.retry_after;
+        if let Some(status_response) = error.status_response_cloned() {
+            projected = projected.with_status_response(status_response);
+        }
         projected
     }
 

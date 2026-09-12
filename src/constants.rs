@@ -40,6 +40,9 @@ pub const DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES: usize = 16 * 1024;
 /// its text/JSON helpers.
 pub const DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES: usize = 8 * 1024 * 1024;
 
+/// Default maximum raw bytes retained for a non-success response error.
+pub const DEFAULT_ERROR_RESPONSE_BODY_LIMIT_BYTES: usize = 64 * 1024;
+
 // ---------------------------------------------------------------------------
 // SSE decode safety limits
 // ---------------------------------------------------------------------------

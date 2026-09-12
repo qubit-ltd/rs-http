@@ -7,6 +7,8 @@
 // =============================================================================
 //! Reqwest-backed HTTP client factory.
 
+use std::error::Error;
+use std::fmt;
 use std::net::IpAddr;
 use std::net::SocketAddr;
 
@@ -26,6 +28,19 @@ use crate::HttpClientOptions;
 use crate::HttpConfigError;
 use crate::HttpError;
 use crate::HttpResult;
+
+/// Error returned by the redirect policy when a redirect crosses origins.
+// qubit-style: allow multiple-public-types
+#[derive(Debug)]
+pub(crate) struct RedirectOriginViolation;
+
+impl fmt::Display for RedirectOriginViolation {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("redirect target violates the same-origin policy")
+    }
+}
+
+impl Error for RedirectOriginViolation {}
 
 /// DNS resolver that filters out non-IPv4 addresses for `ipv4_only` mode.
 #[derive(Debug, Clone, Copy, Default)]
@@ -110,8 +125,22 @@ impl HttpClientBuilder {
         if let Some(user_agent) = options.user_agent.as_deref() {
             builder = builder.user_agent(user_agent);
         }
-        if let Some(max_redirects) = options.max_redirects {
-            builder = builder.redirect(Policy::limited(max_redirects));
+        let redirect_policy = options.max_redirects.map(Policy::limited).unwrap_or_default();
+        if matches!(options.origin_policy, crate::HttpOriginPolicy::SameOrigin) {
+            let redirect_policy = Policy::custom(move |attempt| {
+                let same_origin = attempt
+                    .previous()
+                    .first()
+                    .is_none_or(|origin| same_origin(origin, attempt.url()));
+                if same_origin {
+                    redirect_policy.redirect(attempt)
+                } else {
+                    attempt.error(RedirectOriginViolation)
+                }
+            });
+            builder = builder.redirect(redirect_policy);
+        } else {
+            builder = builder.redirect(redirect_policy);
         }
         if let Some(pool_idle_timeout) = options.pool_idle_timeout {
             builder = builder.pool_idle_timeout(pool_idle_timeout);
@@ -240,4 +269,10 @@ fn map_validation_error(error: HttpConfigError) -> HttpError {
 fn is_ipv6_literal_host(host: &str) -> bool {
     let trimmed = host.trim().trim_start_matches('[').trim_end_matches(']');
     matches!(trimmed.parse::<IpAddr>(), Ok(IpAddr::V6(_)))
+}
+
+fn same_origin(left: &url::Url, right: &url::Url) -> bool {
+    left.scheme() == right.scheme()
+        && left.host() == right.host()
+        && left.port_or_known_default() == right.port_or_known_default()
 }

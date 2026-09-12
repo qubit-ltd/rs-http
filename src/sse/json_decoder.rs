@@ -17,9 +17,11 @@ use serde::de::DeserializeOwned;
 use super::DoneMarkerPolicy;
 use super::SseChunk;
 use super::SseChunkStream;
+use super::SseCompletionPolicy;
 use super::SseJsonMode;
 use super::decode_messages_from_stream_with_limits;
 use crate::HttpByteStream;
+use crate::HttpError;
 use crate::json_limits::json_decode_limits;
 
 /// Parses SSE JSON payloads with selectable strictness and explicit line/frame
@@ -47,12 +49,12 @@ pub(crate) fn decode_json_chunks_from_stream_with_limits<T>(
     max_line_bytes: usize,
     max_frame_bytes: usize,
     json_value_limits: JsonValueLimits,
+    completion_policy: SseCompletionPolicy,
 ) -> SseChunkStream<T>
 where
     T: DeserializeOwned + Send + 'static,
 {
     let mut messages = decode_messages_from_stream_with_limits(stream, max_line_bytes, max_frame_bytes);
-
     let output = stream! {
         while let Some(item) = messages.next().await {
             let message = match item {
@@ -83,6 +85,9 @@ where
                     return;
                 }
             }
+        }
+        if matches!(completion_policy, SseCompletionPolicy::RequireDoneMarker) {
+            yield Err(HttpError::sse_protocol("SSE stream ended before its done marker"));
         }
     };
 

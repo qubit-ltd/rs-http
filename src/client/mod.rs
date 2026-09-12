@@ -14,3 +14,4 @@ mod internal;
 
 pub use http_client::HttpClient;
 pub use http_client_builder::HttpClientBuilder;
+pub(crate) use http_client_builder::RedirectOriginViolation;

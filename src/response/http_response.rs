@@ -38,12 +38,12 @@ use crate::HttpCancellationToken;
 use crate::HttpError;
 use crate::HttpErrorKind;
 use crate::HttpResult;
-use crate::content_type;
 use crate::error::ReqwestErrorPhase;
 use crate::error::backend_error_mapper::map_reqwest_error;
 use crate::json_limits::json_decode_limits;
 use crate::sse::DoneMarkerPolicy;
 use crate::sse::SseChunkStream;
+use crate::sse::SseCompletionPolicy;
 use crate::sse::SseJsonMode;
 use crate::sse::SseMessageStream;
 
@@ -341,8 +341,13 @@ impl HttpResponse {
         let method = self.meta.method().clone();
         let url = self.request_url().clone();
         let error_preview_limit = self.options.error_response_preview_limit;
+        let error_body_headers = self.meta.headers().clone();
+        let error_body_content_length = self.content_length_hint();
+        let error_body_limit = self.options.error_response_body_limit;
         let log_redactor = self.log_redactor().clone();
-        let body_preview = self.into_error_body_preview(error_preview_limit).await?;
+        let (body_preview, raw_body, raw_truncated) = self
+            .into_error_body_capture(error_preview_limit, error_body_limit)
+            .await?;
         let redacted_url = log_redactor
             .redact_http_url(url.as_str())
             .into_text_or_marker("<redaction incomplete>");
@@ -358,6 +363,12 @@ impl HttpResponse {
         if let Some(retry_after) = retry_after {
             mapped = mapped.with_retry_after(retry_after);
         }
+        mapped = mapped.with_status_response(crate::error::HttpStatusResponse::new(
+            error_body_headers,
+            raw_body,
+            raw_truncated,
+            error_body_content_length,
+        ));
         Err(mapped)
     }
 
@@ -368,18 +379,33 @@ impl HttpResponse {
     /// Returns [`HttpErrorKind::Cancelled`](crate::HttpErrorKind::Cancelled)
     /// when the request cancellation token fires while preview bytes are being
     /// read.
-    pub(crate) async fn into_error_body_preview(mut self, max_bytes: usize) -> HttpResult<String> {
-        let limit = max_bytes.max(1);
+    pub(crate) async fn into_error_body_capture(
+        mut self,
+        preview_limit: usize,
+        raw_limit: usize,
+    ) -> HttpResult<(String, Bytes, bool)> {
+        let limit = preview_limit.max(1);
         let state = std::mem::replace(&mut self.body, HttpResponseBodyState::StreamingTaken);
+        let content_type = Self::content_type_header(self.meta.headers());
         let backend = match state {
             HttpResponseBodyState::Backend(backend) => backend,
             HttpResponseBodyState::Buffered(body) => {
-                return Ok(String::from_utf8_lossy(&body[..]).into_owned());
+                let raw_limit = raw_limit.max(1);
+                let truncated = body.len() > raw_limit;
+                let raw = body.slice(..body.len().min(raw_limit));
+                let preview = Self::render_error_body_preview(
+                    &raw,
+                    Some(body.len()),
+                    truncated,
+                    content_type.as_ref(),
+                    &self.options.log_redactor,
+                );
+                return Ok((preview, raw, truncated));
             }
-            HttpResponseBodyState::StreamingTaken => return Ok("<empty>".to_string()),
+            HttpResponseBodyState::StreamingTaken => return Ok(("<empty>".to_string(), Bytes::new(), true)),
         };
-        let content_type = Self::content_type_header(self.meta.headers());
-        self.read_error_body_preview(backend, limit, content_type).await
+        self.read_error_body_preview(backend, limit, raw_limit, content_type)
+            .await
     }
 
     /// Returns full body bytes, consuming backend stream lazily on first call.
@@ -655,6 +681,12 @@ impl HttpResponse {
         self
     }
 
+    /// Sets whether JSON SSE decoding requires a done marker.
+    pub fn sse_completion_policy(mut self, policy: SseCompletionPolicy) -> Self {
+        self.options.sse_completion_policy = policy;
+        self
+    }
+
     /// Decodes body stream as SSE messages using this response's SSE line/frame
     /// byte limits (from client defaults unless overridden via
     /// [`Self::sse_max_line_bytes`] / [`Self::sse_max_frame_bytes`]).
@@ -699,6 +731,7 @@ impl HttpResponse {
         let max_line_bytes = self.options.sse_max_line_bytes;
         let max_frame_bytes = self.options.sse_max_frame_bytes;
         let json_value_limits = self.options.json_value_limits;
+        let completion_policy = self.options.sse_completion_policy;
         let log_redactor = self.log_redactor().clone();
         let decoded: SseChunkStream<T> = match self.stream() {
             Ok(stream) => crate::sse::decode_json_chunks_from_stream_with_limits(
@@ -708,6 +741,7 @@ impl HttpResponse {
                 max_line_bytes,
                 max_frame_bytes,
                 json_value_limits,
+                completion_policy,
             ),
             Err(error) => Box::pin(futures_stream::once(async move { Err(error) })),
         };
@@ -733,27 +767,6 @@ impl HttpResponse {
         }
     }
 
-    /// Returns whether logger may safely buffer the full body for logging.
-    ///
-    /// # Parameters
-    /// - `body_log_limit`: Configured logging body preview limit in bytes.
-    ///
-    /// # Returns
-    /// `true` only when this response is not SSE, has an explicit
-    /// `Content-Length`, and declared length is within `body_log_limit`.
-    #[inline]
-    pub(crate) fn can_buffer_body_for_logging(&self, body_log_limit: usize) -> bool {
-        if !matches!(self.body, HttpResponseBodyState::Backend(_)) {
-            return false;
-        }
-        if self.is_sse_response() {
-            return false;
-        }
-        self.content_length_hint()
-            .and_then(|content_length| usize::try_from(content_length).ok())
-            .is_some_and(|content_length| content_length <= body_log_limit)
-    }
-
     /// Reads bounded preview bytes from a response body for status error
     /// messages.
     ///
@@ -765,8 +778,9 @@ impl HttpResponse {
         &self,
         mut response: reqwest::Response,
         max_bytes: usize,
+        raw_limit: usize,
         content_type: Option<HeaderValue>,
-    ) -> HttpResult<String> {
+    ) -> HttpResult<(String, Bytes, bool)> {
         let limit = max_bytes.max(1);
         let read_timeout = self.runtime.read_timeout;
         let cancellation_token = self.runtime.cancellation_token.clone();
@@ -777,8 +791,9 @@ impl HttpResponse {
             .content_length_hint()
             .and_then(|length| usize::try_from(length).ok());
         let mut preview = Vec::new();
+        let mut raw = Vec::new();
         let mut truncated = false;
-        let capture_limit = limit.saturating_add(1);
+        let capture_limit = limit.max(raw_limit.max(1)).saturating_add(1);
         let mut capture_budget = ResourceBudget::new("status error response body preview", capture_limit);
 
         loop {
@@ -803,12 +818,17 @@ impl HttpResponse {
             match next {
                 Ok(Ok(Some(chunk))) => {
                     let captured = capture_budget.consume_available(chunk.len());
-                    preview.extend_from_slice(&chunk[..captured]);
-                    if captured < chunk.len() {
+                    let preview_remaining = limit.saturating_sub(preview.len());
+                    if preview_remaining < captured {
                         truncated = true;
-                        break;
                     }
-                    if preview.len() > limit {
+                    preview.extend_from_slice(&chunk[..captured.min(preview_remaining)]);
+                    let raw_remaining = raw_limit.saturating_sub(raw.len());
+                    if raw_remaining < chunk.len() {
+                        truncated = true;
+                    }
+                    raw.extend_from_slice(&chunk[..chunk.len().min(raw_remaining)]);
+                    if captured < chunk.len() {
                         truncated = true;
                         break;
                     }
@@ -816,15 +836,17 @@ impl HttpResponse {
                 Ok(Ok(None)) => break,
                 Ok(Err(error)) => {
                     let error = error.without_url();
-                    return Ok(format!(
-                        "<error body unavailable: failed to read response body: {}>",
-                        error
+                    return Ok((
+                        format!("<error body unavailable: failed to read response body: {}>", error),
+                        Bytes::from(raw),
+                        true,
                     ));
                 }
                 Err(_) => {
-                    return Ok(format!(
-                        "<error body unavailable: read timeout after {:?}>",
-                        read_timeout
+                    return Ok((
+                        format!("<error body unavailable: read timeout after {:?}>", read_timeout),
+                        Bytes::from(raw),
+                        true,
                     ));
                 }
             }
@@ -833,12 +855,20 @@ impl HttpResponse {
             preview.truncate(limit);
             truncated = true;
         }
-        Ok(Self::render_error_body_preview(
-            &preview,
-            source_len,
-            truncated,
-            content_type.as_ref(),
-            &self.options.log_redactor,
+        let raw_truncated = truncated
+            || source_len
+                .map(|length| length > raw_limit)
+                .unwrap_or_else(|| raw.len() >= raw_limit && !preview.is_empty());
+        Ok((
+            Self::render_error_body_preview(
+                &preview,
+                source_len,
+                truncated,
+                content_type.as_ref(),
+                &self.options.log_redactor,
+            ),
+            Bytes::from(raw),
+            raw_truncated,
         ))
     }
 
@@ -889,15 +919,6 @@ impl HttpResponse {
         .with_url(&self.runtime.request_url)
         .with_status(self.meta.status())
         .with_log_redactor(self.log_redactor().clone())
-    }
-
-    /// Returns whether response content-type is SSE (`text/event-stream`).
-    fn is_sse_response(&self) -> bool {
-        self.meta
-            .headers()
-            .get(CONTENT_TYPE)
-            .and_then(|value| value.to_str().ok())
-            .is_some_and(content_type::is_sse)
     }
 
     /// Renders captured status-error bytes through the response redactor.
