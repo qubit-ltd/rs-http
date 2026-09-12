@@ -36,6 +36,7 @@ use super::http_timeout_options::HttpTimeoutOptions;
 use super::internal::HttpClientLogRedactionConfigInput;
 use super::proxy_options::ProxyOptions;
 use crate::HttpResult;
+use crate::constants::DEFAULT_ERROR_RESPONSE_BODY_LIMIT_BYTES;
 use crate::constants::DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES;
 use crate::constants::DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES;
 use crate::constants::DEFAULT_SSE_MAX_FRAME_BYTES;
@@ -45,6 +46,7 @@ use crate::json_limits::default_json_value_limits;
 use crate::json_limits::json_decode_limits;
 use crate::request::parse_header;
 use crate::sse::DoneMarkerPolicy;
+use crate::sse::SseCompletionPolicy;
 use crate::sse::SseJsonMode;
 
 /// Aggregated settings for [`crate::HttpClient`] and
@@ -66,6 +68,8 @@ pub struct HttpClientOptions {
     /// Maximum bytes captured into `HttpError.response_body_preview` for
     /// non-success responses.
     pub error_response_preview_limit: usize,
+    /// Maximum raw bytes retained for structured non-success responses.
+    pub error_response_body_limit: usize,
     /// Maximum bytes accumulated by [`crate::HttpResponse::bytes`] and its
     /// text/JSON helpers.
     pub response_body_size_limit: usize,
@@ -96,6 +100,8 @@ pub struct HttpClientOptions {
     pub sse_json_mode: SseJsonMode,
     /// Default done-marker policy used by [`crate::HttpResponse::sse_chunks`].
     pub sse_done_marker_policy: DoneMarkerPolicy,
+    /// Default completion policy used by [`crate::HttpResponse::sse_chunks`].
+    pub sse_completion_policy: SseCompletionPolicy,
     /// Default maximum bytes for one SSE line.
     pub sse_max_line_bytes: usize,
     /// Default maximum bytes for one SSE frame.
@@ -118,6 +124,7 @@ impl Default for HttpClientOptions {
             proxy: ProxyOptions::default(),
             logging: HttpLoggingOptions::default(),
             error_response_preview_limit: DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES,
+            error_response_body_limit: DEFAULT_ERROR_RESPONSE_BODY_LIMIT_BYTES,
             response_body_size_limit: DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES,
             json_value_limits: default_json_value_limits(),
             json_encode_limits: default_json_encode_limits(),
@@ -131,6 +138,7 @@ impl Default for HttpClientOptions {
             ipv4_only: false,
             sse_json_mode: SseJsonMode::Lenient,
             sse_done_marker_policy: DoneMarkerPolicy::default(),
+            sse_completion_policy: SseCompletionPolicy::default(),
             sse_max_line_bytes: DEFAULT_SSE_MAX_LINE_BYTES,
             sse_max_frame_bytes: DEFAULT_SSE_MAX_FRAME_BYTES,
         }
@@ -154,6 +162,7 @@ impl fmt::Debug for HttpClientOptions {
             .field("proxy", &self.proxy)
             .field("logging", &self.logging)
             .field("error_response_preview_limit", &self.error_response_preview_limit)
+            .field("error_response_body_limit", &self.error_response_body_limit)
             .field("response_body_size_limit", &self.response_body_size_limit)
             .field("json_value_limits", &self.json_value_limits)
             .field("json_encode_limits", &self.json_encode_limits)
@@ -167,6 +176,7 @@ impl fmt::Debug for HttpClientOptions {
             .field("ipv4_only", &self.ipv4_only)
             .field("sse_json_mode", &self.sse_json_mode)
             .field("sse_done_marker_policy", &self.sse_done_marker_policy)
+            .field("sse_completion_policy", &self.sse_completion_policy)
             .field("sse_max_line_bytes", &self.sse_max_line_bytes)
             .field("sse_max_frame_bytes", &self.sse_max_frame_bytes)
             .finish()
@@ -179,6 +189,7 @@ struct HttpClientRootConfigInput {
     base_url: Option<String>,
     ipv4_only: Option<bool>,
     error_response_preview_limit: Option<usize>,
+    error_response_body_limit: Option<usize>,
     response_body_size_limit: Option<usize>,
     user_agent: Option<String>,
     max_redirects: Option<usize>,
@@ -191,6 +202,7 @@ struct HttpClientRootConfigInput {
 struct HttpClientSseConfigInput {
     json_mode: Option<String>,
     done_marker: Option<String>,
+    completion: Option<String>,
     max_line_bytes: Option<usize>,
     max_frame_bytes: Option<usize>,
 }
@@ -289,6 +301,12 @@ impl HttpClientOptions {
                         return Err(Self::resolve_config_error(config, error));
                     }
                 };
+        }
+        if let Some(limit) = root.error_response_body_limit {
+            opts.error_response_body_limit = match Self::validate_positive_limit("error_response_body_limit", limit) {
+                Ok(limit) => limit,
+                Err(error) => return Err(Self::resolve_config_error(config, error)),
+            };
         }
         if let Some(limit) = root.response_body_size_limit {
             opts.response_body_size_limit = match Self::validate_positive_limit("response_body_size_limit", limit) {
@@ -416,6 +434,21 @@ impl HttpClientOptions {
                     Ok(marker) => marker,
                     Err(error) => {
                         return Err(Self::resolve_config_error(&sse_config, error));
+                    }
+                };
+            }
+            if let Some(completion) = sse.completion.as_deref() {
+                opts.sse_completion_policy = match completion.trim().to_ascii_lowercase().as_str() {
+                    "allow_eof" | "allow-eof" => SseCompletionPolicy::AllowEof,
+                    "require_done_marker" | "require-done-marker" => SseCompletionPolicy::RequireDoneMarker,
+                    _ => {
+                        return Err(Self::resolve_config_error(
+                            &sse_config,
+                            HttpConfigError::invalid_value(
+                                "completion",
+                                format!("Unsupported SSE completion policy: {completion}"),
+                            ),
+                        ));
                     }
                 };
             }
@@ -671,6 +704,7 @@ impl HttpClientOptions {
         self.logging.validate_arguments()?;
         self.retry.validate_arguments().with_path_prefix("retry")?;
         Self::validate_positive_limit("error_response_preview_limit", self.error_response_preview_limit)?;
+        Self::validate_positive_limit("error_response_body_limit", self.error_response_body_limit)?;
         Self::validate_positive_limit("response_body_size_limit", self.response_body_size_limit)?;
         if let Some(user_agent) = self.user_agent.as_deref() {
             require_that(
@@ -706,6 +740,7 @@ impl HttpClientOptions {
                 "base_url",
                 "ipv4_only",
                 "error_response_preview_limit",
+                "error_response_body_limit",
                 "response_body_size_limit",
                 "user_agent",
                 "max_redirects",
@@ -729,6 +764,7 @@ impl HttpClientOptions {
             base_url: config.get_optional_interpolated::<String>("base_url")?,
             ipv4_only: config.get_optional("ipv4_only")?,
             error_response_preview_limit: get_optional_usize(config, "error_response_preview_limit")?,
+            error_response_body_limit: get_optional_usize(config, "error_response_body_limit")?,
             response_body_size_limit: get_optional_usize(config, "response_body_size_limit")?,
             user_agent: config.get_optional_interpolated::<String>("user_agent")?,
             max_redirects: get_optional_usize(config, "max_redirects")?,
@@ -744,12 +780,19 @@ impl HttpClientOptions {
     {
         super::from_config_helpers::ensure_known_config_keys(
             config,
-            &["json_mode", "done_marker", "max_line_bytes", "max_frame_bytes"],
+            &[
+                "json_mode",
+                "done_marker",
+                "completion",
+                "max_line_bytes",
+                "max_frame_bytes",
+            ],
             &[],
         )?;
         Ok(HttpClientSseConfigInput {
             json_mode: config.get_optional_interpolated::<String>("json_mode")?,
             done_marker: config.get_optional_interpolated::<String>("done_marker")?,
+            completion: config.get_optional_interpolated::<String>("completion")?,
             max_line_bytes: get_optional_usize(config, "max_line_bytes")?,
             max_frame_bytes: get_optional_usize(config, "max_frame_bytes")?,
         })

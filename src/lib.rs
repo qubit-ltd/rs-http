@@ -41,6 +41,7 @@ pub use error::HttpErrorKind;
 pub use error::HttpResult;
 pub use error::HttpRetryDiagnostics;
 pub use error::HttpRetryTermination;
+pub use error::HttpStatusResponse;
 pub use error::RetryHint;
 pub use options::HttpClientOptions;
 pub use options::HttpConfigError;

@@ -1,0 +1,1 @@
+multiple-public-types | src/client/http_client_builder.rs | RedirectOriginViolation is kept beside the builder because it is an internal redirect-policy error.

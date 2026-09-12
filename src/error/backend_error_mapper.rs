@@ -7,11 +7,14 @@
 // =============================================================================
 //! Reqwest/HTTP error mapping helpers used by `HttpClient` internals.
 
+use std::error::Error;
+
 use url::Url;
 
 use super::ReqwestErrorPhase;
 use crate::HttpError;
 use crate::HttpErrorKind;
+use crate::client::RedirectOriginViolation;
 
 /// Maps a [`reqwest::Error`] into [`HttpError`] with phase-aware timeout
 /// classification and optional context.
@@ -35,12 +38,27 @@ pub(crate) fn map_reqwest_error(
 ) -> HttpError {
     let is_timeout = error.is_timeout();
     let error = error.without_url();
-    let kind = classify_reqwest_error_kind(is_timeout, phase, default_kind);
+    let kind = if contains_redirect_origin_violation(&error) {
+        HttpErrorKind::OriginPolicy
+    } else {
+        classify_reqwest_error_kind(is_timeout, phase, default_kind)
+    };
 
     HttpError::new(kind, "HTTP transport request failed")
         .with_method(&method)
         .with_url(&url)
         .with_source(error)
+}
+
+fn contains_redirect_origin_violation(error: &reqwest::Error) -> bool {
+    let mut source = error.source();
+    while let Some(candidate) = source {
+        if candidate.downcast_ref::<RedirectOriginViolation>().is_some() {
+            return true;
+        }
+        source = candidate.source();
+    }
+    false
 }
 
 /// Classifies reqwest errors from extracted metadata.
