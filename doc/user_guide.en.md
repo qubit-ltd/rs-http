@@ -1,6 +1,8 @@
 # qubit-http User Guide
 
-This guide is based on the current source code and tests. It applies to crate `qubit-http` 0.13, imported from Rust code as `qubit_http`.
+[中文](user_guide.zh_CN.md) | [README](../README.md) | [API Reference](https://docs.rs/qubit-http)
+
+This guide is based on the current source code and tests. It applies to crate `qubit-http` 0.14, imported from Rust code as `qubit_http`.
 
 `qubit-http` is an asynchronous HTTP client infrastructure crate. It wraps `reqwest` and provides unified client options, request building, response reading, error classification, TRACE logging with URL/header/body redaction, retries, proxies, IPv4-only resolution, request/response interceptors, and Server-Sent Events (SSE) decoding and reconnection.
 
@@ -13,11 +15,15 @@ This guide is based on the current source code and tests. It applies to crate `q
 | Failure diagnosis | “Error Model”, “Automatic Retry”, “Logging Redaction” |
 | Streaming or SSE | “Reading Responses”, “SSE Decoding” |
 
+## Conceptual Model
+
+An `HttpClient` owns shared execution policy. An `HttpRequest` combines a method, URL, headers, body, and request-level overrides. `execute` applies the client policy and returns an `HttpResponse` only for a 2xx status; the response metadata can be inspected before choosing one body-consumption path. Retryable failures before a response is returned stay inside the retry boundary, while errors encountered later while reading a stream belong to the caller.
+
 ## Installation And Imports
 
 ```toml
 [dependencies]
-qubit-http = "0.11"
+qubit-http = "0.14"
 qubit-redact = "0.8"
 http = "1.4"
 qubit-config = { path = "../rs-config", version = "0.14", default-features = false }
@@ -37,29 +43,22 @@ use qubit_http::{HttpClientBuilder, HttpClientOptions};
 ```rust
 use http::Method;
 use qubit_http::{HttpClientBuilder, HttpClientOptions};
-use serde::Deserialize;
-
-#[derive(Debug, Deserialize)]
-struct User {
-    id: u64,
-    name: String,
-}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut options = HttpClientOptions::new();
-    options.set_base_url("https://api.example.com")?;
+    options.set_base_url("https://httpbin.org")?;
     options.add_header("x-app", "demo")?;
 
     let client = HttpClientBuilder::new().create(options)?;
     let request = client
-        .request(Method::GET, "/users/42")
-        .query_param("expand", "profile")
+        .request(Method::GET, "/anything")
+        .query_param("from", "user-guide")
         .build();
 
     let mut response = client.execute(request).await?;
-    let user: User = response.json().await?;
-    println!("{user:?}");
+    println!("status = {}", response.status());
+    println!("body = {}", response.text().await?);
     Ok(())
 }
 ```

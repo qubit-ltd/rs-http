@@ -7,11 +7,11 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![中文文档](https://img.shields.io/badge/文档-中文版-blue.svg)](README.zh_CN.md)
 
-Documentation: [User Guide](doc/user_guide.en.md) | [API Reference](https://docs.rs/qubit-http)
-
 `qubit-http` is a production-oriented Rust HTTP infrastructure crate for building API clients with consistent behavior across services.
 
 It builds on `reqwest` and provides the common pieces most API clients need: request construction, timeouts, retries, cancellation, streaming responses, SSE, logging, and unified errors.
+
+Documentation: [English User Guide](doc/user_guide.en.md) | [中文用户指南](doc/user_guide.zh_CN.md) | [API Reference](https://docs.rs/qubit-http)
 
 ## Why Use It
 
@@ -109,11 +109,11 @@ let client = HttpClientBuilder::new().create(options)?;
 ```
 
 `logging.body_size_limit` is the presentation limit. The policy's
-Structured body parsing remains bounded by the configured JSON and structure limits. Truncated
+structured body parsing remains bounded by the configured JSON and structure limits. Truncated
 bodies use one generic `<truncated>` marker and retain exact source metadata
 when the caller knows it. Configuration uses only the `log_redaction` section;
-there is no compatibility path for the old key. Use
-Call `http.disable_all_floors()` inside the grouped `http(|http| { ... })` view
+there is no compatibility path for the old key. Call
+`http.disable_all_floors()` inside the grouped `http(|http| { ... })` view
 only when the application explicitly accepts removing HTTP context floors.
 
 `HttpError` applies the same log-redaction policy to both `Debug` and
@@ -151,7 +151,7 @@ only when the application explicitly accepts removing HTTP context floors.
 
 ## Retry timing boundaries
 
-HTTP retry budgets use qubit-retry 0.22. `max_duration` is a continuation budget,
+HTTP retry budgets use qubit-retry 0.23. `max_duration` is a continuation budget,
 not a hard request timeout: it prevents further attempts while preserving a
 completed successful request. Request timeouts remain configured separately.
 SSE reconnects preserve structured budget errors as HTTP error sources.
@@ -161,7 +161,7 @@ Ordinary HTTP retries do not install a retry-layer `attempt_timeout` or
 `flow_timeout`; configure the request/connect/read/write timeouts separately.
 See the [retry guide](doc/user_guide.en.md#automatic-retry) for error mapping and
 request replay requirements. If your application also uses `qubit-retry`
-directly, migrate its dependency to `0.22` so shared retry types agree.
+directly, migrate its dependency to `0.23` so shared retry types agree.
 
 For SSE server-directed reconnects, `server_retry_max_delay` caps the final
 selected delay after jitter and hint merging, with a minimum of one millisecond.
@@ -169,7 +169,7 @@ It does not cap ordinary HTTP `Retry-After` handling. Backoff policy
 `maximum_delay()` is a base-strategy bound; `.limit_delay(duration)` configures an
 explicit final policy cap. SSE retains its one-millisecond minimum wait.
 
-### Retry source contract in 0.13
+### Retry source contract in 0.14
 
 Every retry terminal, including Abort and Exhausted, now stores a complete
 `RetryError<HttpError>` as its immediate source. Use `last_error()` or follow
