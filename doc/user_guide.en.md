@@ -26,7 +26,7 @@ An `HttpClient` owns shared execution policy. An `HttpRequest` combines a method
 qubit-http = "0.14"
 qubit-redact = "0.8"
 http = "1.4"
-qubit-config = { path = "../rs-config", version = "0.14", default-features = false }
+qubit-config = { version = "0.14", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
@@ -77,7 +77,7 @@ Default behavior:
 
 | Item | Default |
 | --- | --- |
-| `base_url` | None; use absolute URLs or set a request/client base URL |
+| `base_url` | None; use an explicit absolute URL, or set a request/client base URL for relative paths |
 | Connect timeout | 10 seconds |
 | Read timeout | 120 seconds |
 | Write timeout | 120 seconds |
@@ -212,7 +212,7 @@ config.set(
 
 ## Building Requests
 
-Use `client.request(method, path)` to create an `HttpRequestBuilder`. `path` can be an absolute URL or a relative path. Absolute URLs bypass `base_url`; relative paths must be joinable with `base_url`.
+Use `client.request(method, path)` to create an `HttpRequestBuilder`. `path` can be an absolute URL or a relative path. With the default `SameOrigin` policy, an explicit absolute URL is allowed when no `base_url` is configured and becomes the origin for that request; when `base_url` is configured, the URL must share its scheme, host, and effective port. Relative paths require a `base_url`. `AnyOrigin` must be selected explicitly to allow cross-origin targets, while same-origin redirects remain restricted to the initial origin.
 
 ```rust
 let request = client
@@ -495,7 +495,7 @@ async fn read_sse_examples(client: &qubit_http::HttpClient) -> qubit_http::HttpR
 }
 ```
 
-There is only one consumption path for the underlying `reqwest` body on a given `HttpResponse`. After `bytes`, `text`, or `json`, the full payload is buffered and `stream` becomes a one-chunk stream over that cache. If you call `stream` first while the body is not cached, the backend handle moves into that stream—you must finish reading there; a later `bytes` / `text` / `json` will not re-read from the network (you get an empty body), so do not mix “stream first, then full-body read” on the same response. `sse_messages` / `sse_chunks` also use that path (they build on `stream`) and they **move** the `HttpResponse`, so you cannot call other body readers on the same value afterward.
+There is only one consumption path for the underlying `reqwest` body on a given `HttpResponse`. After `bytes`, `text`, or `json`, the full payload is buffered and `stream` becomes a one-chunk stream over that cache. If you call `stream` first while the body is not cached, the backend handle moves into that stream—you must finish reading there; later `bytes` / `text` / `json` return `ResponseBodyAlreadyConsumed`, so do not mix “stream first, then full-body read” on the same response. `sse_messages` / `sse_chunks` also use that path (they build on `stream`) and they **move** the `HttpResponse`, so you cannot call other body readers on the same value afterward.
 
 | Safe | Avoid |
 | --- | --- |
@@ -531,6 +531,7 @@ Error categories:
 | HTTP status | `Status` | A non-2xx status code was returned |
 | Decoding / SSE | `Decode`, `SseProtocol`, `SseDecode` | Body decoding failed, SSE framing was invalid, or an SSE JSON chunk could not be decoded |
 | Retry layer | `RetryBudgetExceeded` and `HttpRetryDiagnostics` | Retry budget or terminal-policy diagnostics |
+| Response body | `ResponseBodyTooLarge`, `ResponseBodyAlreadyConsumed` | Whole-body aggregation exceeded its configured limit, or a body stream was already taken |
 | Cancellation / fallback | `Cancelled`, `Other` | The request was cancelled, or the failure does not fit another category |
 
 `RetryBudgetExceeded` is used only when no application error was captured. Otherwise the original HTTP error kind and status are preserved and `HttpRetryDiagnostics` records the terminal condition; the complete `RetryError<HttpError>` remains available as `source`.
@@ -584,7 +585,7 @@ continuation budget instead of starting another request. Custom hint policies or
 final delay caps can change the selected delay. SSE reconnect continues to
 disable inner HTTP retries.
 
-This release uses `qubit-retry` 0.23. Update any direct dependency and its lockfile
+This release uses `qubit-retry` 0.24. Update any direct dependency and its lockfile
 entry when sharing `RetryPolicy` or `BackoffPolicy` with HTTP/SSE. When consuming
 retry results directly, `RetryError::map_error` provides pure payload conversion
 while preserving retry context and completion diagnostics. HTTP's domain error conversion

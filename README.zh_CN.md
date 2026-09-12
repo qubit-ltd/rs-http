@@ -70,7 +70,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 所有 TRACE 与 `Debug` 路径共享一份不可变的根 `RedactionPolicy` 快照。
 其 `http()` 视图只保存 HTTP 上下文差异；基础字段规则、掩码和静态限制与其他 adapter
 共享。规范 `qubit_redact::Redactor` 统一处理 URL 用户信息、fragment、query 字段、
-原生敏感 header、结构化 body 和硬预算。非根 URL path、不透明文本和无键 JSON 值默认隐藏。
+原生敏感 header、结构化 body 和硬预算。标准策略会保留 URL path 便于诊断；如果 path 可能含有不透明标识符或凭据，请使用 `RedactionPolicy::strict()` 或 `UrlPathPolicy::Redact`。敏感 query 值、header 和结构化 body 字段仍按配置规则保护。
 
 `RedactionPolicy::builder()` 使用空应用规则和标准 floor。
 扩展保守默认快照时使用 `RedactionPolicy::default().to_builder()`；
@@ -140,13 +140,13 @@ let client = HttpClientBuilder::new().create(options)?;
 
 ## 重试时间边界
 
-HTTP 重试预算使用 qubit-retry 0.23。`max_duration` 控制是否继续尝试，
+HTTP 重试预算使用 qubit-retry 0.24。`max_duration` 控制是否继续尝试，
 不会主动中断当前请求，也不会覆盖已经成功的结果；请求超时需要单独配置。
 SSE 重连会把结构化预算错误保留在 HTTP 错误的 source 中。
 预算计入操作执行、退避、`Retry-After` 等待和重试控制回调。已准入请求可以在预算耗尽后返回成功。
 普通 HTTP 重试没有设置重试层的 `attempt_timeout` 或 `flow_timeout`，需要分别配置
 request/connect/read/write 超时。错误转换与请求重放约束见[重试指南](doc/user_guide.zh_CN.md#自动重试)。
-如果应用也直接使用 `qubit-retry`，应同步使用 `0.23`，避免共享重试类型的版本不一致。
+如果应用也直接使用 `qubit-retry`，应同步使用 `0.24`，避免共享重试类型的版本不一致。
 
 SSE 使用服务端提示重连时，`server_retry_max_delay` 限制抖动和提示合并后的
 最终延迟，最小有效上限为 1 毫秒。该限制不影响普通 HTTP 的 `Retry-After`。

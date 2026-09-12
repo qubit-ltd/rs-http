@@ -26,7 +26,7 @@
 qubit-http = "0.14"
 qubit-redact = "0.8"
 http = "1.4"
-qubit-config = { path = "../rs-config", version = "0.14", default-features = false }
+qubit-config = { version = "0.14", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
@@ -77,7 +77,7 @@ let client = qubit_http::HttpClientBuilder::new().create_default()?;
 
 | 项目 | 默认值 |
 | --- | --- |
-| `base_url` | 无，必须使用绝对 URL，或在请求级设置 base URL |
+| `base_url` | 无；可以直接使用显式绝对 URL，也可以设置 base URL 后使用相对路径 |
 | 连接超时 | 10 秒 |
 | 读超时 | 120 秒 |
 | 写超时 | 120 秒 |
@@ -208,7 +208,7 @@ config.set(
 
 ## 构建请求
 
-通过 `client.request(method, path)` 创建 `HttpRequestBuilder`。`path` 可以是绝对 URL，也可以是相对路径；绝对 URL 会绕过 `base_url`，相对路径必须能和 `base_url` join。
+通过 `client.request(method, path)` 创建 `HttpRequestBuilder`。`path` 可以是绝对 URL，也可以是相对路径。默认 `SameOrigin` 策略下，未配置 `base_url` 时允许显式绝对 URL，并把它作为本次请求的初始源；配置了 `base_url` 时，目标必须与它的 scheme、host 和有效端口一致。相对路径必须有 `base_url`。若要访问跨源目标，必须显式选择 `AnyOrigin`；同源策略下的重定向仍不能跨越初始源。
 
 ```rust
 let request = client
@@ -491,7 +491,7 @@ async fn read_sse_examples(client: &qubit_http::HttpClient) -> qubit_http::HttpR
 }
 ```
 
-注意：底层 `reqwest` 响应体在同一 `HttpResponse` 上只能有一条消费路径。调用 `bytes`、`text` 或 `json` 会把完整 body 读入并缓存；之后 `stream` 会返回由缓存构成的单块流。若在未缓存时先调用 `stream`，底层句柄已交给返回的流，须通过该流读完 body；此时再调用 `bytes` / `text` / `json` 不会再从网络补读（会得到空 body），因此不要混用「先流式、再整包读」。`sse_messages` / `sse_chunks` 也会走这条路径（内部基于 `stream`），且调用后 `HttpResponse` 已被消费，不能再对同一对象调用其它读 body 方法。
+注意：底层 `reqwest` 响应体在同一 `HttpResponse` 上只能有一条消费路径。调用 `bytes`、`text` 或 `json` 会把完整 body 读入并缓存；之后 `stream` 会返回由缓存构成的单块流。若在未缓存时先调用 `stream`，底层句柄已交给返回的流，须通过该流读完 body；此时再调用 `bytes` / `text` / `json` 会返回 `ResponseBodyAlreadyConsumed`，因此不要混用「先流式、再整包读」。`sse_messages` / `sse_chunks` 也会走这条路径（内部基于 `stream`），且调用后 `HttpResponse` 已被消费，不能再对同一对象调用其它读 body 方法。
 
 | 可以 | 避免 |
 | --- | --- |
@@ -527,6 +527,7 @@ async fn read_sse_examples(client: &qubit_http::HttpClient) -> qubit_http::HttpR
 | HTTP 状态 | `Status` | 收到非 2xx 状态码 |
 | 解码 / SSE | `Decode`, `SseProtocol`, `SseDecode` | 响应体解码失败、SSE 协议错误或 SSE JSON chunk 解码失败 |
 | 重试层 | `RetryBudgetExceeded` 与 `HttpRetryDiagnostics` | 重试预算或终止策略诊断 |
+| 响应体 | `ResponseBodyTooLarge`, `ResponseBodyAlreadyConsumed` | 整包聚合超出配置上限，或响应体流已经被取走 |
 | 取消 / 兜底 | `Cancelled`, `Other` | 请求取消，或无法归入其它分类的错误 |
 
 只有在尚未捕获业务错误时，重试预算错误才使用 `RetryBudgetExceeded`；如果已有业务错误，则保留其 kind/status，并通过 `HttpRetryDiagnostics` 记录终止原因，完整 `RetryError<HttpError>` 仍作为 `source` 保留。
@@ -574,7 +575,7 @@ let request = client
 提示过长时可能直接耗尽续试预算，而不再发送请求。自定义提示策略或最终延迟上限可以改变选中的等待时间。
 SSE 重连仍禁用内层 HTTP 重试。
 
-当前版本使用 `qubit-retry` 0.23。应用若与 HTTP/SSE 共享 `RetryPolicy` 或 `BackoffPolicy`，
+当前版本使用 `qubit-retry` 0.24。应用若与 HTTP/SSE 共享 `RetryPolicy` 或 `BackoffPolicy`，
 须同步升级直接依赖及锁文件。直接消费 retry 结果时，可通过 `RetryError::map_error` 做纯业务载荷转换，
 保留重试上下文和完成诊断；最终 `HttpError` 仍遵循 HTTP 自身的领域转换规则，不改为通用重试错误 API。
 直接消费 retry 结果时，应读取 `completion_callback_failures()` 或调用
