@@ -39,10 +39,18 @@ impl HttpCancellationToken {
         self.inner.cancelled()
     }
 
+    /// Returns the underlying retry cancellation token for crate-internal use.
     pub(crate) fn inner(&self) -> &RetryCancellationToken {
         &self.inner
     }
 
+    /// Returns whether two HTTP tokens share the same cancellation source.
+    ///
+    /// # Parameters
+    /// - `other`: Token to compare with this token.
+    ///
+    /// # Returns
+    /// `true` when both tokens cancel the same underlying source.
     pub(crate) fn shares_source_with(&self, other: &Self) -> bool {
         self.inner.shares_source_with(&other.inner)
     }

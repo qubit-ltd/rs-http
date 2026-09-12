@@ -157,6 +157,15 @@ struct HttpResponseRuntime {
 }
 
 impl HttpResponseRuntime {
+    /// Creates runtime state for one response body.
+    ///
+    /// # Parameters
+    /// - `read_timeout`: Maximum wait for each body read.
+    /// - `cancellation_token`: Optional token inherited from the request.
+    /// - `request_url`: URL used in read and cancellation diagnostics.
+    ///
+    /// # Returns
+    /// Runtime state with no recorded body-read failure.
     fn new(read_timeout: Duration, cancellation_token: Option<HttpCancellationToken>, request_url: Url) -> Self {
         Self {
             read_timeout,

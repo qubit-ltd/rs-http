@@ -2,6 +2,8 @@
 //    Copyright (c) 2025 - 2026 Haixing Hu.
 //
 //    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
 use std::time::Duration;
@@ -17,6 +19,15 @@ pub struct HttpRetryDiagnostics {
 }
 
 impl HttpRetryDiagnostics {
+    /// Creates retry diagnostics from the completed flow counters.
+    ///
+    /// # Parameters
+    /// - `attempts`: Number of attempts made by the flow.
+    /// - `elapsed`: Total elapsed duration of the flow.
+    /// - `termination`: Terminal condition recorded for the flow.
+    ///
+    /// # Returns
+    /// A diagnostics snapshot containing the supplied values.
     pub(crate) const fn new(attempts: u32, elapsed: Duration, termination: HttpRetryTermination) -> Self {
         Self {
             attempts,

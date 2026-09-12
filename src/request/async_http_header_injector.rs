@@ -15,7 +15,9 @@ use http::HeaderMap;
 
 use crate::HttpResult;
 
+/// Future returned by an asynchronous header mutation callback.
 type AsyncHttpHeaderInjectorFuture<'a> = Pin<Box<dyn Future<Output = HttpResult<()>> + Send + 'a>>;
+/// Callback type used to mutate headers while borrowing them for the future.
 type AsyncHttpHeaderInjectorFn =
     dyn for<'a> Fn(&'a mut HeaderMap) -> AsyncHttpHeaderInjectorFuture<'a> + Send + Sync + 'static;
 
