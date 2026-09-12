@@ -33,6 +33,7 @@ use qubit_http::HttpOriginPolicy;
 use qubit_http::HttpResponseInterceptor;
 use qubit_http::HttpResponseInterceptorContext;
 use qubit_http::HttpRetryMethodPolicy;
+use qubit_http::RetryHint;
 use qubit_redact::RedactionPolicy;
 use qubit_redact::Sensitivity;
 use qubit_redact::formats::http::TextBodyPolicy;
@@ -220,7 +221,7 @@ async fn test_execute_bytes_rejects_response_body_larger_than_configured_limit()
         .await
         .expect_err("body exceeding configured limit must fail");
 
-    assert_eq!(error.kind, HttpErrorKind::Other);
+    assert_eq!(error.kind, HttpErrorKind::ResponseBodyTooLarge);
     assert_eq!(error.status, Some(StatusCode::OK));
     assert_eq!(error.method, Some(Method::GET));
     assert_eq!(error.url, Some(expected_url));
@@ -263,7 +264,7 @@ async fn test_execute_bytes_chunked_response_reports_total_observed_size_on_limi
         .await
         .expect_err("chunked body exceeding configured limit must fail");
 
-    assert_eq!(error.kind, HttpErrorKind::Other);
+    assert_eq!(error.kind, HttpErrorKind::ResponseBodyTooLarge);
     assert!(
         error.message.contains("observed 4 bytes"),
         "expected total observed size, got: {}",
@@ -301,6 +302,50 @@ async fn test_execute_bytes_accepts_response_body_at_configured_limit() {
     assert_eq!(body, Bytes::from_static(b"123"));
     let captured = server.finish().await;
     assert_eq!(captured.target, "/body-at-limit");
+}
+
+#[tokio_test]
+async fn test_execute_text_reports_response_body_too_large() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 200,
+        headers: vec![],
+        body: b"1234".to_vec(),
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.response_body_size_limit = 3;
+    let client = HttpClientBuilder::new().create(options).unwrap();
+    let mut response = client
+        .execute(client.request(Method::GET, "/text-limit").build())
+        .await
+        .unwrap();
+    let error = response.text().await.unwrap_err();
+    assert_eq!(error.kind, HttpErrorKind::ResponseBodyTooLarge);
+    assert_eq!(error.retry_hint(), RetryHint::NonRetryable);
+    assert_eq!(server.finish().await.target, "/text-limit");
+}
+
+#[tokio_test]
+async fn test_execute_json_reports_response_body_too_large() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 200,
+        headers: vec![("content-type".to_string(), "application/json".to_string())],
+        body: br#"{"value":1234}"#.to_vec(),
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.response_body_size_limit = 3;
+    let client = HttpClientBuilder::new().create(options).unwrap();
+    let mut response = client
+        .execute(client.request(Method::GET, "/json-limit").build())
+        .await
+        .unwrap();
+    let error = response.json::<serde_json::Value>().await.unwrap_err();
+    assert_eq!(error.kind, HttpErrorKind::ResponseBodyTooLarge);
+    assert_eq!(error.retry_hint(), RetryHint::NonRetryable);
+    assert_eq!(server.finish().await.target, "/json-limit");
 }
 
 #[tokio_test]

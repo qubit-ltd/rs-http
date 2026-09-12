@@ -62,7 +62,7 @@ async fn test_http_stream_response_into_stream_consumes_body() {
 }
 
 #[tokio_test]
-async fn test_http_stream_response_backend_taken_then_stream_and_bytes_are_empty() {
+async fn test_http_stream_response_backend_taken_then_repeated_reads_fail() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
         headers: vec![("Content-Type".to_string(), "text/plain".to_string())],
