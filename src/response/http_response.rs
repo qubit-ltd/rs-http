@@ -412,7 +412,7 @@ impl HttpResponse {
     ///
     /// # Errors
     ///
-    /// Returns [`HttpErrorKind::Other`](crate::HttpErrorKind::Other) when the
+    /// Returns [`HttpErrorKind::ResponseBodyTooLarge`](crate::HttpErrorKind::ResponseBodyTooLarge) when the
     /// response body exceeds the configured aggregation limit.
     pub async fn bytes(&mut self) -> HttpResult<Bytes> {
         let body_limit = self.options.response_body_size_limit;
@@ -912,9 +912,10 @@ impl HttpResponse {
     /// Returns a response-body aggregation limit error with request context.
     fn response_body_size_limit_error(&self, observed_size: usize) -> HttpError {
         let limit = self.options.response_body_size_limit;
-        HttpError::other(format!(
-            "Response body exceeds configured limit of {limit} bytes (observed {observed_size} bytes)"
-        ))
+        HttpError::new(
+            HttpErrorKind::ResponseBodyTooLarge,
+            format!("Response body exceeds configured limit of {limit} bytes (observed {observed_size} bytes)"),
+        )
         .with_method(self.meta.method())
         .with_url(&self.runtime.request_url)
         .with_status(self.meta.status())
