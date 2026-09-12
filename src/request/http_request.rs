@@ -943,17 +943,13 @@ impl HttpRequest {
 
     fn validate_origin_policy(&self, url: &Url) -> Result<(), HttpError> {
         if matches!(self.context.origin_policy, HttpOriginPolicy::SameOrigin) {
-            let Some(base) = self.context.base_url.as_ref() else {
-                return Err(HttpError::new(
-                    HttpErrorKind::OriginPolicy,
-                    "Absolute request URL requires a trusted base URL",
-                ));
-            };
-            if !same_origin(base, url) {
-                return Err(HttpError::new(
-                    HttpErrorKind::OriginPolicy,
-                    "Request URL violates the same-origin policy",
-                ));
+            if let Some(base) = self.context.base_url.as_ref() {
+                if !same_origin(base, url) {
+                    return Err(HttpError::new(
+                        HttpErrorKind::OriginPolicy,
+                        "Request URL violates the same-origin policy",
+                    ));
+                }
             }
         }
         Ok(())
