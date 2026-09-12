@@ -18,13 +18,13 @@ fn test_retry_hint_retryable_for_timeout_and_transport_errors() {
     let connect_timeout = HttpError::connect_timeout("connect timeout");
     let request_timeout = HttpError::request_timeout("request timeout");
     let read_timeout = HttpError::read_timeout("read timeout");
-    let send_timeout = HttpError::send_timeout("write timeout");
+    let response_header_timeout = HttpError::response_header_timeout("write timeout");
     let transport = HttpError::transport("transport error");
 
     assert_eq!(connect_timeout.retry_hint(), RetryHint::Retryable);
     assert_eq!(request_timeout.retry_hint(), RetryHint::Retryable);
     assert_eq!(read_timeout.retry_hint(), RetryHint::Retryable);
-    assert_eq!(send_timeout.retry_hint(), RetryHint::Retryable);
+    assert_eq!(response_header_timeout.retry_hint(), RetryHint::Retryable);
     assert_eq!(transport.retry_hint(), RetryHint::Retryable);
 }
 

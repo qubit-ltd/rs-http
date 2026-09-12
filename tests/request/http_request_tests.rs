@@ -323,12 +323,12 @@ fn test_http_request_setters_update_headers_timeout_retry_and_cancellation() {
     assert_eq!(request.request_timeout(), None);
 
     request
-        .set_send_timeout(Duration::from_millis(250))
+        .set_response_header_timeout(Duration::from_millis(250))
         .expect("positive write timeout should be accepted");
     request
         .set_read_timeout(Duration::from_millis(750))
         .expect("positive read timeout should be accepted");
-    assert_eq!(request.send_timeout(), Duration::from_millis(250));
+    assert_eq!(request.response_header_timeout(), Duration::from_millis(250));
     assert_eq!(request.read_timeout(), Duration::from_millis(750));
 
     let token = HttpCancellationToken::new();
@@ -352,7 +352,7 @@ fn test_http_request_timeout_setters_reject_zero_and_keep_previous_values() {
         .set_request_timeout(Duration::from_secs(5))
         .expect("positive request timeout should be accepted");
     request
-        .set_send_timeout(Duration::from_millis(250))
+        .set_response_header_timeout(Duration::from_millis(250))
         .expect("positive write timeout should be accepted");
     request
         .set_read_timeout(Duration::from_millis(750))
@@ -365,12 +365,16 @@ fn test_http_request_timeout_setters_reject_zero_and_keep_previous_values() {
     assert!(request_timeout_error.message.contains("request_timeout"));
     assert_eq!(request.request_timeout(), Some(Duration::from_secs(5)));
 
-    let send_timeout_error = request
-        .set_send_timeout(Duration::ZERO)
+    let response_header_timeout_error = request
+        .set_response_header_timeout(Duration::ZERO)
         .expect_err("zero write timeout should be rejected");
-    assert_eq!(send_timeout_error.kind, HttpErrorKind::Other);
-    assert!(send_timeout_error.message.contains("send_timeout"));
-    assert_eq!(request.send_timeout(), Duration::from_millis(250));
+    assert_eq!(response_header_timeout_error.kind, HttpErrorKind::Other);
+    assert!(
+        response_header_timeout_error
+            .message
+            .contains("response_header_timeout")
+    );
+    assert_eq!(request.response_header_timeout(), Duration::from_millis(250));
 
     let read_timeout_error = request
         .set_read_timeout(Duration::ZERO)

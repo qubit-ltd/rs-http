@@ -41,7 +41,7 @@ async fn test_http_proxy_forwards_request_and_sends_proxy_auth() {
     options.proxy.port = Some(proxy.port());
     options.proxy.username = Some("user".to_string());
     options.proxy.password = Some("pass".to_string());
-    options.timeouts.send_timeout = Duration::from_secs(2);
+    options.timeouts.response_header_timeout = Duration::from_secs(2);
     options.timeouts.read_timeout = Duration::from_secs(2);
 
     let client = HttpClientBuilder::new().create(options).unwrap();
@@ -89,7 +89,7 @@ async fn test_proxy_disabled_does_not_use_environment_proxy() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(backend.base_url());
     options.proxy.enabled = false;
-    options.timeouts.send_timeout = Duration::from_secs(2);
+    options.timeouts.response_header_timeout = Duration::from_secs(2);
     options.timeouts.read_timeout = Duration::from_secs(2);
 
     let client = HttpClientBuilder::new().create(options).unwrap();
@@ -118,7 +118,7 @@ async fn test_https_via_http_proxy_uses_connect_tunnel() {
     options.proxy.port = Some(proxy.port());
     options.proxy.username = Some("user".to_string());
     options.proxy.password = Some("pass".to_string());
-    options.timeouts.send_timeout = Duration::from_secs(2);
+    options.timeouts.response_header_timeout = Duration::from_secs(2);
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.request_timeout = Some(Duration::from_secs(2));
 

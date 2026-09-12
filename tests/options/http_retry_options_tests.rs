@@ -172,7 +172,7 @@ fn test_http_retry_options_parses_all_supported_error_kinds() {
                 "proxy_config".to_string(),
                 "connect_timeout".to_string(),
                 "read_timeout".to_string(),
-                "send_timeout".to_string(),
+                "response_header_timeout".to_string(),
                 "request_timeout".to_string(),
                 "transport".to_string(),
                 "status".to_string(),
@@ -194,7 +194,7 @@ fn test_http_retry_options_parses_all_supported_error_kinds() {
     assert!(kinds.contains(&HttpErrorKind::ProxyConfig));
     assert!(kinds.contains(&HttpErrorKind::ConnectTimeout));
     assert!(kinds.contains(&HttpErrorKind::ReadTimeout));
-    assert!(kinds.contains(&HttpErrorKind::SendTimeout));
+    assert!(kinds.contains(&HttpErrorKind::ResponseHeaderTimeout));
     assert!(kinds.contains(&HttpErrorKind::RequestTimeout));
     assert!(kinds.contains(&HttpErrorKind::Transport));
     assert!(kinds.contains(&HttpErrorKind::Status));

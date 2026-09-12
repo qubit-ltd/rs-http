@@ -27,7 +27,7 @@ pub struct HttpTimeoutOptions {
     /// Read timeout.
     pub read_timeout: Duration,
     /// Write timeout.
-    pub send_timeout: Duration,
+    pub response_header_timeout: Duration,
     /// Optional global request timeout.
     pub request_timeout: Option<Duration>,
 }
@@ -45,7 +45,7 @@ impl Default for HttpTimeoutOptions {
         Self {
             connect_timeout: Duration::from_secs(DEFAULT_CONNECT_TIMEOUT_SECS),
             read_timeout: Duration::from_secs(DEFAULT_READ_TIMEOUT_SECS),
-            send_timeout: Duration::from_secs(DEFAULT_SEND_TIMEOUT_SECS),
+            response_header_timeout: Duration::from_secs(DEFAULT_SEND_TIMEOUT_SECS),
             request_timeout: None,
         }
     }
@@ -54,7 +54,7 @@ impl Default for HttpTimeoutOptions {
 struct TimeoutConfigInput {
     connect_timeout: Option<Duration>,
     read_timeout: Option<Duration>,
-    send_timeout: Option<Duration>,
+    response_header_timeout: Option<Duration>,
     request_timeout: Option<Duration>,
 }
 
@@ -64,13 +64,18 @@ where
 {
     super::from_config_helpers::ensure_known_config_keys(
         config,
-        &["connect_timeout", "read_timeout", "send_timeout", "request_timeout"],
+        &[
+            "connect_timeout",
+            "read_timeout",
+            "response_header_timeout",
+            "request_timeout",
+        ],
         &[],
     )?;
     Ok(TimeoutConfigInput {
         connect_timeout: config.get_optional("connect_timeout")?,
         read_timeout: config.get_optional("read_timeout")?,
-        send_timeout: config.get_optional("send_timeout")?,
+        response_header_timeout: config.get_optional("response_header_timeout")?,
         request_timeout: config.get_optional("request_timeout")?,
     })
 }
@@ -88,7 +93,7 @@ impl HttpTimeoutOptions {
     pub(super) fn validate_arguments(&self) -> ArgumentResult<()> {
         validate_positive_duration("connect_timeout", self.connect_timeout)?;
         validate_positive_duration("read_timeout", self.read_timeout)?;
-        validate_positive_duration("send_timeout", self.send_timeout)?;
+        validate_positive_duration("response_header_timeout", self.response_header_timeout)?;
         self.request_timeout
             .validate_some(|request_timeout| validate_positive_duration("request_timeout", request_timeout))?;
         Ok(())
@@ -103,7 +108,7 @@ impl HttpTimeoutOptions {
     /// Keys read (all optional; missing keys keep their defaults):
     /// - `connect_timeout`
     /// - `read_timeout`
-    /// - `send_timeout`
+    /// - `response_header_timeout`
     /// - `request_timeout`
     ///
     /// # Returns
@@ -122,8 +127,8 @@ impl HttpTimeoutOptions {
         if let Some(d) = raw.read_timeout {
             opts.read_timeout = d;
         }
-        if let Some(d) = raw.send_timeout {
-            opts.send_timeout = d;
+        if let Some(d) = raw.response_header_timeout {
+            opts.response_header_timeout = d;
         }
         opts.request_timeout = raw.request_timeout;
         opts.validate()

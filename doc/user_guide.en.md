@@ -166,7 +166,7 @@ Common configuration keys:
 | `base_url` | Base URL used to resolve relative request paths |
 | `timeouts.connect_timeout` | Connect timeout |
 | `timeouts.read_timeout` | Per-read wait timeout for body/stream reads |
-| `timeouts.send_timeout` | Pre-send preparation and send-phase timeout |
+| `timeouts.response_header_timeout` | Pre-send preparation and send-phase timeout |
 | `timeouts.request_timeout` | Optional whole-request timeout |
 | `proxy.enabled` | Enables outbound proxying |
 | `use_env_proxy` | Whether to inherit environment proxies when explicit proxying is disabled |
@@ -260,7 +260,7 @@ Per-request overrides:
 | Method | Purpose |
 | --- | --- |
 | `request_timeout` | Overrides whole-request timeout (reqwest per-request deadline) |
-| `send_timeout` | Overrides pre-send preparation and send-phase timeout |
+| `response_header_timeout` | Overrides pre-send preparation and send-phase timeout |
 | `read_timeout` | Overrides response body/stream read timeout |
 | `base_url` / `clear_base_url` | Overrides or removes base URL for this request |
 | `ipv4_only` | Overrides IPv4-only URL validation for this request |
@@ -527,7 +527,7 @@ Error categories:
 | Group | Error kinds | Typical meaning |
 | --- | --- | --- |
 | URL / configuration | `InvalidUrl`, `BuildClient`, `ProxyConfig` | URL resolution failed, client construction failed, or proxy options are invalid |
-| Timeout / network | `ConnectTimeout`, `ReadTimeout`, `SendTimeout`, `RequestTimeout`, `Transport` | Connect/read/write/whole-request timeout or lower-level transport failure |
+| Timeout / network | `ConnectTimeout`, `ReadTimeout`, `ResponseHeaderTimeout`, `RequestTimeout`, `Transport` | Connect/read/write/whole-request timeout or lower-level transport failure |
 | HTTP status | `Status` | A non-2xx status code was returned |
 | Decoding / SSE | `Decode`, `SseProtocol`, `SseDecode` | Body decoding failed, SSE framing was invalid, or an SSE JSON chunk could not be decoded |
 | Retry layer | `RetryBudgetExceeded` and `HttpRetryDiagnostics` | Retry budget or terminal-policy diagnostics |
@@ -900,7 +900,7 @@ The table below lists every configuration key supported by `HttpClientOptions::f
 | `json.max_output_bytes` | Maximum aggregate encoded JSON/NDJSON request-body bytes, including NDJSON line terminators; defaults to `8388608` |
 | `timeouts.connect_timeout` | Connect timeout |
 | `timeouts.read_timeout` | Per-read wait timeout for body/stream reads |
-| `timeouts.send_timeout` | Pre-send preparation and send-phase timeout |
+| `timeouts.response_header_timeout` | Pre-send preparation and send-phase timeout |
 | `timeouts.request_timeout` | Optional whole-request timeout |
 | `proxy.enabled` | Enables outbound proxying |
 | `proxy.proxy_type` | `http`, `https`, `socks5`, or `socks5h` |

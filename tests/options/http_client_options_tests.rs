@@ -85,7 +85,7 @@ fn test_http_client_options_defaults() {
         Duration::from_secs(DEFAULT_READ_TIMEOUT_SECS)
     );
     assert_eq!(
-        options.timeouts.send_timeout,
+        options.timeouts.response_header_timeout,
         Duration::from_secs(DEFAULT_SEND_TIMEOUT_SECS)
     );
     assert_eq!(options.timeouts.request_timeout, None);
@@ -1156,7 +1156,9 @@ fn test_http_client_options_from_root_config_all_sections() {
         .unwrap();
     config.set("timeouts.connect_timeout", Duration::from_secs(3)).unwrap();
     config.set("timeouts.read_timeout", Duration::from_secs(4)).unwrap();
-    config.set("timeouts.send_timeout", Duration::from_secs(5)).unwrap();
+    config
+        .set("timeouts.response_header_timeout", Duration::from_secs(5))
+        .unwrap();
     config.set("timeouts.request_timeout", Duration::from_secs(6)).unwrap();
     config.set("proxy.enabled", true).unwrap();
     config.set("proxy.host", "proxy.root.example".to_string()).unwrap();

@@ -120,43 +120,43 @@ fn test_request_builder_copies_base_url_and_ipv4_only_defaults() {
 }
 
 #[test]
-fn test_request_builder_copies_send_timeout_default_from_client_options() {
+fn test_request_builder_copies_response_header_timeout_default_from_client_options() {
     let mut options = HttpClientOptions::default();
-    options.timeouts.send_timeout = Duration::from_millis(321);
+    options.timeouts.response_header_timeout = Duration::from_millis(321);
 
     let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     let request = client.request(Method::GET, "/v1/default-write-timeout").build();
 
-    assert_eq!(request.send_timeout(), Duration::from_millis(321));
+    assert_eq!(request.response_header_timeout(), Duration::from_millis(321));
 }
 
 #[test]
-fn test_request_builder_send_timeout_overrides_default_from_options() {
+fn test_request_builder_response_header_timeout_overrides_default_from_options() {
     let mut options = HttpClientOptions::default();
-    options.timeouts.send_timeout = Duration::from_secs(2);
+    options.timeouts.response_header_timeout = Duration::from_secs(2);
 
     let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
     let request = client
         .request(Method::GET, "/v1/override-write-timeout")
-        .send_timeout(Duration::from_millis(88))
+        .response_header_timeout(Duration::from_millis(88))
         .expect("positive write timeout should be accepted")
         .build();
 
-    assert_eq!(request.send_timeout(), Duration::from_millis(88));
+    assert_eq!(request.response_header_timeout(), Duration::from_millis(88));
 }
 
 #[test]
-fn test_request_builder_send_timeout_rejects_zero() {
+fn test_request_builder_response_header_timeout_rejects_zero() {
     let error = new_builder(Method::GET, "/v1/zero-write-timeout")
-        .send_timeout(Duration::ZERO)
+        .response_header_timeout(Duration::ZERO)
         .expect_err("zero write timeout should be rejected");
 
     assert_eq!(error.kind, HttpErrorKind::Other);
-    assert!(error.message.contains("send_timeout"));
+    assert!(error.message.contains("response_header_timeout"));
     assert!(error.message.contains("greater than zero"));
 }
 

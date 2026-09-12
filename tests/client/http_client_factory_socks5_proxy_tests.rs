@@ -206,7 +206,7 @@ async fn test_socks5_proxy_forwards_http_request() {
     options.proxy.proxy_type = ProxyType::Socks5;
     options.proxy.host = Some(socks.host().to_string());
     options.proxy.port = Some(socks.port());
-    options.timeouts.send_timeout = Duration::from_secs(3);
+    options.timeouts.response_header_timeout = Duration::from_secs(3);
     options.timeouts.read_timeout = Duration::from_secs(3);
     options.timeouts.request_timeout = Some(Duration::from_secs(3));
 

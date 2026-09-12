@@ -61,7 +61,7 @@ pub struct HttpRequestBuilder {
     /// Per-request timeout; if unset, the client default applies.
     pub(super) request_timeout: Option<Duration>,
     /// Per-request write timeout used by the send phase.
-    pub(super) send_timeout: Duration,
+    pub(super) response_header_timeout: Duration,
     /// Per-request read timeout used by buffered/stream response reading.
     pub(super) read_timeout: Duration,
     /// Base URL copied from client options and used by
@@ -106,7 +106,7 @@ impl fmt::Debug for HttpRequestBuilder {
             .field("body", &self.body)
             .field("streaming_body", &self.streaming_body.as_ref().map(|_| "present"))
             .field("request_timeout", &self.request_timeout)
-            .field("send_timeout", &self.send_timeout)
+            .field("response_header_timeout", &self.response_header_timeout)
             .field("read_timeout", &self.read_timeout)
             .field("base_url", &base_url)
             .field("ipv4_only", &self.ipv4_only)
@@ -142,7 +142,7 @@ impl HttpRequestBuilder {
             body: HttpRequestBody::Empty,
             streaming_body: None,
             request_timeout: options.timeouts.request_timeout,
-            send_timeout: options.timeouts.send_timeout,
+            response_header_timeout: options.timeouts.response_header_timeout,
             read_timeout: options.timeouts.read_timeout,
             base_url: options.base_url.clone(),
             origin_policy: options.origin_policy,
@@ -511,9 +511,9 @@ impl HttpRequestBuilder {
     ///
     /// # Errors
     /// Returns [`HttpError`] when `timeout` is zero.
-    pub fn send_timeout(mut self, timeout: Duration) -> HttpResult<Self> {
-        validate_positive_timeout("send_timeout", timeout)?;
-        self.send_timeout = timeout;
+    pub fn response_header_timeout(mut self, timeout: Duration) -> HttpResult<Self> {
+        validate_positive_timeout("response_header_timeout", timeout)?;
+        self.response_header_timeout = timeout;
         Ok(self)
     }
 

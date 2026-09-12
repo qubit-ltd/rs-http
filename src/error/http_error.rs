@@ -21,6 +21,7 @@ use url::Url;
 
 use super::HttpErrorKind;
 use super::HttpRetryDiagnostics;
+use super::HttpStatusResponse;
 use super::RetryHint;
 use crate::redact::RedactedDebugger;
 
@@ -49,6 +50,7 @@ pub struct HttpError {
     /// Retry-flow metadata retained independently from the source chain.
     pub(crate) retry_metadata: Option<RetryErrorMetadata>,
     pub(crate) retry_diagnostics: Option<HttpRetryDiagnostics>,
+    status_response: Option<HttpStatusResponse>,
     /// Redactor used when rendering this error with [`Debug`](fmt::Debug) or
     /// [`Display`](fmt::Display).
     pub log_redactor: Redactor,
@@ -110,6 +112,7 @@ impl HttpError {
             source: None,
             retry_metadata: None,
             retry_diagnostics: None,
+            status_response: None,
             log_redactor: Redactor::application_default(),
         }
     }
@@ -205,6 +208,21 @@ impl HttpError {
     #[must_use]
     pub fn response_body_preview(&self) -> Option<&str> {
         self.response_body_preview.as_deref()
+    }
+
+    /// Returns bounded raw data retained for a status error.
+    #[must_use]
+    pub fn status_response(&self) -> Option<&HttpStatusResponse> {
+        self.status_response.as_ref()
+    }
+
+    pub(crate) fn with_status_response(mut self, response: HttpStatusResponse) -> Self {
+        self.status_response = Some(response);
+        self
+    }
+
+    pub(crate) fn status_response_cloned(&self) -> Option<HttpStatusResponse> {
+        self.status_response.clone()
     }
 
     /// Returns the server-provided retry delay, if one was parsed.
@@ -331,15 +349,15 @@ impl HttpError {
         Self::new(HttpErrorKind::ReadTimeout, message)
     }
 
-    /// Builds [`HttpErrorKind::SendTimeout`].
+    /// Builds [`HttpErrorKind::ResponseHeaderTimeout`].
     ///
     /// # Parameters
     /// - `message`: Timeout context.
     ///
     /// # Returns
     /// New [`HttpError`].
-    pub fn send_timeout(message: impl Into<String>) -> Self {
-        Self::new(HttpErrorKind::SendTimeout, message)
+    pub fn response_header_timeout(message: impl Into<String>) -> Self {
+        Self::new(HttpErrorKind::ResponseHeaderTimeout, message)
     }
 
     /// Builds [`HttpErrorKind::RequestTimeout`].
@@ -451,7 +469,7 @@ impl HttpError {
         match self.kind {
             HttpErrorKind::ConnectTimeout
             | HttpErrorKind::ReadTimeout
-            | HttpErrorKind::SendTimeout
+            | HttpErrorKind::ResponseHeaderTimeout
             | HttpErrorKind::RequestTimeout
             | HttpErrorKind::Transport => RetryHint::Retryable,
             HttpErrorKind::Status => {
