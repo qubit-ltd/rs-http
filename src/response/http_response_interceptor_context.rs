@@ -208,3 +208,28 @@ impl fmt::Debug for HttpResponseInterceptorContext {
             .finish()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use http::HeaderMap;
+    use http::Method;
+    use http::StatusCode;
+    use url::Url;
+
+    use super::HttpResponseInterceptorContext;
+
+    #[test]
+    fn context_accessors_and_mutators_preserve_metadata_contract() {
+        let url = Url::parse("https://example.com/old").unwrap();
+        let mut context = HttpResponseInterceptorContext::new(StatusCode::OK, HeaderMap::new(), url, Method::GET);
+        context.headers_mut().insert("x-test", "ok".parse().unwrap());
+        context.set_url(Url::parse("https://example.com/new").unwrap());
+
+        assert_eq!(context.status(), StatusCode::OK);
+        assert_eq!(context.headers()["x-test"], "ok");
+        assert_eq!(context.url().as_str(), "https://example.com/new");
+        assert_eq!(context.method(), &Method::GET);
+        assert_eq!(context.retry_after_hint(), None);
+        assert!(format!("{context:?}").contains("example.com/new"));
+    }
+}

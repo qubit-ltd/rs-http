@@ -1,3 +1,11 @@
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
+
 use bytes::Bytes;
 use http::HeaderMap;
 
@@ -46,5 +54,28 @@ impl std::fmt::Debug for HttpStatusResponse {
             .field("truncated", &self.truncated)
             .field("content_length", &self.content_length)
             .finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use bytes::Bytes;
+    use http::HeaderMap;
+
+    use super::HttpStatusResponse;
+
+    #[test]
+    fn accessors_and_debug_expose_bounded_snapshot_metadata() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-test", "ok".parse().unwrap());
+        let response = HttpStatusResponse::new(headers, Bytes::from_static(b"body"), true, Some(9));
+
+        assert_eq!(response.headers()["x-test"], "ok");
+        assert_eq!(response.body(), &Bytes::from_static(b"body"));
+        assert!(response.is_truncated());
+        assert_eq!(response.content_length(), Some(9));
+        let debug = format!("{response:?}");
+        assert!(debug.contains("body_len: 4"));
+        assert!(debug.contains("truncated: true"));
     }
 }
