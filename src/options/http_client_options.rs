@@ -720,6 +720,14 @@ impl HttpClientOptions {
         }
         Self::validate_positive_limit("sse.max_line_bytes", self.sse_max_line_bytes)?;
         Self::validate_positive_limit("sse.max_frame_bytes", self.sse_max_frame_bytes)?;
+        if matches!(self.sse_completion_policy, SseCompletionPolicy::RequireDoneMarker)
+            && !self.sse_done_marker_policy.has_usable_done_marker()
+        {
+            return Err(HttpConfigError::invalid_value(
+                "sse.completion",
+                "RequireDoneMarker needs a non-empty enabled done marker",
+            ));
+        }
         Ok(())
     }
 

@@ -11,6 +11,7 @@
 
 use async_stream::stream;
 use futures_util::StreamExt;
+use futures_util::stream::once;
 use qubit_budget::json::JsonValueLimits;
 use serde::de::DeserializeOwned;
 
@@ -54,6 +55,13 @@ pub(crate) fn decode_json_chunks_from_stream_with_limits<T>(
 where
     T: DeserializeOwned + Send + 'static,
 {
+    if matches!(completion_policy, SseCompletionPolicy::RequireDoneMarker) && !done_policy.has_usable_done_marker() {
+        return Box::pin(once(async {
+            Err(HttpError::sse_protocol(
+                "RequireDoneMarker needs a non-empty enabled done marker",
+            ))
+        }));
+    }
     let mut messages = decode_messages_from_stream_with_limits(stream, max_line_bytes, max_frame_bytes);
     let output = stream! {
         while let Some(item) = messages.next().await {

@@ -57,6 +57,15 @@ impl FromStr for DoneMarkerPolicy {
 }
 
 impl DoneMarkerPolicy {
+    /// Returns whether this policy can identify a non-empty completion marker.
+    pub(crate) fn has_usable_done_marker(&self) -> bool {
+        match self {
+            Self::Disabled => false,
+            Self::DefaultDone => true,
+            Self::Custom(marker) => !marker.trim().is_empty(),
+        }
+    }
+
     /// Returns whether `payload` (trimmed) signals end-of-stream per this
     /// policy.
     ///

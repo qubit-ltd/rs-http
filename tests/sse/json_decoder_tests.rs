@@ -19,6 +19,7 @@ use qubit_http::HttpResponse;
 use qubit_http::HttpResult;
 use qubit_http::sse::DoneMarkerPolicy;
 use qubit_http::sse::SseChunk;
+use qubit_http::sse::SseCompletionPolicy;
 use qubit_http::sse::SseJsonMode;
 use tokio::test as tokio_test;
 
@@ -133,6 +134,51 @@ async fn test_decode_json_chunks_applies_response_json_value_limits() {
         .expect_err("response JSON node limit must reject the SSE payload");
 
     assert_eq!(error.kind, HttpErrorKind::SseDecode);
+}
+
+#[tokio_test]
+async fn test_require_done_marker_reports_protocol_error_once_after_eof() {
+    let response = stream_response_from_chunks(vec!["data: {\"value\": 1}\n\n"]);
+    let mut stream = response
+        .sse_completion_policy(SseCompletionPolicy::RequireDoneMarker)
+        .sse_chunks::<TestChunk>();
+
+    assert_eq!(
+        stream.next().await.unwrap().unwrap(),
+        SseChunk::Data(TestChunk { value: 1 })
+    );
+    let error = stream.next().await.unwrap().unwrap_err();
+    assert_eq!(error.kind, HttpErrorKind::SseProtocol);
+    assert!(error.message.contains("done marker"));
+    assert!(stream.next().await.is_none());
+}
+
+#[tokio_test]
+async fn test_require_done_marker_accepts_explicit_done() {
+    let response = stream_response_from_chunks(vec!["data: {\"value\": 1}\n\n", "data: [DONE]\n\n"]);
+    let mut stream = response
+        .sse_completion_policy(SseCompletionPolicy::RequireDoneMarker)
+        .sse_chunks::<TestChunk>();
+
+    assert_eq!(
+        stream.next().await.unwrap().unwrap(),
+        SseChunk::Data(TestChunk { value: 1 })
+    );
+    assert_eq!(stream.next().await.unwrap().unwrap(), SseChunk::Done);
+    assert!(stream.next().await.is_none());
+}
+
+#[tokio_test]
+async fn test_require_done_marker_rejects_disabled_marker_before_stream_poll() {
+    let response = stream_response_from_chunks(vec!["data: {\"value\": 1}\n\n"]);
+    let mut stream = response
+        .sse_done_marker_policy(DoneMarkerPolicy::Disabled)
+        .sse_completion_policy(SseCompletionPolicy::RequireDoneMarker)
+        .sse_chunks::<TestChunk>();
+
+    let error = stream.next().await.unwrap().unwrap_err();
+    assert_eq!(error.kind, HttpErrorKind::SseProtocol);
+    assert!(stream.next().await.is_none());
 }
 
 /// Regression: `sse_json_mode` → `sse_done_marker_policy` →
