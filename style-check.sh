@@ -46,4 +46,4 @@ check_top_level_test_target_duplicates() {
 }
 
 check_top_level_test_target_duplicates
-exec env RS_CI_PROJECT_ROOT="$PROJECT_ROOT" "$PROJECT_ROOT/.rs-ci/style-check.sh" "$@"
+exec env RS_CI_PROJECT_ROOT="$PROJECT_ROOT" "$PROJECT_ROOT/.infra/tools/rs-ci/style-check.sh" "$@"
