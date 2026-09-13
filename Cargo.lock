@@ -235,7 +235,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -897,6 +897,15 @@ version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f93253bc135140ca58d3d4f7dffcc330394cf94fec873c5f86ec3bb41dbfa18e"
 dependencies = [
+ "thiserror",
+]
+
+[[package]]
+name = "qubit-budget"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "353cf62af65868c70d5af6468b101a8099bd6de980d84678eeb99f99eb679161"
+dependencies = [
  "qubit-clock",
  "thiserror",
 ]
@@ -928,7 +937,7 @@ version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "731de875d77b66111ea523ec2064bb5fd81e3f87c95ede577a967dfb7db5d762"
 dependencies = [
- "qubit-budget",
+ "qubit-budget 0.5.0",
  "qubit-datatype",
  "qubit-json",
  "qubit-redact",
@@ -946,7 +955,7 @@ version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ee2959d5aa33b376bdd5d9c3c4d80246dbe9cdc3de020b4443caff2de9b51cdc"
 dependencies = [
- "qubit-budget",
+ "qubit-budget 0.5.0",
  "qubit-json",
  "serde",
  "serde_json",
@@ -976,7 +985,7 @@ dependencies = [
  "httpdate",
  "parse-display",
  "qubit-argument",
- "qubit-budget",
+ "qubit-budget 0.5.0",
  "qubit-clock",
  "qubit-config",
  "qubit-datatype",
@@ -1002,7 +1011,7 @@ version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5c34de3f5710b2cfd4d89099ffb53359b66e8bf69514590a3ef49f9378e47455"
 dependencies = [
- "qubit-budget",
+ "qubit-budget 0.5.0",
  "serde",
  "serde_json",
  "thiserror",
@@ -1016,7 +1025,7 @@ checksum = "e4bc84cd4d94ab169a9c65af5254830ba969e680840638af18eddbbcd62c4c38"
 dependencies = [
  "form_urlencoded",
  "http",
- "qubit-budget",
+ "qubit-budget 0.5.0",
  "qubit-json",
  "serde",
  "serde_json",
@@ -1025,10 +1034,10 @@ dependencies = [
 
 [[package]]
 name = "qubit-retry"
-version = "0.24.0"
+version = "0.25.0"
 dependencies = [
  "fastrand",
- "qubit-budget",
+ "qubit-budget 0.7.0",
  "qubit-clock",
  "thiserror",
  "tokio",
@@ -1046,7 +1055,7 @@ version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "678fc53931036e5c82c90d4d372428e9e45bc482998ad2d690c895bcdd0a135e"
 dependencies = [
- "qubit-budget",
+ "qubit-budget 0.5.0",
  "qubit-datatype",
  "qubit-json",
  "qubit-redact",
@@ -1109,7 +1118,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1318,7 +1327,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2029,7 +2038,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
