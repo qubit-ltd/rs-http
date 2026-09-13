@@ -681,7 +681,11 @@ impl HttpResponse {
         self
     }
 
-    /// Sets whether JSON SSE decoding requires a done marker.
+    /// Sets whether JSON SSE decoding requires a done marker before EOF.
+    ///
+    /// `RequireDoneMarker` yields an `SseProtocol` error when the stream ends
+    /// without the configured marker. If the marker policy is disabled or
+    /// empty, the first stream item reports the invalid combination.
     pub fn sse_completion_policy(mut self, policy: SseCompletionPolicy) -> Self {
         self.options.sse_completion_policy = policy;
         self

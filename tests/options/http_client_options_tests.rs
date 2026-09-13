@@ -29,6 +29,7 @@ use qubit_http::constants::DEFAULT_SEND_TIMEOUT_SECS;
 use qubit_http::constants::DEFAULT_SSE_MAX_FRAME_BYTES;
 use qubit_http::constants::DEFAULT_SSE_MAX_LINE_BYTES;
 use qubit_http::sse::DoneMarkerPolicy;
+use qubit_http::sse::SseCompletionPolicy;
 use qubit_http::sse::SseJsonMode;
 use qubit_redact::RedactionPolicy;
 use qubit_redact::Sensitivity;
@@ -114,6 +115,7 @@ fn test_http_client_options_defaults() {
     assert!(!options.ipv4_only);
     assert_eq!(options.sse_json_mode, SseJsonMode::Lenient);
     assert_eq!(options.sse_done_marker_policy, DoneMarkerPolicy::default());
+    assert_eq!(options.sse_completion_policy, SseCompletionPolicy::default());
     assert_eq!(options.sse_max_line_bytes, DEFAULT_SSE_MAX_LINE_BYTES);
     assert_eq!(options.sse_max_frame_bytes, DEFAULT_SSE_MAX_FRAME_BYTES);
     assert_eq!(options.json_value_limits.max_depth(), Some(128));
@@ -125,6 +127,33 @@ fn test_http_client_options_defaults() {
     assert_eq!(options.json_value_limits.max_number_bytes(), Some(4 * 1024));
     assert_eq!(options.json_value_limits.max_payload_bytes(), Some(8 * 1024 * 1024));
     assert_eq!(options.json_encode_limits.max_output_bytes(), Some(8 * 1024 * 1024));
+}
+
+#[test]
+fn test_sse_completion_rejects_unusable_marker() {
+    let mut options = HttpClientOptions::default();
+    options.sse_completion_policy = SseCompletionPolicy::RequireDoneMarker;
+    options.sse_done_marker_policy = DoneMarkerPolicy::Disabled;
+    let error = options.validate().expect_err("disabled marker must be rejected");
+    assert_eq!(error.path, "sse.completion");
+
+    options.sse_done_marker_policy = DoneMarkerPolicy::Custom("   ".to_string());
+    let error = options.validate().expect_err("empty marker must be rejected");
+    assert_eq!(error.path, "sse.completion");
+}
+
+#[test]
+fn test_sse_completion_config_rejects_unusable_marker_with_resolved_path() {
+    let mut config = Config::new();
+    config
+        .set("http.sse.completion", "require_done_marker".to_string())
+        .expect("completion policy should be accepted");
+    config
+        .set("http.sse.done_marker", "disabled".to_string())
+        .expect("done marker policy should be accepted");
+    let section = config.section("http").expect("HTTP section should exist");
+    let error = HttpClientOptions::from_config(&section).expect_err("incompatible policies must fail");
+    assert_eq!(error.path, "http.sse.completion");
 }
 
 #[test]

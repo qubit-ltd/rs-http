@@ -17,12 +17,14 @@
 //! ```text
 //! base_url                   – Url
 //! ipv4_only                  – bool
+//! error_response_body_limit  – usize
 //!
 //! timeouts.*                 – nested timeouts (via `section("timeouts")`)
 //! proxy.*                    – nested proxy
 //! logging.*                  – nested logging
 //! retry.*                    – nested retry
 //! sse.json_mode              – String (`LENIENT` / `STRICT`)
+//! sse.completion             – `allow_eof` or `require_done_marker`
 //! sse.max_line_bytes         – usize
 //! sse.max_frame_bytes        – usize
 //! log_redaction.sensitive_headers       – String-compatible values
