@@ -27,6 +27,8 @@ qubit-http = "0.14"
 qubit-redact = "0.8"
 http = "1.4"
 qubit-config = { version = "0.14", default-features = false }
+qubit-retry = "0.25"
+qubit-budget = { version = "0.5", features = ["json"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
@@ -80,7 +82,7 @@ let client = qubit_http::HttpClientBuilder::new().create_default()?;
 | `base_url` | 无；可以直接使用显式绝对 URL，也可以设置 base URL 后使用相对路径 |
 | 连接超时 | 10 秒 |
 | 读超时 | 120 秒 |
-| 写超时 | 120 秒 |
+| 响应头／发送阶段超时 | 120 秒 |
 | 整体请求超时 | 无 |
 | 代理 | 显式代理禁用，且 `use_env_proxy = false`，因此调用 `reqwest` 的 `no_proxy()`，不会继承环境代理 |
 | 日志 | 开启，但只有 tracing TRACE 级别启用时才输出 |
@@ -575,7 +577,7 @@ let request = client
 提示过长时可能直接耗尽续试预算，而不再发送请求。自定义提示策略或最终延迟上限可以改变选中的等待时间。
 SSE 重连仍禁用内层 HTTP 重试。
 
-当前版本使用 `qubit-retry` 0.24。应用若与 HTTP/SSE 共享 `RetryPolicy` 或 `BackoffPolicy`，
+当前版本使用 `qubit-retry` 0.25。应用若与 HTTP/SSE 共享 `RetryPolicy` 或 `BackoffPolicy`，
 须同步升级直接依赖及锁文件。直接消费 retry 结果时，可通过 `RetryError::map_error` 做纯业务载荷转换，
 保留重试上下文和完成诊断；最终 `HttpError` 仍遵循 HTTP 自身的领域转换规则，不改为通用重试错误 API。
 直接消费 retry 结果时，应读取 `completion_callback_failures()` 或调用
@@ -764,6 +766,11 @@ while let Some(item) = messages.next().await {
 
 `sse_chunks` 无参数：完成标记策略默认为 `DoneMarkerPolicy::DefaultDone`（即 `DoneMarkerPolicy` 的 `Default` 实现，识别 trim 后等于 `[DONE]` 的 `data:`），并可通过 `HttpClientOptions::sse_done_marker_policy` 或响应上的 `sse_done_marker_policy` 覆盖。
 
+JSON SSE 完成策略默认是 `SseCompletionPolicy::AllowEof`。设置
+`SseCompletionPolicy::RequireDoneMarker` 后必须出现已配置的完成标记；没有标记时，
+会在已解码数据之后产生一次 `SseProtocol` 错误。禁用完成标记或使用空白自定义标记时，
+该策略会被拒绝。
+
 ```rust
 use futures_util::StreamExt;
 use qubit_http::sse::SseChunk;
@@ -859,6 +866,7 @@ while let Some(item) = events.next().await {
 | `ipv4_only` | 启用后 DNS 只保留 IPv4 地址，并拒绝 IPv6 literal URL |
 | `error_response_preview_limit` | 非 2xx 错误中保留的响应体预览字节数 |
 | `response_body_size_limit` | 整体响应体与 JSON helper 允许累计的最大字节数 |
+| `error_response_body_limit` | 非 2xx `HttpStatusResponse` 保留的原始 body 最大字节数；与脱敏后的 `error_response_preview_limit` 独立 |
 | `user_agent` | 传给 `reqwest` builder 的默认 User-Agent |
 | `max_redirects` | 最大重定向次数 |
 | `pool_idle_timeout` | 连接池空闲超时 |
@@ -914,6 +922,7 @@ while let Some(item) = events.next().await {
 | `retry.error_kinds` | 非状态错误类型白名单；未配置时默认重试超时和 transport |
 | `sse.json_mode` | `LENIENT` 或 `STRICT` |
 | `sse.done_marker` | `DISABLED`（或 `DISABLE`）禁用完成标记；`DEFAULT` 使用 `[DONE]`；其它非空字符串视为自定义完成标记（`Custom`），与 trim 后的 `data:` 文本比较 |
+| `sse.completion` | `allow_eof`（默认）或 `require_done_marker`；后者要求启用且非空的 `sse.done_marker` |
 | `sse.max_line_bytes` | SSE 单行字节上限 |
 | `sse.max_frame_bytes` | SSE 单帧字节上限 |
 

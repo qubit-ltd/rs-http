@@ -150,10 +150,12 @@ only when the application explicitly accepts removing HTTP context floors.
 - Response bodies are read lazily unless TRACE response-body logging is enabled.
 - Built-in request retry covers failures before `HttpResponse` is returned. Stream body errors after return are surfaced to the caller.
 - SSE reconnect has a dedicated API: `HttpClient::execute_sse_with_reconnect(...)`.
+- JSON SSE consumers can require an explicit done marker with
+  `SseCompletionPolicy::RequireDoneMarker`; see the [SSE guide](doc/user_guide.en.md#sse-json-chunks).
 
 ## Retry timing boundaries
 
-HTTP retry budgets use qubit-retry 0.24. `max_duration` is a continuation budget,
+HTTP retry budgets use qubit-retry 0.25. `max_duration` is a continuation budget,
 not a hard request timeout: it prevents further attempts while preserving a
 completed successful request. Request timeouts remain configured separately.
 SSE reconnects preserve structured budget errors as HTTP error sources.
@@ -163,7 +165,7 @@ Ordinary HTTP retries do not install a retry-layer `attempt_timeout` or
 `flow_timeout`; configure the request/connect/read/write timeouts separately.
 See the [retry guide](doc/user_guide.en.md#automatic-retry) for error mapping and
 request replay requirements. If your application also uses `qubit-retry`
-directly, use `0.24` so shared retry types agree.
+directly, use `0.25` so shared retry types agree.
 
 For SSE server-directed reconnects, `server_retry_max_delay` caps the final
 selected delay after jitter and hint merging, with a minimum of one millisecond.

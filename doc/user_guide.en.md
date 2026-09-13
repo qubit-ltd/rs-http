@@ -27,6 +27,8 @@ qubit-http = "0.14"
 qubit-redact = "0.8"
 http = "1.4"
 qubit-config = { version = "0.14", default-features = false }
+qubit-retry = "0.25"
+qubit-budget = { version = "0.5", features = ["json"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
@@ -80,7 +82,7 @@ Default behavior:
 | `base_url` | None; use an explicit absolute URL, or set a request/client base URL for relative paths |
 | Connect timeout | 10 seconds |
 | Read timeout | 120 seconds |
-| Write timeout | 120 seconds |
+| Response-header/send-phase timeout | 120 seconds |
 | Whole-request timeout | None |
 | Proxy | Explicit proxy disabled, and `use_env_proxy = false`; calls reqwest `no_proxy()`, so environment proxies are not inherited |
 | Logging | Enabled, but logs are emitted only when tracing TRACE is active |
@@ -585,7 +587,7 @@ continuation budget instead of starting another request. Custom hint policies or
 final delay caps can change the selected delay. SSE reconnect continues to
 disable inner HTTP retries.
 
-This release uses `qubit-retry` 0.24. Update any direct dependency and its lockfile
+This release uses `qubit-retry` 0.25. Update any direct dependency and its lockfile
 entry when sharing `RetryPolicy` or `BackoffPolicy` with HTTP/SSE. When consuming
 retry results directly, `RetryError::map_error` provides pure payload conversion
 while preserving retry context and completion diagnostics. HTTP's domain error conversion
@@ -781,6 +783,11 @@ The following snippets assume `request` is already built, and that `MyChunk` and
 
 `sse_chunks` takes no arguments: the done-marker policy defaults to `DoneMarkerPolicy::DefaultDone` (the `Default` for `DoneMarkerPolicy`, recognizing trimmed `data:` equal to `[DONE]`), and can be overridden via `HttpClientOptions::sse_done_marker_policy` or `HttpResponse::sse_done_marker_policy`.
 
+JSON SSE completion defaults to `SseCompletionPolicy::AllowEof`. Set
+`SseCompletionPolicy::RequireDoneMarker` to require a configured done marker.
+EOF without that marker yields one `SseProtocol` error after decoded data.
+Disabled or empty custom markers are rejected for this policy.
+
 ```rust
 use futures_util::StreamExt;
 use qubit_http::sse::SseChunk;
@@ -876,6 +883,7 @@ The table below lists every configuration key supported by `HttpClientOptions::f
 | `ipv4_only` | Keeps only IPv4 DNS results and rejects IPv6 literal URLs |
 | `error_response_preview_limit` | Body preview byte limit stored on non-2xx errors |
 | `response_body_size_limit` | Maximum bytes accumulated by whole-response body and JSON helpers |
+| `error_response_body_limit` | Maximum raw bytes retained in non-2xx `HttpStatusResponse` values; separate from the redacted `error_response_preview_limit` |
 | `user_agent` | Default User-Agent passed to the reqwest builder |
 | `max_redirects` | Redirect limit |
 | `pool_idle_timeout` | Connection pool idle timeout |
@@ -931,6 +939,7 @@ The table below lists every configuration key supported by `HttpClientOptions::f
 | `retry.error_kinds` | Retryable non-status error-kind allowlist; defaults to timeouts and transport when absent |
 | `sse.json_mode` | `LENIENT` or `STRICT` |
 | `sse.done_marker` | `DISABLED` or `DISABLE` disables done markers; `DEFAULT` uses `[DONE]`; any other non-empty string becomes a `Custom` marker compared to trimmed `data:` text |
+| `sse.completion` | `allow_eof` (default) or `require_done_marker`; the latter requires an enabled non-empty `sse.done_marker` |
 | `sse.max_line_bytes` | SSE single-line byte limit |
 | `sse.max_frame_bytes` | SSE single-frame byte limit |
 
