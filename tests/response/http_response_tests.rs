@@ -14,12 +14,47 @@ use http::StatusCode;
 use http::header::RETRY_AFTER;
 use qubit_http::HttpErrorKind;
 use qubit_http::HttpResponse;
+use qubit_http::constants::DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES;
 use qubit_json::decode::DiagnosticPolicy;
 use qubit_json::decode::JsonDecodeError;
 use tokio::test as tokio_test;
 use url::Url;
 
 use crate::common::SensitiveChoice;
+
+#[tokio_test]
+async fn test_http_response_buffered_body_limit_error_is_preserved_across_reads() {
+    let url = Url::parse("https://example.com/oversized").expect("test URL must parse");
+    let mut response = HttpResponse::new(
+        StatusCode::OK,
+        HeaderMap::new(),
+        Bytes::from(vec![0; DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES + 1]),
+        url.clone(),
+        Method::GET,
+    );
+
+    let first = response
+        .bytes()
+        .await
+        .expect_err("oversized buffered body must be rejected");
+    assert_eq!(first.kind, HttpErrorKind::ResponseBodyTooLarge);
+    assert_eq!(first.status, Some(StatusCode::OK));
+    assert_eq!(first.url, Some(url.clone()));
+
+    let second = response
+        .bytes()
+        .await
+        .expect_err("later reads must retain the limit failure");
+    assert_eq!(second.kind, HttpErrorKind::ResponseBodyTooLarge);
+    assert_eq!(second.status, Some(StatusCode::OK));
+    assert_eq!(second.url, Some(url));
+
+    let stream_error = match response.stream() {
+        Ok(_) => panic!("streaming must retain the earlier body limit failure"),
+        Err(error) => error,
+    };
+    assert_eq!(stream_error.kind, HttpErrorKind::ResponseBodyTooLarge);
+}
 
 #[tokio_test]
 async fn test_http_response_text_decode_error_contains_status_and_url() {
