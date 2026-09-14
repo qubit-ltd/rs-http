@@ -423,7 +423,9 @@ impl HttpResponse {
         let mut backend = match state {
             HttpResponseBodyState::Buffered(body) => {
                 if body.len() > body_limit {
-                    return Err(self.response_body_size_limit_error(body.len()));
+                    let error = self.response_body_size_limit_error(body.len());
+                    self.remember_body_read_failure(&error);
+                    return Err(error);
                 }
                 self.body = HttpResponseBodyState::Buffered(body.clone());
                 return Ok(body);
