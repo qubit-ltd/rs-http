@@ -210,6 +210,7 @@ impl fmt::Debug for HttpClientOptions {
 /// iteration.
 struct HttpClientRootConfigInput {
     base_url: Option<String>,
+    origin_policy: Option<String>,
     ipv4_only: Option<bool>,
     error_response_preview_limit: Option<usize>,
     error_response_body_limit: Option<usize>,
@@ -310,6 +311,22 @@ impl HttpClientOptions {
             if let Err(error) = opts.set_base_url(&s) {
                 return Err(Self::resolve_config_error(config, error));
             }
+        }
+
+        if let Some(policy) = root.origin_policy {
+            opts.origin_policy = match policy.trim().to_ascii_lowercase().as_str() {
+                "same_origin" => HttpOriginPolicy::SameOrigin,
+                "any_origin" => HttpOriginPolicy::AnyOrigin,
+                _ => {
+                    return Err(Self::resolve_config_error(
+                        config,
+                        HttpConfigError::invalid_value(
+                            "origin_policy",
+                            format!("Unsupported HTTP origin policy: {policy}"),
+                        ),
+                    ));
+                }
+            };
         }
 
         if let Some(v) = root.ipv4_only {
@@ -768,6 +785,7 @@ impl HttpClientOptions {
             config,
             &[
                 "base_url",
+                "origin_policy",
                 "ipv4_only",
                 "error_response_preview_limit",
                 "error_response_body_limit",
@@ -792,6 +810,7 @@ impl HttpClientOptions {
         )?;
         Ok(HttpClientRootConfigInput {
             base_url: config.get_optional_interpolated::<String>("base_url")?,
+            origin_policy: config.get_optional_interpolated::<String>("origin_policy")?,
             ipv4_only: config.get_optional("ipv4_only")?,
             error_response_preview_limit: get_optional_usize(config, "error_response_preview_limit")?,
             error_response_body_limit: get_optional_usize(config, "error_response_body_limit")?,
