@@ -17,6 +17,7 @@ use qubit_datatype::DataType;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpConfigErrorKind;
 use qubit_http::HttpErrorKind;
+use qubit_http::HttpOriginPolicy;
 use qubit_http::HttpRetryMethodPolicy;
 use qubit_http::HttpRetryOptions;
 use qubit_http::ProxyType;
@@ -34,6 +35,33 @@ use qubit_http::sse::SseJsonMode;
 use qubit_redact::RedactionPolicy;
 use qubit_redact::Sensitivity;
 use qubit_redact::formats::http::UrlPathPolicy;
+
+#[test]
+fn test_http_client_options_parses_origin_policy_from_scoped_config() {
+    let mut config = Config::new();
+    config
+        .set("http.origin_policy", "any_origin")
+        .expect("test config should accept origin policy text");
+
+    let options = HttpClientOptions::from_config(&config.section("http").expect("HTTP section should exist"))
+        .expect("supported origin policy should parse");
+
+    assert_eq!(options.origin_policy, HttpOriginPolicy::AnyOrigin);
+}
+
+#[test]
+fn test_http_client_options_rejects_unknown_origin_policy_with_scoped_path() {
+    let mut config = Config::new();
+    config
+        .set("http.origin_policy", "cross_origin")
+        .expect("test config should accept origin policy text");
+
+    let error = HttpClientOptions::from_config(&config.section("http").expect("HTTP section should exist"))
+        .expect_err("unsupported origin policy should fail");
+
+    assert_eq!(error.kind, HttpConfigErrorKind::InvalidValue);
+    assert_eq!(error.path, "http.origin_policy");
+}
 
 /// Verifies HTTP option parsing only reads process environment placeholders
 /// through an explicitly environment-friendly reader.
