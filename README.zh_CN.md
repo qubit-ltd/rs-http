@@ -11,7 +11,7 @@
 
 它基于 `reqwest` 构建，封装了 API 客户端最常见的基础能力：请求构建、超时、重试、取消、流式响应、SSE、日志和统一错误处理。
 
-文档：[中文用户指南](doc/user_guide.zh_CN.md) | [English User Guide](doc/user_guide.en.md) | [API 文档](https://docs.rs/qubit-http)
+文档：[中文用户指南](doc/user_guide.zh_CN.md) | [English User Guide](doc/user_guide.en.md) | [设计文档](doc/design.zh_CN.md) | [Design](doc/design.md) | [API 文档](https://docs.rs/qubit-http)
 
 ## 为什么使用
 
@@ -30,7 +30,7 @@
 ```toml
 [dependencies]
 qubit-http = "0.14"
-qubit-redact = "0.8"
+qubit-redact = "0.9"
 http = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```

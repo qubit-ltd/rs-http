@@ -51,6 +51,29 @@ use crate::sse::SseJsonMode;
 
 /// Aggregated settings for [`crate::HttpClient`] and
 /// [`crate::HttpClientBuilder`].
+///
+/// # Examples
+///
+/// ```
+/// use qubit_budget::json::JsonValueLimits;
+/// use qubit_http::HttpClientOptions;
+/// use qubit_redact::RedactionPolicy;
+/// use qubit_redact::Sensitivity;
+/// use qubit_redact::formats::http::UrlPathPolicy;
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let mut options = HttpClientOptions::new();
+/// options.set_base_url("https://example.com")?;
+/// options.json_value_limits = JsonValueLimits::builder().max_nodes(10_000).build();
+/// let policy = RedactionPolicy::default().to_builder().http(|http| {
+///     let _ = http.header().raise("x-api-key", Sensitivity::High);
+///     http.url_path(UrlPathPolicy::Preserve);
+/// })?.build()?;
+/// options.log_redaction_policy = policy;
+/// assert!(options.base_url.is_some());
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Clone)]
 pub struct HttpClientOptions {
     /// Origin policy applied to absolute request URLs and redirects.

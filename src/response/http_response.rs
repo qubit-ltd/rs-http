@@ -177,6 +177,30 @@ impl HttpResponseRuntime {
 }
 
 /// Unified HTTP response with lazily consumed body.
+///
+/// # Examples
+///
+/// ```
+/// use bytes::Bytes;
+/// use http::HeaderMap;
+/// use http::Method;
+/// use http::StatusCode;
+/// use qubit_http::HttpResponse;
+/// use url::Url;
+///
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let mut response = HttpResponse::new(
+///     StatusCode::OK,
+///     HeaderMap::new(),
+///     Bytes::from_static(b"ready"),
+///     Url::parse("https://example.com/status")?,
+///     Method::GET,
+/// );
+/// assert_eq!(response.bytes().await?, Bytes::from_static(b"ready"));
+/// # Ok(())
+/// # }
+/// ```
 pub struct HttpResponse {
     /// Response metadata (status, headers, final URL, request method).
     pub(crate) meta: HttpResponseMeta,
@@ -696,6 +720,10 @@ impl HttpResponse {
     /// Decodes body stream as SSE messages using this response's SSE line/frame
     /// byte limits (from client defaults unless overridden via
     /// [`Self::sse_max_line_bytes`] / [`Self::sse_max_frame_bytes`]).
+    ///
+    /// This is a body decoder and does not validate the response's
+    /// `Content-Type`. Check for `text/event-stream` before calling it when the
+    /// upstream media type is part of your protocol contract.
     pub fn sse_messages(mut self) -> SseMessageStream {
         let max_line_bytes = self.options.sse_max_line_bytes;
         let max_frame_bytes = self.options.sse_max_frame_bytes;
@@ -728,6 +756,11 @@ impl HttpResponse {
     /// mode, done-marker policy, and line/frame limits (see
     /// [`Self::sse_json_mode`], [`Self::sse_done_marker_policy`],
     /// [`Self::sse_max_line_bytes`], [`Self::sse_max_frame_bytes`]).
+    ///
+    /// This is a body decoder and does not validate `Content-Type`.
+    /// [`crate::HttpClient::execute_sse_with_reconnect`] validates
+    /// `text/event-stream`; direct callers must check the header themselves
+    /// when their protocol requires it.
     pub fn sse_chunks<T>(mut self) -> SseChunkStream<T>
     where
         T: DeserializeOwned + Send + 'static,

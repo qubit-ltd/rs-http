@@ -30,6 +30,16 @@ const DEFAULT_RETRY_MULTIPLIER: f64 = 2.0;
 const DEFAULT_RETRY_JITTER_FACTOR: f64 = 0.1;
 
 /// Retry settings for [`crate::HttpClient`].
+///
+/// # Examples
+///
+/// ```
+/// use qubit_http::HttpRetryOptions;
+///
+/// let retry = HttpRetryOptions::new();
+/// assert!(!retry.enabled);
+/// assert_eq!(retry.max_attempts, 3);
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct HttpRetryOptions {
     /// Whether built-in retry is enabled.

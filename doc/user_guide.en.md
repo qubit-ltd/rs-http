@@ -24,11 +24,11 @@ An `HttpClient` owns shared execution policy. An `HttpRequest` combines a method
 ```toml
 [dependencies]
 qubit-http = "0.14"
-qubit-redact = "0.8"
+qubit-redact = "0.9"
 http = "1.4"
 qubit-config = { version = "0.14", default-features = false }
 qubit-retry = "0.25"
-qubit-budget = { version = "0.5", features = ["json"] }
+qubit-budget = { version = "0.7", features = ["json"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
@@ -712,6 +712,12 @@ Choose the SSE API by what you need:
 | Read raw SSE messages | `response.sse_messages()` |
 | Read OpenAI-style JSON chunks or a `[DONE]` marker | `response.sse_chunks::<T>()` |
 | Reconnect automatically after a long-lived stream drops | `client.execute_sse_with_reconnect(...)` |
+
+`sse_messages()` and `sse_chunks::<T>()` decode the response body without checking
+`Content-Type`. If the upstream protocol requires SSE, verify that the response
+declares `text/event-stream` before using these direct decoders. The reconnect
+API performs this check itself and returns `SseProtocol` on a missing or invalid
+media type.
 
 SSE message decoding starts from `HttpResponse`:
 

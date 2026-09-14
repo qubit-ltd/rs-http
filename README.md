@@ -11,7 +11,7 @@
 
 It builds on `reqwest` and provides the common pieces most API clients need: request construction, timeouts, retries, cancellation, streaming responses, SSE, logging, and unified errors.
 
-Documentation: [English User Guide](doc/user_guide.en.md) | [中文用户指南](doc/user_guide.zh_CN.md) | [API Reference](https://docs.rs/qubit-http)
+Documentation: [English User Guide](doc/user_guide.en.md) | [中文用户指南](doc/user_guide.zh_CN.md) | [Design](doc/design.md) | [中文设计文档](doc/design.zh_CN.md) | [API Reference](https://docs.rs/qubit-http)
 
 ## Why Use It
 
@@ -30,7 +30,7 @@ For full examples and advanced options, read the [User Guide](doc/user_guide.en.
 ```toml
 [dependencies]
 qubit-http = "0.14"
-qubit-redact = "0.8"
+qubit-redact = "0.9"
 http = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```

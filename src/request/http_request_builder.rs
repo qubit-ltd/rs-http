@@ -43,6 +43,23 @@ use crate::HttpRetryMethodPolicy;
 use crate::content_type;
 
 /// Builder for [`HttpRequest`](super::http_request::HttpRequest).
+///
+/// # Examples
+///
+/// ```
+/// use http::Method;
+/// use qubit_http::HttpClient;
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let client = HttpClient::builder().create_default()?;
+/// let request = client
+///     .request(Method::GET, "https://example.com/items")
+///     .query_param("page", "2")
+///     .build();
+/// assert_eq!(request.resolved_url()?.as_str(), "https://example.com/items?page=2");
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Clone)]
 pub struct HttpRequestBuilder {
     /// HTTP method (e.g. GET, POST).

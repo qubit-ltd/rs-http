@@ -24,11 +24,11 @@
 ```toml
 [dependencies]
 qubit-http = "0.14"
-qubit-redact = "0.8"
+qubit-redact = "0.9"
 http = "1.4"
 qubit-config = { version = "0.14", default-features = false }
 qubit-retry = "0.25"
-qubit-budget = { version = "0.5", features = ["json"] }
+qubit-budget = { version = "0.7", features = ["json"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
@@ -695,6 +695,11 @@ options.proxy.port = Some(1080);
 | 读取原始 SSE message | `response.sse_messages()` |
 | 读取 OpenAI 风格 JSON chunk 或 `[DONE]` 完成标记 | `response.sse_chunks::<T>()` |
 | 长连接断开后自动重连 | `client.execute_sse_with_reconnect(...)` |
+
+`sse_messages()` 和 `sse_chunks::<T>()` 只解码响应体，不检查 `Content-Type`。
+如果上游协议要求 SSE，直接调用这两个方法前应确认响应声明了
+`text/event-stream`。自动重连 API 会自行检查；媒体类型缺失或不合法时返回
+`SseProtocol` 错误。
 
 SSE 消息解码从 `HttpResponse` 开始：
 
