@@ -33,6 +33,7 @@ use qubit_http::HttpOriginPolicy;
 use qubit_http::HttpResponseInterceptor;
 use qubit_http::HttpResponseInterceptorContext;
 use qubit_http::HttpRetryMethodPolicy;
+use qubit_http::HttpRetryTermination;
 use qubit_http::RetryHint;
 use qubit_redact::RedactionPolicy;
 use qubit_redact::Sensitivity;
@@ -862,6 +863,7 @@ async fn test_execute_non_success_error_body_preview_is_truncated_by_limit() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.error_response_preview_limit = 8;
+    options.error_response_body_limit = 8;
 
     let client = HttpClientBuilder::new().create(options).unwrap();
     let request = client.request(Method::GET, "/status-truncated").build();
@@ -869,6 +871,11 @@ async fn test_execute_non_success_error_body_preview_is_truncated_by_limit() {
 
     assert_eq!(error.kind, HttpErrorKind::Status);
     assert_eq!(error.response_body_preview.as_deref(), Some("<redaction incomplete>"));
+    let snapshot = error.status_response().expect("bounded status response");
+    assert_eq!(snapshot.body().len(), 8);
+    assert!(snapshot.is_truncated());
+    assert_eq!(snapshot.content_length(), Some(body.len() as u64));
+    assert!(format!("{snapshot:?}").contains("body_len: 8"));
 }
 
 #[tokio_test]
@@ -1553,6 +1560,10 @@ async fn test_execute_returns_last_error_after_retry_attempts_exhausted() {
     assert_eq!(error.kind, HttpErrorKind::Status);
     assert_eq!(error.status, Some(StatusCode::SERVICE_UNAVAILABLE));
     assert!(error.message.contains("retry attempts exhausted: 3/3"));
+    let diagnostics = error.retry_diagnostics().expect("retry diagnostics");
+    assert_eq!(diagnostics.attempts(), 3);
+    assert!(diagnostics.elapsed() <= Duration::from_secs(3));
+    assert_eq!(diagnostics.termination(), HttpRetryTermination::AttemptsExhausted);
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
