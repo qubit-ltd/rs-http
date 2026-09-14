@@ -7,6 +7,8 @@
 // =============================================================================
 
 use std::error::Error as StdError;
+use std::io::ErrorKind;
+use std::net::TcpListener;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicUsize;
@@ -18,6 +20,7 @@ use http::HeaderName;
 use http::HeaderValue;
 use http::Method;
 use http::StatusCode;
+use qubit_http::AsyncHttpHeaderInjector;
 use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpError;
@@ -33,6 +36,7 @@ use tokio::test as tokio_test;
 use tokio::time::timeout;
 
 use crate::common::ResponsePlan;
+use crate::common::spawn_multi_shot_server;
 use crate::common::spawn_one_shot_server;
 
 fn retry_abort_inner_http(error: &HttpError) -> &HttpError {
@@ -56,6 +60,79 @@ fn test_http_client_debug_includes_options_and_injectors() {
     assert!(output.contains("HttpClient"));
     assert!(output.contains("options"));
     assert!(output.contains("injectors"));
+}
+
+#[tokio_test]
+async fn test_rebuild_with_options_preserves_registered_hooks() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 200,
+        headers: vec![],
+        body: b"ok".to_vec(),
+    })
+    .await;
+    let mut client = HttpClientBuilder::new()
+        .create_default()
+        .expect("default client should be created");
+    client.add_header_injector(HttpHeaderInjector::new(|headers: &mut HeaderMap| {
+        headers.insert(HeaderName::from_static("x-sync"), HeaderValue::from_static("yes"));
+        Ok(())
+    }));
+    client.add_async_header_injector(AsyncHttpHeaderInjector::new(|headers: &mut HeaderMap| {
+        Box::pin(async move {
+            headers.insert(HeaderName::from_static("x-async"), HeaderValue::from_static("yes"));
+            Ok(())
+        })
+    }));
+    client.add_request_interceptor(HttpRequestInterceptor::new(|request: &mut HttpRequest| {
+        request.set_header("x-request", "yes")?;
+        Ok(())
+    }));
+    client.add_response_interceptor(HttpResponseInterceptor::new(
+        |context: &mut HttpResponseInterceptorContext| {
+            context
+                .headers_mut()
+                .insert(HeaderName::from_static("x-response"), HeaderValue::from_static("yes"));
+            Ok(())
+        },
+    ));
+
+    let mut options = client.options().clone();
+    options.base_url = Some(server.base_url());
+    let rebuilt = client
+        .rebuild_with_options(options)
+        .expect("valid options should rebuild the client");
+    assert!(
+        client.options().base_url.is_none(),
+        "original client should remain unchanged"
+    );
+
+    let request = rebuilt.request(Method::GET, "/rebuilt").build();
+    let response = rebuilt
+        .execute(request)
+        .await
+        .expect("rebuilt client should send request");
+    assert_eq!(
+        response.headers().get("x-response"),
+        Some(&HeaderValue::from_static("yes"))
+    );
+    let captured = server.finish().await;
+    assert_eq!(captured.headers.get("x-sync").map(String::as_str), Some("yes"));
+    assert_eq!(captured.headers.get("x-async").map(String::as_str), Some("yes"));
+    assert_eq!(captured.headers.get("x-request").map(String::as_str), Some("yes"));
+}
+
+#[test]
+fn test_rebuild_with_options_rejects_invalid_options_without_changing_client() {
+    let client = HttpClientBuilder::new()
+        .create_default()
+        .expect("default client should be created");
+    let mut invalid = client.options().clone();
+    invalid.timeouts.connect_timeout = Duration::ZERO;
+
+    let result = client.rebuild_with_options(invalid);
+
+    assert!(result.is_err(), "invalid options must not create a new client");
+    assert!(client.options().timeouts.connect_timeout > Duration::ZERO);
 }
 
 #[tokio_test]
@@ -128,6 +205,135 @@ async fn test_same_origin_rejects_absolute_url_different_from_configured_base() 
         .await
         .unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::OriginPolicy);
+}
+
+#[tokio_test]
+async fn test_same_origin_redirect_reaches_same_origin_target() {
+    let server = spawn_multi_shot_server(vec![
+        ResponsePlan::Immediate {
+            status: 302,
+            headers: vec![
+                ("Location".to_string(), "/final".to_string()),
+                ("Connection".to_string(), "close".to_string()),
+            ],
+            body: vec![],
+        },
+        ResponsePlan::Immediate {
+            status: 200,
+            headers: vec![],
+            body: b"ok".to_vec(),
+        },
+    ])
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    let client = HttpClientBuilder::new()
+        .create(options)
+        .expect("client should be created");
+
+    let response = timeout(
+        Duration::from_secs(3),
+        client.execute(client.request(Method::GET, "/start").build()),
+    )
+    .await
+    .expect("redirect request timed out")
+    .expect("same-origin redirect should succeed");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("redirect server did not finish");
+    assert_eq!(captured.len(), 2);
+    assert_eq!(captured[0].target, "/start");
+    assert_eq!(captured[1].target, "/final");
+}
+
+#[tokio_test]
+async fn test_same_origin_redirect_rejects_cross_origin_before_sending_credentials() {
+    let target = TcpListener::bind("127.0.0.1:0").expect("cross-origin target should bind");
+    target
+        .set_nonblocking(true)
+        .expect("cross-origin target should be nonblocking");
+    let target_url = format!(
+        "http://{}/stolen",
+        target.local_addr().expect("target address should exist")
+    );
+    let source = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 302,
+        headers: vec![("Location".to_string(), target_url)],
+        body: vec![],
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(source.base_url());
+    options
+        .add_header("authorization", "Bearer sensitive-value")
+        .expect("authorization header should be valid");
+    let client = HttpClientBuilder::new()
+        .create(options)
+        .expect("client should be created");
+
+    let error = timeout(
+        Duration::from_secs(3),
+        client.execute(client.request(Method::GET, "/redirect").build()),
+    )
+    .await
+    .expect("cross-origin redirect request timed out")
+    .expect_err("cross-origin redirect should fail");
+
+    assert_eq!(error.kind, HttpErrorKind::OriginPolicy);
+    let captured = source.finish().await;
+    assert_eq!(
+        captured.headers.get("authorization").map(String::as_str),
+        Some("Bearer sensitive-value")
+    );
+    assert_eq!(
+        target
+            .accept()
+            .expect_err("cross-origin target must not receive a connection")
+            .kind(),
+        ErrorKind::WouldBlock
+    );
+}
+
+#[tokio_test]
+async fn test_same_origin_redirect_honors_max_redirects() {
+    let server = spawn_multi_shot_server(vec![
+        ResponsePlan::Immediate {
+            status: 302,
+            headers: vec![
+                ("Location".to_string(), "/again".to_string()),
+                ("Connection".to_string(), "close".to_string()),
+            ],
+            body: vec![],
+        },
+        ResponsePlan::Immediate {
+            status: 302,
+            headers: vec![("Location".to_string(), "/never".to_string())],
+            body: vec![],
+        },
+    ])
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.max_redirects = Some(1);
+    let client = HttpClientBuilder::new()
+        .create(options)
+        .expect("client should be created");
+
+    let result = timeout(
+        Duration::from_secs(3),
+        client.execute(client.request(Method::GET, "/start").build()),
+    )
+    .await
+    .expect("redirect-limited request timed out");
+
+    assert!(result.is_err(), "redirect beyond the configured limit should fail");
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("redirect server did not finish");
+    assert_eq!(captured.len(), 2);
+    assert_eq!(captured[1].target, "/again");
 }
 
 #[tokio_test]
