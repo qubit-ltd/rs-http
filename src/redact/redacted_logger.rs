@@ -44,13 +44,13 @@ impl RedactedLogger {
     /// # Returns
     ///
     /// A helper using the supplied immutable redactor snapshot.
-    #[inline(always)]
+    #[inline]
     pub(crate) fn from_options_with_redactor(_options: &HttpClientOptions, log_redactor: Redactor) -> Self {
         Self::new(log_redactor)
     }
 
     /// Creates one diagnostic session for a complete TRACE record.
-    #[inline(always)]
+    #[inline]
     pub(crate) const fn redactor(&self) -> &Redactor {
         &self.redactor
     }

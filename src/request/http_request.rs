@@ -211,7 +211,7 @@ impl HttpRequest {
     ///
     /// # Returns
     /// Borrowed [`Method`] (for example GET or POST).
-    #[inline(always)]
+    #[inline]
     pub fn method(&self) -> &Method {
         &self.method
     }
@@ -223,7 +223,7 @@ impl HttpRequest {
     ///
     /// # Returns
     /// `self` for method chaining.
-    #[inline(always)]
+    #[inline]
     pub fn set_method(&mut self, method: Method) -> &mut Self {
         self.method = method;
         self
@@ -234,7 +234,7 @@ impl HttpRequest {
     /// # Returns
     /// The raw path/URL before query string assembly; may be relative if a base
     /// URL is set.
-    #[inline(always)]
+    #[inline]
     pub fn path(&self) -> &str {
         &self.path
     }
@@ -247,7 +247,6 @@ impl HttpRequest {
     ///
     /// # Returns
     /// `self` for method chaining.
-    #[inline(always)]
     pub fn set_path(&mut self, path: &str) -> &mut Self {
         self.path = path.to_string();
         self.refresh_resolved_url_cache();
@@ -259,7 +258,7 @@ impl HttpRequest {
     ///
     /// # Returns
     /// Slice view of accumulated query parameters.
-    #[inline(always)]
+    #[inline]
     pub fn query(&self) -> &[(String, String)] {
         &self.query
     }
@@ -282,7 +281,6 @@ impl HttpRequest {
     ///
     /// # Returns
     /// `self` for method chaining.
-    #[inline(always)]
     pub fn clear_query_params(&mut self) -> &mut Self {
         self.query.clear();
         self
@@ -293,7 +291,7 @@ impl HttpRequest {
     ///
     /// # Returns
     /// Borrowed [`HeaderMap`] owned by this request only (not merged defaults).
-    #[inline(always)]
+    #[inline]
     pub fn headers(&self) -> &HeaderMap {
         &self.headers
     }
@@ -327,7 +325,6 @@ impl HttpRequest {
     ///
     /// # Returns
     /// `self` for method chaining.
-    #[inline(always)]
     pub fn set_typed_header(&mut self, name: HeaderName, value: HeaderValue) -> &mut Self {
         self.headers.insert(name, value);
         self.invalidate_effective_headers_cache();
@@ -341,7 +338,6 @@ impl HttpRequest {
     ///
     /// # Returns
     /// `self` for method chaining.
-    #[inline(always)]
     pub fn remove_header(&mut self, name: &HeaderName) -> &mut Self {
         self.headers.remove(name);
         self.invalidate_effective_headers_cache();
@@ -353,7 +349,6 @@ impl HttpRequest {
     ///
     /// # Returns
     /// `self` for method chaining.
-    #[inline(always)]
     pub fn clear_headers(&mut self) -> &mut Self {
         self.headers.clear();
         self.invalidate_effective_headers_cache();
@@ -364,7 +359,7 @@ impl HttpRequest {
     ///
     /// # Returns
     /// Borrowed [`HttpRequestBody`].
-    #[inline(always)]
+    #[inline]
     pub fn body(&self) -> &HttpRequestBody {
         &self.body
     }
@@ -374,7 +369,7 @@ impl HttpRequest {
     /// # Returns
     /// `true` when the builder or [`Self::set_streaming_body`] installed a
     /// per-attempt stream factory.
-    #[inline(always)]
+    #[inline]
     pub(crate) fn has_streaming_body(&self) -> bool {
         self.streaming_body.is_some()
     }
@@ -386,7 +381,6 @@ impl HttpRequest {
     ///
     /// # Returns
     /// `self` for method chaining.
-    #[inline(always)]
     pub fn set_body(&mut self, body: HttpRequestBody) -> &mut Self {
         self.body = body;
         self.streaming_body = None;
@@ -400,7 +394,6 @@ impl HttpRequest {
     ///
     /// # Returns
     /// `self` for method chaining.
-    #[inline(always)]
     pub fn set_streaming_body(&mut self, streaming_body: HttpRequestStreamingBody) -> &mut Self {
         self.streaming_body = Some(streaming_body);
         self.body = HttpRequestBody::Empty;
@@ -412,7 +405,7 @@ impl HttpRequest {
     /// # Returns
     /// `Some(duration)` when a request-specific timeout overrides the client
     /// default; otherwise `None`.
-    #[inline(always)]
+    #[inline]
     pub fn request_timeout(&self) -> Option<Duration> {
         self.execution_options.request_timeout
     }
@@ -440,14 +433,14 @@ impl HttpRequest {
     ///
     /// # Returns
     /// `self` for method chaining.
-    #[inline(always)]
+    #[inline]
     pub fn clear_request_timeout(&mut self) -> &mut Self {
         self.execution_options.request_timeout = None;
         self
     }
 
     /// Returns the write-phase timeout used while sending the request.
-    #[inline(always)]
+    #[inline]
     pub fn response_header_timeout(&self) -> Duration {
         self.execution_options.response_header_timeout
     }
@@ -464,7 +457,7 @@ impl HttpRequest {
     }
 
     /// Returns the read-phase timeout used while reading response body bytes.
-    #[inline(always)]
+    #[inline]
     pub fn read_timeout(&self) -> Duration {
         self.execution_options.read_timeout
     }
@@ -486,7 +479,7 @@ impl HttpRequest {
     /// # Returns
     /// `Some` when a base is configured; `None` when only absolute URLs in
     /// `path` are valid.
-    #[inline(always)]
+    #[inline]
     pub fn base_url(&self) -> Option<&Url> {
         self.context.base_url.as_ref()
     }
@@ -499,7 +492,6 @@ impl HttpRequest {
     ///
     /// # Returns
     /// `self` for method chaining.
-    #[inline(always)]
     pub fn set_base_url(&mut self, base_url: Url) -> &mut Self {
         self.context.base_url = Some(base_url);
         self.refresh_resolved_url_cache();
@@ -511,7 +503,6 @@ impl HttpRequest {
     ///
     /// # Returns
     /// `self` for method chaining.
-    #[inline(always)]
     pub fn clear_base_url(&mut self) -> &mut Self {
         self.context.base_url = None;
         self.refresh_resolved_url_cache();
@@ -523,7 +514,7 @@ impl HttpRequest {
     /// # Returns
     /// `true` when a resolved URL whose host is an IPv6 literal must be
     /// rejected with [`HttpError::invalid_url`].
-    #[inline(always)]
+    #[inline]
     pub fn ipv4_only(&self) -> bool {
         self.context.ipv4_only
     }
@@ -536,7 +527,6 @@ impl HttpRequest {
     ///
     /// # Returns
     /// `self` for method chaining.
-    #[inline(always)]
     pub fn set_ipv4_only(&mut self, enabled: bool) -> &mut Self {
         self.context.ipv4_only = enabled;
         self.refresh_resolved_url_cache();
@@ -548,7 +538,7 @@ impl HttpRequest {
     /// # Returns
     /// `Some` token checked before send and during I/O; `None` when
     /// cancellation is not wired.
-    #[inline(always)]
+    #[inline]
     pub fn cancellation_token(&self) -> Option<&HttpCancellationToken> {
         self.execution_options.cancellation_token.as_ref()
     }
@@ -561,7 +551,7 @@ impl HttpRequest {
     ///
     /// # Returns
     /// `self` for method chaining.
-    #[inline(always)]
+    #[inline]
     pub fn set_cancellation_token(&mut self, token: HttpCancellationToken) -> &mut Self {
         self.execution_options.cancellation_token = Some(token);
         self
@@ -571,7 +561,7 @@ impl HttpRequest {
     ///
     /// # Returns
     /// `self` for method chaining.
-    #[inline(always)]
+    #[inline]
     pub fn clear_cancellation_token(&mut self) -> &mut Self {
         self.execution_options.cancellation_token = None;
         self
@@ -581,7 +571,7 @@ impl HttpRequest {
     ///
     /// # Returns
     /// Borrowed [`HttpRequestRetryOverride`].
-    #[inline(always)]
+    #[inline]
     pub fn retry_override(&self) -> &HttpRequestRetryOverride {
         &self.execution_options.retry_override
     }
@@ -593,7 +583,7 @@ impl HttpRequest {
     ///
     /// # Returns
     /// `self` for method chaining.
-    #[inline(always)]
+    #[inline]
     pub fn set_retry_override(&mut self, retry_override: HttpRequestRetryOverride) -> &mut Self {
         self.execution_options.retry_override = retry_override;
         self
@@ -604,7 +594,7 @@ impl HttpRequest {
     /// # Returns
     ///
     /// The immutable request policy snapshot.
-    #[inline(always)]
+    #[inline]
     pub(crate) fn log_redactor(&self) -> &Redactor {
         &self.context.log_redactor
     }
@@ -617,7 +607,7 @@ impl HttpRequest {
     ///
     /// # Returns
     /// Previous [`HttpRequestBody`] value.
-    #[inline(always)]
+    #[inline]
     pub(crate) fn take_body(&mut self) -> HttpRequestBody {
         std::mem::replace(&mut self.body, HttpRequestBody::Empty)
     }
@@ -1009,7 +999,7 @@ impl HttpRequest {
     }
 
     /// Returns cached merged outbound headers when available.
-    #[inline(always)]
+    #[inline]
     pub(crate) fn effective_headers_cached(&self) -> Option<&HeaderMap> {
         self.effective_headers.as_ref()
     }
@@ -1030,7 +1020,7 @@ impl HttpRequest {
     /// When to call:
     /// - immediately before starting a new send attempt;
     /// - after any mutation that can change final outbound headers.
-    #[inline(always)]
+    #[inline]
     pub(crate) fn invalidate_effective_headers_cache(&mut self) {
         self.effective_headers = None;
     }
@@ -1113,7 +1103,7 @@ impl HttpRequest {
     /// # Returns
     ///
     /// The same error configured for safe request-context debug rendering.
-    #[inline(always)]
+    #[inline]
     fn with_log_redactor(&self, error: HttpError) -> HttpError {
         error.with_log_redactor(self.log_redactor().clone())
     }

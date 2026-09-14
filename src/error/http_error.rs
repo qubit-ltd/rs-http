@@ -274,7 +274,7 @@ impl HttpError {
     ///
     /// # Returns
     /// `self` for chaining.
-    #[inline(always)]
+    #[inline]
     pub fn with_log_redactor(mut self, log_redactor: Redactor) -> Self {
         self.log_redactor = log_redactor;
         self
@@ -288,7 +288,6 @@ impl HttpError {
     ///
     /// # Returns
     /// `self` for chaining.
-    #[inline(always)]
     pub fn with_log_redaction_policy(mut self, policy: RedactionPolicy) -> Self {
         self.log_redactor = Redactor::new(policy);
         self

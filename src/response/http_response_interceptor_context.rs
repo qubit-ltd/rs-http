@@ -69,7 +69,6 @@ impl HttpResponseInterceptorContext {
     ///
     /// # Returns
     /// New context with cloned headers, URL, method, and policy snapshot.
-    #[inline(always)]
     pub fn from_meta(meta: &HttpResponseMeta) -> Self {
         Self::new(
             meta.status(),
@@ -88,7 +87,7 @@ impl HttpResponseInterceptorContext {
     ///
     /// # Returns
     /// Updated context.
-    #[inline(always)]
+    #[inline]
     pub fn with_log_redactor(mut self, log_redactor: Redactor) -> Self {
         self.log_redactor = log_redactor;
         self
@@ -101,7 +100,6 @@ impl HttpResponseInterceptorContext {
     ///
     /// # Returns
     /// Updated context.
-    #[inline(always)]
     pub fn with_log_redaction_policy(mut self, policy: RedactionPolicy) -> Self {
         self.log_redactor = Redactor::new(policy);
         self
@@ -111,7 +109,7 @@ impl HttpResponseInterceptorContext {
     ///
     /// # Returns
     /// Immutable status accepted by `HttpClient::execute`.
-    #[inline(always)]
+    #[inline]
     pub fn status(&self) -> StatusCode {
         self.status
     }
@@ -120,7 +118,7 @@ impl HttpResponseInterceptorContext {
     ///
     /// # Returns
     /// Immutable header map view.
-    #[inline(always)]
+    #[inline]
     pub fn headers(&self) -> &HeaderMap {
         &self.headers
     }
@@ -130,7 +128,7 @@ impl HttpResponseInterceptorContext {
     /// # Returns
     /// Mutable header map applied back to [`HttpResponseMeta`] after all
     /// response interceptors succeed.
-    #[inline(always)]
+    #[inline]
     pub fn headers_mut(&mut self) -> &mut HeaderMap {
         &mut self.headers
     }
@@ -139,7 +137,7 @@ impl HttpResponseInterceptorContext {
     ///
     /// # Returns
     /// Immutable response URL view.
-    #[inline(always)]
+    #[inline]
     pub fn url(&self) -> &Url {
         &self.url
     }
@@ -151,7 +149,7 @@ impl HttpResponseInterceptorContext {
     ///
     /// # Returns
     /// `self` for method chaining.
-    #[inline(always)]
+    #[inline]
     pub fn set_url(&mut self, url: Url) -> &mut Self {
         self.url = url;
         self
@@ -161,7 +159,7 @@ impl HttpResponseInterceptorContext {
     ///
     /// # Returns
     /// Immutable request method.
-    #[inline(always)]
+    #[inline]
     pub fn method(&self) -> &Method {
         &self.method
     }
@@ -171,7 +169,6 @@ impl HttpResponseInterceptorContext {
     /// # Returns
     /// `Some(Duration)` for retryable status codes with valid `Retry-After`;
     /// otherwise `None`.
-    #[inline(always)]
     pub fn retry_after_hint(&self) -> Option<Duration> {
         HttpResponseMeta::retry_after_hint_from_parts(self.status, &self.headers)
     }
@@ -183,7 +180,6 @@ impl HttpResponseInterceptorContext {
     ///
     /// # Returns
     /// Nothing. Status and method are intentionally not copied back.
-    #[inline(always)]
     pub(super) fn apply_to_meta(self, meta: &mut HttpResponseMeta) {
         meta.set_headers(self.headers);
         meta.set_url(self.url);

@@ -29,13 +29,12 @@ impl<'redactor> RedactedDebugger<'redactor> {
     /// # Returns
     ///
     /// A safe debug renderer.
-    #[inline(always)]
+    #[inline]
     pub(crate) const fn new(log_redactor: &'redactor Redactor) -> Self {
         Self { redactor: log_redactor }
     }
 
     /// Returns an optional redacted URL through the direct adapter API.
-    #[inline(always)]
     pub(crate) fn optional_url(&self, url: Option<&Url>) -> Option<RedactedText> {
         url.map(|url| {
             self.redactor

@@ -257,7 +257,7 @@ impl HttpClientOptions {
     ///
     /// # Returns
     /// Fresh options with crate defaults.
-    #[inline(always)]
+    #[inline]
     pub fn new() -> Self {
         Self::default()
     }
@@ -274,7 +274,6 @@ impl HttpClientOptions {
     /// # Errors
     /// Returns the first invalid, missing, or incorrectly typed option with
     /// its resolved configuration path.
-    #[inline(always)]
     pub fn from_config<R>(config: &R) -> Result<Self, HttpConfigError>
     where
         R: ConfigReader + ?Sized,
