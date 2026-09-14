@@ -32,11 +32,11 @@ If a check cannot be run in your environment, mention that in the pull request.
 
 ## Module Organization
 
-- The `src/` directory is for production source files only. Do not put test code
-  in `src/`, and do not add `#[cfg(test)]` test modules to source files.
-- All test code belongs under `tests/`. Shared test fixtures and integration
-  helpers may live under `tests/common` or another clearly named test-only
-  module.
+- Put tests for public behavior under `tests/`. Reserve inline `#[cfg(test)]`
+  modules for private implementation paths that cannot be exercised directly
+  through the public API; keep these focused and near the private code.
+- Shared test fixtures and integration helpers may live under `tests/common`
+  or another clearly named test-only module.
 - Source files use `snake_case.rs`.
 - As a rule, each public `struct`, `trait`, or type alias should live in its own
   source file. The file name must be the public type name converted to

@@ -29,6 +29,7 @@ fn test_http_response_interceptor_context_exposes_immutable_status_and_method() 
 
     assert_eq!(context.status(), StatusCode::ACCEPTED);
     assert_eq!(context.method(), &Method::POST);
+    assert_eq!(context.retry_after_hint(), None);
     assert_eq!(
         context.url(),
         &Url::parse("https://example.test/context").expect("valid URL")

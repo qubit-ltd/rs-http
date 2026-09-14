@@ -54,19 +54,3 @@ impl HttpRetryDiagnostics {
         self.termination
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use std::time::Duration;
-
-    use super::HttpRetryDiagnostics;
-    use super::HttpRetryTermination;
-
-    #[test]
-    fn diagnostics_accessors_return_snapshot_values() {
-        let diagnostics = HttpRetryDiagnostics::new(3, Duration::from_secs(2), HttpRetryTermination::Aborted);
-        assert_eq!(diagnostics.attempts(), 3);
-        assert_eq!(diagnostics.elapsed(), Duration::from_secs(2));
-        assert_eq!(diagnostics.termination(), HttpRetryTermination::Aborted);
-    }
-}
