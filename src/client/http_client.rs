@@ -49,6 +49,14 @@ use crate::HttpResponseInterceptor;
 use crate::HttpResponseInterceptors;
 use crate::HttpResponseMeta;
 use crate::HttpResult;
+use crate::HttpRetryDiagnostics;
+use crate::HttpRetryOptions;
+use crate::HttpRetryTermination;
+use crate::client::HttpClientBuilder;
+use crate::response::HttpResponseOptions;
+use crate::sse::SseMessageStream;
+use crate::sse::SseReconnectOptions;
+use crate::sse::SseReconnectRunner;
 
 #[derive(Debug)]
 struct HttpRetryApplicationSource(String);
@@ -60,14 +68,6 @@ impl fmt::Display for HttpRetryApplicationSource {
 }
 
 impl Error for HttpRetryApplicationSource {}
-use crate::HttpRetryDiagnostics;
-use crate::HttpRetryOptions;
-use crate::HttpRetryTermination;
-use crate::client::HttpClientBuilder;
-use crate::response::HttpResponseOptions;
-use crate::sse::SseMessageStream;
-use crate::sse::SseReconnectOptions;
-use crate::sse::SseReconnectRunner;
 
 /// High-level HTTP client: default headers, injectors, interceptors, logging,
 /// timeouts, and optional per-request retry.
@@ -145,8 +145,37 @@ impl HttpClient {
     }
 
     /// Returns a builder initialized with this client's options.
+    ///
+    /// Runtime header injectors and request/response interceptors are not
+    /// copied into the builder. Use [`Self::rebuild_with_options`] when those
+    /// registrations must survive a backend rebuild.
     pub fn to_builder(&self) -> HttpClientBuilder {
         HttpClientBuilder::new().options(self.options.clone())
+    }
+
+    /// Rebuilds the backend with new options while retaining runtime hooks.
+    ///
+    /// The returned client gets a new connection pool and policy snapshot. It
+    /// keeps the registration order of synchronous and asynchronous header
+    /// injectors and request and response interceptors. The original client is
+    /// unchanged, including when the new options are invalid.
+    ///
+    /// # Parameters
+    /// - `options`: Complete replacement options for the new client.
+    ///
+    /// # Returns
+    /// A new client with the replacement options and cloned hook registrations.
+    ///
+    /// # Errors
+    /// Returns [`HttpError`] if option validation or backend construction
+    /// fails.
+    pub fn rebuild_with_options(&self, options: HttpClientOptions) -> HttpResult<Self> {
+        let mut rebuilt = HttpClientBuilder::new().create(options)?;
+        rebuilt.injectors = self.injectors.clone();
+        rebuilt.async_injectors = self.async_injectors.clone();
+        rebuilt.request_interceptors = self.request_interceptors.clone();
+        rebuilt.response_interceptors = self.response_interceptors.clone();
+        Ok(rebuilt)
     }
 
     /// Wraps a built [`reqwest::Client`] with the given options and an empty
