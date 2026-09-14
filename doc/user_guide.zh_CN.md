@@ -80,6 +80,7 @@ let client = qubit_http::HttpClientBuilder::new().create_default()?;
 | 项目 | 默认值 |
 | --- | --- |
 | `base_url` | 无；可以直接使用显式绝对 URL，也可以设置 base URL 后使用相对路径 |
+| `origin_policy` | 默认 `SameOrigin`；设置 base URL 后，绝对目标也须同源，重定向不能越过初始源 |
 | 连接超时 | 10 秒 |
 | 读超时 | 120 秒 |
 | 响应头／发送阶段超时 | 120 秒 |
@@ -125,6 +126,16 @@ let client = HttpClientBuilder::new().create(options)?;
 
 `create` 会先执行校验。常见校验包括：超时必须大于 0；启用代理时必须有非空 host 和非 0 port；只有设置 username 时才能设置 password；日志记录请求体或响应体时 `body_size_limit` 必须大于 0；`retry.max_attempts` 必须大于 0；`error_response_preview_limit` 必须大于 0；`user_agent` 不能为空并且必须是合法 header value；SSE 行/帧上限必须大于 0。backoff 与 jitter 在构造 `BackoffPolicy` 时完成校验。
 
+如果已注册请求头注入器或拦截器，修改选项时应从现有客户端重建：
+
+```rust
+let mut updated = client.options().clone();
+updated.timeouts.request_timeout = Some(std::time::Duration::from_secs(20));
+let rebuilt = client.rebuild_with_options(updated)?;
+```
+
+`rebuild_with_options` 会创建新的后端连接池，按原顺序保留四类运行时注册项；构建失败时原客户端不变。`client.to_builder()` 只复制选项，用它构造的新客户端不会继承这些注册项。
+
 ### 从 qubit-config 读取
 
 `HttpClientOptions::from_config` 和 `HttpClientBuilder::create_from_config` 接收任意 `qubit_config::ConfigReader`。如果传入 `config.section("http")`，下面表格中的键都按相对路径读取。
@@ -162,6 +173,7 @@ let client = HttpClientBuilder::new()
 | 键 | 说明 |
 | --- | --- |
 | `base_url` | 相对请求路径的基础 URL |
+| `origin_policy` | `same_origin`（默认）或 `any_origin`；其它值会得到包含配置路径的错误 |
 | `timeouts.connect_timeout` | 连接超时 |
 | `timeouts.read_timeout` | 读取响应体或流时的单次等待超时 |
 | `timeouts.response_header_timeout` | 发送前准备和发送阶段超时 |

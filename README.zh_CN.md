@@ -74,7 +74,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 `RedactionPolicy::builder()` 使用空应用规则和标准 floor。
 扩展保守默认快照时使用 `RedactionPolicy::default().to_builder()`；
-只有显式调用 `.disable_all_floors()` 才会关闭全部 floor 保护：
+只有在 `http(|http| { ... })` 视图内显式调用 `http.disable_all_floors()`，才会关闭 HTTP 上下文的全部 floor 保护。
 
 应用启动时使用 `Redactor::replace_application_default(Redactor::new(policy))` 安装默认 redactor；`RedactionPolicy::default()` 始终
 返回固定标准策略。`HttpClientOptions::new()` 会取得构造时默认 redactor 的快照，包括此前已安装的应用策略。既有 client、request、
@@ -131,12 +131,15 @@ let client = HttpClientBuilder::new().create(options)?;
 | `HttpResponse` | 提供响应元数据，以及 bytes、text、JSON、流式响应和 SSE 的惰性读取方法。 |
 | `HttpResponseInterceptorContext` | 让响应拦截器检查 status/method，并修改 headers/最终 URL，同时不破坏成功状态不变量。 |
 
+修改客户端选项且需要保留注入器和拦截器时，使用 `HttpClient::rebuild_with_options`；`to_builder()` 只复制选项。
+
 ## 项目范围
 
 - `qubit-http` 基于 `reqwest` 构建，重点是提供稳定、统一的 HTTP 基础设施层，而不是暴露 `reqwest` 的全部 API。
 - 响应体默认惰性读取；只有开启 TRACE 级响应体日志时才会提前读取。
 - 内置请求重试只覆盖返回 `HttpResponse` 之前的失败。返回后的流式响应体错误会交给调用方处理。
 - SSE 重连使用独立 API：`HttpClient::execute_sse_with_reconnect(...)`。
+- 请求与重定向默认使用 `SameOrigin`；确需跨源时显式设为 `AnyOrigin`。配置键 `origin_policy` 接受 `same_origin` 或 `any_origin`。
 - JSON SSE 调用方可以通过 `SseCompletionPolicy::RequireDoneMarker` 要求显式完成标记，
   详见 [SSE 指南](doc/user_guide.zh_CN.md#sse-json-chunk)。
 

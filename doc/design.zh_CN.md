@@ -22,6 +22,10 @@ flowchart LR
 
 `HttpClientBuilder` 校验 `HttpClientOptions`，再构造底层 `reqwest::Client`。客户端持有连接池、默认策略、注入器、拦截器和脱敏策略快照。`HttpRequestBuilder` 将请求级设置与客户端默认值收集到 `HttpRequest`；发送请求时无需借用可变的客户端配置。
 
+`HttpClient::rebuild_with_options` 构造新的后端和脱敏策略快照，同时复制原客户端注册的请求头注入器、请求拦截器和响应拦截器。包括校验失败在内，原客户端始终不变；`to_builder` 则只复制选项。调用方若依赖运行时注册项，应选择保留它们的重建 API。
+
+默认的 `SameOrigin` 策略会以配置的 base URL 校验绝对请求目标，并以初始源校验每次重定向。未配置 base URL 时，可由绝对请求 URL 确定本次请求的初始源。只有显式选择 `AnyOrigin` 才允许跨源目标及重定向。配置读取器接受 `origin_policy = "same_origin"` 或 `"any_origin"`，不支持的值会在构造客户端前报错。
+
 ## 请求与重试边界
 
 `HttpClient::execute` 先解析请求的重试选项。每次获准的尝试都会检查取消状态、运行请求拦截器、解析 URL 和最终请求头、记录请求日志、发送请求、将非 2xx 状态映射为 `HttpError`，最后运行响应拦截器并记录响应日志。响应返回前这一整段路径产生的错误可参与重试；`HttpResponse` 返回后的 body 或 SSE 读取错误由调用方处理，不进入普通 HTTP 重试。
@@ -50,3 +54,5 @@ flowchart LR
 - 拦截器替换或移除取消令牌后的状态只属于对应尝试。
 - 直接 SSE 解码与自动重连保持各自的媒体类型契约。
 - 日志和错误格式化使用捕获的脱敏策略，并限制 body 预览大小。
+- 客户端重建后保留运行时注册项，且不修改原客户端。
+- 同源重定向不会连接跨源目标，同时仍遵守重定向次数上限。

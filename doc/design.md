@@ -22,6 +22,10 @@ flowchart LR
 
 `HttpClientBuilder` validates `HttpClientOptions` and creates the underlying `reqwest::Client`. A client owns the connection pool, default policy, injectors, interceptors, and a redaction snapshot. `HttpRequestBuilder` captures request-specific values and client defaults into an `HttpRequest`; a send does not borrow mutable client configuration.
 
+`HttpClient::rebuild_with_options` constructs a new backend and redaction snapshot while cloning the client's registered header injectors and request/response interceptors. It leaves the original client untouched, including on validation failure. `to_builder` copies options only. Callers that rebuild a configured client must choose the preserving API when runtime hooks are part of their contract.
+
+The default `SameOrigin` policy checks absolute request targets against a configured base URL and checks each redirect against the initial origin. A client without a base URL may start at an absolute URL, which then defines that request's origin. `AnyOrigin` explicitly relaxes the target and redirect restriction. Configuration readers accept `origin_policy = "same_origin"` or `"any_origin"`; unsupported values fail before client construction.
+
 ## Request and retry boundary
 
 `HttpClient::execute` resolves the request's retry options. Each admitted attempt checks cancellation, applies request interceptors, resolves the URL and effective headers, logs the request, sends it, maps non-2xx status to `HttpError`, then applies response interceptors and response logging. Retry decisions see errors from this whole pre-return attempt. A returned `HttpResponse` is outside the ordinary HTTP retry boundary: later body or SSE read failures belong to the caller.
@@ -50,3 +54,5 @@ The reconnect runner opens a response with ordinary HTTP retry disabled, decodes
 - Cancellation token replacement or removal by an interceptor must remain attempt-scoped.
 - Direct SSE decoding and automatic reconnect must keep their distinct media-type contracts.
 - Logs and error formatting must use the captured redaction policy and bounded body previews.
+- Rebuilding a client must preserve registered hooks without mutating the old client.
+- Same-origin redirects must not connect to a cross-origin target; the redirect limit must still apply.
