@@ -71,6 +71,21 @@ impl Resolve for Ipv4OnlyResolver {
 }
 
 /// Public factory used to build reqwest-backed [`HttpClient`] instances.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_http::HttpClientBuilder;
+/// use qubit_http::HttpClientOptions;
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let client = HttpClientBuilder::new()
+///     .options(HttpClientOptions::new())
+///     .build()?;
+/// assert!(!client.options().retry.enabled);
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug, Default, Clone)]
 pub struct HttpClientBuilder {
     options: Option<HttpClientOptions>,

@@ -75,6 +75,20 @@ use crate::sse::SseReconnectRunner;
 /// [`Clone`] is shallow and cheap enough for typical use (including passing
 /// into retry closures); cloning does not duplicate the underlying connection
 /// pool beyond what [`reqwest::Client`] already shares.
+///
+/// # Examples
+///
+/// ```
+/// use http::Method;
+/// use qubit_http::HttpClient;
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let client = HttpClient::builder().create_default()?;
+/// let request = client.request(Method::GET, "https://example.com").build();
+/// assert_eq!(request.method(), &Method::GET);
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Clone)]
 pub struct HttpClient {
     /// Pluggable low-level HTTP stack used to send requests (currently

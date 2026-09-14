@@ -86,6 +86,21 @@ struct HttpRequestContext {
 
 /// Immutable snapshot of a single HTTP call produced by
 /// [`crate::HttpRequestBuilder`].
+///
+/// # Examples
+///
+/// ```
+/// use http::Method;
+/// use qubit_http::HttpClient;
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let client = HttpClient::builder().create_default()?;
+/// let mut request = client.request(Method::GET, "https://example.com/old").build();
+/// request.set_path("https://example.com/new");
+/// assert_eq!(request.resolved_url()?.path(), "/new");
+/// # Ok(())
+/// # }
+/// ```
 pub struct HttpRequest {
     /// HTTP method (GET, POST, …).
     method: Method,
