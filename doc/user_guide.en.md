@@ -80,6 +80,7 @@ Default behavior:
 | Item | Default |
 | --- | --- |
 | `base_url` | None; use an explicit absolute URL, or set a request/client base URL for relative paths |
+| `origin_policy` | `SameOrigin`; a configured base URL also restricts absolute targets, and redirects cannot cross the initial origin |
 | Connect timeout | 10 seconds |
 | Read timeout | 120 seconds |
 | Response-header/send-phase timeout | 120 seconds |
@@ -125,6 +126,16 @@ let client = HttpClientBuilder::new().create(options)?;
 
 `create` validates options before building the client. Validation includes: all timeout values must be greater than zero; enabled proxies require a non-empty host and non-zero port; a proxy password requires a username; `logging.body_size_limit` must be greater than zero when request or response body logging is enabled; `retry.max_attempts` must be greater than zero; `error_response_preview_limit` must be greater than zero; `user_agent` must be non-empty and a valid header value; SSE line and frame limits must be greater than zero. Backoff and jitter values are validated when constructing `BackoffPolicy`.
 
+When changing options after registering header injectors or interceptors, rebuild through the existing client:
+
+```rust
+let mut updated = client.options().clone();
+updated.timeouts.request_timeout = Some(std::time::Duration::from_secs(20));
+let rebuilt = client.rebuild_with_options(updated)?;
+```
+
+`rebuild_with_options` creates a new backend connection pool and retains all four kinds of hook registration in their original order; the existing client remains unchanged if building fails. `client.to_builder()` copies only options, so building from it does not retain those registrations.
+
 ### Loading From qubit-config
 
 `HttpClientOptions::from_config` and `HttpClientBuilder::create_from_config` accept any `qubit_config::ConfigReader`. If you pass `config.section("http")`, all keys below are read relative to that prefix.
@@ -166,6 +177,7 @@ Common configuration keys:
 | Key | Description |
 | --- | --- |
 | `base_url` | Base URL used to resolve relative request paths |
+| `origin_policy` | `same_origin` (default) or `any_origin`; other values fail with a scoped configuration error |
 | `timeouts.connect_timeout` | Connect timeout |
 | `timeouts.read_timeout` | Per-read wait timeout for body/stream reads |
 | `timeouts.response_header_timeout` | Pre-send preparation and send-phase timeout |

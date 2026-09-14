@@ -144,12 +144,15 @@ only when the application explicitly accepts removing HTTP context floors.
 | `HttpResponse` | Exposes response metadata and lazy readers for bytes, text, JSON, streams, and SSE. |
 | `HttpResponseInterceptorContext` | Lets response interceptors inspect status/method and mutate headers/final URL without breaking success-status invariants. |
 
+Use `HttpClient::rebuild_with_options` to change client options while retaining registered injectors and interceptors. `to_builder()` copies options only.
+
 ## Project Scope
 
 - `qubit-http` is built on top of `reqwest`; it focuses on a stable shared HTTP surface rather than exposing every `reqwest` API.
 - Response bodies are read lazily unless TRACE response-body logging is enabled.
 - Built-in request retry covers failures before `HttpResponse` is returned. Stream body errors after return are surfaced to the caller.
 - SSE reconnect has a dedicated API: `HttpClient::execute_sse_with_reconnect(...)`.
+- `SameOrigin` is the default request/redirect policy. Set `origin_policy` to `AnyOrigin` explicitly when cross-origin targets are required; config accepts `same_origin` or `any_origin`.
 - JSON SSE consumers can require an explicit done marker with
   `SseCompletionPolicy::RequireDoneMarker`; see the [SSE guide](doc/user_guide.en.md#sse-json-chunks).
 
