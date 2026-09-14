@@ -276,13 +276,13 @@ impl HttpResponse {
     }
 
     /// Returns shared response metadata.
-    #[inline(always)]
+    #[inline]
     pub fn meta(&self) -> &HttpResponseMeta {
         &self.meta
     }
 
     /// Returns response status code.
-    #[inline(always)]
+    #[inline]
     pub fn status(&self) -> StatusCode {
         self.meta.status()
     }
@@ -298,19 +298,19 @@ impl HttpResponse {
     }
 
     /// Returns response headers.
-    #[inline(always)]
+    #[inline]
     pub fn headers(&self) -> &HeaderMap {
         self.meta.headers()
     }
 
     /// Returns final response URL.
-    #[inline(always)]
+    #[inline]
     pub fn url(&self) -> &Url {
         self.meta.url()
     }
 
     /// Returns request URL used in response read context.
-    #[inline(always)]
+    #[inline]
     pub fn request_url(&self) -> &Url {
         &self.runtime.request_url
     }
@@ -321,7 +321,7 @@ impl HttpResponse {
     }
 
     /// Returns parsed `Retry-After` hint when status and headers provide one.
-    #[inline(always)]
+    #[inline]
     pub fn retry_after_hint(&self) -> Option<Duration> {
         self.meta.retry_after_hint()
     }
@@ -694,7 +694,7 @@ impl HttpResponse {
 
     /// Overrides the JSON decoding mode used by [`Self::sse_chunks`] on this
     /// response.
-    #[inline(always)]
+    #[inline]
     pub fn sse_json_mode(mut self, mode: SseJsonMode) -> Self {
         self.options.sse_json_mode = mode;
         self
@@ -789,7 +789,7 @@ impl HttpResponse {
 
     /// Returns the shared log redactor used for response diagnostics and
     /// errors.
-    #[inline(always)]
+    #[inline]
     pub(crate) fn log_redactor(&self) -> &Redactor {
         &self.options.log_redactor
     }
@@ -798,7 +798,7 @@ impl HttpResponse {
     ///
     /// # Returns
     /// `Some(&Bytes)` when response body has already been buffered.
-    #[inline(always)]
+    #[inline]
     pub(crate) fn buffered_body_for_logging(&self) -> Option<&Bytes> {
         match &self.body {
             HttpResponseBodyState::Buffered(body) => Some(body),

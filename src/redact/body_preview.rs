@@ -31,7 +31,7 @@ impl<'a> BodyPreview<'a> {
     /// # Returns
     ///
     /// A preview retaining the complete source for exact metadata.
-    #[inline(always)]
+    #[inline]
     pub(crate) const fn new(bytes: &'a [u8], limit: usize) -> Self {
         Self {
             bytes,

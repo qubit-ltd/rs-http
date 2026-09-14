@@ -56,7 +56,7 @@ impl HttpResponseMeta {
     ///
     /// # Returns
     /// Updated metadata.
-    #[inline(always)]
+    #[inline]
     pub fn with_log_redactor(mut self, log_redactor: Redactor) -> Self {
         self.log_redactor = log_redactor;
         self
@@ -69,7 +69,6 @@ impl HttpResponseMeta {
     ///
     /// # Returns
     /// Updated metadata.
-    #[inline(always)]
     pub fn with_log_redaction_policy(mut self, policy: RedactionPolicy) -> Self {
         self.log_redactor = Redactor::new(policy);
         self
@@ -79,7 +78,7 @@ impl HttpResponseMeta {
     ///
     /// # Returns
     /// Immutable response status.
-    #[inline(always)]
+    #[inline]
     pub fn status(&self) -> StatusCode {
         self.status
     }
@@ -88,7 +87,7 @@ impl HttpResponseMeta {
     ///
     /// # Returns
     /// Immutable response header map.
-    #[inline(always)]
+    #[inline]
     pub fn headers(&self) -> &HeaderMap {
         &self.headers
     }
@@ -97,7 +96,7 @@ impl HttpResponseMeta {
     ///
     /// # Returns
     /// Immutable final response URL.
-    #[inline(always)]
+    #[inline]
     pub fn url(&self) -> &Url {
         &self.url
     }
@@ -106,7 +105,7 @@ impl HttpResponseMeta {
     ///
     /// # Returns
     /// Immutable request method.
-    #[inline(always)]
+    #[inline]
     pub fn method(&self) -> &Method {
         &self.method
     }
@@ -115,7 +114,6 @@ impl HttpResponseMeta {
     ///
     /// Applicable statuses are `429` and `5xx`, and header value can be
     /// `delta-seconds` or HTTP-date.
-    #[inline(always)]
     pub fn retry_after_hint(&self) -> Option<Duration> {
         Self::retry_after_hint_from_parts(self.status, &self.headers)
     }
@@ -146,7 +144,7 @@ impl HttpResponseMeta {
     ///
     /// # Returns
     /// Nothing.
-    #[inline(always)]
+    #[inline]
     pub(super) fn set_headers(&mut self, headers: HeaderMap) {
         self.headers = headers;
     }
@@ -158,7 +156,7 @@ impl HttpResponseMeta {
     ///
     /// # Returns
     /// Nothing.
-    #[inline(always)]
+    #[inline]
     pub(super) fn set_url(&mut self, url: Url) {
         self.url = url;
     }
@@ -167,7 +165,7 @@ impl HttpResponseMeta {
     ///
     /// # Returns
     /// Borrowed policy snapshot.
-    #[inline(always)]
+    #[inline]
     pub(crate) fn log_redactor(&self) -> &Redactor {
         &self.log_redactor
     }
@@ -179,7 +177,7 @@ impl HttpResponseMeta {
     ///
     /// # Returns
     /// Nothing.
-    #[inline(always)]
+    #[inline]
     pub(super) fn set_log_redactor(&mut self, log_redactor: Redactor) {
         self.log_redactor = log_redactor;
     }
