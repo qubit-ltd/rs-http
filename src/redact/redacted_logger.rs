@@ -5,7 +5,6 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-// qubit-style: allow source-test-pair
 //! Safe rendering helpers for HTTP TRACE logs.
 
 use qubit_redact::Redactor;
