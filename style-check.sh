@@ -1,49 +1,12 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-
-check_top_level_test_target_duplicates() {
-    local test_dir="${STYLE_TEST_DIR:-tests}"
-    local mod_file="$PROJECT_ROOT/$test_dir/mod.rs"
-    local failures=0
-    local hit
-    local line
-    local module_name
-    local target_file
-    local rel_target
-
-    [ -f "$mod_file" ] || return 0
-
-    while IFS= read -r hit; do
-        [ -n "$hit" ] || continue
-        line="${hit%%:*}"
-        module_name="${hit#*:}"
-        target_file="$PROJECT_ROOT/$test_dir/$module_name.rs"
-        [ -f "$target_file" ] || continue
-
-        rel_target="$test_dir/$module_name.rs"
-        printf "error: %s:%s: top-level integration test '%s' is already a Cargo test target; remove this mod declaration\n" \
-            "$test_dir/mod.rs" \
-            "$line" \
-            "$rel_target"
-        failures=$((failures + 1))
-    done < <(
-        awk '
-            /^[[:space:]]*(pub[[:space:]]+)?mod[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*;/ {
-                line = $0
-                sub(/^[[:space:]]*(pub[[:space:]]+)?mod[[:space:]]+/, "", line)
-                sub(/[[:space:]]*;.*/, "", line)
-                print FNR ":" line
-            }
-        ' "$mod_file"
-    )
-
-    if [ "$failures" -gt 0 ]; then
-        echo "Rust project style checks failed with $failures duplicate test target issue(s)."
-        exit 1
-    fi
-}
-
-check_top_level_test_target_duplicates
-exec env RS_CI_PROJECT_ROOT="$PROJECT_ROOT" "$PROJECT_ROOT/.infra/tools/rs-ci/style-check.sh" "$@"
+project_root=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
+export RS_INFRA_STYLE_TOOLCHAIN="${RS_INFRA_STYLE_TOOLCHAIN:-nightly-2026-06-05}"
+if [ -f "$project_root/.infra/style/rustfmt.toml" ]; then
+    export RS_INFRA_STYLE_RUSTFMT_CONFIG="$project_root/.infra/style/rustfmt.toml"
+elif [ -f "$project_root/rustfmt.toml" ]; then
+    export RS_INFRA_STYLE_RUSTFMT_CONFIG="$project_root/rustfmt.toml"
+fi
+"$project_root/.infra/tools/prepare-local-path-dependencies.sh"
+exec "$project_root/.infra/tools/infra-tool.sh" rs-infra-style --project "$project_root" check "$@"

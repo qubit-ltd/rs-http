@@ -1,0 +1,6 @@
+format = 1
+
+[[exceptions]]
+rule = "public-type-layout"
+path = "src/client/http_client_builder.rs"
+reason = "RedirectOriginViolation is kept beside the builder because it is an internal redirect-policy error."

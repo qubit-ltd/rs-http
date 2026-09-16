@@ -30,7 +30,6 @@ use crate::HttpError;
 use crate::HttpResult;
 
 /// Error returned by the redirect policy when a redirect crosses origins.
-// qubit-style: allow multiple-public-types
 #[derive(Debug)]
 pub(crate) struct RedirectOriginViolation;
 
