@@ -6,6 +6,13 @@
 
 `qubit-http` 是一个异步 HTTP 客户端基础设施库。它封装 `reqwest`，提供统一的客户端配置、请求构建、响应读取、错误分类、TRACE 日志脱敏、自动重试、代理、IPv4-only 解析、请求/响应拦截器，以及 Server-Sent Events（SSE）解码和重连能力。
 
+## 手册目标与读者
+
+本文面向需要让多个 API 客户端共享请求、超时、重试、日志和响应处理
+规则的 Rust 服务开发者，适用于 `qubit-http` 0.14 及公开的
+`qubit_http` API。手册不替代上游服务的 API 契约，也不会替调用方决定
+认证方案或请求是否可以安全重放。
+
 ## 如何阅读本文
 
 | 目标 | 建议阅读 |
@@ -41,6 +48,11 @@ use qubit_http::{HttpClientBuilder, HttpClientOptions};
 ```
 
 ## 快速开始
+
+假设服务需要调用一个 HTTP API、附加客户端标识，并读取响应体；如果每个
+服务都单独配置 `reqwest`，这些行为很容易逐渐分叉。本节的成功标准是：
+收到 2xx 响应后，调用方能够观察状态码和响应体。下面的完整示例使用
+`httpbin.org`，无需启动本地服务：
 
 ```rust
 use http::Method;
@@ -548,6 +560,24 @@ async fn read_sse_examples(client: &qubit_http::HttpClient) -> qubit_http::HttpR
 
 `retry_hint()` 会把超时、transport、429 和 5xx 状态视为可重试提示，其余默认不可重试。新增的重试层错误分类本身也不可重试。真正是否重试还要结合 `HttpRetryOptions` 和方法策略。
 
+## 排障
+
+先查看错误的 `kind`、`message`、`status`、`url` 和 `source`。下面按可观察
+现象列出常见的配置或用法问题：
+
+| 现象 | 检查项 | 处理方式 |
+| --- | --- | --- |
+| 相对请求路径返回 `InvalidUrl` | 是否设置了 `base_url` | 配置 client/request 级 base URL，或改用绝对 URL。 |
+| 跨 origin 的 URL 或重定向被拒绝 | `origin_policy` 与 base URL | 默认 `SameOrigin` 用于隔离；只有服务契约确实需要跨 origin 时才显式使用 `AnyOrigin`。 |
+| 请求没有重试 | `retry.enabled`、`max_attempts`、方法策略和错误白名单 | 开启重试，并确认当前方法及错误/状态码允许且适合重放。 |
+| 已经使用流式读取后再次读取 body 失败 | `stream()` 或 SSE decoder 是否已经取得 body | 一个 `HttpResponse` 只选择一条 body 消费路径；需要另一种表示时重新发起请求。 |
+| 没有日志或日志出现敏感值 | `logging.enabled`、TRACE subscriber 等级和脱敏策略 | 同时开启日志条件，并在创建 client 前配置 `RedactionPolicy`。 |
+| SSE 重连拒绝响应 | `Content-Type` 和取消状态 | 自动重连要求 `text/event-stream`；取消和 SSE 协议错误默认不会触发重连。 |
+
+配置失败时，向 `from_config` 传入作用域化的 `config.section("http")`，
+可保留根路径上下文。重试失败时，检查 `retry_diagnostics()`，并沿
+`Error::source()` 找到保留的 `RetryError<HttpError>`。
+
 ## 自动重试
 
 自动重试默认关闭。开启后，只有当 `retry.enabled = true`、`max_attempts > 1`，并且方法策略允许当前 HTTP 方法时，`execute` 才会进入重试流程。
@@ -943,10 +973,23 @@ while let Some(item) = events.next().await {
 | `sse.max_line_bytes` | SSE 单行字节上限 |
 | `sse.max_frame_bytes` | SSE 单帧字节上限 |
 
-## 实用建议
+## 限制与最佳实践
 
 - 对只读或幂等接口开启全局重试；对 POST/PATCH 只有在业务允许重放时才使用 `AllMethods` 或请求级强制重试。
 - 对长连接/SSE 设置合理的 `read_timeout`；过短会把正常的慢流误判为 `ReadTimeout`。
 - TRACE 响应体日志只记录调用方已经缓存的 body，不会为了日志消费尚未读取的后端流，包括已知长度的非 SSE 响应。
 - 需要完全禁用代理时保持默认 `proxy.enabled = false` 且 `use_env_proxy = false`；需要继承环境代理时显式打开 `use_env_proxy`。
 - 如果使用 `from_config`，优先传入 `section("http")` 一类的作用域视图，这样错误路径会保留完整上下文。
+
+本 crate 有意不暴露全部 `reqwest` API；`HttpResponse` 返回后发生的流式
+读取错误也不会重新进入 HTTP 重试；TRACE 日志不会为了记录内容而消费
+尚未缓存的响应体。整体 body 与 JSON helper 受配置的大小预算约束，SSE
+解码还受单行和单帧上限约束。只有在业务允许重复执行时，才应把已缓冲的
+请求体或每次都创建新流的 `streaming_body` 工厂视为可重放。
+
+## 延伸阅读
+
+- [README](../README.zh_CN.md) 和 [English README](../README.md)
+- [English User Guide](user_guide.en.md)
+- [设计文档](design.zh_CN.md) 和 [Design](design.md)
+- [API 文档](https://docs.rs/qubit-http)
