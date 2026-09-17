@@ -599,6 +599,17 @@ fn test_request_builder_multipart_body_rejects_empty_boundary() {
 }
 
 #[test]
+fn test_request_builder_multipart_body_rejects_boundary_longer_than_seventy_characters() {
+    let boundary = "a".repeat(71);
+    let error = new_builder(Method::POST, "/v1/multipart")
+        .multipart_body(Bytes::from_static(b"payload"), &boundary)
+        .expect_err("boundaries longer than seventy characters should fail");
+
+    assert_eq!(error.kind, HttpErrorKind::Other);
+    assert!(error.message.contains("Invalid multipart boundary"));
+}
+
+#[test]
 fn test_request_builder_multipart_body_rejects_invalid_boundary_header_value() {
     let error = new_builder(Method::POST, "/v1/multipart")
         .multipart_body(Bytes::from_static(b"payload"), "bad\r\nboundary")
@@ -968,6 +979,37 @@ fn test_request_builder_ndjson_body_allows_empty_records() {
 
     match request.body() {
         HttpRequestBody::Ndjson(bytes) => assert!(bytes.is_empty()),
+        _ => panic!("expected ndjson body"),
+    }
+}
+
+#[test]
+fn test_request_builder_ndjson_body_allows_unlimited_output() {
+    #[derive(Serialize)]
+    struct Record {
+        id: i32,
+    }
+
+    let mut options = HttpClientOptions::default();
+    options.json_encode_limits = JsonEncodeLimits::new();
+    let client = HttpClientBuilder::new()
+        .create(options)
+        .expect("client should be created");
+    let request = client
+        .request(Method::POST, "/v1/ndjson")
+        .ndjson_body(&[Record { id: 1 }, Record { id: 2 }])
+        .expect("unlimited NDJSON should be encoded")
+        .build();
+
+    match request.body() {
+        HttpRequestBody::Ndjson(bytes) => {
+            assert_eq!(
+                bytes.as_ref(),
+                br#"{"id":1}
+{"id":2}
+"#
+            );
+        }
         _ => panic!("expected ndjson body"),
     }
 }
