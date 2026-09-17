@@ -5,6 +5,7 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
+// qubit-style: allow multiple-public-types
 //! Unified HTTP response type and helpers.
 use std::fmt;
 use std::sync::Arc;
