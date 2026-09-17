@@ -6,6 +6,14 @@ This guide is based on the current source code and tests. It applies to crate `q
 
 `qubit-http` is an asynchronous HTTP client infrastructure crate. It wraps `reqwest` and provides unified client options, request building, response reading, error classification, TRACE logging with URL/header/body redaction, retries, proxies, IPv4-only resolution, request/response interceptors, and Server-Sent Events (SSE) decoding and reconnection.
 
+## Purpose And Audience
+
+This guide is for Rust service authors who need several API clients to share the
+same request, timeout, retry, logging, and response-handling rules. It covers
+`qubit-http` 0.14 and the public `qubit_http` API. It does not replace the
+upstream service's API contract, and it does not make unsafe request replay or
+application-level authentication decisions on the caller's behalf.
+
 ## How To Read This Guide
 
 | Goal | Start with |
@@ -41,6 +49,12 @@ use qubit_http::{HttpClientBuilder, HttpClientOptions};
 ```
 
 ## Quick Start
+
+Suppose a service needs to call an HTTP API, attach a client identifier, and
+inspect the response body without writing a separate `reqwest` setup for each
+service. The success criterion is a 2xx response whose status and body can be
+observed by the caller. The following complete example uses `httpbin.org`, so
+no local server is required:
 
 ```rust
 use http::Method;
@@ -552,6 +566,24 @@ Error categories:
 
 `retry_hint()` marks timeouts, transport errors, 429, and 5xx statuses as retryable hints. The new retry-layer error categories are non-retryable themselves. Actual retry behavior still depends on `HttpRetryOptions` and the method policy.
 
+## Troubleshooting
+
+Start with the error's `kind`, `message`, `status`, `url`, and `source`. The
+following symptoms identify the most common configuration or usage mistakes:
+
+| Symptom | Check | Corrective action |
+| --- | --- | --- |
+| Relative request path fails with `InvalidUrl` | Whether `base_url` is set | Configure a client/request base URL or use an absolute URL. |
+| Cross-origin URL or redirect is rejected | `origin_policy` and the configured base URL | Use the default `SameOrigin` for isolation, or explicitly select `AnyOrigin` when the service contract requires it. |
+| Request never retries | `retry.enabled`, `max_attempts`, method policy, and error allowlists | Enable retry and ensure the method and error/status are safe and allowed to replay. |
+| Response body read fails after streaming | Whether `stream()` or an SSE decoder already took the body | Keep one body-consumption path per `HttpResponse`; use a fresh request for another representation. |
+| Logs are absent or sensitive values are visible | `logging.enabled`, TRACE subscriber level, and redaction policy | Enable both logging conditions and configure `RedactionPolicy` before constructing the client. |
+| SSE reconnect rejects the response | `Content-Type` and cancellation state | Reconnect requires `text/event-stream`; cancellation and SSE protocol errors do not reconnect by default. |
+
+For configuration failures, pass a scoped `config.section("http")` to retain
+root-relative error paths. For retry failures, inspect `retry_diagnostics()`
+and follow `Error::source()` to the retained `RetryError<HttpError>`.
+
 ## Automatic Retry
 
 Automatic retry is disabled by default. When enabled, `execute` enters the retry flow only when `retry.enabled = true`, `max_attempts > 1`, and the method policy allows the current HTTP method.
@@ -961,10 +993,25 @@ The table below lists every configuration key supported by `HttpClientOptions::f
 | `sse.max_line_bytes` | SSE single-line byte limit |
 | `sse.max_frame_bytes` | SSE single-frame byte limit |
 
-## Practical Advice
+## Limitations And Best Practices
 
 - Enable global retry for read-only or idempotent APIs. Use `AllMethods` or per-request force retry for POST/PATCH only when the operation is safe to replay.
 - Set a realistic `read_timeout` for long-lived streams/SSE; too short a value turns a slow but healthy stream into `ReadTimeout`.
 - TRACE response-body logging reports only bodies already buffered by the caller; it never consumes an unconsumed backend stream, including known-size non-SSE responses.
 - Keep `proxy.enabled = false` and `use_env_proxy = false` when you want proxying fully disabled; explicitly enable `use_env_proxy` when environment proxy inheritance is desired.
 - Prefer passing a scoped `section("http")` to `from_config`/`create_from_config`, so error paths preserve useful context.
+
+The crate deliberately does not expose every `reqwest` API, does not retry
+stream-read failures after `HttpResponse` has been returned, and does not
+consume an unbuffered response body merely to produce a TRACE log. Whole-body
+and JSON helpers are bounded by configured limits; SSE line and frame limits
+also apply while decoding. Treat buffered request bodies and fresh
+`streaming_body` factories as replayable only when the application can safely
+repeat the operation.
+
+## Further Reading
+
+- [README](../README.md) and [中文 README](../README.zh_CN.md)
+- [中文用户指南](user_guide.zh_CN.md)
+- [Design](design.md) and [中文设计文档](design.zh_CN.md)
+- [API Reference](https://docs.rs/qubit-http)
