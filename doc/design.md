@@ -38,7 +38,7 @@ Cancellation is checked before sending and during supported I/O and retry waits.
 
 `HttpResponse` holds one of three body states: backend response, buffered bytes, or stream taken. `bytes`, `text`, and `json` aggregate within `response_body_size_limit` and cache a successful read. `stream` transfers the backend body to the returned stream; a later aggregate read cannot regain it. A failed read is retained so later reads report the original failure category. The stream path intentionally does not impose the whole-body aggregation limit; SSE line/frame and JSON limits apply to their respective decoders.
 
-Non-2xx responses are converted to errors before the caller receives a response. Error body preview and retained raw error body have separate limits. TRACE body logging can prebuffer a known-size, non-SSE response within its logging limit; unknown-size or larger bodies remain lazy. Request, response, and error diagnostics use the client's redaction policy snapshot.
+Non-2xx responses are converted to errors before the caller receives a response. Error body preview and retained raw error body have separate limits. TRACE body logging reports a body only when it has already been buffered; it never consumes an unconsumed backend stream. Request, response, and error diagnostics use the client's redaction policy snapshot.
 
 ## SSE decoding and reconnect
 

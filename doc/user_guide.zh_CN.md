@@ -674,7 +674,7 @@ let request = client
 client.execute(request).await?;
 ```
 
-注意：如果 TRACE 日志开启且 `log_response_body = true`，响应体日志只会在 body 已缓存，或响应不是 SSE 且存在 `Content-Length`、并且长度不超过 `logging.body_size_limit` 时读取并缓存完整 body；未知长度、超过限制或 SSE 响应会记录为跳过，不会为了日志消费后端流。
+注意：如果 TRACE 日志开启且 `log_response_body = true`，响应体日志只记录已经缓存的 body。尚未读取的后端流始终留给调用方，包括带有已知 `Content-Length` 的响应；调用方读取前，这些响应会记录为跳过。
 
 ## 代理与 IPv4-only
 
@@ -947,6 +947,6 @@ while let Some(item) = events.next().await {
 
 - 对只读或幂等接口开启全局重试；对 POST/PATCH 只有在业务允许重放时才使用 `AllMethods` 或请求级强制重试。
 - 对长连接/SSE 设置合理的 `read_timeout`；过短会把正常的慢流误判为 `ReadTimeout`。
-- TRACE 响应体日志只会预读并缓存已知长度且不超过日志限制的非 SSE body；真正的未知长度流式响应和 SSE 不会为了日志被消费。
+- TRACE 响应体日志只记录调用方已经缓存的 body，不会为了日志消费尚未读取的后端流，包括已知长度的非 SSE 响应。
 - 需要完全禁用代理时保持默认 `proxy.enabled = false` 且 `use_env_proxy = false`；需要继承环境代理时显式打开 `use_env_proxy`。
 - 如果使用 `from_config`，优先传入 `section("http")` 一类的作用域视图，这样错误路径会保留完整上下文。

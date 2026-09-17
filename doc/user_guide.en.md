@@ -691,7 +691,7 @@ let request = client
 client.execute(request).await?;
 ```
 
-Important: if TRACE logging is active and `log_response_body = true`, response-body logging reads and caches the full body only when it is already buffered, or when the response is not SSE, has `Content-Length`, and the declared length is no greater than `logging.body_size_limit`. Unknown-size, over-limit, and SSE responses are logged as skipped instead of being consumed for logging.
+Important: if TRACE logging is active and `log_response_body = true`, response-body logging reports the body only when it is already buffered. An unconsumed backend stream is always left for the caller, including responses with a known `Content-Length`; those responses are logged as skipped until the caller reads them.
 
 ## Proxy And IPv4-only
 
@@ -965,6 +965,6 @@ The table below lists every configuration key supported by `HttpClientOptions::f
 
 - Enable global retry for read-only or idempotent APIs. Use `AllMethods` or per-request force retry for POST/PATCH only when the operation is safe to replay.
 - Set a realistic `read_timeout` for long-lived streams/SSE; too short a value turns a slow but healthy stream into `ReadTimeout`.
-- TRACE response-body logging only pre-reads and caches known-size non-SSE bodies within the log limit; unknown-size streaming responses and SSE are not consumed for logging.
+- TRACE response-body logging reports only bodies already buffered by the caller; it never consumes an unconsumed backend stream, including known-size non-SSE responses.
 - Keep `proxy.enabled = false` and `use_env_proxy = false` when you want proxying fully disabled; explicitly enable `use_env_proxy` when environment proxy inheritance is desired.
 - Prefer passing a scoped `section("http")` to `from_config`/`create_from_config`, so error paths preserve useful context.

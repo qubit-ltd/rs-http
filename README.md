@@ -149,7 +149,9 @@ Use `HttpClient::rebuild_with_options` to change client options while retaining 
 ## Project Scope
 
 - `qubit-http` is built on top of `reqwest`; it focuses on a stable shared HTTP surface rather than exposing every `reqwest` API.
-- Response bodies are read lazily unless TRACE response-body logging is enabled.
+- Response bodies are read lazily. TRACE response-body logging reports a body only
+  when it has already been buffered; it never consumes an unconsumed backend
+  stream.
 - Built-in request retry covers failures before `HttpResponse` is returned. Stream body errors after return are surfaced to the caller.
 - SSE reconnect has a dedicated API: `HttpClient::execute_sse_with_reconnect(...)`.
 - `SameOrigin` is the default request/redirect policy. Set `origin_policy` to `AnyOrigin` explicitly when cross-origin targets are required; config accepts `same_origin` or `any_origin`.
