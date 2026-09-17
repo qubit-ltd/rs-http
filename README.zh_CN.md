@@ -136,7 +136,8 @@ let client = HttpClientBuilder::new().create(options)?;
 ## 项目范围
 
 - `qubit-http` 基于 `reqwest` 构建，重点是提供稳定、统一的 HTTP 基础设施层，而不是暴露 `reqwest` 的全部 API。
-- 响应体默认惰性读取；只有开启 TRACE 级响应体日志时才会提前读取。
+- 响应体始终惰性读取。TRACE 响应体日志只记录已经缓存的 body，不会为了
+  日志消费尚未读取的后端流。
 - 内置请求重试只覆盖返回 `HttpResponse` 之前的失败。返回后的流式响应体错误会交给调用方处理。
 - SSE 重连使用独立 API：`HttpClient::execute_sse_with_reconnect(...)`。
 - 请求与重定向默认使用 `SameOrigin`；确需跨源时显式设为 `AnyOrigin`。配置键 `origin_policy` 接受 `same_origin` 或 `any_origin`。
