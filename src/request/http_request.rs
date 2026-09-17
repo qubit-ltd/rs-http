@@ -1110,6 +1110,7 @@ impl HttpRequest {
     }
 }
 
+/// Returns whether two URLs share scheme, host, and effective port.
 fn same_origin(left: &Url, right: &Url) -> bool {
     left.scheme() == right.scheme()
         && left.host() == right.host()
