@@ -286,6 +286,7 @@ fn is_ipv6_literal_host(host: &str) -> bool {
     matches!(trimmed.parse::<IpAddr>(), Ok(IpAddr::V6(_)))
 }
 
+/// Returns whether two URLs share scheme, host, and effective port.
 fn same_origin(left: &url::Url, right: &url::Url) -> bool {
     left.scheme() == right.scheme()
         && left.host() == right.host()

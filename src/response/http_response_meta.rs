@@ -201,10 +201,12 @@ impl fmt::Debug for HttpResponseMeta {
     }
 }
 
+/// Returns whether a status permits interpreting its `Retry-After` header.
 fn is_retry_after_applicable_status(status: StatusCode) -> bool {
     status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error()
 }
 
+/// Parses `Retry-After` as delta-seconds or an HTTP date.
 fn parse_retry_after_value(value: &str) -> Option<Duration> {
     let trimmed = value.trim();
     if trimmed.is_empty() {

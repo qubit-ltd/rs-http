@@ -78,6 +78,7 @@ impl<'redactor> RedactedDebugger<'redactor> {
     }
 }
 
+/// Finds the first HTTP or HTTPS URL prefix in diagnostic text.
 fn find_url_start(text: &str) -> Option<usize> {
     let find = |needle: &str| {
         text.as_bytes()
@@ -91,6 +92,7 @@ fn find_url_start(text: &str) -> Option<usize> {
     }
 }
 
+/// Trims punctuation that commonly follows a URL in prose.
 fn url_candidate_end(text: &str, start: usize) -> usize {
     let mut end = text.len();
     while let Some((index, character)) = text[..end].char_indices().next_back() {

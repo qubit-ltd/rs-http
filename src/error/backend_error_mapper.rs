@@ -50,6 +50,7 @@ pub(crate) fn map_reqwest_error(
         .with_source(error)
 }
 
+/// Returns whether an error source chain contains an origin-policy violation.
 fn contains_redirect_origin_violation(error: &reqwest::Error) -> bool {
     let mut source = error.source();
     while let Some(candidate) = source {

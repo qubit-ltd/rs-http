@@ -677,6 +677,7 @@ impl HttpClient {
         mapped
     }
 
+    /// Copies retry-relevant HTTP fields without cloning the source chain.
     fn project_http_error(error: &HttpError) -> HttpError {
         let mut projected =
             HttpError::new(error.kind, error.message.clone()).with_log_redactor(error.log_redactor.clone());
@@ -691,6 +692,7 @@ impl HttpClient {
         projected
     }
 
+    /// Adds terminal retry details to an existing HTTP error message.
     fn append_retry_message(mut error: HttpError, detail: String) -> HttpError {
         error.message = format!("{} ({detail})", error.message);
         error
