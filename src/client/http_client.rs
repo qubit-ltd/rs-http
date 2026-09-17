@@ -803,6 +803,7 @@ mod tests {
     use url::Url;
 
     use super::HttpClient;
+    use super::HttpRetryApplicationSource;
     use crate::HttpError;
     use crate::HttpErrorKind;
 
@@ -878,5 +879,12 @@ mod tests {
             assert_eq!(mapped.retry_after, Some(Duration::from_secs(2)));
             assert!(!format!("{mapped:?}").contains("conversion-secret"));
         }
+    }
+
+    #[test]
+    fn test_retry_application_source_displays_original_message() {
+        let source = HttpRetryApplicationSource("backend request failed".to_owned());
+
+        assert_eq!(source.to_string(), "backend request failed");
     }
 }
