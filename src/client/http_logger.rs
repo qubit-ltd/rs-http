@@ -5,6 +5,7 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
+// qubit-style: allow multiple-public-types
 //! # HTTP Logger
 //!
 //! Encapsulates request and response logging behavior.

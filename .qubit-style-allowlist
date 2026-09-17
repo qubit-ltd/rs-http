@@ -1,0 +1,13 @@
+# Closely related private state types stay beside the owning public type so the
+# request, response, client, options, and SSE state machines remain locally readable.
+multiple-public-types | src/client/http_client.rs | HttpClient and its retry state types form one execution boundary.
+multiple-public-types | src/client/http_client_builder.rs | Builder-only resolver and redirect policy helpers belong with construction.
+multiple-public-types | src/client/http_logger.rs | Logger-only body preview state belongs with logger formatting.
+multiple-public-types | src/options/http_client_options.rs | Config input structs are private representations of HttpClientOptions.
+multiple-public-types | src/options/http_logging_options.rs | Config input is private and only maps logging options.
+multiple-public-types | src/options/http_retry_options.rs | Config input is private and only maps retry options.
+multiple-public-types | src/options/http_timeout_options.rs | Config input is private and only maps timeout options.
+multiple-public-types | src/options/proxy_options.rs | Config input is private and only maps proxy options.
+multiple-public-types | src/request/http_request.rs | Request execution and context state are private parts of one snapshot.
+multiple-public-types | src/response/http_response.rs | Body failure and runtime state are private parts of one response lifecycle.
+multiple-public-types | src/sse/sse_reconnect_runner.rs | Reconnect action and state types implement one private state machine.
