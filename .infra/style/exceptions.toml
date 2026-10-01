@@ -2,5 +2,55 @@ format = 1
 
 [[exceptions]]
 rule = "public-type-layout"
+path = "src/client/http_client.rs"
+reason = "HttpClient and its retry state types form one execution boundary."
+
+[[exceptions]]
+rule = "public-type-layout"
 path = "src/client/http_client_builder.rs"
-reason = "RedirectOriginViolation is kept beside the builder because it is an internal redirect-policy error."
+reason = "Builder-only resolver and redirect policy helpers belong with construction."
+
+[[exceptions]]
+rule = "public-type-layout"
+path = "src/client/http_logger.rs"
+reason = "Logger-only body preview state belongs with logger formatting."
+
+[[exceptions]]
+rule = "public-type-layout"
+path = "src/options/http_client_options.rs"
+reason = "Config input structs are private representations of HttpClientOptions."
+
+[[exceptions]]
+rule = "public-type-layout"
+path = "src/options/http_logging_options.rs"
+reason = "Config input is private and only maps logging options."
+
+[[exceptions]]
+rule = "public-type-layout"
+path = "src/options/http_retry_options.rs"
+reason = "Config input is private and only maps retry options."
+
+[[exceptions]]
+rule = "public-type-layout"
+path = "src/options/http_timeout_options.rs"
+reason = "Config input is private and only maps timeout options."
+
+[[exceptions]]
+rule = "public-type-layout"
+path = "src/options/proxy_options.rs"
+reason = "Config input is private and only maps proxy options."
+
+[[exceptions]]
+rule = "public-type-layout"
+path = "src/request/http_request.rs"
+reason = "Request execution and context state are private parts of one snapshot."
+
+[[exceptions]]
+rule = "public-type-layout"
+path = "src/response/http_response.rs"
+reason = "Body failure and runtime state are private parts of one response lifecycle."
+
+[[exceptions]]
+rule = "public-type-layout"
+path = "src/sse/sse_reconnect_runner.rs"
+reason = "Reconnect action and state types implement one private state machine."

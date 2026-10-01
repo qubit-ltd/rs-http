@@ -5,7 +5,6 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-// qubit-style: allow multiple-public-types
 
 use qubit_argument::ArgumentResult;
 use qubit_argument::require_that;

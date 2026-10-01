@@ -5,7 +5,6 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-// qubit-style: allow multiple-public-types
 //! HTTP client: builds requests, applies defaults and interceptors, executes
 //! them with optional retry, and exposes SSE helpers with reconnect.
 //!
