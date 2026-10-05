@@ -18,14 +18,14 @@ It complements `rustfmt`, `clippy`, and the existing codebase conventions.
 Before opening a pull request, run the relevant checks locally:
 
 ```bash
-./style-check.sh
-./ci-check.sh
+./.infra/bin/style-check.sh
+./.infra/bin/ci-check.sh
 ```
 
-Use `./align-ci.sh` to format code before rerunning the checks. Do not use a
+Use `./.infra/bin/align-ci.sh` to format code before rerunning the checks. Do not use a
 bare `cargo fmt` as the canonical formatter command for this project; the CI
 formatting rules use the project rustfmt configuration through `align-ci.sh`.
-Use `./style-check.sh` for the style-only check and `./ci-check.sh` for the
+Use `./.infra/bin/style-check.sh` for the style-only check and `./.infra/bin/ci-check.sh` for the
 full local CI check before committing larger changes.
 
 If a check cannot be run in your environment, mention that in the pull request.
