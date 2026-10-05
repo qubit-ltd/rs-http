@@ -18,14 +18,14 @@
 提交 pull request 前，请尽量在本地运行相关检查：
 
 ```bash
-./style-check.sh
-./ci-check.sh
+./.infra/bin/style-check.sh
+./.infra/bin/ci-check.sh
 ```
 
-需要格式化代码时，使用 `./align-ci.sh` 后再重新运行检查。不要把裸
+需要格式化代码时，使用 `./.infra/bin/align-ci.sh` 后再重新运行检查。不要把裸
 `cargo fmt` 作为本项目的标准格式化命令；CI 的格式化规则通过
 `align-ci.sh` 使用项目 rustfmt 配置。
-`./style-check.sh` 用于只检查风格，`./ci-check.sh` 用于提交较大变更前的完整本地 CI 检查。
+`./.infra/bin/style-check.sh` 用于只检查风格，`./.infra/bin/ci-check.sh` 用于提交较大变更前的完整本地 CI 检查。
 
 如果某个检查无法在你的环境中运行，请在 pull request 中说明。
 
