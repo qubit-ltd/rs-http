@@ -2,7 +2,7 @@
 
 [中文](user_guide.zh_CN.md) | [README](../README.md) | [API Reference](https://docs.rs/qubit-http)
 
-This guide is based on the current source code and tests. It applies to crate `qubit-http` 0.14, imported from Rust code as `qubit_http`.
+This guide is based on the current source code and tests. It applies to crate `qubit-http` 0.15, imported from Rust code as `qubit_http`.
 
 `qubit-http` is an asynchronous HTTP client infrastructure crate. It wraps `reqwest` and provides unified client options, request building, response reading, error classification, TRACE logging with URL/header/body redaction, retries, proxies, IPv4-only resolution, request/response interceptors, and Server-Sent Events (SSE) decoding and reconnection.
 
@@ -10,7 +10,7 @@ This guide is based on the current source code and tests. It applies to crate `q
 
 This guide is for Rust service authors who need several API clients to share the
 same request, timeout, retry, logging, and response-handling rules. It covers
-`qubit-http` 0.14 and the public `qubit_http` API. It does not replace the
+`qubit-http` 0.15 and the public `qubit_http` API. It does not replace the
 upstream service's API contract, and it does not make unsafe request replay or
 application-level authentication decisions on the caller's behalf.
 
@@ -31,11 +31,11 @@ An `HttpClient` owns shared execution policy. An `HttpRequest` combines a method
 
 ```toml
 [dependencies]
-qubit-http = "0.14"
+qubit-http = "0.15"
 qubit-redact = "0.9"
 http = "1.4"
 qubit-config = { version = "0.14", default-features = false }
-qubit-retry = "0.25"
+qubit-retry = "0.26"
 qubit-budget = { version = "0.7", features = ["json"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -631,7 +631,7 @@ continuation budget instead of starting another request. Custom hint policies or
 final delay caps can change the selected delay. SSE reconnect continues to
 disable inner HTTP retries.
 
-This release uses `qubit-retry` 0.25. Update any direct dependency and its lockfile
+This release uses `qubit-retry` 0.26. Update any direct dependency and its lockfile
 entry when sharing `RetryPolicy` or `BackoffPolicy` with HTTP/SSE. When consuming
 retry results directly, `RetryError::map_error` provides pure payload conversion
 while preserving retry context and completion diagnostics. HTTP's domain error conversion

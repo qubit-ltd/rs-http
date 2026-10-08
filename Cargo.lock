@@ -976,7 +976,7 @@ checksum = "1f6ad59d1256f6c62bc2fe153bdd87f224d7cfd7fa81b58dd8ab03aa4836f21a"
 
 [[package]]
 name = "qubit-http"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "async-stream",
  "bytes",
@@ -1058,9 +1058,9 @@ dependencies = [
 
 [[package]]
 name = "qubit-retry"
-version = "0.25.0"
+version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7acfc4f391287be40f219bb578901904ebbe6e6eb33bef8d6809622afdd3f5f7"
+checksum = "84286aee1cde9a49e1d050eb1792c76919a522081b83c76167a1299ea8a46d23"
 dependencies = [
  "fastrand",
  "qubit-budget 0.7.0",

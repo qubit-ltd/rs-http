@@ -29,7 +29,7 @@ For full examples and advanced options, read the [User Guide](doc/user_guide.en.
 
 ```toml
 [dependencies]
-qubit-http = "0.14"
+qubit-http = "0.15"
 qubit-redact = "0.9"
 http = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
@@ -160,7 +160,7 @@ Use `HttpClient::rebuild_with_options` to change client options while retaining 
 
 ## Retry timing boundaries
 
-HTTP retry budgets use qubit-retry 0.25. `max_duration` is a continuation budget,
+HTTP retry budgets use qubit-retry 0.26. `max_duration` is a continuation budget,
 not a hard request timeout: it prevents further attempts while preserving a
 completed successful request. Request timeouts remain configured separately.
 SSE reconnects preserve structured budget errors as HTTP error sources.
@@ -178,7 +178,7 @@ It does not cap ordinary HTTP `Retry-After` handling. Backoff policy
 `maximum_delay()` is a base-strategy bound; `.limit_delay(duration)` configures an
 explicit final policy cap. SSE retains its one-millisecond minimum wait.
 
-### Retry source contract in 0.14
+### Retry source contract in 0.15
 
 Every retry terminal, including Abort and Exhausted, now stores a complete
 `RetryError<HttpError>` as its immediate source. Use `last_error()` or follow
