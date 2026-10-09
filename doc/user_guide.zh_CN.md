@@ -2,14 +2,14 @@
 
 [English](user_guide.en.md) | [README](../README.zh_CN.md) | [API 文档](https://docs.rs/qubit-http)
 
-本文档基于当前源码和测试整理，适用于 crate `qubit-http` 0.15，Rust 代码中通过库名 `qubit_http` 使用。
+本文档基于当前源码和测试整理，适用于 crate `qubit-http` 0.15.1，Rust 代码中通过库名 `qubit_http` 使用。
 
 `qubit-http` 是一个异步 HTTP 客户端基础设施库。它封装 `reqwest`，提供统一的客户端配置、请求构建、响应读取、错误分类、TRACE 日志脱敏、自动重试、代理、IPv4-only 解析、请求/响应拦截器，以及 Server-Sent Events（SSE）解码和重连能力。
 
 ## 手册目标与读者
 
 本文面向需要让多个 API 客户端共享请求、超时、重试、日志和响应处理
-规则的 Rust 服务开发者，适用于 `qubit-http` 0.15 及公开的
+规则的 Rust 服务开发者，适用于 `qubit-http` 0.15.1 及公开的
 `qubit_http` API。手册不替代上游服务的 API 契约，也不会替调用方决定
 认证方案或请求是否可以安全重放。
 
@@ -30,7 +30,7 @@
 
 ```toml
 [dependencies]
-qubit-http = "0.15"
+qubit-http = "0.15.1"
 qubit-redact = "0.9"
 http = "1.4"
 qubit-config = { version = "0.14", default-features = false }

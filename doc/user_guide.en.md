@@ -2,7 +2,7 @@
 
 [中文](user_guide.zh_CN.md) | [README](../README.md) | [API Reference](https://docs.rs/qubit-http)
 
-This guide is based on the current source code and tests. It applies to crate `qubit-http` 0.15, imported from Rust code as `qubit_http`.
+This guide is based on the current source code and tests. It applies to crate `qubit-http` 0.15.1, imported from Rust code as `qubit_http`.
 
 `qubit-http` is an asynchronous HTTP client infrastructure crate. It wraps `reqwest` and provides unified client options, request building, response reading, error classification, TRACE logging with URL/header/body redaction, retries, proxies, IPv4-only resolution, request/response interceptors, and Server-Sent Events (SSE) decoding and reconnection.
 
@@ -10,7 +10,7 @@ This guide is based on the current source code and tests. It applies to crate `q
 
 This guide is for Rust service authors who need several API clients to share the
 same request, timeout, retry, logging, and response-handling rules. It covers
-`qubit-http` 0.15 and the public `qubit_http` API. It does not replace the
+`qubit-http` 0.15.1 and the public `qubit_http` API. It does not replace the
 upstream service's API contract, and it does not make unsafe request replay or
 application-level authentication decisions on the caller's behalf.
 
@@ -31,7 +31,7 @@ An `HttpClient` owns shared execution policy. An `HttpRequest` combines a method
 
 ```toml
 [dependencies]
-qubit-http = "0.15"
+qubit-http = "0.15.1"
 qubit-redact = "0.9"
 http = "1.4"
 qubit-config = { version = "0.14", default-features = false }

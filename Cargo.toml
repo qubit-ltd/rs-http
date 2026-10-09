@@ -1,6 +1,6 @@
 [package]
 name = "qubit-http"
-version = "0.15.0"
+version = "0.15.1"
 edition = "2021"
 rust-version = "1.94"
 authors = ["Haixing Hu <starfish.hu@gmail.com>"]
@@ -50,7 +50,7 @@ futures-util = "^0.3"
 qubit-config = { version = "0.14", default-features = false }
 qubit-budget = { version = "0.7", features = ["json"] }
 qubit-clock = { version = "0.13" }
-qubit-argument = "0.4"
+qubit-argument = "0.4.6"
 qubit-error = "0.2"
 qubit-function = "0.18"
 qubit-retry = { version = "0.26", features = ["tokio"] }

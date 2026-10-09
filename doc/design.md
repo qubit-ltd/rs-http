@@ -2,7 +2,7 @@
 
 [中文设计文档](design.zh_CN.md) | [User Guide](user_guide.en.md) | [README](../README.md)
 
-This document describes the execution boundaries of `qubit-http` 0.15. The source code and tests define the behavior; this document records the choices that callers and maintainers need to preserve.
+This document describes the execution boundaries of `qubit-http` 0.15.1. The source code and tests define the behavior; this document records the choices that callers and maintainers need to preserve.
 
 ## Components and ownership
 

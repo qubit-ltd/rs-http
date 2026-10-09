@@ -29,7 +29,7 @@
 
 ```toml
 [dependencies]
-qubit-http = "0.15"
+qubit-http = "0.15.1"
 qubit-redact = "0.9"
 http = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
