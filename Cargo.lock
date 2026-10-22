@@ -893,20 +893,18 @@ checksum = "e1ce6e3033a810f5c8fe64e9b96455ec40f59c5c73a42ef5b9700a64c7eed35f"
 
 [[package]]
 name = "qubit-budget"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f93253bc135140ca58d3d4f7dffcc330394cf94fec873c5f86ec3bb41dbfa18e"
-dependencies = [
- "thiserror",
-]
-
-[[package]]
-name = "qubit-budget"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "353cf62af65868c70d5af6468b101a8099bd6de980d84678eeb99f99eb679161"
 dependencies = [
  "qubit-clock",
+ "thiserror",
+]
+
+[[package]]
+name = "qubit-budget"
+version = "0.8.0"
+dependencies = [
  "thiserror",
 ]
 
@@ -933,14 +931,12 @@ dependencies = [
 
 [[package]]
 name = "qubit-config"
-version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "731de875d77b66111ea523ec2064bb5fd81e3f87c95ede577a967dfb7db5d762"
+version = "0.14.3"
 dependencies = [
- "qubit-budget 0.5.0",
+ "qubit-budget 0.8.0",
  "qubit-datatype",
- "qubit-json 0.9.0",
- "qubit-redact 0.8.1",
+ "qubit-json",
+ "qubit-redact",
  "qubit-utils",
  "qubit-value",
  "serde",
@@ -951,12 +947,10 @@ dependencies = [
 
 [[package]]
 name = "qubit-datatype"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee2959d5aa33b376bdd5d9c3c4d80246dbe9cdc3de020b4443caff2de9b51cdc"
+version = "0.14.0"
 dependencies = [
- "qubit-budget 0.5.0",
- "qubit-json 0.9.0",
+ "qubit-budget 0.8.0",
+ "qubit-json",
  "serde",
  "serde_json",
  "thiserror",
@@ -985,14 +979,14 @@ dependencies = [
  "httpdate",
  "parse-display",
  "qubit-argument",
- "qubit-budget 0.7.0",
+ "qubit-budget 0.8.0",
  "qubit-clock",
  "qubit-config",
  "qubit-datatype",
  "qubit-error",
  "qubit-function",
- "qubit-json 0.10.0",
- "qubit-redact 0.9.0",
+ "qubit-json",
+ "qubit-redact",
  "qubit-retry",
  "reqwest",
  "serde",
@@ -1006,24 +1000,20 @@ dependencies = [
 ]
 
 [[package]]
-name = "qubit-json"
-version = "0.9.0"
+name = "qubit-io"
+version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c34de3f5710b2cfd4d89099ffb53359b66e8bf69514590a3ef49f9378e47455"
+checksum = "72ec26e44df006b11bdb6bdb0b4423565fdc4cb9f2ffa37e3fb0a2ccc6efda30"
 dependencies = [
- "qubit-budget 0.5.0",
- "serde",
- "serde_json",
- "thiserror",
+ "qubit-utils",
 ]
 
 [[package]]
 name = "qubit-json"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "62a0c7c8246abeab02e1d984c6c4e6c2ffe324c86852810daed104d445c35bd7"
+version = "0.11.0"
 dependencies = [
- "qubit-budget 0.7.0",
+ "qubit-budget 0.8.0",
+ "qubit-io",
  "serde",
  "serde_json",
  "thiserror",
@@ -1031,26 +1021,12 @@ dependencies = [
 
 [[package]]
 name = "qubit-redact"
-version = "0.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2ab4556d5e9f160e7c4a27beb7b79a999df55df1ef8f4ef0ac47cd7b6d657e41"
-dependencies = [
- "qubit-budget 0.5.0",
- "qubit-json 0.9.0",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "qubit-redact"
 version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "240e7d45b9e8bd72ed7653b02c4fb16ea116b09feeaa07a4aa15a6475da5e2ec"
 dependencies = [
  "form_urlencoded",
  "http",
- "qubit-budget 0.7.0",
- "qubit-json 0.10.0",
+ "qubit-budget 0.8.0",
+ "qubit-json",
  "serde",
  "serde_json",
  "url",
@@ -1077,14 +1053,12 @@ checksum = "7f9bf5cd2e783a8a6edd6536826084ef0a82d1924b14f82e79fe0088b7b33748"
 
 [[package]]
 name = "qubit-value"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "678fc53931036e5c82c90d4d372428e9e45bc482998ad2d690c895bcdd0a135e"
+version = "0.12.2"
 dependencies = [
- "qubit-budget 0.5.0",
+ "qubit-budget 0.8.0",
  "qubit-datatype",
- "qubit-json 0.9.0",
- "qubit-redact 0.8.1",
+ "qubit-json",
+ "qubit-redact",
  "serde",
  "serde_json",
  "thiserror",
@@ -2269,3 +2243,7 @@ name = "zmij"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
+
+[[patch.unused]]
+name = "qubit-metadata"
+version = "0.6.2"
