@@ -893,9 +893,9 @@ checksum = "e1ce6e3033a810f5c8fe64e9b96455ec40f59c5c73a42ef5b9700a64c7eed35f"
 
 [[package]]
 name = "qubit-budget"
-version = "0.7.0"
+version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "353cf62af65868c70d5af6468b101a8099bd6de980d84678eeb99f99eb679161"
+checksum = "ac4f70174f2710e72f5b14ad20157c6b31255be0057dee76cf3b55af07708b34"
 dependencies = [
  "qubit-clock",
  "thiserror",
@@ -903,7 +903,7 @@ dependencies = [
 
 [[package]]
 name = "qubit-budget"
-version = "0.8.0"
+version = "0.9.1"
 dependencies = [
  "thiserror",
 ]
@@ -931,9 +931,9 @@ dependencies = [
 
 [[package]]
 name = "qubit-config"
-version = "0.14.3"
+version = "0.15.0"
 dependencies = [
- "qubit-budget 0.8.0",
+ "qubit-budget 0.9.1",
  "qubit-datatype",
  "qubit-json",
  "qubit-redact",
@@ -947,9 +947,9 @@ dependencies = [
 
 [[package]]
 name = "qubit-datatype"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
- "qubit-budget 0.8.0",
+ "qubit-budget 0.9.1",
  "qubit-json",
  "serde",
  "serde_json",
@@ -970,7 +970,7 @@ checksum = "1f6ad59d1256f6c62bc2fe153bdd87f224d7cfd7fa81b58dd8ab03aa4836f21a"
 
 [[package]]
 name = "qubit-http"
-version = "0.15.1"
+version = "0.16.0"
 dependencies = [
  "async-stream",
  "bytes",
@@ -979,7 +979,7 @@ dependencies = [
  "httpdate",
  "parse-display",
  "qubit-argument",
- "qubit-budget 0.8.0",
+ "qubit-budget 0.9.1",
  "qubit-clock",
  "qubit-config",
  "qubit-datatype",
@@ -1001,18 +1001,16 @@ dependencies = [
 
 [[package]]
 name = "qubit-io"
-version = "0.17.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72ec26e44df006b11bdb6bdb0b4423565fdc4cb9f2ffa37e3fb0a2ccc6efda30"
+version = "0.19.0"
 dependencies = [
  "qubit-utils",
 ]
 
 [[package]]
 name = "qubit-json"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
- "qubit-budget 0.8.0",
+ "qubit-budget 0.9.1",
  "qubit-io",
  "serde",
  "serde_json",
@@ -1021,11 +1019,11 @@ dependencies = [
 
 [[package]]
 name = "qubit-redact"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "form_urlencoded",
  "http",
- "qubit-budget 0.8.0",
+ "qubit-budget 0.9.1",
  "qubit-json",
  "serde",
  "serde_json",
@@ -1039,7 +1037,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "84286aee1cde9a49e1d050eb1792c76919a522081b83c76167a1299ea8a46d23"
 dependencies = [
  "fastrand",
- "qubit-budget 0.7.0",
+ "qubit-budget 0.7.3",
  "qubit-clock",
  "thiserror",
  "tokio",
@@ -1053,9 +1051,9 @@ checksum = "7f9bf5cd2e783a8a6edd6536826084ef0a82d1924b14f82e79fe0088b7b33748"
 
 [[package]]
 name = "qubit-value"
-version = "0.12.2"
+version = "0.13.0"
 dependencies = [
- "qubit-budget 0.8.0",
+ "qubit-budget 0.9.1",
  "qubit-datatype",
  "qubit-json",
  "qubit-redact",
@@ -2245,5 +2243,81 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
 
 [[patch.unused]]
+name = "qubit-codec"
+version = "0.16.2"
+
+[[patch.unused]]
+name = "qubit-command"
+version = "0.11.0"
+
+[[patch.unused]]
+name = "qubit-event-bus"
+version = "0.20.1"
+
+[[patch.unused]]
+name = "qubit-event-bus-redis"
+version = "0.7.0"
+
+[[patch.unused]]
+name = "qubit-fs"
+version = "0.3.0"
+
+[[patch.unused]]
+name = "qubit-fs-local"
+version = "0.11.0"
+
+[[patch.unused]]
+name = "qubit-fs-registry"
+version = "0.8.0"
+
+[[patch.unused]]
+name = "qubit-fs-testkit"
+version = "0.8.0"
+
+[[patch.unused]]
+name = "qubit-ioc"
+version = "0.4.0"
+
+[[patch.unused]]
+name = "qubit-local-files"
+version = "0.5.0"
+
+[[patch.unused]]
+name = "qubit-magika"
+version = "0.17.0"
+
+[[patch.unused]]
 name = "qubit-metadata"
-version = "0.6.2"
+version = "0.7.0"
+
+[[patch.unused]]
+name = "qubit-mime"
+version = "0.20.0"
+
+[[patch.unused]]
+name = "qubit-model-metadata"
+version = "0.2.0"
+
+[[patch.unused]]
+name = "qubit-reflect"
+version = "0.2.1"
+
+[[patch.unused]]
+name = "qubit-task"
+version = "0.11.0"
+
+[[patch.unused]]
+name = "qubit-validation-rules"
+version = "0.1.0"
+
+[[patch.unused]]
+name = "qubit-validator"
+version = "0.1.0"
+
+[[patch.unused]]
+name = "qubit-web"
+version = "0.3.0"
+
+[[patch.unused]]
+name = "qubit-websocket"
+version = "0.2.0"
