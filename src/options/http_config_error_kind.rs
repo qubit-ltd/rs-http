@@ -14,7 +14,21 @@ use parse_display::FromStr as DeriveFromStr;
 use serde::Deserialize;
 use serde::Serialize;
 
-/// Category of HTTP configuration errors.
+/// Classifies failures encountered while converting configuration into HTTP
+/// client options.
+///
+/// Each variant identifies the stage or source of the failure, allowing
+/// callers to distinguish missing keys, type mismatches, invalid values,
+/// invalid headers, and underlying configuration errors.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_http::HttpConfigErrorKind;
+///
+/// let kind = HttpConfigErrorKind::MissingField;
+/// assert_eq!(kind.to_string(), "missing field");
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Display, DeriveFromStr)]
 #[serde(rename_all = "snake_case")]
 #[display(style = "snake_case")]

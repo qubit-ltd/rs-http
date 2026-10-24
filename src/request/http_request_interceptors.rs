@@ -21,13 +21,41 @@ use crate::HttpResult;
 pub type HttpRequestInterceptor = ArcMutatingFunction<HttpRequest, HttpResult<()>>;
 
 /// Ordered request interceptor list with unified application behavior.
+///
+/// Interceptors run in insertion order before URL resolution and network I/O.
+/// The first interceptor error stops the sequence and gains request context
+/// when that context is not already present.
+///
+/// # Examples
+///
+/// ```
+/// use http::Method;
+/// use qubit_http::HttpClientBuilder;
+/// use qubit_http::HttpRequestInterceptor;
+/// use qubit_http::HttpRequestInterceptors;
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let client = HttpClientBuilder::new().create_default()?;
+/// let mut request = client.request(Method::GET, "https://example.com/").build();
+/// let mut interceptors = HttpRequestInterceptors::new();
+/// interceptors.push(HttpRequestInterceptor::new(|request| {
+///     request.set_path("https://example.com/updated");
+///     Ok(())
+/// }));
+/// interceptors.apply(&mut request)?;
+/// assert_eq!(request.path(), "https://example.com/updated");
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug, Clone, Default)]
 pub struct HttpRequestInterceptors {
+    /// Interceptors retained in the order in which they were added.
     interceptors: Vec<HttpRequestInterceptor>,
 }
 
 impl HttpRequestInterceptors {
     /// Creates an empty request interceptor list.
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }

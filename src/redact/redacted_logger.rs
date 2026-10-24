@@ -11,7 +11,7 @@ use qubit_redact::Redactor;
 
 use crate::HttpClientOptions;
 
-/// Applies one policy snapshot and one presentation body limit to TRACE data.
+/// Provides a redaction policy for HTTP TRACE log data.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RedactedLogger {
     /// Unified redactor for URLs, headers, and bodies.
@@ -19,11 +19,11 @@ pub(crate) struct RedactedLogger {
 }
 
 impl RedactedLogger {
-    /// Creates a logger from an explicit policy and presentation limit.
+    /// Creates a logger from an explicit redactor snapshot.
     ///
     /// # Parameters
     ///
-    /// * `policy` - Exact immutable policy snapshot.
+    /// * `log_redactor` - Exact immutable redactor snapshot.
     ///
     /// # Returns
     ///
@@ -33,11 +33,11 @@ impl RedactedLogger {
         Self { redactor: log_redactor }
     }
 
-    /// Creates a logger from a client option snapshot and its shared redactor.
+    /// Creates a logger for a client option snapshot using its shared redactor.
     ///
     /// # Parameters
     ///
-    /// * `options` - Client options carrying policy and presentation limits.
+    /// * `options` - Client options associated with this logger.
     /// * `log_redactor` - Exact shared redactor owned by the client lifecycle.
     ///
     /// # Returns

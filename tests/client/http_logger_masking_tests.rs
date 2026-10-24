@@ -47,25 +47,37 @@ fn capture_request_header_logs(name: HeaderName, value: HeaderValue) -> String {
 #[test]
 fn test_mask_header_value_non_sensitive_header() {
     let logs = capture_request_header_logs(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-    assert!(logs.contains("content-type: [application/json]"));
+    assert!(
+        logs.contains("content-type: [application/json]"),
+        "unexpected request header logs: {logs}"
+    );
 }
 
 #[test]
 fn test_mask_header_value_sensitive_short_value() {
     let logs = capture_request_header_logs(AUTHORIZATION, HeaderValue::from_static("abc"));
-    assert!(logs.contains("authorization: [****]"));
+    assert!(
+        logs.contains("authorization: [****]"),
+        "unexpected request header logs: {logs}"
+    );
 }
 
 #[test]
 fn test_mask_header_value_sensitive_exactly_four_chars() {
     let logs = capture_request_header_logs(AUTHORIZATION, HeaderValue::from_static("abcd"));
-    assert!(logs.contains("authorization: [****]"));
+    assert!(
+        logs.contains("authorization: [****]"),
+        "unexpected request header logs: {logs}"
+    );
 }
 
 #[test]
 fn test_mask_header_value_sensitive_long_value() {
     let logs = capture_request_header_logs(AUTHORIZATION, HeaderValue::from_static("abcdefghijk"));
-    assert!(logs.contains("authorization: [****]"));
+    assert!(
+        logs.contains("authorization: [****]"),
+        "unexpected request header logs: {logs}"
+    );
 }
 
 #[test]
@@ -74,13 +86,19 @@ fn test_mask_header_value_sensitive_case_insensitive() {
         HeaderName::from_static("x-api-key"),
         HeaderValue::from_static("1234567890"),
     );
-    assert!(logs.contains("x-api-key: [****]"));
+    assert!(
+        logs.contains("x-api-key: [****]"),
+        "unexpected request header logs: {logs}"
+    );
 }
 
 #[test]
 fn test_mask_header_value_empty_value_kept_empty() {
     let logs = capture_request_header_logs(AUTHORIZATION, HeaderValue::from_static(""));
-    assert!(logs.contains("authorization: []"));
+    assert!(
+        logs.contains("authorization: []"),
+        "unexpected request header logs: {logs}"
+    );
 }
 
 #[test]
@@ -90,6 +108,12 @@ fn test_mask_header_value_native_sensitive_uses_secret_mask() {
 
     let logs = capture_request_header_logs(HeaderName::from_static("x-diagnostic-value"), value);
 
-    assert!(logs.contains("x-diagnostic-value: [<redacted>]"));
-    assert!(!logs.contains("native-request-header-secret"));
+    assert!(
+        logs.contains("x-diagnostic-value: [<redacted>]"),
+        "unexpected request header logs: {logs}"
+    );
+    assert!(
+        !logs.contains("native-request-header-secret"),
+        "sensitive request header value leaked into logs: {logs}"
+    );
 }

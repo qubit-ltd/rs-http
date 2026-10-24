@@ -9,6 +9,8 @@
 
 use std::error::Error;
 
+use http::Method;
+use reqwest::Error as ReqwestError;
 use url::Url;
 
 use super::ReqwestErrorPhase;
@@ -16,7 +18,7 @@ use crate::HttpError;
 use crate::HttpErrorKind;
 use crate::client::RedirectOriginViolation;
 
-/// Maps a [`reqwest::Error`] into [`HttpError`] with phase-aware timeout
+/// Maps a [`ReqwestError`] into [`HttpError`] with phase-aware timeout
 /// classification and optional context.
 ///
 /// # Parameters
@@ -28,12 +30,14 @@ use crate::client::RedirectOriginViolation;
 /// - `url`: Request URL to attach.
 ///
 /// # Returns
-/// Configured [`HttpError`] including chained source.
+/// An [`HttpError`] classified from the reqwest metadata, with the request
+/// method, URL, and underlying error retained for diagnostics.
+#[must_use]
 pub(crate) fn map_reqwest_error(
-    error: reqwest::Error,
+    error: ReqwestError,
     default_kind: HttpErrorKind,
     phase: ReqwestErrorPhase,
-    method: http::Method,
+    method: Method,
     url: Url,
 ) -> HttpError {
     let is_timeout = error.is_timeout();
@@ -51,7 +55,7 @@ pub(crate) fn map_reqwest_error(
 }
 
 /// Returns whether an error source chain contains an origin-policy violation.
-fn contains_redirect_origin_violation(error: &reqwest::Error) -> bool {
+fn contains_redirect_origin_violation(error: &ReqwestError) -> bool {
     let mut source = error.source();
     while let Some(candidate) = source {
         if candidate.downcast_ref::<RedirectOriginViolation>().is_some() {
@@ -70,7 +74,10 @@ fn contains_redirect_origin_violation(error: &reqwest::Error) -> bool {
 /// - `default_kind`: Fallback kind when no specific reqwest category matches.
 ///
 /// # Returns
-/// HTTP error kind selected from reqwest metadata.
+/// The timeout kind selected from `phase`, or `default_kind` when the error is
+/// not a timeout.
+#[must_use]
+#[inline]
 fn classify_reqwest_error_kind(
     is_timeout: bool,
     phase: ReqwestErrorPhase,
@@ -89,7 +96,10 @@ fn classify_reqwest_error_kind(
 /// - `phase`: Phase where timeout happened.
 ///
 /// # Returns
-/// Timeout kind inferred from the phase.
+/// [`HttpErrorKind::RequestTimeout`] for send-phase timeouts, or
+/// [`HttpErrorKind::ReadTimeout`] for read-phase timeouts.
+#[must_use]
+#[inline]
 fn classify_timeout_kind(phase: ReqwestErrorPhase) -> HttpErrorKind {
     match phase {
         ReqwestErrorPhase::Send => HttpErrorKind::RequestTimeout,

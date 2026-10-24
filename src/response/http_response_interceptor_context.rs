@@ -25,6 +25,24 @@ use super::HttpResponseMeta;
 /// invalidate the `HttpClient::execute` success-status contract after the
 /// client has already accepted the response. Interceptors may still mutate
 /// response headers and the final response URL.
+///
+/// # Examples
+///
+/// ```
+/// use http::HeaderMap;
+/// use http::Method;
+/// use http::StatusCode;
+/// use qubit_http::HttpResponseInterceptorContext;
+/// use url::Url;
+///
+/// let context = HttpResponseInterceptorContext::new(
+///     StatusCode::OK,
+///     HeaderMap::new(),
+///     Url::parse("https://example.com/").unwrap(),
+///     Method::GET,
+/// );
+/// assert_eq!(context.status(), StatusCode::OK);
+/// ```
 #[derive(Clone)]
 pub struct HttpResponseInterceptorContext {
     /// Response status code captured before interceptor execution.

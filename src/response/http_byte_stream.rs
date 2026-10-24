@@ -14,6 +14,10 @@ use futures_util::Stream;
 
 use crate::HttpResult;
 
-/// Pin-boxed async stream of body chunks or errors, used by
+/// Owned, pinned stream of HTTP response body chunks, used by
 /// [`crate::HttpResponse`].
+///
+/// Each item yields one [`Bytes`] chunk or an [`HttpError`](crate::HttpError).
+/// The stream is `Send`, so callers can move it between threads, and polling
+/// it drives consumption of the response body.
 pub type HttpByteStream = Pin<Box<dyn Stream<Item = HttpResult<Bytes>> + Send>>;

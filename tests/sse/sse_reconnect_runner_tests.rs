@@ -74,6 +74,8 @@ fn build_retry_options_with_max_elapsed(
     build_retry_policy(max_reconnects, Some(max_elapsed), backoff)
 }
 
+/// Builds a retry policy from the reconnect limit, optional time budget, and
+/// backoff.
 fn build_retry_policy(max_reconnects: u32, max_elapsed: Option<Duration>, backoff: BackoffPolicy) -> RetryPolicy {
     let mut builder = RetryPolicy::builder().max_attempts(max_reconnects + 1).backoff(backoff);
     if let Some(max_elapsed) = max_elapsed {

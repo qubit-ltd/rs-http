@@ -13,9 +13,22 @@ use qubit_config::ConfigResult;
 
 use super::HttpConfigError;
 use super::from_config_helpers::get_optional_usize;
+use super::internal::HttpLoggingConfigInput;
 use crate::constants::DEFAULT_LOG_BODY_SIZE_LIMIT_BYTES;
 
 /// Controls TRACE-level HTTP request/response logging in [`crate::HttpLogger`].
+///
+/// # Examples
+///
+/// ```
+/// use qubit_http::HttpLoggingOptions;
+///
+/// let mut options = HttpLoggingOptions::default();
+/// options.log_request_body = false;
+/// options.log_response_body = false;
+/// options.body_size_limit = 0;
+/// assert!(options.validate().is_ok());
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HttpLoggingOptions {
     /// Whether logging is enabled.
@@ -50,18 +63,11 @@ impl Default for HttpLoggingOptions {
     }
 }
 
-/// Raw optional fields read from config before merging into
-/// [`HttpLoggingOptions`] defaults.
-struct LoggingConfigInput {
-    enabled: Option<bool>,
-    log_request_header: Option<bool>,
-    log_request_body: Option<bool>,
-    log_response_header: Option<bool>,
-    log_response_body: Option<bool>,
-    body_size_limit: Option<usize>,
-}
-
-fn read_logging_config<R>(config: &R) -> ConfigResult<LoggingConfigInput>
+/// Reads optional logging settings without applying defaults.
+///
+/// The caller merges the returned values into [`HttpLoggingOptions::default`]
+/// and validates the completed options.
+fn read_logging_config<R>(config: &R) -> ConfigResult<HttpLoggingConfigInput>
 where
     R: ConfigReader + ?Sized,
 {
@@ -77,7 +83,7 @@ where
         ],
         &[],
     )?;
-    Ok(LoggingConfigInput {
+    Ok(HttpLoggingConfigInput {
         enabled: config.get_optional("enabled")?,
         log_request_header: config.get_optional("log_request_header")?,
         log_request_body: config.get_optional("log_request_body")?,
@@ -103,6 +109,10 @@ impl HttpLoggingOptions {
     ///
     /// # Returns
     /// Populated [`HttpLoggingOptions`] or [`HttpConfigError`].
+    ///
+    /// # Errors
+    /// Returns an error when a key is invalid, unknown, or the completed
+    /// options violate the body logging limit constraint.
     pub fn from_config<R>(config: &R) -> Result<Self, HttpConfigError>
     where
         R: ConfigReader + ?Sized,
@@ -140,11 +150,23 @@ impl HttpLoggingOptions {
     /// # Returns
     /// `Ok(())` or [`HttpConfigError::invalid_value`] for
     /// `logging.body_size_limit`.
+    ///
+    /// # Errors
+    /// Returns [`HttpConfigError`] when body logging is enabled and
+    /// `body_size_limit` is zero.
+    #[inline]
     pub fn validate(&self) -> Result<(), HttpConfigError> {
         self.validate_arguments().map_err(HttpConfigError::from)
     }
 
     /// Validates body logging limits as structured argument failures.
+    ///
+    /// # Returns
+    /// `Ok(())` when body logging is disabled or its size limit is non-zero.
+    ///
+    /// # Errors
+    /// Returns an [`ArgumentError`](qubit_argument::ArgumentError) when body
+    /// logging is enabled and `body_size_limit` is zero.
     pub(super) fn validate_arguments(&self) -> ArgumentResult<()> {
         if self.log_request_body || self.log_response_body {
             require_that(

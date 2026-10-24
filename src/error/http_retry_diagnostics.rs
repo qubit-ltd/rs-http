@@ -11,10 +11,26 @@ use std::time::Duration;
 pub use super::http_retry_termination::HttpRetryTermination;
 
 /// Stable diagnostics attached to the final HTTP error of a retry flow.
+///
+/// Retry diagnostics are available on the final [`crate::HttpError`] when a
+/// request used the retry flow. Errors without retry metadata return `None`.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_http::{HttpError, HttpErrorKind};
+///
+/// let error = HttpError::new(HttpErrorKind::Other, "request failed");
+/// assert!(error.retry_diagnostics().is_none());
+/// ```
+#[must_use = "retry diagnostics should be inspected or attached to the final HTTP error"]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HttpRetryDiagnostics {
+    /// Number of attempts made by the retry flow.
     attempts: u32,
+    /// Total time spent in the retry flow.
     elapsed: Duration,
+    /// Condition that ended the retry flow.
     termination: HttpRetryTermination,
 }
 
@@ -28,7 +44,11 @@ impl HttpRetryDiagnostics {
     ///
     /// # Returns
     /// A diagnostics snapshot containing the supplied values.
-    pub(crate) const fn new(attempts: u32, elapsed: Duration, termination: HttpRetryTermination) -> Self {
+    pub(crate) const fn new(
+        attempts: u32,
+        elapsed: Duration,
+        termination: HttpRetryTermination,
+    ) -> Self {
         Self {
             attempts,
             elapsed,

@@ -23,6 +23,7 @@ impl HttpAttemptExecutionContext {
     /// # Returns
     /// A context without a retry-flow token, so request I/O observes the
     /// request's current cancellation token directly.
+    #[must_use]
     pub(in crate::client) fn direct() -> Self {
         Self::default()
     }
@@ -35,32 +36,11 @@ impl HttpAttemptExecutionContext {
     /// # Returns
     /// A context holding a clone of the request's original cancellation token,
     /// or no flow token when the request is not cancellable.
+    #[must_use]
     pub(in crate::client) fn retry(request: &HttpRequest) -> Self {
         Self {
             retry_flow_token: request.cancellation_token().cloned(),
         }
-    }
-
-    /// Returns whether `TokioRetry` still owns the request's current token.
-    ///
-    /// Setting another clone of the original token keeps the same cancellation
-    /// source under the retry controller. Only a genuinely independent source
-    /// becomes attempt I/O's responsibility.
-    ///
-    /// # Parameters
-    /// - `request`: Request after attempt-local interceptors have run.
-    ///
-    /// # Returns
-    /// `true` when the request still carries the retry-flow cancellation
-    /// source; `false` when it was cleared, replaced, or never existed.
-    fn retry_flow_owns_current_token(&self, request: &HttpRequest) -> bool {
-        let Some(flow_token) = self.retry_flow_token.as_ref() else {
-            return false;
-        };
-        let Some(current_token) = request.cancellation_token() else {
-            return false;
-        };
-        current_token.shares_source_with(flow_token)
     }
 
     /// Returns whether successful response handoff should restore the flow
@@ -72,6 +52,8 @@ impl HttpAttemptExecutionContext {
     /// # Returns
     /// `true` when the successful response must inherit the retry-flow token;
     /// otherwise `false`.
+    #[must_use]
+    #[inline]
     pub(in crate::client) fn should_restore_retry_flow_token(&self, request: &HttpRequest) -> bool {
         self.retry_flow_owns_current_token(request)
     }
@@ -98,5 +80,28 @@ impl HttpAttemptExecutionContext {
         } else {
             request.cancellation_token()
         }
+    }
+
+    /// Returns whether `TokioRetry` still owns the request's current token.
+    ///
+    /// Setting another clone of the original token keeps the same cancellation
+    /// source under the retry controller. Only a genuinely independent source
+    /// becomes attempt I/O's responsibility.
+    ///
+    /// # Parameters
+    /// - `request`: Request after attempt-local interceptors have run.
+    ///
+    /// # Returns
+    /// `true` when the request still carries the retry-flow cancellation
+    /// source; `false` when it was cleared, replaced, or never existed.
+    #[must_use]
+    fn retry_flow_owns_current_token(&self, request: &HttpRequest) -> bool {
+        let Some(flow_token) = self.retry_flow_token.as_ref() else {
+            return false;
+        };
+        let Some(current_token) = request.cancellation_token() else {
+            return false;
+        };
+        current_token.shares_source_with(flow_token)
     }
 }

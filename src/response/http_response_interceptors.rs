@@ -20,27 +20,71 @@ use crate::HttpResult;
 /// The interceptor receives [`HttpResponseInterceptorContext`], where status
 /// and request method are immutable and headers/final URL are mutable.
 ///
-/// Returning `Err` short-circuits execution for the current attempt.
+/// Returning `Err` stops the remaining interceptors for the current attempt.
+/// The error is enriched with response context when its status, method, or URL
+/// is missing.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_http::HttpResponseInterceptor;
+/// use qubit_http::HttpResponseInterceptorContext;
+///
+/// let interceptor = HttpResponseInterceptor::new(
+///     |_context: &mut HttpResponseInterceptorContext| Ok(()),
+/// );
+/// ```
 pub type HttpResponseInterceptor = ArcMutatingFunction<HttpResponseInterceptorContext, HttpResult<()>>;
 
-/// Ordered response interceptor list with unified application behavior.
+/// Applies response interceptors in registration order to successful HTTP
+/// response metadata.
+///
+/// Interceptors can update response headers and the final URL through their
+/// context. Status and originating request method remain immutable. If any
+/// interceptor returns an error, later interceptors do not run, metadata
+/// changes are not applied, and the error receives any missing response
+/// context.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_http::HttpResponseInterceptor;
+/// use qubit_http::HttpResponseInterceptorContext;
+/// use qubit_http::HttpResponseInterceptors;
+///
+/// let mut interceptors = HttpResponseInterceptors::new();
+/// interceptors.push(HttpResponseInterceptor::new(
+///     |_context: &mut HttpResponseInterceptorContext| Ok(()),
+/// ));
+/// ```
 #[derive(Debug, Clone, Default)]
+#[must_use]
 pub struct HttpResponseInterceptors {
+    /// Callbacks retained in the order in which they are applied.
     interceptors: Vec<HttpResponseInterceptor>,
 }
 
 impl HttpResponseInterceptors {
-    /// Creates an empty response interceptor list.
+    /// Creates an empty list ready to receive response interceptors.
+    ///
+    /// # Returns
+    /// An empty interceptor list.
+    #[inline]
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Appends one response interceptor.
+    /// Appends an interceptor that will run after all previously registered
+    /// interceptors.
+    ///
+    /// # Parameters
+    /// - `interceptor`: Callback that can inspect and mutate response context.
     pub fn push(&mut self, interceptor: HttpResponseInterceptor) {
         self.interceptors.push(interceptor);
     }
 
-    /// Removes all response interceptors.
+    /// Removes every registered interceptor while retaining the list for
+    /// later reuse.
     pub fn clear(&mut self) {
         self.interceptors.clear();
     }

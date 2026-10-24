@@ -5,6 +5,10 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
+//! # HTTP Logger Integration Tests
+//!
+//! Verifies request logging, body preview limits, and sensitive-value
+//! redaction.
 
 use bytes::Bytes;
 use http::HeaderValue;

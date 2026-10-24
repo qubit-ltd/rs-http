@@ -15,6 +15,7 @@ use std::fmt;
 use qubit_argument::ArgumentError;
 use qubit_argument::ArgumentErrorKind;
 use qubit_config::ConfigError;
+use qubit_config::ConfigErrorKind;
 
 use super::HttpConfigErrorKind;
 
@@ -22,6 +23,17 @@ use super::HttpConfigErrorKind;
 ///
 /// Carries the failing configuration path and a human-readable message so that
 /// callers can report exactly which key caused the problem.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_http::{HttpConfigError, HttpConfigErrorKind};
+///
+/// let error = HttpConfigError::missing("http.proxy.port", "port is required");
+/// assert_eq!(error.kind, HttpConfigErrorKind::MissingField);
+/// assert_eq!(error.path, "http.proxy.port");
+/// ```
+#[must_use]
 #[derive(Debug)]
 pub struct HttpConfigError {
     /// The configuration path that triggered the error, e.g.
@@ -62,6 +74,7 @@ impl HttpConfigError {
     ///
     /// # Returns
     /// New [`HttpConfigError`].
+    #[inline]
     pub fn missing(path: impl Into<String>, message: impl Into<String>) -> Self {
         Self::new(HttpConfigErrorKind::MissingField, path, message)
     }
@@ -74,6 +87,7 @@ impl HttpConfigError {
     ///
     /// # Returns
     /// New [`HttpConfigError`].
+    #[inline]
     pub fn type_error(path: impl Into<String>, message: impl Into<String>) -> Self {
         Self::new(HttpConfigErrorKind::TypeError, path, message)
     }
@@ -86,6 +100,7 @@ impl HttpConfigError {
     ///
     /// # Returns
     /// New [`HttpConfigError`].
+    #[inline]
     pub fn invalid_value(path: impl Into<String>, message: impl Into<String>) -> Self {
         Self::new(HttpConfigErrorKind::InvalidValue, path, message)
     }
@@ -98,6 +113,7 @@ impl HttpConfigError {
     ///
     /// # Returns
     /// New [`HttpConfigError`].
+    #[inline]
     pub fn invalid_header(path: impl Into<String>, message: impl Into<String>) -> Self {
         Self::new(HttpConfigErrorKind::InvalidHeader, path, message)
     }
@@ -111,6 +127,7 @@ impl HttpConfigError {
     ///
     /// # Returns
     /// New [`HttpConfigError`].
+    #[inline]
     pub fn config_error(path: impl Into<String>, message: impl Into<String>) -> Self {
         Self::new(HttpConfigErrorKind::ConfigError, path, message)
     }
@@ -130,6 +147,8 @@ impl fmt::Display for HttpConfigError {
 }
 
 impl Error for HttpConfigError {
+    /// Returns the structured error wrapped by this configuration error, if
+    /// any.
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         self.source.as_deref().map(|source| source as &(dyn Error + 'static))
     }
@@ -175,7 +194,6 @@ impl From<ConfigError> for HttpConfigError {
     /// # Returns
     /// Equivalent [`HttpConfigError`].
     fn from(e: ConfigError) -> Self {
-        use qubit_config::ConfigErrorKind;
         let kind = e.kind();
         let path = e.path().unwrap_or_default().to_owned();
         let msg = e.to_string();

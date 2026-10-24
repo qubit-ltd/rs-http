@@ -17,6 +17,8 @@ const MAX_MULTIPART_BOUNDARY_LEN: usize = 70;
 /// # Returns
 /// Trimmed text before the first `;`, or an empty string when the header value
 /// has no media type.
+#[must_use]
+#[inline]
 pub(crate) fn media_type(content_type: &str) -> &str {
     content_type.split(';').next().map(str::trim).unwrap_or_default()
 }
@@ -29,6 +31,8 @@ pub(crate) fn media_type(content_type: &str) -> &str {
 ///
 /// # Returns
 /// `true` when the media type matches case-insensitively.
+#[must_use]
+#[inline]
 pub(crate) fn has_media_type(content_type: &str, expected: &str) -> bool {
     media_type(content_type).eq_ignore_ascii_case(expected)
 }
@@ -41,6 +45,8 @@ pub(crate) fn has_media_type(content_type: &str, expected: &str) -> bool {
 /// # Returns
 /// `true` when the media type is exactly `text/event-stream`, ignoring ASCII
 /// case and allowing parameters after `;`.
+#[must_use]
+#[inline]
 pub(crate) fn is_sse(content_type: &str) -> bool {
     has_media_type(content_type, "text/event-stream")
 }
@@ -52,6 +58,7 @@ pub(crate) fn is_sse(content_type: &str) -> bool {
 ///
 /// # Returns
 /// `true` for any `multipart/*` media type.
+#[must_use]
 pub(crate) fn is_multipart(content_type: &str) -> bool {
     media_type(content_type).to_ascii_lowercase().starts_with("multipart/")
 }
@@ -63,6 +70,8 @@ pub(crate) fn is_multipart(content_type: &str) -> bool {
 ///
 /// # Returns
 /// `true` when the boundary is 1 to 70 ASCII token-safe characters.
+#[must_use]
+#[inline]
 pub(crate) fn is_valid_multipart_boundary(boundary: &str) -> bool {
     let len = boundary.len();
     (1..=MAX_MULTIPART_BOUNDARY_LEN).contains(&len) && boundary.bytes().all(is_valid_multipart_boundary_byte)

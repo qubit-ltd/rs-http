@@ -15,26 +15,52 @@ use qubit_config::ConfigReader;
 use qubit_config::ConfigResult;
 
 use super::HttpConfigError;
+use super::internal::ProxyConfigInput;
 use super::proxy_type::ProxyType;
 
-/// Outbound proxy configuration applied when building the reqwest client.
+/// Outbound proxy settings used when building the reqwest client.
+///
+/// The options retain credentials as configuration data; the custom `Debug`
+/// implementation masks the password. Call [`validate`](Self::validate) to
+/// check enabled-proxy requirements before using the settings.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_http::{ProxyOptions, ProxyType};
+///
+/// let mut proxy = ProxyOptions::default();
+/// proxy.enabled = true;
+/// proxy.proxy_type = ProxyType::Http;
+/// proxy.host = Some("proxy.example".to_owned());
+/// proxy.port = Some(8080);
+/// assert!(proxy.validate().is_ok());
+/// ```
+#[must_use]
 #[derive(Clone, PartialEq, Eq)]
 pub struct ProxyOptions {
-    /// Whether proxy is enabled.
+    /// Whether requests should use this proxy configuration.
     pub enabled: bool,
-    /// Proxy type.
+    /// URL scheme used to connect to the proxy.
     pub proxy_type: ProxyType,
-    /// Proxy host.
+    /// Proxy host name or address; required and nonblank when enabled.
     pub host: Option<String>,
-    /// Proxy port.
+    /// Proxy port; required and nonzero when enabled.
     pub port: Option<u16>,
-    /// Proxy username.
+    /// Optional authentication username; blank values are rejected.
     pub username: Option<String>,
-    /// Proxy password.
+    /// Optional authentication password, which requires a username.
     pub password: Option<String>,
 }
 
 impl fmt::Debug for ProxyOptions {
+    /// Formats the settings while masking any configured password.
+    ///
+    /// # Parameters
+    /// - `formatter`: Destination receiving the debug representation.
+    ///
+    /// # Returns
+    /// The formatter's result, including any formatting error.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let password = self.password.as_ref().map(|_| "****");
         formatter
@@ -53,7 +79,9 @@ impl Default for ProxyOptions {
     /// Proxy disabled; type HTTP; no host, port, or credentials.
     ///
     /// # Returns
-    /// Default [`ProxyOptions`].
+    /// A disabled [`ProxyOptions`] with HTTP type and no host, port, or
+    /// credentials.
+    #[inline]
     fn default() -> Self {
         Self {
             enabled: false,
@@ -66,15 +94,19 @@ impl Default for ProxyOptions {
     }
 }
 
-struct ProxyConfigInput {
-    enabled: Option<bool>,
-    proxy_type: Option<String>,
-    host: Option<String>,
-    port: Option<u16>,
-    username: Option<String>,
-    password: Option<String>,
-}
-
+/// Reads recognized relative proxy keys without applying defaults or
+/// semantic validation.
+///
+/// # Parameters
+/// - `config`: Source queried for the relative proxy keys.
+///
+/// # Returns
+/// The values that were present, with absent optional keys represented as
+/// `None`.
+///
+/// # Errors
+/// Returns the configuration reader's error when a key is unknown or cannot
+/// be read or converted to its expected type.
 fn read_proxy_config<R>(config: &R) -> ConfigResult<ProxyConfigInput>
 where
     R: ConfigReader + ?Sized,
@@ -109,7 +141,11 @@ impl ProxyOptions {
     /// - `password`
     ///
     /// # Returns
-    /// Populated [`ProxyOptions`] or [`HttpConfigError`].
+    /// The resulting settings, with defaults applied to omitted keys.
+    ///
+    /// # Errors
+    /// Returns [`HttpConfigError`] when reading or converting a key fails, the
+    /// proxy type is unknown, or the resulting enabled settings are invalid.
     pub fn from_config<R>(config: &R) -> Result<Self, HttpConfigError>
     where
         R: ConfigReader + ?Sized,
@@ -143,11 +179,26 @@ impl ProxyOptions {
     ///   credential pairing.
     /// - `Err(HttpConfigError)` if proxy is enabled but host/port invalid, or
     ///   password without username.
+    ///
+    /// # Errors
+    /// Returns [`HttpConfigError`] with the offending field path when enabled
+    /// proxy requirements or credential pairing are invalid.
+    #[inline]
     pub fn validate(&self) -> Result<(), HttpConfigError> {
         self.validate_arguments().map_err(HttpConfigError::from)
     }
 
     /// Validates proxy fields while retaining structured argument errors.
+    ///
+    /// # Parameters
+    /// - `self`: Proxy settings whose fields are checked.
+    ///
+    /// # Returns
+    /// `Ok(())` when the fields satisfy the proxy requirements.
+    ///
+    /// # Errors
+    /// Returns a structured argument error identifying the first invalid
+    /// field and its validation condition.
     pub(super) fn validate_arguments(&self) -> ArgumentResult<()> {
         if self.enabled {
             require_that(
@@ -201,6 +252,17 @@ impl ProxyOptions {
     }
 }
 
+/// Parses a proxy scheme after trimming surrounding whitespace.
+///
+/// # Parameters
+/// - `path`: Configuration key associated with the value, used in errors.
+/// - `s`: Configured proxy type spelling.
+///
+/// # Returns
+/// The corresponding [`ProxyType`].
+///
+/// # Errors
+/// Returns [`HttpConfigError`] when the value is not a supported proxy type.
 fn parse_proxy_type(path: &str, s: &str) -> Result<ProxyType, HttpConfigError> {
     ProxyType::from_str(s.trim()).map_err(|_| {
         HttpConfigError::invalid_value(

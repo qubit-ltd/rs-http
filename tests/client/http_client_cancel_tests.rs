@@ -81,11 +81,6 @@ fn retry_error(error: &HttpError) -> &RetryError<HttpError> {
         .expect("retry cancellation should retain RetryError as its source")
 }
 
-/// Returns the structured retry failure retained as an HTTP error source.
-fn retry_failure(error: &HttpError) -> &RetryError<HttpError> {
-    retry_error(error)
-}
-
 #[tokio_test]
 async fn test_execute_request_with_pre_cancelled_token_returns_cancelled_error() {
     let server = spawn_multi_shot_server(vec![]).await;
@@ -121,7 +116,6 @@ async fn test_execute_request_with_pre_cancelled_token_returns_cancelled_error()
         "/pre-cancelled"
     );
     assert_eq!(retry_error(&error).context().attempts(), 0);
-    assert!(matches!(retry_failure(&error), _));
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
@@ -261,7 +255,6 @@ async fn test_execute_request_can_be_cancelled_while_preparing_async_headers() {
 
     assert_eq!(error.kind, HttpErrorKind::Cancelled);
     assert_eq!(retry_error(&error).context().attempts(), 1);
-    assert!(matches!(retry_failure(&error), _));
     assert_eq!(attempt_calls.load(Ordering::SeqCst), 1);
 
     let captured = timeout(Duration::from_secs(3), server.finish())
@@ -454,7 +447,6 @@ async fn test_execute_retry_sleep_can_be_cancelled() {
         "/cancel-retry-sleep"
     );
     assert_eq!(retry_error(&error).context().attempts(), 1);
-    assert!(matches!(retry_failure(&error), _));
     assert_eq!(attempt_calls.load(Ordering::SeqCst), 1);
 }
 

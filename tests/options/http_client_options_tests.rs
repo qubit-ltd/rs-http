@@ -6,8 +6,12 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
+use std::env;
+use std::error::Error;
 use std::time::Duration;
 
+use http::Method;
+use http::StatusCode;
 use qubit_budget::json::JsonValueLimits;
 use qubit_config::Config;
 use qubit_config::ConfigError;
@@ -70,7 +74,7 @@ fn test_http_client_options_requires_explicit_environment_fallback() {
     const ENV_NAME: &str = "QUBIT_HTTP_CONFIG_EXPLICIT_ENV_FALLBACK";
 
     unsafe {
-        std::env::set_var(ENV_NAME, "Bearer test-token");
+        env::set_var(ENV_NAME, "Bearer test-token");
     }
 
     let mut config = Config::new();
@@ -89,7 +93,7 @@ fn test_http_client_options_requires_explicit_environment_fallback() {
     let explicit_result = HttpClientOptions::from_config(&env_view);
 
     unsafe {
-        std::env::remove_var(ENV_NAME);
+        env::remove_var(ENV_NAME);
     }
 
     assert!(
@@ -521,7 +525,7 @@ fn test_http_client_options_empty_header_value_from_config_is_prefixed() {
 
     assert_eq!(err.kind, HttpConfigErrorKind::TypeError);
     assert_eq!(err.path, "http.default_headers.x-empty");
-    let source = std::error::Error::source(&err)
+    let source = Error::source(&err)
         .and_then(|source| source.downcast_ref::<ConfigError>())
         .expect("HTTP error must retain its configuration source");
     let missing = source
@@ -1025,11 +1029,11 @@ fn test_http_retry_options_validate_reports_first_invalid_field() {
 
 #[test]
 fn test_http_retry_method_policy_allows_methods() {
-    assert!(HttpRetryMethodPolicy::IdempotentOnly.allows_method(&http::Method::GET));
-    assert!(HttpRetryMethodPolicy::IdempotentOnly.allows_method(&http::Method::DELETE));
-    assert!(!HttpRetryMethodPolicy::IdempotentOnly.allows_method(&http::Method::POST));
-    assert!(HttpRetryMethodPolicy::AllMethods.allows_method(&http::Method::POST));
-    assert!(!HttpRetryMethodPolicy::None.allows_method(&http::Method::GET));
+    assert!(HttpRetryMethodPolicy::IdempotentOnly.allows_method(&Method::GET));
+    assert!(HttpRetryMethodPolicy::IdempotentOnly.allows_method(&Method::DELETE));
+    assert!(!HttpRetryMethodPolicy::IdempotentOnly.allows_method(&Method::POST));
+    assert!(HttpRetryMethodPolicy::AllMethods.allows_method(&Method::POST));
+    assert!(!HttpRetryMethodPolicy::None.allows_method(&Method::GET));
 }
 
 #[test]
@@ -1283,7 +1287,7 @@ fn test_http_client_options_from_root_config_all_sections() {
     assert!(opts.retry.enabled);
     assert_eq!(
         opts.retry.retry_status_codes,
-        Some(vec![http::StatusCode::SERVICE_UNAVAILABLE])
+        Some(vec![StatusCode::SERVICE_UNAVAILABLE])
     );
     assert_eq!(opts.retry.retry_error_kinds, Some(vec![HttpErrorKind::Transport]));
     assert_eq!(opts.sse_json_mode, SseJsonMode::Strict);
@@ -1431,7 +1435,7 @@ fn test_http_client_options_interpolates_string_configuration_values() {
     );
     assert_eq!(
         options.retry.retry_status_codes,
-        Some(vec![http::StatusCode::SERVICE_UNAVAILABLE]),
+        Some(vec![StatusCode::SERVICE_UNAVAILABLE]),
     );
     assert_eq!(options.retry.retry_error_kinds, Some(vec![HttpErrorKind::Transport]),);
 }

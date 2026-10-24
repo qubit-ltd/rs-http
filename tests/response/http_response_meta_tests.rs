@@ -36,8 +36,11 @@ fn test_http_response_meta_debug_masks_sensitive_values() {
     let meta = HttpResponseMeta::new(
         StatusCode::OK,
         headers,
-        Url::parse("https://debug-user:debug-url-secret@example.test/retry?password=debug-password-secret&access_token=debug-token-secret")
-            .expect("valid URL"),
+        Url::parse(concat!(
+            "https://debug-user:debug-url-secret@example.test/retry?",
+            "password=debug-password-secret&access_token=debug-token-secret"
+        ))
+        .expect("valid URL"),
         Method::GET,
     );
 
@@ -63,17 +66,15 @@ fn test_http_response_meta_debug_honors_url_path_redaction_policy() {
     let meta = HttpResponseMeta::new(
         StatusCode::OK,
         HeaderMap::new(),
-        Url::parse(
-            "https://alice:response-password-secret@example.test/tenant/response-path-secret?access_token=response-query-secret#response-fragment-secret",
-        )
+        Url::parse(concat!(
+            "https://alice:response-password-secret@example.test/",
+            "tenant/response-path-secret?access_token=response-query-secret",
+            "#response-fragment-secret"
+        ))
         .expect("valid URL"),
         Method::GET,
     )
-    .with_log_redaction_policy(
-        policy_builder
-            .build()
-            .expect("log redaction policy should be valid"),
-    );
+    .with_log_redaction_policy(policy_builder.build().expect("log redaction policy should be valid"));
 
     let debug = format!("{meta:?}");
 

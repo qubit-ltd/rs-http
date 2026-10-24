@@ -12,8 +12,6 @@
 //! [`HttpClient::execute_once`]; retry policy comes from
 //! [`crate::HttpClientOptions::retry`] unless overridden per request.
 
-use std::error::Error;
-use std::fmt;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -35,6 +33,8 @@ use url::Url;
 
 use super::internal::HttpAttemptExecutionContext;
 use super::internal::HttpAttemptResponse;
+use super::internal::HttpRetryApplicationSource;
+use super::internal::HttpRetryRule;
 use crate::AsyncHttpHeaderInjector;
 use crate::HttpClientOptions;
 use crate::HttpError;
@@ -57,17 +57,6 @@ use crate::response::HttpResponseOptions;
 use crate::sse::SseMessageStream;
 use crate::sse::SseReconnectOptions;
 use crate::sse::SseReconnectRunner;
-
-#[derive(Debug)]
-struct HttpRetryApplicationSource(String);
-
-impl fmt::Display for HttpRetryApplicationSource {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&self.0)
-    }
-}
-
-impl Error for HttpRetryApplicationSource {}
 
 /// High-level HTTP client: default headers, injectors, interceptors, logging,
 /// timeouts, and optional per-request retry.
@@ -111,12 +100,16 @@ pub struct HttpClient {
     response_interceptors: HttpResponseInterceptors,
 }
 
-struct HttpRetryRule {
-    options: HttpRetryOptions,
-    honor_retry_after: bool,
-}
-
 impl RetryRule<HttpError> for HttpRetryRule {
+    /// Applies HTTP-specific retryability and optional server delay hints.
+    ///
+    /// # Parameters
+    /// - `failure`: Result of the completed HTTP attempt.
+    /// - `context`: Retry context; the HTTP rule does not need its metadata.
+    ///
+    /// # Returns
+    /// Aborts non-retryable HTTP errors, supplies an allowed `Retry-After`
+    /// hint, or delegates retry timing to the configured policy.
     fn decide(&self, failure: &AttemptFailure<HttpError>, _context: &RetryContext) -> RetryDecision {
         let AttemptFailure::Error(error) = failure else {
             return RetryDecision::UseDefault;
@@ -135,11 +128,29 @@ impl RetryRule<HttpError> for HttpRetryRule {
 
 impl HttpClient {
     /// Starts constructing a client with builder-based configuration.
+    ///
+    /// # Returns
+    /// A builder that can create a client with explicit or default options.
+    #[must_use]
+    #[inline]
     pub fn builder() -> HttpClientBuilder {
         HttpClientBuilder::new()
     }
 
     /// Builds a client from configuration.
+    ///
+    /// # Type Parameters
+    /// - `R`: Configuration reader implementation.
+    ///
+    /// # Parameters
+    /// - `config`: Configuration source used to populate the client options.
+    ///
+    /// # Returns
+    /// A configured client when parsing and backend creation succeed.
+    ///
+    /// # Errors
+    /// Returns [`crate::HttpConfigError`] when configuration parsing,
+    /// validation, or backend construction fails.
     pub fn from_config<R: ConfigReader + ?Sized>(config: &R) -> Result<Self, crate::HttpConfigError> {
         HttpClientBuilder::new().create_from_config(config)
     }
@@ -149,6 +160,10 @@ impl HttpClient {
     /// Runtime header injectors and request/response interceptors are not
     /// copied into the builder. Use [`Self::rebuild_with_options`] when those
     /// registrations must survive a backend rebuild.
+    ///
+    /// # Returns
+    /// A builder containing a clone of this client's options.
+    #[must_use]
     pub fn to_builder(&self) -> HttpClientBuilder {
         HttpClientBuilder::new().options(self.options.clone())
     }
@@ -207,11 +222,18 @@ impl HttpClient {
     /// # Returns
     /// Immutable borrow of [`HttpClientOptions`]. Never `None`; always the
     /// options installed on this client.
+    #[must_use]
+    #[inline]
     pub fn options(&self) -> &HttpClientOptions {
         &self.options
     }
 
     /// Returns the shared [`Redactor`] used by this client.
+    ///
+    /// # Returns
+    /// A borrow of the redactor shared by this client's logging snapshots.
+    #[must_use = "use the shared redactor when processing client log data"]
+    #[inline]
     pub(crate) fn log_redactor(&self) -> &Redactor {
         &self.log_redactor
     }
@@ -322,6 +344,8 @@ impl HttpClient {
     /// A new [`HttpRequestBuilder`] borrowing this client for defaults; it is
     /// not sent until built and passed to [`HttpClient::execute`] (or related
     /// APIs).
+    #[must_use]
+    #[inline]
     pub fn request(&self, method: Method, path: &str) -> HttpRequestBuilder {
         HttpRequestBuilder::new(method, path, self)
     }
@@ -370,6 +394,10 @@ impl HttpClient {
     /// - `Err(HttpError)` when any attempt fails for URL/header validation,
     ///   cancellation, interceptor failure, transport/timeout, non-success
     ///   status, or when the retry executor aborts or exceeds limits.
+    ///
+    /// # Errors
+    /// Returns [`HttpError`] for request preparation, cancellation,
+    /// interceptor, transport, response-status, logging, or retry failures.
     pub async fn execute(&self, request: HttpRequest) -> HttpResult<HttpResponse> {
         let retry_options = self.options.retry.resolve(&request);
         let result = if retry_options.should_retry(&request) {
@@ -396,6 +424,11 @@ impl HttpClient {
     /// - `Err(HttpError)` from request/response interceptors, cancellation,
     ///   send/transport errors, status mapping, URL resolution for the response
     ///   wrapper, or response logging failures.
+    ///
+    /// # Errors
+    /// Returns [`HttpError`] for request or response interceptor failures,
+    /// cancellation, transport or status failures, and response logging
+    /// failures.
     ///
     /// # Side effects
     /// Network I/O, optional logging, and user-provided interceptor callbacks.
@@ -518,6 +551,10 @@ impl HttpClient {
     /// - `Err(HttpError)` from any [`HttpClient::execute_once`] failure that is
     ///   non-retryable, or from retry exhaustion/max-duration enforcement.
     ///
+    /// # Panics
+    /// Panics if retry options that passed validation cannot construct an
+    /// executor configuration.
+    ///
     /// # Side effects
     /// Multiple async HTTP attempts and optional sleeps.
     async fn execute_with_retry(&self, request: HttpRequest, options: HttpRetryOptions) -> HttpResult<HttpResponse> {
@@ -583,6 +620,7 @@ impl HttpClient {
     ///
     /// # Returns
     /// `true` if another attempt may be scheduled.
+    #[inline]
     fn is_retryable_error(error: &HttpError, options: &HttpRetryOptions) -> bool {
         if error.kind == crate::HttpErrorKind::Status {
             error.status.is_some_and(|status| options.is_retryable_status(status))
@@ -603,6 +641,10 @@ impl HttpClient {
     ///
     /// # Returns
     /// A rich [`HttpError`] preserving the last attempt error when available.
+    ///
+    /// # Panics
+    /// Panics if an abort or attempt-exhaustion result lacks its retained
+    /// application error, or an elapsed limit has no configured duration.
     fn map_retry_error(
         error: &RetryError<HttpError>,
         started_at: Instant,
@@ -670,13 +712,20 @@ impl HttpClient {
             mapped.with_retry_diagnostics(HttpRetryDiagnostics::new(attempts, started_at.elapsed(), termination));
         if mapped.source().is_none() {
             if let Some(last_error) = error.last_error() {
-                mapped = mapped.with_source(HttpRetryApplicationSource(last_error.to_string()));
+                mapped = mapped.with_source(HttpRetryApplicationSource::new(last_error.to_string()));
             }
         }
         mapped
     }
 
     /// Copies retry-relevant HTTP fields without cloning the source chain.
+    ///
+    /// # Parameters
+    /// - `error`: HTTP error whose retry-relevant fields are retained.
+    ///
+    /// # Returns
+    /// An HTTP error projection retaining request and response metadata,
+    /// retry hints, and log redaction policy without its source chain.
     fn project_http_error(error: &HttpError) -> HttpError {
         let mut projected =
             HttpError::new(error.kind, error.message.clone()).with_log_redactor(error.log_redactor.clone());
@@ -692,20 +741,18 @@ impl HttpClient {
     }
 
     /// Adds terminal retry details to an existing HTTP error message.
+    ///
+    /// # Parameters
+    /// - `error`: HTTP error whose message is extended.
+    /// - `detail`: Retry termination detail appended to the message.
+    ///
+    /// # Returns
+    /// The error with its message suffixed by the retry detail.
     fn append_retry_message(mut error: HttpError, detail: String) -> HttpError {
         error.message = format!("{} ({detail})", error.message);
         error
     }
 
-    /// Copies domain attributes without consuming the original error chain.
-    ///
-    /// # Parameters
-    /// - `error`: Retained HTTP attempt error borrowed from the retry result.
-    ///
-    /// # Returns
-    /// An HTTP projection with the same request, response, retry hint and log
-    /// redactor. The source is attached later as the complete RetryError, which
-    /// owns the original attempt error and its backend source without cloning.
     /// Builds a cancellation error for retry wait cancellation.
     ///
     /// # Parameters
@@ -716,6 +763,7 @@ impl HttpClient {
     /// # Returns
     /// [`HttpErrorKind::Cancelled`](crate::HttpErrorKind::Cancelled) with
     /// request context.
+    #[inline]
     fn retry_cancelled_error(message: &str, method: &Method, url: Option<&Url>) -> HttpError {
         let mut error = HttpError::cancelled(message).with_method(method);
         if let Some(url) = url {
@@ -751,6 +799,7 @@ impl HttpClient {
     /// # Side effects
     /// Performs repeated HTTP requests and reads on reconnect; may sleep
     /// between attempts according to reconnect options.
+    #[must_use]
     pub fn execute_sse_with_reconnect(&self, request: HttpRequest, options: SseReconnectOptions) -> SseMessageStream {
         SseReconnectRunner::new(self.clone(), request, options).run()
     }
@@ -801,8 +850,8 @@ mod tests {
     use qubit_retry::RetryPolicy;
     use url::Url;
 
+    use super::super::internal::HttpRetryApplicationSource;
     use super::HttpClient;
-    use super::HttpRetryApplicationSource;
     use crate::HttpError;
     use crate::HttpErrorKind;
 
@@ -882,7 +931,7 @@ mod tests {
 
     #[test]
     fn test_retry_application_source_displays_original_message() {
-        let source = HttpRetryApplicationSource("backend request failed".to_owned());
+        let source = HttpRetryApplicationSource::new("backend request failed".to_owned());
 
         assert_eq!(source.to_string(), "backend request failed");
     }

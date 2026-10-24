@@ -11,7 +11,19 @@ use parse_display::FromStr as DeriveFromStr;
 use serde::Deserialize;
 use serde::Serialize;
 
-/// How to handle JSON parse failures on SSE `data:` lines.
+/// Controls how JSON parse failures on SSE `data:` lines are handled.
+///
+/// Lenient mode normalizes supported JSON forms and skips payloads that remain
+/// invalid. Strict mode returns an error for the first invalid payload.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_http::sse::SseJsonMode;
+///
+/// let mode = "strict".parse::<SseJsonMode>().expect("mode should parse");
+/// assert_eq!(mode, SseJsonMode::Strict);
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, DeriveFromStr)]
 #[serde(rename_all = "snake_case")]
 #[display(style = "snake_case")]

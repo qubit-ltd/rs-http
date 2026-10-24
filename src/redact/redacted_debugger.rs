@@ -28,12 +28,18 @@ impl<'redactor> RedactedDebugger<'redactor> {
     /// # Returns
     ///
     /// A safe debug renderer.
+    #[must_use]
     #[inline]
     pub(crate) const fn new(log_redactor: &'redactor Redactor) -> Self {
         Self { redactor: log_redactor }
     }
 
     /// Returns an optional redacted URL through the direct adapter API.
+    ///
+    /// # Returns
+    ///
+    /// `Some` contains the redacted URL when `url` is present; `None` means no
+    /// URL was supplied.
     pub(crate) fn optional_url(&self, url: Option<&Url>) -> Option<RedactedText> {
         url.map(|url| {
             self.redactor
@@ -43,6 +49,11 @@ impl<'redactor> RedactedDebugger<'redactor> {
     }
 
     /// Redacts HTTP URLs embedded in a diagnostic message.
+    ///
+    /// # Returns
+    ///
+    /// The message with each HTTP URL replaced by its redacted representation.
+    #[must_use]
     pub(crate) fn urls_in_text(&self, text: &str) -> String {
         let mut output = String::with_capacity(text.len());
         let mut cursor = 0;

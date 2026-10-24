@@ -16,6 +16,15 @@ use strum::Display;
 use strum::EnumString;
 
 /// Encodes how the outbound body is represented before sending via reqwest.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_http::HttpRequestBody;
+///
+/// let body = HttpRequestBody::Empty;
+/// assert_eq!(body.to_string(), "empty");
+/// ```
 #[derive(Clone, PartialEq, Eq, Default, Serialize, Deserialize, Display, EnumString)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
@@ -53,6 +62,14 @@ pub enum HttpRequestBody {
 }
 
 impl fmt::Debug for HttpRequestBody {
+    /// Formats the body variant and its payload size without exposing payload
+    /// data.
+    ///
+    /// # Parameters
+    /// - `formatter`: Destination that receives the debug representation.
+    ///
+    /// # Returns
+    /// Formatting result from the destination formatter.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Empty => formatter.write_str("Empty"),

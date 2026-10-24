@@ -16,6 +16,15 @@ use serde::Serialize;
 use super::HttpConfigError;
 
 /// HTTP method policy used to decide whether a request can be retried.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_http::HttpRetryMethodPolicy;
+///
+/// let policy = HttpRetryMethodPolicy::default();
+/// assert_eq!(policy, HttpRetryMethodPolicy::IdempotentOnly);
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, DeriveFromStr)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum HttpRetryMethodPolicy {
@@ -58,7 +67,10 @@ impl HttpRetryMethodPolicy {
     /// - `method`: HTTP method to evaluate.
     ///
     /// # Returns
-    /// `true` when automatic retry may replay the method.
+    /// `true` when automatic retry may replay the method, or `false` when the
+    /// policy does not permit it.
+    #[must_use]
+    #[inline]
     pub fn allows_method(&self, method: &Method) -> bool {
         match self {
             Self::IdempotentOnly => matches!(

@@ -23,7 +23,25 @@ type HttpRequestBodyStreamFactoryFn = dyn Fn() -> HttpRequestBodyStreamFactoryFu
 ///
 /// Each send attempt obtains a fresh byte stream from the stored async factory,
 /// so retries can rebuild the outbound body stream deterministically.
+///
+/// # Examples
+///
+/// ```
+/// use bytes::Bytes;
+/// use futures_util::stream;
+/// use qubit_http::HttpRequestBodyByteStream;
+/// use qubit_http::HttpRequestStreamingBody;
+///
+/// let body = HttpRequestStreamingBody::new(|| {
+///     Box::pin(async {
+///         Box::pin(stream::iter(vec![Ok(Bytes::from_static(b"payload"))]))
+///             as HttpRequestBodyByteStream
+///     })
+/// });
+/// assert!(format!("{body:?}").contains("HttpRequestStreamingBody"));
+/// ```
 #[derive(Clone)]
+#[must_use]
 pub struct HttpRequestStreamingBody {
     /// Async factory producing one stream for one request attempt.
     factory: Arc<HttpRequestBodyStreamFactoryFn>,

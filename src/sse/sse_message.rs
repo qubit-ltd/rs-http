@@ -23,6 +23,20 @@ use crate::json_limits::default_json_value_limits;
 use crate::json_limits::json_decode_limits;
 
 /// One EventSource-style message dispatch after `data:` line reassembly.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_http::sse::SseMessage;
+///
+/// let message = SseMessage {
+///     event: Some("update".to_owned()),
+///     data: r#"{"ready":true}"#.to_owned(),
+///     last_event_id: Some("42".to_owned()),
+/// };
+/// assert_eq!(message.event.as_deref(), Some("update"));
+/// assert_eq!(message.data, r#"{"ready":true}"#);
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SseMessage {
     /// `event:` field if present; callers may treat `None` as the default
@@ -38,7 +52,7 @@ pub struct SseMessage {
 impl SseMessage {
     /// Decodes the current message's `data` payload as JSON.
     ///
-    /// # Type parameters
+    /// # Type Parameters
     /// - `T`: Target type deserialized from [`SseMessage::data`].
     ///
     /// # Returns
@@ -86,7 +100,7 @@ impl SseMessage {
     /// # Parameters
     /// - `mode`: JSON decoding strictness.
     ///
-    /// # Type parameters
+    /// # Type Parameters
     /// - `T`: Target type deserialized from [`SseMessage::data`].
     ///
     /// # Returns

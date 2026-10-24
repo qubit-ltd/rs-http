@@ -155,7 +155,7 @@ async fn test_execute_success_with_header_injector_and_request_override() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     let json = response.json::<serde_json::Value>().await.unwrap();
-    assert_eq!(json["ok"], true);
+    assert_eq!(json["ok"].as_bool(), Some(true));
     assert_eq!(json["value"], 7);
 
     let captured = timeout(Duration::from_secs(3), server.finish())

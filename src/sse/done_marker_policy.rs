@@ -15,7 +15,19 @@ use std::str::FromStr;
 use serde::Deserialize;
 use serde::Serialize;
 
-/// Policy for stream completion marker matching.
+/// Selects how an SSE payload is recognized as a stream completion marker.
+///
+/// A custom marker is compared after trimming surrounding whitespace from both
+/// the configured marker and the payload.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_http::sse::DoneMarkerPolicy;
+///
+/// let policy = DoneMarkerPolicy::Custom("[END]".to_owned());
+/// assert!(policy.is_done("[END]"));
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DoneMarkerPolicy {
@@ -57,15 +69,6 @@ impl FromStr for DoneMarkerPolicy {
 }
 
 impl DoneMarkerPolicy {
-    /// Returns whether this policy can identify a non-empty completion marker.
-    pub(crate) fn has_usable_done_marker(&self) -> bool {
-        match self {
-            Self::Disabled => false,
-            Self::DefaultDone => true,
-            Self::Custom(marker) => !marker.trim().is_empty(),
-        }
-    }
-
     /// Returns whether `payload` (trimmed) signals end-of-stream per this
     /// policy.
     ///
@@ -74,11 +77,22 @@ impl DoneMarkerPolicy {
     ///
     /// # Returns
     /// `true` when the stream should stop emitting data chunks (e.g. `[DONE]`).
+    #[must_use]
     pub fn is_done(&self, payload: &str) -> bool {
         match self {
             DoneMarkerPolicy::Disabled => false,
             DoneMarkerPolicy::DefaultDone => payload.trim() == "[DONE]",
             DoneMarkerPolicy::Custom(marker) => payload.trim() == marker.trim(),
+        }
+    }
+
+    /// Returns whether this policy can identify a non-empty completion marker.
+    #[must_use]
+    pub(crate) fn has_usable_done_marker(&self) -> bool {
+        match self {
+            Self::Disabled => false,
+            Self::DefaultDone => true,
+            Self::Custom(marker) => !marker.trim().is_empty(),
         }
     }
 }

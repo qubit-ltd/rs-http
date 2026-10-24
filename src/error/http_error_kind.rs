@@ -12,7 +12,20 @@ use parse_display::FromStr as DeriveFromStr;
 use serde::Deserialize;
 use serde::Serialize;
 
-/// Category of HTTP errors.
+/// Classifies an HTTP failure by the stage or policy that produced it.
+///
+/// The kind is used by [`crate::HttpError`] and retry policies to distinguish
+/// transport failures, HTTP status failures, decoding failures, and other
+/// outcomes.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_http::HttpErrorKind;
+///
+/// let kind = HttpErrorKind::ConnectTimeout;
+/// assert_eq!(kind.to_string(), "connect_timeout");
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Display, DeriveFromStr)]
 #[serde(rename_all = "snake_case")]
 #[display(style = "snake_case")]

@@ -25,7 +25,23 @@ use super::HttpStatusResponse;
 use super::RetryHint;
 use crate::redact::RedactedDebugger;
 
-/// Unified HTTP error type.
+/// Unified HTTP error type used to classify failures and retain request
+/// context.
+///
+/// The error exposes a redacted message for display while preserving an
+/// optional source error for programmatic inspection.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_http::HttpError;
+/// use qubit_http::HttpErrorKind;
+///
+/// let error = HttpError::transport("connection closed");
+/// assert_eq!(error.kind(), HttpErrorKind::Transport);
+/// assert_eq!(error.message(), "connection closed");
+/// ```
+#[must_use]
 pub struct HttpError {
     /// Error category.
     pub kind: HttpErrorKind,
@@ -57,6 +73,8 @@ pub struct HttpError {
 }
 
 impl fmt::Display for HttpError {
+    /// Writes the public message after redacting URLs with the configured
+    /// policy.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let debugger = RedactedDebugger::new(&self.log_redactor);
         formatter.write_str(&debugger.urls_in_text(&self.message))
@@ -64,12 +82,15 @@ impl fmt::Display for HttpError {
 }
 
 impl Error for HttpError {
+    /// Returns the wrapped source error when one was attached.
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         self.source.as_deref().map(|source| source as &(dyn Error + 'static))
     }
 }
 
 impl fmt::Debug for HttpError {
+    /// Formats diagnostic fields while omitting raw source and response-body
+    /// contents.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let debugger = RedactedDebugger::new(&self.log_redactor);
         let url = debugger.optional_url(self.url.as_ref());
@@ -115,182 +136,6 @@ impl HttpError {
             status_response: None,
             log_redactor: Redactor::application_default(),
         }
-    }
-
-    /// Attaches the HTTP method for diagnostics.
-    ///
-    /// # Parameters
-    /// - `method`: Request method associated with the failure.
-    ///
-    /// # Returns
-    /// `self` for chaining.
-    pub fn with_method(mut self, method: &Method) -> Self {
-        self.method = Some(method.clone());
-        self
-    }
-
-    /// Attaches the request URL for diagnostics.
-    ///
-    /// # Parameters
-    /// - `url`: Request URL associated with the failure.
-    ///
-    /// # Returns
-    /// `self` for chaining.
-    pub fn with_url(mut self, url: &Url) -> Self {
-        self.url = Some(url.clone());
-        self
-    }
-
-    /// Attaches an HTTP status code (e.g. for [`HttpErrorKind::Status`]).
-    ///
-    /// # Parameters
-    /// - `status`: Response status code.
-    ///
-    /// # Returns
-    /// `self` for chaining.
-    pub fn with_status(mut self, status: StatusCode) -> Self {
-        self.status = Some(status);
-        self
-    }
-
-    /// Wraps an underlying error as the [`HttpError::source`] chain.
-    ///
-    /// # Parameters
-    /// - `source`: Root cause (`Send + Sync + 'static`).
-    ///
-    /// # Returns
-    /// `self` for chaining.
-    pub fn with_source<E>(mut self, source: E) -> Self
-    where
-        E: Error + Send + Sync + 'static,
-    {
-        self.source = Some(Box::new(source));
-        self
-    }
-
-    /// Returns retry metadata attached by the HTTP retry adapter.
-    #[must_use]
-    pub fn retry_metadata(&self) -> Option<&RetryErrorMetadata> {
-        self.retry_metadata.as_ref()
-    }
-
-    /// Returns the classified kind of this HTTP error.
-    #[must_use]
-    pub const fn kind(&self) -> HttpErrorKind {
-        self.kind
-    }
-
-    /// Returns the HTTP method associated with the failed request, if known.
-    #[must_use]
-    pub const fn method(&self) -> Option<&Method> {
-        self.method.as_ref()
-    }
-
-    /// Returns the request URL associated with the failed request, if known.
-    #[must_use]
-    pub const fn url(&self) -> Option<&Url> {
-        self.url.as_ref()
-    }
-
-    /// Returns the response status associated with the error, if available.
-    #[must_use]
-    pub const fn status(&self) -> Option<StatusCode> {
-        self.status
-    }
-
-    /// Returns the human-readable error message.
-    #[must_use]
-    pub fn message(&self) -> &str {
-        &self.message
-    }
-
-    /// Returns the redacted response-body preview, if one was captured.
-    #[must_use]
-    pub fn response_body_preview(&self) -> Option<&str> {
-        self.response_body_preview.as_deref()
-    }
-
-    /// Returns bounded raw data retained for a status error.
-    #[must_use]
-    pub fn status_response(&self) -> Option<&HttpStatusResponse> {
-        self.status_response.as_ref()
-    }
-
-    pub(crate) fn with_status_response(mut self, response: HttpStatusResponse) -> Self {
-        self.status_response = Some(response);
-        self
-    }
-
-    pub(crate) fn status_response_cloned(&self) -> Option<HttpStatusResponse> {
-        self.status_response.clone()
-    }
-
-    /// Returns the server-provided retry delay, if one was parsed.
-    #[must_use]
-    pub const fn retry_after(&self) -> Option<Duration> {
-        self.retry_after
-    }
-
-    /// Returns retry diagnostics attached to the final error, if available.
-    #[must_use]
-    pub const fn retry_diagnostics(&self) -> Option<&HttpRetryDiagnostics> {
-        self.retry_diagnostics.as_ref()
-    }
-
-    pub(crate) fn with_retry_diagnostics(mut self, diagnostics: HttpRetryDiagnostics) -> Self {
-        self.retry_diagnostics = Some(diagnostics);
-        self
-    }
-
-    /// Attaches a preview of the non-success response body.
-    ///
-    /// # Parameters
-    /// - `preview`: Truncated or summarized response body text.
-    ///
-    /// # Returns
-    /// `self` for chaining.
-    pub fn with_response_body_preview(mut self, preview: impl Into<String>) -> Self {
-        self.response_body_preview = Some(preview.into());
-        self
-    }
-
-    /// Attaches parsed `Retry-After` duration from a non-success response.
-    ///
-    /// # Parameters
-    /// - `retry_after`: Parsed retry delay.
-    ///
-    /// # Returns
-    /// `self` for chaining.
-    pub fn with_retry_after(mut self, retry_after: Duration) -> Self {
-        self.retry_after = Some(retry_after);
-        self
-    }
-
-    /// Attaches the log redactor used by [`Debug`](fmt::Debug) and
-    /// [`Display`](fmt::Display).
-    ///
-    /// # Parameters
-    /// - `policy`: Policy whose custom sensitive names should be honored.
-    ///
-    /// # Returns
-    /// `self` for chaining.
-    #[inline]
-    pub fn with_log_redactor(mut self, log_redactor: Redactor) -> Self {
-        self.log_redactor = log_redactor;
-        self
-    }
-
-    /// Attaches one redaction policy snapshot by rebuilding the shared
-    /// redactor.
-    ///
-    /// # Parameters
-    /// - `policy`: Policy whose custom sensitive names should be honored.
-    ///
-    /// # Returns
-    /// `self` for chaining.
-    pub fn with_log_redaction_policy(mut self, policy: RedactionPolicy) -> Self {
-        self.log_redactor = Redactor::new(policy);
-        self
     }
 
     /// Builds [`HttpErrorKind::InvalidUrl`].
@@ -459,11 +304,185 @@ impl HttpError {
         Self::new(HttpErrorKind::Other, message)
     }
 
+    /// Returns retry metadata attached by the HTTP retry adapter.
+    #[must_use]
+    #[inline]
+    pub fn retry_metadata(&self) -> Option<&RetryErrorMetadata> {
+        self.retry_metadata.as_ref()
+    }
+
+    /// Returns the classified kind of this HTTP error.
+    #[must_use]
+    #[inline]
+    pub const fn kind(&self) -> HttpErrorKind {
+        self.kind
+    }
+
+    /// Returns the HTTP method associated with the failed request, if known.
+    #[must_use]
+    #[inline]
+    pub const fn method(&self) -> Option<&Method> {
+        self.method.as_ref()
+    }
+
+    /// Returns the request URL associated with the failed request, if known.
+    #[must_use]
+    #[inline]
+    pub const fn url(&self) -> Option<&Url> {
+        self.url.as_ref()
+    }
+
+    /// Returns the response status associated with the error, if available.
+    #[must_use]
+    #[inline]
+    pub const fn status(&self) -> Option<StatusCode> {
+        self.status
+    }
+
+    /// Returns the human-readable error message.
+    #[must_use]
+    #[inline]
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    /// Returns the redacted response-body preview, if one was captured.
+    #[must_use]
+    #[inline]
+    pub fn response_body_preview(&self) -> Option<&str> {
+        self.response_body_preview.as_deref()
+    }
+
+    /// Returns bounded raw data retained for a status error.
+    #[must_use]
+    #[inline]
+    pub fn status_response(&self) -> Option<&HttpStatusResponse> {
+        self.status_response.as_ref()
+    }
+
+    /// Returns the server-provided retry delay, if one was parsed.
+    #[must_use]
+    #[inline]
+    pub const fn retry_after(&self) -> Option<Duration> {
+        self.retry_after
+    }
+
+    /// Returns retry diagnostics attached to the final error, if available.
+    #[must_use]
+    #[inline]
+    pub const fn retry_diagnostics(&self) -> Option<&HttpRetryDiagnostics> {
+        self.retry_diagnostics.as_ref()
+    }
+
+    /// Attaches the HTTP method for diagnostics.
+    ///
+    /// # Parameters
+    /// - `method`: Request method associated with the failure.
+    ///
+    /// # Returns
+    /// `self` for chaining.
+    pub fn with_method(mut self, method: &Method) -> Self {
+        self.method = Some(method.clone());
+        self
+    }
+
+    /// Attaches the request URL for diagnostics.
+    ///
+    /// # Parameters
+    /// - `url`: Request URL associated with the failure.
+    ///
+    /// # Returns
+    /// `self` for chaining.
+    pub fn with_url(mut self, url: &Url) -> Self {
+        self.url = Some(url.clone());
+        self
+    }
+
+    /// Attaches an HTTP status code (e.g. for [`HttpErrorKind::Status`]).
+    ///
+    /// # Parameters
+    /// - `status`: Response status code.
+    ///
+    /// # Returns
+    /// `self` for chaining.
+    pub fn with_status(mut self, status: StatusCode) -> Self {
+        self.status = Some(status);
+        self
+    }
+
+    /// Wraps an underlying error as the [`HttpError::source`] chain.
+    ///
+    /// # Parameters
+    /// - `source`: Root cause (`Send + Sync + 'static`).
+    ///
+    /// # Returns
+    /// `self` for chaining.
+    pub fn with_source<E>(mut self, source: E) -> Self
+    where
+        E: Error + Send + Sync + 'static,
+    {
+        self.source = Some(Box::new(source));
+        self
+    }
+
+    /// Attaches a preview of the non-success response body.
+    ///
+    /// # Parameters
+    /// - `preview`: Truncated or summarized response body text.
+    ///
+    /// # Returns
+    /// `self` for chaining.
+    pub fn with_response_body_preview(mut self, preview: impl Into<String>) -> Self {
+        self.response_body_preview = Some(preview.into());
+        self
+    }
+
+    /// Attaches parsed `Retry-After` duration from a non-success response.
+    ///
+    /// # Parameters
+    /// - `retry_after`: Parsed retry delay.
+    ///
+    /// # Returns
+    /// `self` for chaining.
+    pub fn with_retry_after(mut self, retry_after: Duration) -> Self {
+        self.retry_after = Some(retry_after);
+        self
+    }
+
+    /// Attaches the log redactor used by [`Debug`](fmt::Debug) and
+    /// [`Display`](fmt::Display).
+    ///
+    /// # Parameters
+    /// - `log_redactor`: Redactor whose policy is used when formatting this
+    ///   error.
+    ///
+    /// # Returns
+    /// `self` for chaining.
+    #[inline]
+    pub fn with_log_redactor(mut self, log_redactor: Redactor) -> Self {
+        self.log_redactor = log_redactor;
+        self
+    }
+
+    /// Attaches one redaction policy snapshot by rebuilding the shared
+    /// redactor.
+    ///
+    /// # Parameters
+    /// - `policy`: Policy whose custom sensitive names should be honored.
+    ///
+    /// # Returns
+    /// `self` for chaining.
+    pub fn with_log_redaction_policy(mut self, policy: RedactionPolicy) -> Self {
+        self.log_redactor = Redactor::new(policy);
+        self
+    }
+
     /// Classifies this error for retry policies ([`RetryHint`]).
     ///
     /// # Returns
     /// [`RetryHint::Retryable`] for timeouts, transport errors, and some HTTP
     /// statuses; otherwise non-retryable.
+    #[must_use]
     pub fn retry_hint(&self) -> RetryHint {
         match self.kind {
             HttpErrorKind::ConnectTimeout
@@ -484,6 +503,23 @@ impl HttpError {
             }
             _ => RetryHint::NonRetryable,
         }
+    }
+
+    /// Clones the retained response data for internal response processing.
+    pub(crate) fn status_response_cloned(&self) -> Option<HttpStatusResponse> {
+        self.status_response.clone()
+    }
+
+    /// Retains the bounded response data associated with a status failure.
+    pub(crate) fn with_status_response(mut self, response: HttpStatusResponse) -> Self {
+        self.status_response = Some(response);
+        self
+    }
+
+    /// Attaches retry-flow diagnostics to the final error.
+    pub(crate) fn with_retry_diagnostics(mut self, diagnostics: HttpRetryDiagnostics) -> Self {
+        self.retry_diagnostics = Some(diagnostics);
+        self
     }
 }
 

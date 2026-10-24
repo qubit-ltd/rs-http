@@ -127,7 +127,7 @@ async fn socks5_handshake_and_target(stream: &mut TcpStream) -> std::io::Result<
             let mut domain = vec![0_u8; len[0] as usize];
             stream.read_exact(&mut domain).await?;
             String::from_utf8(domain)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, format!("bad domain: {e}")))?
+                .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, format!("bad domain: {error}")))?
         }
         _ => {
             return Err(std::io::Error::new(

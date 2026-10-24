@@ -9,11 +9,12 @@
 
 mod http_byte_stream;
 mod http_response;
-mod http_response_body_state;
 mod http_response_interceptor_context;
 mod http_response_interceptors;
 mod http_response_meta;
 mod http_response_options;
+// Keeps response-specific body, runtime, and read-failure state private.
+mod internal;
 
 pub use http_byte_stream::HttpByteStream;
 pub use http_response::HttpResponse;

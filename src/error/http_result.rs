@@ -10,4 +10,8 @@
 use super::http_error::HttpError;
 
 /// [`Result`] alias for HTTP operations: success value `T` or [`HttpError`].
+///
+/// # Type Parameters
+///
+/// - `T`: The value returned when the HTTP operation succeeds.
 pub type HttpResult<T> = Result<T, HttpError>;

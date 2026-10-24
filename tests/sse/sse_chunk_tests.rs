@@ -7,15 +7,15 @@
 // =============================================================================
 
 use qubit_http::sse::SseChunk;
+use serde_json::Value;
+use serde_json::json;
+use serde_json::to_value;
 
 #[test]
 fn test_sse_chunk_serializes_data_and_done_variants() {
-    let data = SseChunk::Data(serde_json::json!({"delta": "hello"}));
-    let done: SseChunk<serde_json::Value> = SseChunk::Done;
+    let data = SseChunk::Data(json!({"delta": "hello"}));
+    let done: SseChunk<Value> = SseChunk::Done;
 
-    assert_eq!(data, SseChunk::Data(serde_json::json!({"delta": "hello"})));
-    assert_eq!(
-        serde_json::to_value(done).expect("done should serialize"),
-        serde_json::json!("done")
-    );
+    assert_eq!(data, SseChunk::Data(json!({"delta": "hello"})));
+    assert_eq!(to_value(done).expect("done should serialize"), json!("done"));
 }

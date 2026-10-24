@@ -52,6 +52,13 @@ use super::HttpConfigError;
 /// Resolves an explicitly reader-relative domain error to its root path.
 /// Callers must propagate configuration read errors directly: those paths
 /// have already been resolved by qubit-config.
+///
+/// # Parameters
+/// - `config`: Reader used to resolve the error path.
+/// - `error`: Domain error whose path is relative to `config`.
+///
+/// # Returns
+/// The error with its path resolved relative to the root reader.
 pub(crate) fn resolve_config_error<R>(config: &R, mut error: HttpConfigError) -> HttpConfigError
 where
     R: ConfigReader + ?Sized,
@@ -66,6 +73,19 @@ where
 /// Rejects keys outside a component's declared fields and open child sections.
 /// Returns sorted root-relative unknown paths; unrelated siblings outside the
 /// supplied reader are not inspected. Open sections accept descendants only.
+///
+/// # Parameters
+/// - `config`: Reader whose keys are checked.
+/// - `fields`: Keys accepted as fields of the component.
+/// - `sections`: Keys accepted as open child sections.
+///
+/// # Returns
+/// `Ok(())` when all keys are known; otherwise an error listing unknown paths.
+///
+/// # Errors
+/// Returns a configuration read error when a key cannot be resolved, or an
+/// unknown-properties error containing sorted, deduplicated root-relative
+/// paths.
 pub(crate) fn ensure_known_config_keys<R>(config: &R, fields: &[&str], sections: &[&str]) -> ConfigResult<()>
 where
     R: ConfigReader + ?Sized,
@@ -92,6 +112,15 @@ where
 
 /// Resolves validation errors whose schema explicitly uses a component prefix.
 /// The prefix belongs to the validator, regardless of the reader's scope.
+///
+/// # Parameters
+/// - `config`: Reader used to resolve the remaining path.
+/// - `error`: Validation error whose path may begin with `component`.
+/// - `component`: Schema prefix to remove when it is present.
+///
+/// # Returns
+/// The error with the component prefix removed and its remaining path resolved
+/// relative to the root reader.
 pub(crate) fn resolve_component_error<R>(config: &R, mut error: HttpConfigError, component: &str) -> HttpConfigError
 where
     R: ConfigReader + ?Sized,
@@ -110,6 +139,17 @@ where
 ///
 /// Configuration data stays platform-independent as `u64`; conversion to the
 /// platform-sized type happens only at the HTTP API boundary.
+///
+/// # Parameters
+/// - `config`: Reader containing the value.
+/// - `key`: Reader-relative configuration key.
+///
+/// # Returns
+/// `None` when the key is absent, or its value converted to `usize`.
+///
+/// # Errors
+/// Returns a configuration read error or an error when the value exceeds the
+/// platform's `usize` range.
 pub(crate) fn get_optional_usize<R>(config: &R, key: &str) -> ConfigResult<Option<usize>>
 where
     R: ConfigReader + ?Sized,
@@ -127,7 +167,7 @@ where
     }
 }
 
-/// Converts a map of header names to values into an [`HeaderMap`].
+/// Converts a map of header names to values into a [`HeaderMap`].
 ///
 /// # Parameters
 /// - `path`: Configuration path of the header map root.

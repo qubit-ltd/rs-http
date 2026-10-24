@@ -19,6 +19,7 @@ use crate::options::HttpClientOptions;
 use crate::sse::DoneMarkerPolicy;
 use crate::sse::SseCompletionPolicy;
 use crate::sse::SseJsonMode;
+
 /// Decode/error-preview options bound to one response instance.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct HttpResponseOptions {
@@ -46,6 +47,11 @@ pub(crate) struct HttpResponseOptions {
 }
 
 impl Default for HttpResponseOptions {
+    /// Creates response options with the crate's default limits and policies.
+    ///
+    /// # Returns
+    ///
+    /// Options configured with the default response and SSE behavior.
     fn default() -> Self {
         Self {
             error_response_preview_limit: DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES,
@@ -73,6 +79,7 @@ impl HttpResponseOptions {
     /// # Returns
     ///
     /// An independent response option snapshot.
+    #[must_use]
     pub(crate) fn from_client_options(options: &HttpClientOptions, log_redactor: Redactor) -> Self {
         Self {
             error_response_preview_limit: options.error_response_preview_limit.max(1),

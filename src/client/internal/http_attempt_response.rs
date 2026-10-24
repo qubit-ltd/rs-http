@@ -10,6 +10,7 @@
 use crate::HttpResponse;
 
 /// Successful attempt plus token ownership needed by retry handoff.
+#[must_use]
 pub(in crate::client) struct HttpAttemptResponse {
     /// Successful response produced by this attempt.
     response: HttpResponse,

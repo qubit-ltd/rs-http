@@ -7,12 +7,13 @@
 // =============================================================================
 
 use bytes::Bytes;
+use reqwest::Response;
 
-/// Ownership state of a response body.
+/// Tracks ownership and availability of an HTTP response body.
 #[derive(Debug)]
 pub(super) enum HttpResponseBodyState {
     /// Backend response whose body has not been consumed.
-    Backend(reqwest::Response),
+    Backend(Response),
     /// Fully buffered response body.
     Buffered(Bytes),
     /// Streaming body ownership has been transferred to the caller.

@@ -29,8 +29,9 @@ use tokio::test as tokio_test;
 
 use crate::common::spawn_multi_shot_server;
 
-/// Returns the structured retry terminal chained by an HTTP cancellation.
-fn retry_failure(error: &HttpError) -> &RetryError<HttpError> {
+/// Asserts that cancellation retains the structured retry terminal as its
+/// source.
+fn assert_retry_failure(error: &HttpError) {
     error
         .source()
         .and_then(|source| source.downcast_ref::<RetryError<HttpError>>())
@@ -72,7 +73,7 @@ async fn test_same_source_interceptor_clone_remains_retry_owned() {
         .build();
     let error = client.execute(request).await.unwrap_err();
 
-    assert!(matches!(retry_failure(&error), _));
+    assert_retry_failure(&error);
     assert_eq!(attempts.load(Ordering::SeqCst), 1);
     assert!(server.finish().await.is_empty());
 }

@@ -11,6 +11,15 @@ use serde::Deserialize;
 use serde::Serialize;
 
 /// URL scheme selector used when constructing the proxy URL for reqwest.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_http::ProxyType;
+///
+/// let proxy_type = ProxyType::Socks5;
+/// assert_eq!(proxy_type.scheme(), "socks5h");
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, DeriveFromStr)]
 #[serde(rename_all = "snake_case")]
 #[display(style = "snake_case")]
@@ -38,6 +47,8 @@ impl ProxyType {
     ///
     /// # Returns
     /// `"http"`, `"https"`, or `"socks5h"` (SOCKS5 with remote DNS).
+    #[must_use]
+    #[inline]
     pub fn scheme(self) -> &'static str {
         match self {
             ProxyType::Http => "http",

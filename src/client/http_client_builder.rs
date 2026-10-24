@@ -7,67 +7,21 @@
 // =============================================================================
 //! Reqwest-backed HTTP client factory.
 
-use std::error::Error;
-use std::fmt;
 use std::net::IpAddr;
-use std::net::SocketAddr;
 
 use qubit_config::ConfigReader;
-use qubit_error::BoxError;
-use qubit_error::IntoBoxError;
 use reqwest::Client;
 use reqwest::Proxy;
-use reqwest::dns::Addrs;
-use reqwest::dns::Name;
-use reqwest::dns::Resolve;
-use reqwest::dns::Resolving;
 use reqwest::redirect::Policy;
+use url::Url;
 
+use super::RedirectOriginViolation;
+use super::internal::Ipv4OnlyResolver;
 use crate::HttpClient;
 use crate::HttpClientOptions;
 use crate::HttpConfigError;
 use crate::HttpError;
 use crate::HttpResult;
-
-/// Error returned by the redirect policy when a redirect crosses origins.
-#[derive(Debug)]
-pub(crate) struct RedirectOriginViolation;
-
-impl fmt::Display for RedirectOriginViolation {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("redirect target violates the same-origin policy")
-    }
-}
-
-impl Error for RedirectOriginViolation {}
-
-/// DNS resolver that filters out non-IPv4 addresses for `ipv4_only` mode.
-#[derive(Debug, Clone, Copy, Default)]
-struct Ipv4OnlyResolver;
-
-impl Resolve for Ipv4OnlyResolver {
-    /// Resolves `name` using the OS resolver and returns only IPv4 addresses.
-    ///
-    /// # Parameters
-    /// - `name`: DNS name to resolve.
-    ///
-    /// # Returns
-    /// A future yielding only IPv4 socket addresses.
-    ///
-    /// # Errors
-    /// Returns an error when DNS lookup fails or when no IPv4 address exists
-    /// for `name`.
-    fn resolve(&self, name: Name) -> Resolving {
-        let host = name.as_str().to_string();
-        Box::pin(async move {
-            let resolved = match tokio::net::lookup_host((host.as_str(), 0)).await {
-                Ok(resolved) => resolved,
-                Err(error) => return Err(error.into_box_error()),
-            };
-            filter_ipv4_addrs(&host, resolved)
-        })
-    }
-}
 
 /// Public factory used to build reqwest-backed [`HttpClient`] instances.
 ///
@@ -87,6 +41,7 @@ impl Resolve for Ipv4OnlyResolver {
 /// ```
 #[derive(Debug, Default, Clone)]
 pub struct HttpClientBuilder {
+    /// Complete client options to apply when building the client.
     options: Option<HttpClientOptions>,
 }
 
@@ -95,17 +50,21 @@ impl HttpClientBuilder {
     ///
     /// # Returns
     /// New [`HttpClientBuilder`].
+    #[must_use]
+    #[inline]
     pub fn new() -> Self {
         Self { options: None }
     }
 
-    /// Installs the complete client options value.
-    pub fn options(mut self, options: HttpClientOptions) -> Self {
-        self.options = Some(options);
-        self
-    }
-
     /// Builds a client from the configured options or defaults.
+    ///
+    /// # Returns
+    /// A client using the configured options, or the default options when none
+    /// were installed.
+    ///
+    /// # Errors
+    /// Returns an error when options are invalid or the reqwest client cannot
+    /// be built.
     pub fn build(self) -> HttpResult<HttpClient> {
         let options = self.options.unwrap_or_default();
         Self::new().create(options)
@@ -115,6 +74,11 @@ impl HttpClientBuilder {
     ///
     /// # Returns
     /// [`HttpClient`] or [`HttpError`] (proxy/build failures).
+    ///
+    /// # Errors
+    /// Returns an error if default options are invalid or the reqwest client
+    /// cannot be built.
+    #[inline]
     pub fn create_default(&self) -> HttpResult<HttpClient> {
         self.create(HttpClientOptions::default())
     }
@@ -127,6 +91,10 @@ impl HttpClientBuilder {
     ///
     /// # Returns
     /// [`HttpClient`] or [`HttpError`] (proxy/build failures).
+    ///
+    /// # Errors
+    /// Returns an error if `options` are invalid or reqwest cannot build the
+    /// configured client.
     pub fn create(&self, options: HttpClientOptions) -> HttpResult<HttpClient> {
         options.validate().map_err(map_validation_error)?;
 
@@ -215,6 +183,10 @@ impl HttpClientBuilder {
     /// - `Ok(HttpClient)` when parsing, validation, and client build succeed.
     /// - `Err(HttpConfigError)` on config or validation errors; build failures
     ///   are mapped to [`HttpConfigError`].
+    ///
+    /// # Errors
+    /// Returns an error when reading or validating `config` fails, or when the
+    /// configured reqwest client cannot be built.
     pub fn create_from_config<R>(&self, config: &R) -> Result<HttpClient, HttpConfigError>
     where
         R: ConfigReader + ?Sized,
@@ -228,33 +200,20 @@ impl HttpClientBuilder {
             )
         })
     }
-}
 
-/// Filters resolved socket addresses down to IPv4 addresses.
-///
-/// # Parameters
-/// - `host`: Hostname used for diagnostics when no IPv4 address remains.
-/// - `resolved`: Iterator of resolved socket addresses.
-///
-/// # Returns
-/// Boxed reqwest DNS address iterator containing only IPv4 addresses.
-///
-/// # Errors
-/// Returns an [`std::io::ErrorKind::AddrNotAvailable`] error when resolution
-/// produced no IPv4 address.
-fn filter_ipv4_addrs<I>(host: &str, resolved: I) -> Result<Addrs, BoxError>
-where
-    I: IntoIterator<Item = SocketAddr>,
-{
-    let ipv4_addrs: Vec<SocketAddr> = resolved.into_iter().filter(SocketAddr::is_ipv4).collect();
-    if ipv4_addrs.is_empty() {
-        let error = std::io::Error::new(
-            std::io::ErrorKind::AddrNotAvailable,
-            format!("No IPv4 address found for host '{host}'"),
-        );
-        return Err(error.into_box_error());
+    /// Installs the complete client options value.
+    ///
+    /// # Parameters
+    /// - `options`: Complete options to use when building the client.
+    ///
+    /// # Returns
+    /// A builder that owns `options` and can build a client.
+    #[must_use]
+    #[inline]
+    pub fn options(mut self, options: HttpClientOptions) -> Self {
+        self.options = Some(options);
+        self
     }
-    Ok(Box::new(ipv4_addrs.into_iter()) as Addrs)
 }
 
 /// Maps options validation errors to runtime [`HttpError`] values.
@@ -286,7 +245,14 @@ fn is_ipv6_literal_host(host: &str) -> bool {
 }
 
 /// Returns whether two URLs share scheme, host, and effective port.
-fn same_origin(left: &url::Url, right: &url::Url) -> bool {
+///
+/// # Parameters
+/// - `left`: First URL to compare.
+/// - `right`: Second URL to compare.
+///
+/// # Returns
+/// `true` when both URLs have the same scheme, host, and effective port.
+fn same_origin(left: &Url, right: &Url) -> bool {
     left.scheme() == right.scheme()
         && left.host() == right.host()
         && left.port_or_known_default() == right.port_or_known_default()

@@ -65,10 +65,16 @@ fn test_response_interceptor_apply_receives_context() {
         .clone()
         .expect("response interceptor should capture context");
     assert_eq!(seen.0, StatusCode::CREATED);
-    assert_eq!(seen.1, Url::parse("https://example.test/path").unwrap());
+    assert_eq!(
+        seen.1,
+        Url::parse("https://example.test/path").expect("valid original URL")
+    );
     assert_eq!(seen.2, Method::GET);
     assert_eq!(seen.3, "ok");
-    assert_eq!(meta.url(), &Url::parse("https://example.test/rewritten").unwrap());
+    assert_eq!(
+        meta.url(),
+        &Url::parse("https://example.test/rewritten").expect("valid rewritten URL")
+    );
     assert_eq!(meta.status(), StatusCode::CREATED);
     assert_eq!(meta.method(), &Method::GET);
 }
@@ -149,7 +155,10 @@ fn test_response_interceptors_apply_enriches_error_context() {
     assert_eq!(error.kind, HttpErrorKind::Other);
     assert_eq!(error.status, Some(StatusCode::ACCEPTED));
     assert_eq!(error.method, Some(Method::POST));
-    assert_eq!(error.url, Some(Url::parse("https://example.test/list").unwrap()));
+    assert_eq!(
+        error.url,
+        Some(Url::parse("https://example.test/list").expect("valid response URL"))
+    );
 }
 
 #[test]

@@ -28,6 +28,9 @@ use crate::json_limits::json_decode_limits;
 /// Parses SSE JSON payloads with selectable strictness and explicit line/frame
 /// size limits.
 ///
+/// # Type Parameters
+/// - `T`: JSON type to deserialize.
+///
 /// # Parameters
 /// - `stream`: SSE HTTP body byte stream.
 /// - `done_policy`: Terminal marker detection.
@@ -36,13 +39,13 @@ use crate::json_limits::json_decode_limits;
 /// - `max_frame_bytes`: Maximum allowed bytes for one SSE frame.
 /// - `json_value_limits`: Structural and decoded-payload limits for each JSON
 ///   event.
-///
-/// # Type parameters
-/// - `T`: JSON type to deserialize.
+/// - `completion_policy`: Whether ordinary end-of-stream is accepted without a
+///   done marker.
 ///
 /// # Returns
 /// Stream of [`SseChunk::Data`] or [`SseChunk::Done`], or errors from
 /// upstream/SSE/JSON.
+#[must_use]
 pub(crate) fn decode_json_chunks_from_stream_with_limits<T>(
     stream: HttpByteStream,
     done_policy: DoneMarkerPolicy,

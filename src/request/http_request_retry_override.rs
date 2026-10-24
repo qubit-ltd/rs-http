@@ -17,6 +17,24 @@ use crate::HttpRetryMethodPolicy;
 /// - override the retryable-method policy for one request;
 /// - optionally honor `Retry-After` on retryable status responses (`429` and
 ///   `5xx`).
+///
+/// # Examples
+///
+/// ```
+/// use qubit_http::{HttpRequestRetryOverride, HttpRetryMethodPolicy};
+///
+/// let retry_override = HttpRequestRetryOverride::new()
+///     .force_enable()
+///     .with_method_policy(HttpRetryMethodPolicy::AllMethods)
+///     .with_honor_retry_after(true);
+/// assert!(retry_override.is_force_enable());
+/// assert_eq!(
+///     retry_override.method_policy(),
+///     Some(HttpRetryMethodPolicy::AllMethods)
+/// );
+/// assert!(retry_override.should_honor_retry_after());
+/// ```
+#[must_use]
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct HttpRequestRetryOverride {
     /// Force retry on for this request (unless explicitly force-disabled).
@@ -35,6 +53,7 @@ impl HttpRequestRetryOverride {
     /// # Returns
     /// New [`HttpRequestRetryOverride`] with all per-request overrides
     /// disabled.
+    #[inline]
     pub fn new() -> Self {
         Self::default()
     }
@@ -43,6 +62,7 @@ impl HttpRequestRetryOverride {
     ///
     /// # Returns
     /// Updated override for chaining.
+    #[inline]
     pub fn force_enable(mut self) -> Self {
         self.force_enable = true;
         self.force_disable = false;
@@ -53,6 +73,7 @@ impl HttpRequestRetryOverride {
     ///
     /// # Returns
     /// Updated override for chaining.
+    #[inline]
     pub fn force_disable(mut self) -> Self {
         self.force_disable = true;
         self.force_enable = false;
@@ -66,6 +87,7 @@ impl HttpRequestRetryOverride {
     ///
     /// # Returns
     /// Updated override for chaining.
+    #[inline]
     pub fn with_method_policy(mut self, policy: HttpRetryMethodPolicy) -> Self {
         self.method_policy = Some(policy);
         self
@@ -79,6 +101,7 @@ impl HttpRequestRetryOverride {
     ///
     /// # Returns
     /// Updated override for chaining.
+    #[inline]
     pub fn with_honor_retry_after(mut self, enabled: bool) -> Self {
         self.honor_retry_after = enabled;
         self
@@ -88,6 +111,8 @@ impl HttpRequestRetryOverride {
     ///
     /// # Returns
     /// `true` when retry is force-enabled at request level.
+    #[must_use]
+    #[inline]
     pub fn is_force_enable(&self) -> bool {
         self.force_enable
     }
@@ -96,6 +121,8 @@ impl HttpRequestRetryOverride {
     ///
     /// # Returns
     /// `true` when retry is force-disabled at request level.
+    #[must_use]
+    #[inline]
     pub fn is_force_disable(&self) -> bool {
         self.force_disable
     }
@@ -104,6 +131,7 @@ impl HttpRequestRetryOverride {
     ///
     /// # Returns
     /// Optional override for [`HttpRetryMethodPolicy`].
+    #[inline]
     pub fn method_policy(&self) -> Option<HttpRetryMethodPolicy> {
         self.method_policy
     }
@@ -113,6 +141,8 @@ impl HttpRequestRetryOverride {
     /// # Returns
     /// `true` when this request should honor `Retry-After` on retryable status
     /// responses (`429` and `5xx`).
+    #[must_use]
+    #[inline]
     pub fn should_honor_retry_after(&self) -> bool {
         self.honor_retry_after
     }
@@ -125,6 +155,8 @@ impl HttpRequestRetryOverride {
     ///
     /// # Returns
     /// Effective retry-enabled flag for this request.
+    #[must_use]
+    #[inline]
     pub(crate) fn resolve_enabled(&self, client_enabled: bool) -> bool {
         if self.force_disable {
             false
@@ -143,6 +175,8 @@ impl HttpRequestRetryOverride {
     ///
     /// # Returns
     /// Effective method policy for this request.
+    #[must_use]
+    #[inline]
     pub(crate) fn resolve_method_policy(&self, client_policy: HttpRetryMethodPolicy) -> HttpRetryMethodPolicy {
         self.method_policy.unwrap_or(client_policy)
     }

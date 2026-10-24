@@ -116,7 +116,7 @@ fn test_log_response_masks_sensitive_headers() {
             StatusCode::OK,
             headers.clone(),
             Bytes::from_static(b"ok"),
-            Url::parse("https://example.com/data").unwrap(),
+            Url::parse("https://example.com/data").expect("response URL should parse"),
             Method::GET,
         );
         let runtime = Builder::new_current_thread()
@@ -198,7 +198,7 @@ fn test_log_response_binary_body_and_truncation() {
             StatusCode::OK,
             headers.clone(),
             Bytes::from_static(&[0xFF, 0xFE, 0xFD, 0xFC, 0xFB]),
-            Url::parse("https://example.com/bin").unwrap(),
+            Url::parse("https://example.com/bin").expect("response URL should parse"),
             Method::GET,
         );
         let runtime = Builder::new_current_thread()
@@ -226,7 +226,7 @@ fn test_log_stream_response_headers_respects_toggle() {
         let response_meta = HttpResponseMeta::new(
             StatusCode::OK,
             headers.clone(),
-            Url::parse("https://example.com/stream").unwrap(),
+            Url::parse("https://example.com/stream").expect("response URL should parse"),
             Method::GET,
         );
         logger.log_stream_response_headers(&response_meta);

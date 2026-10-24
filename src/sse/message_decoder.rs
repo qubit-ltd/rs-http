@@ -27,6 +27,7 @@ use crate::HttpByteStream;
 ///
 /// # Returns
 /// Stream yielding internal [`SseRecord`] values or protocol/transport errors.
+#[must_use]
 pub(crate) fn decode_records_from_stream_with_limits(
     stream: HttpByteStream,
     max_line_bytes: usize,
@@ -46,6 +47,7 @@ pub(crate) fn decode_records_from_stream_with_limits(
 ///
 /// # Returns
 /// Stream yielding [`super::SseMessage`] values or protocol/transport errors.
+#[must_use]
 pub(crate) fn decode_messages_from_stream_with_limits(
     stream: HttpByteStream,
     max_line_bytes: usize,

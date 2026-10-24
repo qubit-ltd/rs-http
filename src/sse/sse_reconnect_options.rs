@@ -43,6 +43,15 @@ fn default_sse_retry_options() -> RetryPolicy {
 
 /// Reconnect behavior options for
 /// [`crate::HttpClient::execute_sse_with_reconnect`].
+///
+/// # Examples
+///
+/// ```
+/// use qubit_http::sse::SseReconnectOptions;
+///
+/// let options = SseReconnectOptions::new();
+/// assert!(options.reconnect_on_eof);
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct SseReconnectOptions {
     /// Retry options used by SSE reconnect delay calculation.

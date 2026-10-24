@@ -61,6 +61,7 @@ use crate::content_type;
 /// # }
 /// ```
 #[derive(Clone)]
+#[must_use = "request builder configuration must be used to build a request"]
 pub struct HttpRequestBuilder {
     /// HTTP method (e.g. GET, POST).
     pub(super) method: Method,
@@ -84,6 +85,8 @@ pub struct HttpRequestBuilder {
     /// Base URL copied from client options and used by
     /// [`HttpRequest::resolved_url`].
     pub(super) base_url: Option<Url>,
+    /// Policy used to validate the relationship between the request URL and
+    /// its configured base URL.
     pub(super) origin_policy: HttpOriginPolicy,
     /// Whether IPv6 literal hosts are rejected during URL resolution.
     pub(super) ipv4_only: bool,
@@ -557,6 +560,7 @@ impl HttpRequestBuilder {
     ///
     /// # Returns
     /// `self` for chaining.
+    #[inline]
     pub fn base_url(mut self, base_url: Url) -> Self {
         self.base_url = Some(base_url);
         self
@@ -566,6 +570,7 @@ impl HttpRequestBuilder {
     ///
     /// # Returns
     /// `self` for chaining.
+    #[inline]
     pub fn clear_base_url(mut self) -> Self {
         self.base_url = None;
         self
@@ -579,6 +584,7 @@ impl HttpRequestBuilder {
     ///
     /// # Returns
     /// `self` for chaining.
+    #[inline]
     pub fn ipv4_only(mut self, enabled: bool) -> Self {
         self.ipv4_only = enabled;
         self
@@ -592,6 +598,7 @@ impl HttpRequestBuilder {
     ///
     /// # Returns
     /// `self` for chaining.
+    #[inline]
     pub fn cancellation_token(mut self, token: HttpCancellationToken) -> Self {
         self.cancellation_token = Some(token);
         self
@@ -602,6 +609,7 @@ impl HttpRequestBuilder {
     ///
     /// # Returns
     /// `self` for chaining.
+    #[inline]
     pub fn force_retry(mut self) -> Self {
         self.retry_override = self.retry_override.force_enable();
         self
@@ -611,6 +619,7 @@ impl HttpRequestBuilder {
     ///
     /// # Returns
     /// `self` for chaining.
+    #[inline]
     pub fn disable_retry(mut self) -> Self {
         self.retry_override = self.retry_override.force_disable();
         self
@@ -623,6 +632,7 @@ impl HttpRequestBuilder {
     ///
     /// # Returns
     /// `self` for chaining.
+    #[inline]
     pub fn retry_method_policy(mut self, policy: HttpRetryMethodPolicy) -> Self {
         self.retry_override = self.retry_override.with_method_policy(policy);
         self
@@ -636,6 +646,7 @@ impl HttpRequestBuilder {
     ///
     /// # Returns
     /// `self` for chaining.
+    #[inline]
     pub fn honor_retry_after(mut self, enabled: bool) -> Self {
         self.retry_override = self.retry_override.with_honor_retry_after(enabled);
         self

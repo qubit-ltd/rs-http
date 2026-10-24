@@ -23,7 +23,30 @@ type AsyncHttpHeaderInjectorFn =
 
 /// Async HTTP header injector that can await external state (for example token
 /// refresh) before mutating outbound request headers.
+///
+/// # Examples
+///
+/// ```
+/// use http::HeaderMap;
+/// use http::HeaderValue;
+/// use qubit_http::AsyncHttpHeaderInjector;
+///
+/// async fn inject_authentication_header() -> qubit_http::HttpResult<()> {
+///     let injector = AsyncHttpHeaderInjector::new(|headers: &mut HeaderMap| {
+///         Box::pin(async move {
+///             headers.insert("authorization", HeaderValue::from_static("Bearer token"));
+///             Ok(())
+///         })
+///     });
+///
+///     let mut headers = HeaderMap::new();
+///     injector.apply(&mut headers).await?;
+///     assert_eq!(headers.get("authorization").unwrap(), "Bearer token");
+///     Ok(())
+/// }
+/// ```
 #[derive(Clone)]
+#[must_use]
 pub struct AsyncHttpHeaderInjector {
     /// Underlying async mutation callback.
     inner: Arc<AsyncHttpHeaderInjectorFn>,
@@ -44,6 +67,10 @@ impl std::fmt::Debug for AsyncHttpHeaderInjector {
 
 impl AsyncHttpHeaderInjector {
     /// Creates an async header injector from a callback.
+    ///
+    /// # Type Parameters
+    /// - `F`: Callback type that returns a future borrowing the mutable
+    ///   headers.
     ///
     /// # Parameters
     /// - `injector`: Async callback that mutates `HeaderMap` and may fail.

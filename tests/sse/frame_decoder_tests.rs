@@ -16,6 +16,7 @@ use qubit_http::HttpErrorKind;
 use qubit_http::HttpResponse;
 use qubit_http::HttpResult;
 use tokio::test as tokio_test;
+use url::Url;
 
 async fn collect_results<T>(stream: impl Stream<Item = HttpResult<T>>) -> Vec<T> {
     stream
@@ -30,7 +31,7 @@ fn stream_response_from_chunks(chunks: Vec<&'static str>) -> HttpResponse {
         StatusCode::OK,
         HeaderMap::new(),
         Bytes::from(body),
-        url::Url::parse("https://example.com/stream").unwrap(),
+        Url::parse("https://example.com/stream").unwrap(),
         Method::GET,
     )
 }

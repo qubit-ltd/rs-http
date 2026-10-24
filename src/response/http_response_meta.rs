@@ -20,7 +20,30 @@ use qubit_redact::RedactionPolicy;
 use qubit_redact::Redactor;
 use url::Url;
 
-/// HTTP response metadata available before body buffering/stream consumption.
+/// HTTP response metadata available before body buffering or stream
+/// consumption.
+///
+/// The metadata keeps the final status, headers, URL, and originating method
+/// together so callers can inspect a response without consuming its body.
+///
+/// # Examples
+///
+/// ```
+/// use http::HeaderMap;
+/// use http::Method;
+/// use http::StatusCode;
+/// use qubit_http::HttpResponseMeta;
+/// use url::Url;
+///
+/// let response = HttpResponseMeta::new(
+///     StatusCode::OK,
+///     HeaderMap::new(),
+///     Url::parse("https://example.com/").expect("valid URL"),
+///     Method::GET,
+/// );
+///
+/// assert_eq!(response.status(), StatusCode::OK);
+/// ```
 #[derive(Clone)]
 pub struct HttpResponseMeta {
     /// Response status code.
@@ -37,6 +60,7 @@ pub struct HttpResponseMeta {
 
 impl HttpResponseMeta {
     /// Creates response metadata from status/headers/url/method parts.
+    #[must_use]
     #[inline]
     pub fn new(status: StatusCode, headers: HeaderMap, url: Url, method: Method) -> Self {
         Self {
@@ -56,6 +80,7 @@ impl HttpResponseMeta {
     ///
     /// # Returns
     /// Updated metadata.
+    #[must_use]
     #[inline]
     pub fn with_log_redactor(mut self, log_redactor: Redactor) -> Self {
         self.log_redactor = log_redactor;
@@ -69,6 +94,7 @@ impl HttpResponseMeta {
     ///
     /// # Returns
     /// Updated metadata.
+    #[must_use]
     pub fn with_log_redaction_policy(mut self, policy: RedactionPolicy) -> Self {
         self.log_redactor = Redactor::new(policy);
         self
@@ -114,6 +140,10 @@ impl HttpResponseMeta {
     ///
     /// Applicable statuses are `429` and `5xx`, and header value can be
     /// `delta-seconds` or HTTP-date.
+    ///
+    /// # Returns
+    /// The delay represented by the header when the status and value are
+    /// applicable; otherwise, `None`.
     pub fn retry_after_hint(&self) -> Option<Duration> {
         Self::retry_after_hint_from_parts(self.status, &self.headers)
     }

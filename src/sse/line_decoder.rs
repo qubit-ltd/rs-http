@@ -23,13 +23,17 @@ use crate::HttpResult;
 /// Pin-boxed stream of newline-delimited text lines or errors.
 pub type SseLineStream = Pin<Box<dyn Stream<Item = HttpResult<String>> + Send>>;
 
-/// Decodes and clears the currently buffered line bytes.
+/// Decodes the buffered bytes as UTF-8 and clears the buffer, including when
+/// decoding fails.
 ///
 /// # Parameters
 /// - `buffer`: Current line bytes without the line terminator.
 ///
 /// # Returns
-/// UTF-8 line text.
+/// The decoded UTF-8 line text.
+///
+/// # Errors
+/// Returns an SSE protocol error when the buffered bytes are not valid UTF-8.
 fn take_buffered_line(buffer: &mut BytesMut) -> HttpResult<String> {
     let decoded = match std::str::from_utf8(buffer.as_ref()) {
         Ok(text) => Ok(text.to_string()),
@@ -49,7 +53,10 @@ fn take_buffered_line(buffer: &mut BytesMut) -> HttpResult<String> {
 /// - `max_line_bytes`: Maximum allowed bytes for one SSE line.
 ///
 /// # Returns
-/// Stream of lines or [`HttpError::sse_protocol`] on invalid UTF-8.
+/// A stream yielding decoded lines or errors. Input stream errors are
+/// forwarded; invalid UTF-8 and lines larger than `max_line_bytes` yield SSE
+/// protocol errors and terminate the output stream.
+#[must_use]
 pub fn decode_lines(mut stream: HttpByteStream, max_line_bytes: usize) -> SseLineStream {
     let output = stream! {
         let max_line_bytes = max_line_bytes.max(1);
@@ -124,7 +131,11 @@ pub fn decode_lines(mut stream: HttpByteStream, max_line_bytes: usize) -> SseLin
 /// - `max_line_bytes`: Inclusive size limit for one line.
 ///
 /// # Returns
-/// `Ok(())` when appended, or [`HttpError`] when the line is too large.
+/// `Ok(())` when appended.
+///
+/// # Errors
+/// Returns an SSE protocol error if appending would exceed `max_line_bytes` or
+/// if calculating the resulting length overflows `usize`.
 fn append_line_bytes(buffer: &mut BytesMut, bytes: &[u8], max_line_bytes: usize) -> HttpResult<()> {
     let Some(observed) = buffer.len().checked_add(bytes.len()) else {
         return Err(HttpError::sse_protocol(format!(
@@ -149,6 +160,7 @@ fn append_line_bytes(buffer: &mut BytesMut, bytes: &[u8], max_line_bytes: usize)
 ///
 /// # Returns
 /// `true` for CR or LF.
+#[inline]
 fn is_line_terminator(byte: u8) -> bool {
     matches!(byte, b'\r' | b'\n')
 }

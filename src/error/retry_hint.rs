@@ -15,7 +15,19 @@ use serde::Deserialize;
 use serde::Serialize;
 
 /// High-level classification from [`crate::HttpError::retry_hint`] for backoff
-/// policies.
+/// policies. `Retryable` identifies failures that callers may retry with care;
+/// callers remain responsible for considering request idempotency and their
+/// own retry policy.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_http::RetryHint;
+///
+/// let hint = "retryable".parse::<RetryHint>().expect("valid retry hint");
+/// assert_eq!(hint, RetryHint::Retryable);
+/// ```
+#[must_use]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Display, DeriveFromStr)]
 #[serde(rename_all = "snake_case")]
 #[display(style = "snake_case")]

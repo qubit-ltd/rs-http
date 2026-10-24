@@ -21,6 +21,7 @@ use tracing::metadata;
 use tracing::metadata::Kind;
 use tracing::trace;
 
+use self::internal::RequestBodyLogPreview;
 use crate::HttpClientOptions;
 use crate::HttpLoggingOptions;
 use crate::HttpRequest;
@@ -30,13 +31,20 @@ use crate::HttpResponseMeta;
 use crate::redact::BodyPreview;
 use crate::redact::RedactedLogger;
 
+/// Placeholder emitted when a prepared request has no resolved URL.
 const UNRESOLVED_REQUEST_URL: &str = "<unresolved request URL>";
+/// Explanation emitted when logging a streaming request body is skipped.
 const STREAMING_REQUEST_BODY_SKIPPED: &str = "<skipped: streaming request body>";
+
+// Categorizes request body previews for log rendering.
+mod internal;
 
 /// Callsite metadata used to query the current dispatcher directly, bypassing
 /// shared interest caching that can change while thread-local subscribers are
 /// installed concurrently.
 static HTTP_LOGGER_ENABLED_CALLSITE: DefaultCallsite = DefaultCallsite::new(&HTTP_LOGGER_ENABLED_METADATA);
+/// Metadata queried to determine whether the HTTP logger's TRACE event is
+/// enabled.
 static HTTP_LOGGER_ENABLED_METADATA: Metadata<'static> = metadata! {
     name: "qubit_http_logger_enabled",
     target: module_path!(),
@@ -47,20 +55,24 @@ static HTTP_LOGGER_ENABLED_METADATA: Metadata<'static> = metadata! {
 };
 
 /// HTTP logger bound to one pair of logging options and a redactor policy.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_http::HttpClientOptions;
+/// use qubit_http::HttpLogger;
+///
+/// let mut options = HttpClientOptions::default();
+/// options.logging.enabled = false;
+/// let logger = HttpLogger::new(&options);
+/// assert!(!logger.is_trace_enabled());
+/// ```
 #[derive(Debug, Clone)]
 pub struct HttpLogger<'a> {
+    /// Logging switches borrowed from the owning client options.
     options: &'a HttpLoggingOptions,
+    /// Redaction policy shared with the request/response logger.
     redacted_logger: RedactedLogger,
-}
-
-/// Request body preview category used by TRACE logging.
-enum RequestBodyLogPreview<'a> {
-    /// Borrowed bytes that can be safely previewed without consuming a stream.
-    Bytes(&'a [u8]),
-    /// No request body is present.
-    Empty,
-    /// Body logging is intentionally skipped.
-    Skipped(&'static str),
 }
 
 impl<'a> HttpLogger<'a> {
@@ -72,6 +84,7 @@ impl<'a> HttpLogger<'a> {
     ///
     /// # Returns
     /// A logger that emits TRACE records according to the provided options.
+    #[must_use]
     pub fn new(options: &'a HttpClientOptions) -> Self {
         let log_redactor = Redactor::new(options.log_redaction_policy.clone());
         Self::from_options_with_redactor(options, log_redactor)
@@ -87,11 +100,23 @@ impl<'a> HttpLogger<'a> {
     /// # Returns
     ///
     /// A logger that shares the caller's immutable redactor snapshot.
+    #[must_use]
     pub(crate) fn from_options_with_redactor(options: &'a HttpClientOptions, log_redactor: Redactor) -> Self {
         Self {
             options: &options.logging,
             redacted_logger: RedactedLogger::from_options_with_redactor(options, log_redactor),
         }
+    }
+
+    /// Returns whether TRACE logs should be emitted under current options and
+    /// subscriber state.
+    ///
+    /// # Returns
+    /// `true` when logging is enabled and TRACE is active.
+    #[must_use]
+    #[inline]
+    pub fn is_trace_enabled(&self) -> bool {
+        self.options.enabled && get_default(|dispatcher| dispatcher.enabled(&HTTP_LOGGER_ENABLED_METADATA))
     }
 
     /// Emits TRACE logs for an outbound request when logging is enabled and
@@ -245,15 +270,6 @@ impl<'a> HttpLogger<'a> {
         }
     }
 
-    /// Returns whether TRACE logs should be emitted under current options and
-    /// subscriber state.
-    ///
-    /// # Returns
-    /// `true` when logging is enabled and TRACE is active.
-    pub fn is_trace_enabled(&self) -> bool {
-        self.options.enabled && get_default(|dispatcher| dispatcher.enabled(&HTTP_LOGGER_ENABLED_METADATA))
-    }
-
     /// Borrows request body content only when body logging is safe.
     ///
     /// # Parameters
@@ -285,6 +301,7 @@ impl<'a> HttpLogger<'a> {
     /// # Returns
     /// `Some` when Content-Type is present, including when its value is not
     /// valid UTF-8; otherwise `None`.
+    #[inline]
     fn content_type(headers: &HeaderMap) -> Option<&HeaderValue> {
         headers.get(CONTENT_TYPE)
     }

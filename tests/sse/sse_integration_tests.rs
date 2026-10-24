@@ -90,7 +90,10 @@ async fn test_regression_sse_messages_chain_setters_before_decode() {
         .sse_messages();
     let ev = events.next().await.unwrap().unwrap();
     assert_eq!(ev.data, "ok");
-    assert!(events.next().await.is_none());
+    assert!(
+        events.next().await.is_none(),
+        "the SSE stream should be exhausted after the trailing flush"
+    );
 }
 
 #[tokio_test]
@@ -129,7 +132,10 @@ async fn test_execute_stream_with_decode_events_end_to_end() {
     assert_eq!(first.data, "{\"value\":1}");
     let second = events.next().await.unwrap().unwrap();
     assert_eq!(second.data, "{\"value\":2}");
-    assert!(events.next().await.is_none());
+    assert!(
+        events.next().await.is_none(),
+        "the SSE stream should be exhausted after both events"
+    );
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
@@ -245,7 +251,10 @@ async fn test_execute_stream_decode_events_uses_client_default_sse_limits() {
 
     let error = events.next().await.unwrap().unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::SseProtocol);
-    assert!(error.message.contains("max_frame_bytes"));
+    assert!(
+        error.message.contains("max_frame_bytes"),
+        "the protocol error should identify the configured frame limit"
+    );
 }
 
 #[tokio_test]

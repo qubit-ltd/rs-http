@@ -8,15 +8,27 @@
 
 //! Terminal conditions reported by an HTTP retry flow.
 
-/// Terminal condition of an HTTP retry flow.
+/// Describes why an HTTP retry flow stopped making attempts.
+///
+/// The variants distinguish a policy decision, exhausted attempt or duration
+/// limits, and cancellation so callers can report the outcome of a retry flow.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_http::HttpRetryTermination;
+///
+/// let termination = HttpRetryTermination::AttemptsExhausted;
+/// assert_eq!(termination, HttpRetryTermination::AttemptsExhausted);
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HttpRetryTermination {
-    /// The retry rule stopped after an attempt.
+    /// The retry policy declined another attempt after an attempt completed.
     Aborted,
-    /// The configured attempt limit was reached.
+    /// The retry flow reached its configured maximum number of attempts.
     AttemptsExhausted,
-    /// A retry duration budget was reached.
+    /// The retry flow used its configured duration budget.
     DurationExceeded,
-    /// The operation was cancelled.
+    /// Cancellation stopped the operation before another attempt could run.
     Cancelled,
 }

@@ -19,8 +19,8 @@ fn test_timeout_from_config_resolves_scoped_validation_errors() {
     config
         .set("service.timeouts.connect_timeout", "0ms")
         .expect("raw config");
-    let error = HttpTimeoutOptions::from_config(&config.section("service.timeouts").expect("section"))
-        .expect_err("zero timeout");
+    let section = config.section("service.timeouts").expect("section");
+    let error = HttpTimeoutOptions::from_config(&section).expect_err("zero timeout");
     assert_eq!(error.path, "service.timeouts.connect_timeout");
 }
 
