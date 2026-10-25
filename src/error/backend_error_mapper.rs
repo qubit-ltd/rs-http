@@ -32,7 +32,6 @@ use crate::client::RedirectOriginViolation;
 /// # Returns
 /// An [`HttpError`] classified from the reqwest metadata, with the request
 /// method, URL, and underlying error retained for diagnostics.
-#[must_use]
 pub(crate) fn map_reqwest_error(
     error: ReqwestError,
     default_kind: HttpErrorKind,

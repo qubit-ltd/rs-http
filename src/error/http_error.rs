@@ -482,7 +482,6 @@ impl HttpError {
     /// # Returns
     /// [`RetryHint::Retryable`] for timeouts, transport errors, and some HTTP
     /// statuses; otherwise non-retryable.
-    #[must_use]
     pub fn retry_hint(&self) -> RetryHint {
         match self.kind {
             HttpErrorKind::ConnectTimeout
