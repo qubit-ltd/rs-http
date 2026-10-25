@@ -31,6 +31,7 @@ pub type HttpRequestInterceptor = ArcMutatingFunction<HttpRequest, HttpResult<()
 /// ```
 /// use http::Method;
 /// use qubit_http::HttpClientBuilder;
+/// use qubit_http::HttpRequest;
 /// use qubit_http::HttpRequestInterceptor;
 /// use qubit_http::HttpRequestInterceptors;
 ///
@@ -38,7 +39,7 @@ pub type HttpRequestInterceptor = ArcMutatingFunction<HttpRequest, HttpResult<()
 /// let client = HttpClientBuilder::new().create_default()?;
 /// let mut request = client.request(Method::GET, "https://example.com/").build();
 /// let mut interceptors = HttpRequestInterceptors::new();
-/// interceptors.push(HttpRequestInterceptor::new(|request| {
+/// interceptors.push(HttpRequestInterceptor::new(|request: &mut HttpRequest| {
 ///     request.set_path("https://example.com/updated");
 ///     Ok(())
 /// }));
