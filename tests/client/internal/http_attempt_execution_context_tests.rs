@@ -31,7 +31,7 @@ use crate::common::spawn_multi_shot_server;
 
 /// Asserts that cancellation retains the structured retry terminal as its
 /// source.
-fn assert_retry_failure(error: &HttpError) {
+fn assert_retry_failure(error: &HttpError) -> &RetryError<HttpError> {
     error
         .source()
         .and_then(|source| source.downcast_ref::<RetryError<HttpError>>())

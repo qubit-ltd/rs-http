@@ -26,7 +26,7 @@ use crate::HttpErrorKind;
 /// message, request context, and redaction policy without retaining the backend
 /// error or body stream.
 #[derive(Debug, Clone)]
-pub(super) struct BodyReadFailure {
+pub(in crate::response) struct BodyReadFailure {
     /// Classification used by callers to handle or retry the original failure.
     kind: HttpErrorKind,
     /// Human-readable message copied from the original failure.
@@ -90,4 +90,4 @@ impl BodyReadFailure {
 /// Thread-safe slot for retaining the first body-read failure on a response.
 ///
 /// The mutex serializes updates and later reads across cloned response handles.
-pub(super) type BodyReadFailureState = Arc<Mutex<Option<BodyReadFailure>>>;
+pub(in crate::response) type BodyReadFailureState = Arc<Mutex<Option<BodyReadFailure>>>;

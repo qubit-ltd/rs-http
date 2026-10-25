@@ -11,7 +11,7 @@ use crate::HttpError;
 
 /// Outcome after trying to schedule one reconnect.
 #[must_use]
-pub(super) enum ReconnectAction {
+pub(in crate::sse) enum ReconnectAction {
     /// Reconnect sleep completed and caller should start the next attempt.
     Continue,
     /// Reconnect is exhausted without an error to yield.

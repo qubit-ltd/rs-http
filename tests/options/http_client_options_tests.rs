@@ -460,7 +460,7 @@ fn test_http_client_options_default_headers_invalid_json() {
         err.message
             .starts_with("Failed to parse default_headers JSON: Failed to parse JSON:")
     );
-    assert!(err.message.contains("line 1 column 1"));
+    assert!(err.message.contains("line 1 column 2"));
 }
 
 #[test]

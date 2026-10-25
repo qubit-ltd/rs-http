@@ -11,7 +11,7 @@ use reqwest::Response;
 
 /// Tracks ownership and availability of an HTTP response body.
 #[derive(Debug)]
-pub(super) enum HttpResponseBodyState {
+pub(in crate::response) enum HttpResponseBodyState {
     /// Backend response whose body has not been consumed.
     Backend(Response),
     /// Fully buffered response body.

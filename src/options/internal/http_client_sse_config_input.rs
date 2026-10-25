@@ -7,15 +7,15 @@
 // =============================================================================
 
 /// Scalar values read from the `sse` configuration section.
-pub(super) struct HttpClientSseConfigInput {
+pub(in crate::options) struct HttpClientSseConfigInput {
     /// Optional JSON decoding mode name.
-    pub(super) json_mode: Option<String>,
+    pub(in crate::options) json_mode: Option<String>,
     /// Optional custom done-marker value.
-    pub(super) done_marker: Option<String>,
+    pub(in crate::options) done_marker: Option<String>,
     /// Optional stream completion policy name.
-    pub(super) completion: Option<String>,
+    pub(in crate::options) completion: Option<String>,
     /// Optional maximum line size in bytes.
-    pub(super) max_line_bytes: Option<usize>,
+    pub(in crate::options) max_line_bytes: Option<usize>,
     /// Optional maximum frame size in bytes.
-    pub(super) max_frame_bytes: Option<usize>,
+    pub(in crate::options) max_frame_bytes: Option<usize>,
 }

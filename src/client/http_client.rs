@@ -12,6 +12,7 @@
 //! [`HttpClient::execute_once`]; retry policy comes from
 //! [`crate::HttpClientOptions::retry`] unless overridden per request.
 
+use std::error::Error;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -222,7 +223,6 @@ impl HttpClient {
     /// # Returns
     /// Immutable borrow of [`HttpClientOptions`]. Never `None`; always the
     /// options installed on this client.
-    #[must_use]
     #[inline]
     pub fn options(&self) -> &HttpClientOptions {
         &self.options
@@ -344,7 +344,6 @@ impl HttpClient {
     /// A new [`HttpRequestBuilder`] borrowing this client for defaults; it is
     /// not sent until built and passed to [`HttpClient::execute`] (or related
     /// APIs).
-    #[must_use]
     #[inline]
     pub fn request(&self, method: Method, path: &str) -> HttpRequestBuilder {
         HttpRequestBuilder::new(method, path, self)

@@ -28,9 +28,9 @@ use crate::sse::sse_reconnect_runner::server_retry_max_delay;
 use crate::sse::sse_reconnect_runner::sleep_reconnect_delay;
 
 /// Mutable reconnect backoff and pending retry delay state.
-pub(super) struct ReconnectState {
+pub(in crate::sse) struct ReconnectState {
     /// Current local backoff delay before jitter/server override.
-    pub(super) backoff: BackoffState,
+    pub(in crate::sse) backoff: BackoffState,
     /// Optional one-shot server-provided retry delay from an SSE `retry:`
     /// record.
     pending_server_retry_delay: Option<Duration>,
@@ -44,7 +44,7 @@ impl ReconnectState {
     ///
     /// # Returns
     /// New reconnect state with no pending server-provided delay.
-    pub(super) fn new(retry_policy: &RetryPolicy) -> Self {
+    pub(in crate::sse) fn new(retry_policy: &RetryPolicy) -> Self {
         Self {
             backoff: retry_policy.backoff().start(),
             pending_server_retry_delay: None,
@@ -58,7 +58,7 @@ impl ReconnectState {
     ///
     /// # Returns
     /// Nothing.
-    pub(super) fn set_server_retry_delay(&mut self, delay: Duration) {
+    pub(in crate::sse) fn set_server_retry_delay(&mut self, delay: Duration) {
         self.pending_server_retry_delay = Some(delay);
     }
 
@@ -78,7 +78,7 @@ impl ReconnectState {
     /// # Panics
     /// Panics if the retry budget reports total elapsed exhaustion while the
     /// retry policy has no configured total time limit.
-    pub(super) async fn after_error(
+    pub(in crate::sse) async fn after_error(
         &mut self,
         error: HttpError,
         budget: &mut RetryBudget<'_>,
@@ -138,7 +138,7 @@ impl ReconnectState {
     /// # Panics
     /// Panics if the retry budget reports total elapsed exhaustion while the
     /// retry policy has no configured total time limit.
-    pub(super) async fn after_eof(
+    pub(in crate::sse) async fn after_eof(
         &mut self,
         budget: &mut RetryBudget<'_>,
         runtime: &ReconnectRuntime<'_>,
@@ -187,7 +187,7 @@ impl ReconnectState {
     ///
     /// # Returns
     /// Jittered or server-provided reconnect delay.
-    pub(super) fn sleep_delay(&mut self, runtime: &ReconnectRuntime<'_>) -> Duration {
+    pub(in crate::sse) fn sleep_delay(&mut self, runtime: &ReconnectRuntime<'_>) -> Duration {
         let request = match self.pending_server_retry_delay {
             Some(delay) if runtime.options.apply_jitter_to_server_retry => BackoffRequest::jittered_hint(delay),
             Some(delay) => BackoffRequest::hint(delay),

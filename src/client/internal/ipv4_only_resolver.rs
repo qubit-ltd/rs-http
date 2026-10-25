@@ -18,7 +18,7 @@ use reqwest::dns::Resolving;
 
 /// DNS resolver that filters out non-IPv4 addresses for `ipv4_only` mode.
 #[derive(Debug, Clone, Copy, Default)]
-pub(super) struct Ipv4OnlyResolver;
+pub(in crate::client) struct Ipv4OnlyResolver;
 
 impl Resolve for Ipv4OnlyResolver {
     /// Resolves `name` using the OS resolver and returns only IPv4 addresses.

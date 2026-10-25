@@ -1419,7 +1419,7 @@ async fn test_remembered_body_read_error_restores_custom_query_policy() {
         .await
         .expect("first stream item should exist")
         .expect("first stream item should contain bytes");
-    stream
+    let _ = stream
         .next()
         .await
         .expect("second stream item should contain read error")
