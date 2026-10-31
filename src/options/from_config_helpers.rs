@@ -43,7 +43,6 @@ use std::collections::HashMap;
 use http::HeaderMap;
 use http::HeaderName;
 use http::HeaderValue;
-use qubit_config::ConfigError;
 use qubit_config::ConfigReader;
 use qubit_config::ConfigResult;
 
@@ -90,24 +89,7 @@ pub(crate) fn ensure_known_config_keys<R>(config: &R, fields: &[&str], sections:
 where
     R: ConfigReader + ?Sized,
 {
-    let mut paths = Vec::new();
-    for (key, _) in config.iter() {
-        if fields.contains(&key)
-            || sections
-                .iter()
-                .any(|section| key.strip_prefix(section).is_some_and(|suffix| suffix.starts_with('.')))
-        {
-            continue;
-        }
-        paths.push(config.resolve_key(key)?);
-    }
-    if paths.is_empty() {
-        Ok(())
-    } else {
-        paths.sort();
-        paths.dedup();
-        Err(ConfigError::UnknownProperties { paths })
-    }
+    config.ensure_known_keys(fields, sections)
 }
 
 /// Resolves validation errors whose schema explicitly uses a component prefix.
@@ -154,17 +136,7 @@ pub(crate) fn get_optional_usize<R>(config: &R, key: &str) -> ConfigResult<Optio
 where
     R: ConfigReader + ?Sized,
 {
-    let Some(value) = config.get_optional::<u64>(key)? else {
-        return Ok(None);
-    };
-    match usize::try_from(value) {
-        Ok(value) => Ok(Some(value)),
-        Err(_) => Err(ConfigError::DeserializeError {
-            path: config.resolve_key(key)?,
-            message: "configuration value exceeds the platform usize range".to_string(),
-            source: None,
-        }),
-    }
+    config.get_optional::<usize>(key)
 }
 
 /// Converts a map of header names to values into a [`HeaderMap`].

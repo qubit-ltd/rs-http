@@ -71,6 +71,26 @@ fn test_from_config_rejects_unknown_owned_keys() {
     }
 }
 
+/// Unknown keys are reported once, sorted, and relative to the root reader.
+#[test]
+fn test_from_config_reports_sorted_root_relative_unknown_paths() {
+    let mut config = Config::new();
+    config.set("service.zeta.child", "1").expect("zeta key");
+    config.set("service.alpha", "1").expect("alpha key");
+
+    let error = HttpClientOptions::from_config(&config.section("service").expect("section"))
+        .expect_err("unknown keys must be rejected");
+    let source = std::error::Error::source(&error)
+        .expect("structured configuration error")
+        .downcast_ref::<ConfigError>()
+        .expect("config source");
+
+    assert_eq!(
+        source.unknown_property_paths(),
+        Some(["service.alpha".to_owned(), "service.zeta.child".to_owned()].as_slice())
+    );
+}
+
 /// An unrelated sibling is outside the selected HTTP section.
 #[test]
 fn test_from_config_keeps_open_headers_and_sibling_sections() {
@@ -136,6 +156,33 @@ fn test_from_config_helpers_accepts_u64_max_as_usize() {
     assert_eq!(options.max_redirects, Some(usize::MAX));
 }
 
+#[test]
+fn test_from_config_helpers_reports_platform_integer_overflow() {
+    let mut config = Config::new();
+    config
+        .set("http.max_redirects", usize::MAX as u128 + 1)
+        .expect("test config should accept the platform-independent u128");
+
+    let error = HttpClientOptions::from_config(&config.section("http").expect("HTTP section should exist"))
+        .expect_err("a value larger than usize should fail");
+
+    assert_eq!(error.kind, HttpConfigErrorKind::TypeError);
+    assert_eq!(error.path, "http.max_redirects");
+    let source = std::error::Error::source(&error)
+        .expect("structured configuration error")
+        .downcast_ref::<ConfigError>()
+        .expect("config source");
+    assert!(matches!(
+        source,
+        ConfigError::PlatformIntegerOutOfRange {
+            key,
+            source_index: None
+        }
+            if key == "http.max_redirects"
+    ));
+    assert_eq!(source.kind(), ConfigErrorKind::Conversion);
+}
+
 #[cfg(target_pointer_width = "32")]
 #[test]
 fn test_from_config_helpers_rejects_usize_overflow() {
@@ -147,11 +194,16 @@ fn test_from_config_helpers_rejects_usize_overflow() {
     let error = HttpClientOptions::from_config(&config.section("http").expect("HTTP section should exist"))
         .expect_err("a value larger than usize should fail");
 
-    assert_eq!(error.kind, HttpConfigErrorKind::ConfigError);
+    assert_eq!(error.kind, HttpConfigErrorKind::TypeError);
     assert_eq!(error.path, "http.max_redirects");
-    assert!(
-        error
-            .message
-            .contains("configuration value exceeds the platform usize range")
-    );
+    let source = std::error::Error::source(&error)
+        .expect("structured configuration error")
+        .downcast_ref::<ConfigError>()
+        .expect("config source");
+    assert!(matches!(
+        source,
+        ConfigError::PlatformIntegerOutOfRange { key, source_index: None }
+            if key == "http.max_redirects"
+    ));
+    assert_eq!(source.kind(), ConfigErrorKind::Conversion);
 }
