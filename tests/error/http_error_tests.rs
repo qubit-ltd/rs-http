@@ -283,6 +283,44 @@ fn test_http_error_debug_bounds_message_input_and_output() {
 }
 
 #[test]
+fn test_http_error_disabled_policy_preserves_url_and_escapes_plain_controls() {
+    let error = HttpError::transport("diagnostic\tfor https://alice:raw-secret@example.com/path")
+        .with_log_redaction_policy(RedactionPolicy::disabled());
+
+    let display = error.to_string();
+
+    assert!(display.contains("https://alice:raw-secret@example.com/path"));
+    assert!(display.contains("diagnostic\\tfor"));
+    assert!(!display.contains('\t'));
+}
+
+#[test]
+fn test_http_error_disabled_policy_retains_message_input_and_output_limits() {
+    let input_limited = RedactionPolicy::disabled()
+        .to_builder()
+        .limits(|limits| {
+            limits.max_input_bytes(8).max_output_bytes(23);
+        })
+        .expect("test policy should be valid")
+        .build()
+        .expect("disabled test policy should be valid");
+    let error = HttpError::transport("input exceeds the disabled policy limit")
+        .with_log_redaction_policy(input_limited);
+    assert_eq!(error.to_string(), "<redaction incomplete>");
+
+    let output_limited = RedactionPolicy::disabled()
+        .to_builder()
+        .limits(|limits| {
+            limits.max_input_bytes(64).max_output_bytes(1);
+        })
+        .expect("test policy should be valid")
+        .build()
+        .expect("disabled test policy should be valid");
+    let error = HttpError::transport("output exceeds limit").with_log_redaction_policy(output_limited);
+    assert!(error.to_string().is_empty());
+}
+
+#[test]
 fn test_http_error_debug_bounds_message_output_with_complete_marker() {
     let policy_builder = RedactionPolicy::default()
         .to_builder()
