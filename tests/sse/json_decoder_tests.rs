@@ -21,6 +21,7 @@ use qubit_http::sse::DoneMarkerPolicy;
 use qubit_http::sse::SseChunk;
 use qubit_http::sse::SseCompletionPolicy;
 use qubit_http::sse::SseJsonMode;
+use qubit_json::decode::JsonDecodeError;
 use tokio::test as tokio_test;
 
 #[derive(Debug, serde::Deserialize, PartialEq, Eq)]
@@ -75,19 +76,30 @@ async fn test_decode_json_chunks_strict_fails_on_bad_json() {
 }
 
 #[tokio_test]
-async fn test_decode_json_chunks_strict_error_includes_message_context() {
+async fn test_decode_json_chunks_strict_error_redacts_message_context() {
+    const EVENT: &str = "PRIVATE_EVENT_TOKEN";
+    const ID: &str = "PRIVATE_CURSOR_TOKEN";
+    const DATA: &str = "PRIVATE_PAYLOAD_TOKEN";
     let response = stream_response_from_chunks(vec![
-        "event: response.delta\n",
-        "id: evt-42\n",
-        "data: malformed-json\n\n",
+        "event: PRIVATE_EVENT_TOKEN\n",
+        "id: PRIVATE_CURSOR_TOKEN\n",
+        "data: PRIVATE_PAYLOAD_TOKEN\n\n",
     ]);
     let mut stream = response.sse_json_mode(SseJsonMode::Strict).sse_chunks::<TestChunk>();
 
     let error = stream.next().await.unwrap().unwrap_err();
 
     assert_eq!(error.kind, HttpErrorKind::SseDecode);
-    assert!(error.message.contains("event=Some(\"response.delta\")"));
-    assert!(error.message.contains("last_event_id=Some(\"evt-42\")"));
+    assert_eq!(error.message, "Failed to decode SSE message data as JSON");
+    for secret in [EVENT, ID, DATA] {
+        assert!(!error.message.contains(secret));
+        assert!(!error.to_string().contains(secret));
+        assert!(!format!("{error:?}").contains(secret));
+    }
+    std::error::Error::source(&error)
+        .expect("SSE JSON decode errors must retain their decoder source")
+        .downcast_ref::<JsonDecodeError>()
+        .expect("source should be a JSON decoder error");
 }
 
 #[tokio_test]
