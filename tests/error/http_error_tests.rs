@@ -203,8 +203,8 @@ fn test_http_error_debug_redacts_incomplete_url_like_tokens() {
 
     let debug = format!("{error:?}");
 
-    assert!(debug.contains("<redacted: invalid URL>"));
     assert!(!debug.contains("https://"));
+    assert!(!debug.contains("<redacted: invalid URL>"));
     assert!(debug.contains("plain"));
 }
 
@@ -225,25 +225,114 @@ fn test_http_error_debug_redacts_invalid_url_token() {
 
     let debug = format!("{error:?}");
 
-    assert!(debug.contains("<redacted: invalid URL>)."));
     assert!(!debug.contains("debug-user"));
     assert!(!debug.contains("debug-password"));
     assert!(!debug.contains("query-secret"));
+    assert!(debug.contains(")."));
 }
 
 #[test]
-fn test_http_error_debug_preserves_diagnostic_message_whitespace() {
+fn test_http_error_debug_escapes_diagnostic_message_whitespace() {
     let error = HttpError::transport(
         "first line\tthen https://debug-user:debug-url-secret@example.com/path?accessToken=debug-query-secret\nsecond line",
     );
 
     let debug = format!("{error:?}");
 
-    assert!(debug.contains("\tthen"));
-    assert!(debug.contains("\nsecond line"));
+    assert!(debug.contains("\\tthen"));
+    assert!(debug.contains("\\nsecond line"));
+    assert!(!debug.contains('\t'));
+    assert!(!debug.contains('\n'));
     assert!(!debug.contains("debug-user"));
     assert!(!debug.contains("debug-url-secret"));
     assert!(!debug.contains("debug-query-secret"));
+}
+
+#[test]
+fn test_http_error_debug_escapes_dangerous_unicode_in_plain_text() {
+    let error = HttpError::transport(
+        "before\r\u{1b}\u{2028}\u{202e}\u{2003}https://alice:unicode-secret@example.com/path after",
+    );
+    let debug = format!("{error:?}");
+
+    assert!(!debug.contains('\r'));
+    assert!(!debug.contains('\u{1b}'));
+    assert!(!debug.contains('\u{2028}'));
+    assert!(!debug.contains('\u{202e}'));
+    assert!(!debug.contains("unicode-secret"));
+    assert!(debug.contains("\\r"));
+    assert!(debug.contains("\\u{1b}"));
+    assert!(debug.contains("\\u{2028}"));
+    assert!(debug.contains("\\u{202e}"));
+}
+
+#[test]
+fn test_http_error_debug_bounds_message_input_and_output() {
+    let policy_builder = RedactionPolicy::default()
+        .to_builder()
+        .limits(|limits| {
+            limits.max_input_bytes(8).max_output_bytes(3);
+        })
+        .expect("test policy should be valid");
+    let error = HttpError::transport("plain text exceeds limit")
+        .with_log_redaction_policy(policy_builder.build().expect("test policy should be valid"));
+
+    let debug = format!("{error:?}");
+
+    assert!(debug.contains("message: \"\""));
+    assert!(!debug.contains("plain text"));
+}
+
+#[test]
+fn test_http_error_debug_bounds_message_output_with_complete_marker() {
+    let policy_builder = RedactionPolicy::default()
+        .to_builder()
+        .limits(|limits| {
+            limits.max_input_bytes(64).max_output_bytes(23);
+        })
+        .expect("test policy should be valid");
+    let error = HttpError::transport("a long plain diagnostic message")
+        .with_log_redaction_policy(policy_builder.build().expect("test policy should be valid"));
+
+    let debug = format!("{error:?}");
+
+    assert!(debug.contains("<redaction incomplete>"));
+    assert!(!debug.contains("a long plain"));
+}
+
+#[test]
+fn test_http_error_display_bounds_many_urls_with_shared_output_limit() {
+    let policy_builder = RedactionPolicy::default()
+        .to_builder()
+        .limits(|limits| {
+            limits.max_input_bytes(256).max_output_bytes(32);
+        })
+        .expect("test policy should be valid");
+    let error =
+        HttpError::transport("https://alice:first-secret@example.com/a https://bob:second-secret@example.com/b")
+            .with_log_redaction_policy(policy_builder.build().expect("test policy should be valid"));
+
+    let display = error.to_string();
+
+    assert!(display.len() <= 32);
+    assert!(!display.contains("first-secret"));
+    assert!(!display.contains("second-secret"));
+}
+
+#[test]
+fn test_http_error_display_returns_empty_when_message_output_cannot_fit_marker() {
+    for maximum in [0, 1] {
+        let policy_builder = RedactionPolicy::default()
+            .to_builder()
+            .limits(|limits| {
+                limits.max_input_bytes(64).max_output_bytes(maximum);
+            })
+            .expect("test policy should be valid");
+        let error = HttpError::transport("too long")
+            .with_log_redaction_policy(policy_builder.build().expect("test policy should be valid"));
+
+        assert!(error.to_string().is_empty());
+    }
 }
 
 #[test]

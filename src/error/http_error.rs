@@ -29,7 +29,11 @@ use crate::redact::RedactedDebugger;
 /// context.
 ///
 /// The error exposes a redacted message for display while preserving an
-/// optional source error for programmatic inspection.
+/// optional source error for programmatic inspection. Formatting escapes
+/// dangerous control and directional characters; the rendered message is
+/// bounded by the active redaction policy's input and output byte limits.
+/// The overall `Debug` wrapper and its other fields are outside this
+/// message-only limit.
 ///
 /// # Examples
 ///
@@ -73,8 +77,8 @@ pub struct HttpError {
 }
 
 impl fmt::Display for HttpError {
-    /// Writes the public message after redacting URLs with the configured
-    /// policy.
+    /// Writes the bounded, escaped public message after redacting embedded
+    /// URLs with the configured policy.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let debugger = RedactedDebugger::new(&self.log_redactor);
         formatter.write_str(&debugger.urls_in_text(&self.message))
@@ -90,7 +94,9 @@ impl Error for HttpError {
 
 impl fmt::Debug for HttpError {
     /// Formats diagnostic fields while omitting raw source and response-body
-    /// contents.
+    /// contents. The message is URL-redacted, escaped, and bounded by the
+    /// configured redaction policy; the enclosing debug representation is not
+    /// included in that message limit.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let debugger = RedactedDebugger::new(&self.log_redactor);
         let url = debugger.optional_url(self.url.as_ref());
