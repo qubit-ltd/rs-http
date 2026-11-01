@@ -82,8 +82,7 @@ fn test_sse_message_decode_json_error_redacts_message_metadata() {
         assert!(!format!("{error:?}").contains(secret));
     }
 
-    let source = std::error::Error::source(&error)
-        .expect("SSE JSON decode errors must retain the JSON decoder source");
+    let source = std::error::Error::source(&error).expect("SSE JSON decode errors must retain the JSON decoder source");
     let decode_error = source
         .downcast_ref::<JsonDecodeError>()
         .expect("source should be a JSON decode error");

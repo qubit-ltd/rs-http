@@ -35,11 +35,7 @@ pub type SseLineStream = Pin<Box<dyn Stream<Item = HttpResult<String>> + Send>>;
 ///
 /// # Errors
 /// Returns an SSE protocol error when the buffered bytes are not valid UTF-8.
-fn take_buffered_line(
-    buffer: &mut BytesMut,
-    first_line: &mut bool,
-    max_line_bytes: usize,
-) -> HttpResult<String> {
+fn take_buffered_line(buffer: &mut BytesMut, first_line: &mut bool, max_line_bytes: usize) -> HttpResult<String> {
     if *first_line {
         *first_line = false;
         if buffer.starts_with(b"\xef\xbb\xbf") {
@@ -197,10 +193,11 @@ fn is_line_terminator(byte: u8) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::decode_lines;
-    use crate::HttpByteStream;
     use bytes::Bytes;
     use futures_util::StreamExt;
+
+    use super::decode_lines;
+    use crate::HttpByteStream;
 
     async fn decode(chunks: Vec<&'static [u8]>, limit: usize) -> crate::HttpResult<Vec<String>> {
         let chunks = chunks.into_iter().map(Bytes::from_static).map(Ok);
@@ -214,47 +211,32 @@ mod tests {
 
     #[tokio::test]
     async fn test_decode_lines_yields_unterminated_eof_fragment() {
-        assert_eq!(
-            decode(vec![b"data: value"], 64).await.unwrap(),
-            vec!["data: value"]
-        );
-        assert_eq!(
-            decode(vec![b"data: value\n"], 64).await.unwrap(),
-            vec!["data: value"]
-        );
+        assert_eq!(decode(vec![b"data: value"], 64).await.unwrap(), vec!["data: value"]);
+        assert_eq!(decode(vec![b"data: value\n"], 64).await.unwrap(), vec!["data: value"]);
         assert_eq!(
             decode(vec![b"data: value\n\n"], 64).await.unwrap(),
             vec!["data: value", ""]
         );
         for ending in [b"\r".as_slice(), b"\n", b"\r\n"] {
-            assert_eq!(
-                decode(vec![b"line", ending], 64).await.unwrap(),
-                vec!["line"]
-            );
+            assert_eq!(decode(vec![b"line", ending], 64).await.unwrap(), vec!["line"]);
         }
     }
 
     #[tokio::test]
     async fn test_decode_lines_ignores_one_bom_only_at_stream_start() {
         assert_eq!(
-            decode(vec![b"", b"data: empty chunk ok\n"], 64)
-                .await
-                .unwrap(),
+            decode(vec![b"", b"data: empty chunk ok\n"], 64).await.unwrap(),
             vec!["data: empty chunk ok"]
         );
         assert_eq!(
-            decode(vec![b"\xef\xbb\xbfdata: first\r\n\r\n"], 64)
-                .await
-                .unwrap(),
+            decode(vec![b"\xef\xbb\xbfdata: first\r\n\r\n"], 64).await.unwrap(),
             vec!["data: first", ""]
         );
         assert_eq!(decode(vec![b"data"], 64).await.unwrap(), vec!["data"]);
         assert_eq!(decode(vec![b"\xef\xbb\xbf\n"], 64).await.unwrap(), vec![""]);
         assert_eq!(decode(vec![b"\xef\xbb\xbf"], 64).await.unwrap(), vec![""]);
         assert_eq!(
-            decode(vec![b"\xef\xbb\xbf\xef\xbb\xbfX\n"], 64)
-                .await
-                .unwrap(),
+            decode(vec![b"\xef\xbb\xbf\xef\xbb\xbfX\n"], 64).await.unwrap(),
             vec!["\u{feff}X"]
         );
         assert_eq!(
@@ -271,9 +253,7 @@ mod tests {
     async fn test_decode_lines_real_chunk_boundaries_match_single_chunk() {
         let source = "\u{feff}data: café\r\n\r\nevent: done\ndata: second\n\n".as_bytes();
         let expected = vec!["data: café", "", "event: done", "data: second", ""];
-        let single: HttpByteStream = Box::pin(futures_util::stream::iter(vec![Ok(
-            Bytes::copy_from_slice(source),
-        )]));
+        let single: HttpByteStream = Box::pin(futures_util::stream::iter(vec![Ok(Bytes::copy_from_slice(source))]));
         let actual = decode_lines(single, 64)
             .collect::<Vec<_>>()
             .await
@@ -331,22 +311,13 @@ mod tests {
             decode(vec![b"abcde\n"], 4).await.unwrap_err().kind,
             crate::HttpErrorKind::SseProtocol
         );
+        assert_eq!(decode(vec![b"\xef\xbb\xbfabcd\n"], 4).await.unwrap(), vec!["abcd"]);
         assert_eq!(
-            decode(vec![b"\xef\xbb\xbfabcd\n"], 4).await.unwrap(),
-            vec!["abcd"]
-        );
-        assert_eq!(
-            decode(vec![b"\xef\xbb\xbfabcde\n"], 4)
-                .await
-                .unwrap_err()
-                .kind,
+            decode(vec![b"\xef\xbb\xbfabcde\n"], 4).await.unwrap_err().kind,
             crate::HttpErrorKind::SseProtocol
         );
         assert_eq!(
-            decode(vec![b"\n\xef\xbb\xbfabcd\n"], 4)
-                .await
-                .unwrap_err()
-                .kind,
+            decode(vec![b"\n\xef\xbb\xbfabcd\n"], 4).await.unwrap_err().kind,
             crate::HttpErrorKind::SseProtocol
         );
         assert_eq!(

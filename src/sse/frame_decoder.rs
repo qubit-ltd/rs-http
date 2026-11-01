@@ -162,13 +162,14 @@ fn split_field_value(line: &str) -> (&str, &str) {
 
 #[cfg(test)]
 mod tests {
+    use bytes::Bytes;
+    use futures_util::StreamExt;
+
     use super::decode_records;
     use crate::HttpByteStream;
     use crate::sse::SseControl;
     use crate::sse::SseRecord;
     use crate::sse::line_decoder::decode_lines;
-    use bytes::Bytes;
-    use futures_util::StreamExt;
 
     async fn decode(chunks: Vec<&'static [u8]>) -> crate::HttpResult<Vec<SseRecord>> {
         let chunks = chunks.into_iter().map(Bytes::from_static).map(Ok);
@@ -192,9 +193,7 @@ mod tests {
             ]
         );
 
-        let records = decode(vec![b"id: pending\ndata: incomplete"])
-            .await
-            .unwrap();
+        let records = decode(vec![b"id: pending\ndata: incomplete"]).await.unwrap();
         assert!(records.is_empty());
     }
 }

@@ -61,7 +61,8 @@ impl SseMessage {
     /// # Errors
     /// Returns [`HttpError::sse_decode`] when JSON parsing fails.
     /// The error message is a fixed summary; the JSON decoder error remains
-    /// available as its source without copying message metadata into diagnostics.
+    /// available as its source without copying message metadata into
+    /// diagnostics.
     pub fn decode_json<T>(&self) -> HttpResult<T>
     where
         T: DeserializeOwned,

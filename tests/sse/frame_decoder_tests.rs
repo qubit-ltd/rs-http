@@ -121,12 +121,7 @@ async fn test_decode_frames_ignores_comment_lines() {
 
 #[tokio_test]
 async fn test_decode_frames_discards_unterminated_event_at_eof() {
-    for body in [
-        "data: value",
-        "data: value\n",
-        "data: value\r",
-        "data: value\r\n",
-    ] {
+    for body in ["data: value", "data: value\n", "data: value\r", "data: value\r\n"] {
         let response = stream_response_from_chunks(vec![body]);
         let events = collect_results(response.sse_messages()).await;
         assert!(events.is_empty(), "unterminated frame {body:?} must not dispatch");

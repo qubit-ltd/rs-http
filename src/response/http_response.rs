@@ -12,41 +12,41 @@ use std::time::Duration;
 use async_stream::stream;
 use bytes::Bytes;
 use bytes::BytesMut;
-use futures_util::stream as futures_stream;
 use futures_util::StreamExt;
-use http::header::CONTENT_LENGTH;
-use http::header::CONTENT_TYPE;
+use futures_util::stream as futures_stream;
 use http::HeaderMap;
 use http::HeaderValue;
 use http::Method;
 use http::StatusCode;
-use qubit_budget::json::JsonValueLimits;
+use http::header::CONTENT_LENGTH;
+use http::header::CONTENT_TYPE;
 use qubit_budget::ResourceBudget;
+use qubit_budget::json::JsonValueLimits;
 use qubit_json::decode::JsonDecoder;
-use qubit_redact::formats::http::BodyCapture;
 use qubit_redact::Redactor;
+use qubit_redact::formats::http::BodyCapture;
 use serde::de::DeserializeOwned;
 use url::Url;
 
-use super::internal::http_response_runtime::previous_body_read_error;
-use super::internal::http_response_runtime::remember_body_read_failure_state;
-use super::internal::http_response_runtime::HttpResponseRuntime;
-use super::internal::HttpResponseBodyState;
 use super::HttpResponseMeta;
 use super::HttpResponseOptions;
-use crate::error::backend_error_mapper::map_reqwest_error;
+use super::internal::HttpResponseBodyState;
+use super::internal::http_response_runtime::HttpResponseRuntime;
+use super::internal::http_response_runtime::previous_body_read_error;
+use super::internal::http_response_runtime::remember_body_read_failure_state;
+use crate::HttpByteStream;
+use crate::HttpCancellationToken;
+use crate::HttpError;
+use crate::HttpErrorKind;
+use crate::HttpResult;
 use crate::error::ReqwestErrorPhase;
+use crate::error::backend_error_mapper::map_reqwest_error;
 use crate::json_limits::json_decode_limits;
 use crate::sse::DoneMarkerPolicy;
 use crate::sse::SseChunkStream;
 use crate::sse::SseCompletionPolicy;
 use crate::sse::SseJsonMode;
 use crate::sse::SseMessageStream;
-use crate::HttpByteStream;
-use crate::HttpCancellationToken;
-use crate::HttpError;
-use crate::HttpErrorKind;
-use crate::HttpResult;
 
 /// Maps one backend response body read error into this crate's error model.
 ///
@@ -68,15 +68,9 @@ fn map_response_read_error(
     log_redactor: &Redactor,
 ) -> HttpError {
     if error.is_timeout() {
-        return map_reqwest_error(
-            error,
-            HttpErrorKind::Transport,
-            ReqwestErrorPhase::Read,
-            method,
-            url,
-        )
-        .with_status(status)
-        .with_log_redactor(log_redactor.clone());
+        return map_reqwest_error(error, HttpErrorKind::Transport, ReqwestErrorPhase::Read, method, url)
+            .with_status(status)
+            .with_log_redactor(log_redactor.clone());
     }
 
     let error = error.without_url();
@@ -153,10 +147,7 @@ impl fmt::Debug for HttpResponse {
             .field("body_state", &body_state)
             .field("buffered_body_len", &buffered_body_len)
             .field("read_timeout", &self.runtime.read_timeout)
-            .field(
-                "cancellation_token_present",
-                &self.runtime.cancellation_token.is_some(),
-            )
+            .field("cancellation_token_present", &self.runtime.cancellation_token.is_some())
             .field("options", &self.options)
             .finish()
     }
@@ -178,13 +169,7 @@ impl HttpResponse {
     ///
     /// # Returns
     /// A response whose body is immediately available for reading.
-    pub fn new(
-        status: StatusCode,
-        headers: HeaderMap,
-        body: Bytes,
-        url: Url,
-        method: Method,
-    ) -> Self {
+    pub fn new(status: StatusCode, headers: HeaderMap, body: Bytes, url: Url, method: Method) -> Self {
         Self {
             meta: HttpResponseMeta::new(status, headers, url.clone(), method),
             body: HttpResponseBodyState::Buffered(body),
@@ -305,10 +290,7 @@ impl HttpResponse {
     /// # Errors
     /// Returns a status error for an unsuccessful response, or a body read
     /// error if capturing its preview fails.
-    pub(crate) async fn into_success_or_status_error(
-        self,
-        message_prefix: &str,
-    ) -> HttpResult<Self> {
+    pub(crate) async fn into_success_or_status_error(self, message_prefix: &str) -> HttpResult<Self> {
         let status = self.status();
         if status.is_success() {
             return Ok(self);
@@ -381,9 +363,7 @@ impl HttpResponse {
                 );
                 return Ok((preview, raw, raw_truncated));
             }
-            HttpResponseBodyState::StreamingTaken => {
-                return Ok(("<empty>".to_string(), Bytes::new(), true))
-            }
+            HttpResponseBodyState::StreamingTaken => return Ok(("<empty>".to_string(), Bytes::new(), true)),
         };
         self.read_error_body_preview(backend, limit, raw_limit, content_type)
             .await
@@ -479,8 +459,7 @@ impl HttpResponse {
                     return Ok(body);
                 }
                 Ok(Err(error)) => {
-                    let error =
-                        map_response_read_error(error, method, url, status, self.log_redactor());
+                    let error = map_response_read_error(error, method, url, status, self.log_redactor());
                     self.remember_body_read_failure(&error);
                     return Err(error);
                 }
@@ -517,8 +496,7 @@ impl HttpResponse {
         if let Some(error) = self.previous_body_read_error() {
             return Err(error);
         }
-        if let Some(error) = self
-            .cancelled_error_if_needed("Streaming response cancelled before reading response body")
+        if let Some(error) = self.cancelled_error_if_needed("Streaming response cancelled before reading response body")
         {
             return Err(error);
         }
@@ -609,13 +587,10 @@ impl HttpResponse {
     pub async fn text(&mut self) -> HttpResult<String> {
         let body = self.bytes().await?;
         String::from_utf8(body.to_vec()).map_err(|error| {
-            HttpError::decode(format!(
-                "Failed to decode response body as UTF-8: {}",
-                error
-            ))
-            .with_status(self.meta.status())
-            .with_url(self.meta.url())
-            .with_log_redactor(self.log_redactor().clone())
+            HttpError::decode(format!("Failed to decode response body as UTF-8: {}", error))
+                .with_status(self.meta.status())
+                .with_url(self.meta.url())
+                .with_log_redactor(self.log_redactor().clone())
         })
     }
 
@@ -755,16 +730,10 @@ impl HttpResponse {
         let max_frame_bytes = self.options.sse_max_frame_bytes;
         let log_redactor = self.log_redactor().clone();
         let decoded: SseMessageStream = match self.stream() {
-            Ok(stream) => crate::sse::decode_messages_from_stream_with_limits(
-                stream,
-                max_line_bytes,
-                max_frame_bytes,
-            ),
+            Ok(stream) => crate::sse::decode_messages_from_stream_with_limits(stream, max_line_bytes, max_frame_bytes),
             Err(error) => Box::pin(futures_stream::once(async move { Err(error) })),
         };
-        Box::pin(decoded.map(move |result| {
-            result.map_err(|error| error.with_log_redactor(log_redactor.clone()))
-        }))
+        Box::pin(decoded.map(move |result| result.map_err(|error| error.with_log_redactor(log_redactor.clone()))))
     }
 
     /// Decodes body stream as internal SSE records for reconnect state
@@ -778,16 +747,10 @@ impl HttpResponse {
         let max_frame_bytes = self.options.sse_max_frame_bytes;
         let log_redactor = self.log_redactor().clone();
         let decoded: crate::sse::SseRecordStream = match self.stream() {
-            Ok(stream) => crate::sse::decode_records_from_stream_with_limits(
-                stream,
-                max_line_bytes,
-                max_frame_bytes,
-            ),
+            Ok(stream) => crate::sse::decode_records_from_stream_with_limits(stream, max_line_bytes, max_frame_bytes),
             Err(error) => Box::pin(futures_stream::once(async move { Err(error) })),
         };
-        Box::pin(decoded.map(move |result| {
-            result.map_err(|error| error.with_log_redactor(log_redactor.clone()))
-        }))
+        Box::pin(decoded.map(move |result| result.map_err(|error| error.with_log_redactor(log_redactor.clone()))))
     }
 
     /// Decodes SSE `data:` lines as JSON chunks using this response's SSE JSON
@@ -828,9 +791,7 @@ impl HttpResponse {
             ),
             Err(error) => Box::pin(futures_stream::once(async move { Err(error) })),
         };
-        Box::pin(decoded.map(move |result| {
-            result.map_err(|error| error.with_log_redactor(log_redactor.clone()))
-        }))
+        Box::pin(decoded.map(move |result| result.map_err(|error| error.with_log_redactor(log_redactor.clone()))))
     }
 
     /// Returns the shared log redactor used for response diagnostics and
@@ -880,8 +841,7 @@ impl HttpResponse {
         let mut preview_truncated = false;
         let mut raw_truncated = false;
         let capture_limit = limit.max(raw_limit.max(1)).saturating_add(1);
-        let mut capture_budget =
-            ResourceBudget::new("status error response body preview", capture_limit);
+        let mut capture_budget = ResourceBudget::new("status error response body preview", capture_limit);
 
         loop {
             let next = if let Some(token) = cancellation_token.as_ref() {
@@ -925,20 +885,14 @@ impl HttpResponse {
                 Ok(Err(error)) => {
                     let error = error.without_url();
                     return Ok((
-                        format!(
-                            "<error body unavailable: failed to read response body: {}>",
-                            error
-                        ),
+                        format!("<error body unavailable: failed to read response body: {}>", error),
                         Bytes::from(raw),
                         true,
                     ));
                 }
                 Err(_) => {
                     return Ok((
-                        format!(
-                            "<error body unavailable: read timeout after {:?}>",
-                            read_timeout
-                        ),
+                        format!("<error body unavailable: read timeout after {:?}>", read_timeout),
                         Bytes::from(raw),
                         true,
                     ));
@@ -1041,16 +995,14 @@ impl HttpResponse {
             source_len.map_or_else(
                 || BodyCapture::truncated_unknown(bytes),
                 |total_len| {
-                    BodyCapture::truncated(bytes, total_len)
-                        .unwrap_or_else(|_| BodyCapture::truncated_unknown(bytes))
+                    BodyCapture::truncated(bytes, total_len).unwrap_or_else(|_| BodyCapture::truncated_unknown(bytes))
                 },
             )
         } else {
             BodyCapture::complete(bytes)
         };
         let body = log_redactor.redact_http_body(capture, content_type);
-        body.into_text_or_marker("<redaction incomplete>")
-            .into_string()
+        body.into_text_or_marker("<redaction incomplete>").into_string()
     }
 
     /// Extracts a Content-Type header value.
