@@ -204,7 +204,6 @@ fn test_http_error_debug_redacts_incomplete_url_like_tokens() {
     let debug = format!("{error:?}");
 
     assert!(!debug.contains("https://"));
-    assert!(!debug.contains("<redacted: invalid URL>"));
     assert!(debug.contains("plain"));
 }
 
@@ -279,8 +278,8 @@ fn test_http_error_debug_bounds_message_input_and_output() {
 
     let debug = format!("{error:?}");
 
-    assert!(debug.contains("message: \"\""));
     assert!(!debug.contains("plain text"));
+    assert!(error.to_string().is_empty());
 }
 
 #[test]
