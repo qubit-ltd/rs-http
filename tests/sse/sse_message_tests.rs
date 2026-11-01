@@ -43,7 +43,7 @@ fn test_sse_message_decode_json_success() {
 }
 
 #[test]
-fn test_sse_message_decode_json_error_is_sse_decode_with_context() {
+fn test_sse_message_decode_json_error_uses_fixed_summary() {
     let message = SseMessage {
         event: Some("response.output_text.delta".to_string()),
         data: "not-json".to_string(),
@@ -54,8 +54,46 @@ fn test_sse_message_decode_json_error_is_sse_decode_with_context() {
         .decode_json::<TestPayload>()
         .expect_err("invalid JSON should fail");
     assert_eq!(error.kind, HttpErrorKind::SseDecode);
-    assert!(error.message.contains("event=Some(\"response.output_text.delta\")"));
-    assert!(error.message.contains("last_event_id=Some(\"evt-2\")"));
+    assert_eq!(error.message, "Failed to decode SSE message data as JSON");
+    assert!(!error.to_string().contains("response.output_text.delta"));
+    assert!(!error.to_string().contains("evt-2"));
+}
+
+#[test]
+fn test_sse_message_decode_json_error_redacts_message_metadata() {
+    const EVENT: &str = "PRIVATE_EVENT_TOKEN";
+    const ID: &str = "PRIVATE_CURSOR_TOKEN";
+    const DATA: &str = "PRIVATE_PAYLOAD_TOKEN";
+    let message = SseMessage {
+        event: Some(EVENT.to_owned()),
+        data: DATA.to_owned(),
+        last_event_id: Some(ID.to_owned()),
+    };
+
+    let error = message
+        .decode_json::<TestPayload>()
+        .expect_err("private invalid payload should fail JSON decoding");
+    assert_eq!(error.kind, HttpErrorKind::SseDecode);
+    assert_eq!(error.message, "Failed to decode SSE message data as JSON");
+
+    for secret in [EVENT, ID, DATA] {
+        assert!(!error.message.contains(secret));
+        assert!(!error.to_string().contains(secret));
+        assert!(!format!("{error:?}").contains(secret));
+    }
+
+    let source = std::error::Error::source(&error)
+        .expect("SSE JSON decode errors must retain the JSON decoder source");
+    let decode_error = source
+        .downcast_ref::<JsonDecodeError>()
+        .expect("source should be a JSON decode error");
+    assert!(!source.to_string().contains(EVENT));
+    assert!(!source.to_string().contains(ID));
+    assert!(!source.to_string().contains(DATA));
+    assert!(!format!("{source:?}").contains(EVENT));
+    assert!(!format!("{source:?}").contains(ID));
+    assert!(!format!("{source:?}").contains(DATA));
+    assert_eq!(decode_error.diagnostic_policy(), DiagnosticPolicy::Redacted);
 }
 
 #[test]
@@ -129,11 +167,13 @@ fn test_sse_message_decode_json_with_mode_lenient_returns_none_for_bad_json() {
 
 #[test]
 fn test_sse_message_decode_json_with_mode_lenient_logs_redacted_diagnostics() {
-    const SECRET: &str = "SSE_LOG_SECRET";
+    const EVENT: &str = "PRIVATE_EVENT_TOKEN";
+    const ID: &str = "PRIVATE_CURSOR_TOKEN";
+    const DATA: &str = "PRIVATE_PAYLOAD_TOKEN";
     let message = SseMessage {
-        event: Some("response.output_text.delta".to_string()),
-        data: SECRET.to_string(),
-        last_event_id: Some("evt-log".to_string()),
+        event: Some(EVENT.to_string()),
+        data: DATA.to_string(),
+        last_event_id: Some(ID.to_string()),
     };
 
     let logs = capture_trace_logs(|| {
@@ -145,9 +185,34 @@ fn test_sse_message_decode_json_with_mode_lenient_logs_redacted_diagnostics() {
 
     assert!(logs.contains("error_kind=invalid_json"));
     assert!(logs.contains("error_stage=parse"));
-    assert!(logs.contains("event=Some(\"response.output_text.delta\")"));
-    assert!(logs.contains("last_event_id=Some(\"evt-log\")"));
-    assert!(!logs.contains(SECRET));
+    assert!(logs.contains("event_present=true"));
+    assert!(logs.contains(&format!("event_bytes={}", EVENT.len())));
+    assert!(logs.contains("last_event_id_present=true"));
+    assert!(logs.contains(&format!("last_event_id_bytes={}", ID.len())));
+    for secret in [EVENT, ID, DATA] {
+        assert!(!logs.contains(secret));
+    }
+}
+
+#[test]
+fn test_sse_message_decode_json_with_mode_lenient_logs_metadata_presence_and_lengths() {
+    let message = SseMessage {
+        event: None,
+        data: "not-json".to_string(),
+        last_event_id: Some(String::new()),
+    };
+
+    let logs = capture_trace_logs(|| {
+        let payload = message
+            .decode_json_with_mode::<TestPayload>(SseJsonMode::Lenient)
+            .expect("lenient mode should skip malformed JSON");
+        assert!(payload.is_none());
+    });
+
+    assert!(logs.contains("event_present=false"));
+    assert!(logs.contains("event_bytes=0"));
+    assert!(logs.contains("last_event_id_present=true"));
+    assert!(logs.contains("last_event_id_bytes=0"));
 }
 
 #[test]
@@ -205,8 +270,8 @@ fn test_sse_message_decode_json_redacts_deserializer_value() {
         .decode_json::<SensitiveChoice>()
         .expect_err("unknown enum variant must fail");
     assert!(!error.message.contains(SECRET));
-    assert!(error.message.contains("secure.event"));
-    assert!(error.message.contains("evt-secret"));
+    assert!(!error.message.contains("secure.event"));
+    assert!(!error.message.contains("evt-secret"));
     let source =
         std::error::Error::source(&error).expect("SSE JSON decode errors must retain the redacted decoder source");
     let decode_error = source

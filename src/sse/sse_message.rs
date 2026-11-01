@@ -60,6 +60,8 @@ impl SseMessage {
     ///
     /// # Errors
     /// Returns [`HttpError::sse_decode`] when JSON parsing fails.
+    /// The error message is a fixed summary; the JSON decoder error remains
+    /// available as its source without copying message metadata into diagnostics.
     pub fn decode_json<T>(&self) -> HttpResult<T>
     where
         T: DeserializeOwned,
@@ -113,6 +115,8 @@ impl SseMessage {
     /// # Errors
     /// Returns [`HttpError::sse_decode`] in strict mode when JSON parsing
     /// fails, or in either mode when resource accounting rejects the payload.
+    /// Lenient parse diagnostics include the decoder error kind and stage plus
+    /// event and id presence and byte lengths, never their values.
     pub fn decode_json_with_mode<T>(&self, mode: SseJsonMode) -> HttpResult<Option<T>>
     where
         T: DeserializeOwned,
@@ -157,8 +161,10 @@ impl SseMessage {
                             error_stage = %error.stage(),
                             normalized_line = ?error.line(),
                             normalized_column = ?error.column(),
-                            event = ?self.event,
-                            last_event_id = ?self.last_event_id,
+                            event_present = self.event.is_some(),
+                            event_bytes = self.event.as_ref().map_or(0, String::len),
+                            last_event_id_present = self.last_event_id.is_some(),
+                            last_event_id_bytes = self.last_event_id.as_ref().map_or(0, String::len),
                             "Skipping malformed SSE message JSON in lenient mode",
                         );
                         Ok(None)
@@ -170,10 +176,6 @@ impl SseMessage {
 
     /// Wraps a JSON decoder failure with non-payload SSE message context.
     fn json_decode_error(&self, error: JsonDecodeError) -> HttpError {
-        HttpError::sse_decode(format!(
-            "Failed to decode SSE message data as JSON (event={:?}, last_event_id={:?})",
-            self.event, self.last_event_id
-        ))
-        .with_source(error)
+        HttpError::sse_decode("Failed to decode SSE message data as JSON").with_source(error)
     }
 }
