@@ -159,3 +159,42 @@ fn split_field_value(line: &str) -> (&str, &str) {
         (line, "")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::decode_records;
+    use crate::HttpByteStream;
+    use crate::sse::SseControl;
+    use crate::sse::SseRecord;
+    use crate::sse::line_decoder::decode_lines;
+    use bytes::Bytes;
+    use futures_util::StreamExt;
+
+    async fn decode(chunks: Vec<&'static [u8]>) -> crate::HttpResult<Vec<SseRecord>> {
+        let chunks = chunks.into_iter().map(Bytes::from_static).map(Ok);
+        let input: HttpByteStream = Box::pin(futures_util::stream::iter(chunks));
+        let lines = decode_lines(input, 64);
+        decode_records(lines, 1024)
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn test_decode_records_preserves_control_fields_from_eof_fragment() {
+        let records = decode(vec![b"id: resume\nretry: 17"]).await.unwrap();
+        assert_eq!(
+            records,
+            vec![
+                SseRecord::Control(SseControl::ReconnectDelayMs(17)),
+                SseRecord::Control(SseControl::LastEventId("resume".to_owned())),
+            ]
+        );
+
+        let records = decode(vec![b"id: pending\ndata: incomplete"])
+            .await
+            .unwrap();
+        assert!(records.is_empty());
+    }
+}
