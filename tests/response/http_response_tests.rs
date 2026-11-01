@@ -7,6 +7,7 @@
 // =============================================================================
 
 use bytes::Bytes;
+use futures_util::StreamExt;
 use http::HeaderMap;
 use http::HeaderValue;
 use http::Method;
@@ -21,6 +22,47 @@ use tokio::test as tokio_test;
 use url::Url;
 
 use crate::common::SensitiveChoice;
+
+#[tokio_test]
+async fn test_cached_stream_preserves_buffered_body() {
+    let body = Bytes::from_static(b"cached");
+    let mut response = HttpResponse::new(
+        StatusCode::OK,
+        HeaderMap::new(),
+        body.clone(),
+        Url::parse("https://example.com/cached").unwrap(),
+        Method::GET,
+    );
+
+    assert_eq!(response.bytes().await.unwrap(), body);
+    for _ in 0..2 {
+        let mut stream = response.stream().unwrap();
+        let chunk = stream.next().await.unwrap().unwrap();
+        assert_eq!(chunk, body);
+        assert!(stream.next().await.is_none());
+    }
+    assert_eq!(response.bytes().await.unwrap(), body);
+}
+
+#[tokio_test]
+async fn test_cached_stream_can_be_dropped_and_reused_after_text_and_json() {
+    let body = Bytes::from_static(b"{\"ok\":true}");
+    let mut response = HttpResponse::new(
+        StatusCode::OK,
+        HeaderMap::new(),
+        body.clone(),
+        Url::parse("https://example.com/cached-json").unwrap(),
+        Method::GET,
+    );
+    let stream = response.stream().unwrap();
+    drop(stream);
+    assert_eq!(response.text().await.unwrap(), "{\"ok\":true}");
+    assert_eq!(response.json::<serde_json::Value>().await.unwrap()["ok"], true);
+    let mut stream = response.stream().unwrap();
+    assert_eq!(stream.next().await.unwrap().unwrap(), body);
+    assert!(stream.next().await.is_none());
+    assert_eq!(response.bytes().await.unwrap(), body);
+}
 
 #[tokio_test]
 async fn test_http_response_buffered_body_limit_error_is_preserved_across_reads() {

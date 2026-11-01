@@ -348,8 +348,10 @@ impl HttpResponse {
         Err(mapped)
     }
 
-    /// Consumes this response and returns a bounded body preview for status
-    /// errors.
+    /// Consumes this response and returns a bounded body preview and raw body
+    /// capture for status errors. Preview truncation controls diagnostic
+    /// rendering; the returned boolean reports only whether the raw capture
+    /// omitted source bytes.
     ///
     /// # Errors
     /// Returns [`HttpErrorKind::Cancelled`](crate::HttpErrorKind::Cancelled)
@@ -367,16 +369,17 @@ impl HttpResponse {
             HttpResponseBodyState::Backend(backend) => backend,
             HttpResponseBodyState::Buffered(body) => {
                 let raw_limit = raw_limit.max(1);
-                let truncated = body.len() > raw_limit;
+                let raw_truncated = body.len() > raw_limit;
+                let preview_truncated = body.len() > limit;
                 let raw = body.slice(..body.len().min(raw_limit));
                 let preview = Self::render_error_body_preview(
-                    &raw,
+                    &body[..body.len().min(limit)],
                     Some(body.len()),
-                    truncated,
+                    preview_truncated,
                     content_type.as_ref(),
                     &self.options.log_redactor,
                 );
-                return Ok((preview, raw, truncated));
+                return Ok((preview, raw, raw_truncated));
             }
             HttpResponseBodyState::StreamingTaken => {
                 return Ok(("<empty>".to_string(), Bytes::new(), true))
@@ -497,8 +500,9 @@ impl HttpResponse {
         }
     }
 
-    /// Returns body as stream; if already buffered, returns stream backed by
-    /// cached bytes.
+    /// Returns body as stream; if already buffered, returns a stream backed by
+    /// cached bytes without consuming the cache. Repeated streams and byte
+    /// reads therefore return the same buffered body.
     ///
     /// The stream takes ownership of an unbuffered backend body. It can only be
     /// obtained once; a buffered body can be streamed from its cached bytes.
@@ -518,11 +522,13 @@ impl HttpResponse {
         {
             return Err(error);
         }
+        if let HttpResponseBodyState::Buffered(body) = &self.body {
+            let body = body.clone();
+            return Ok(Box::pin(futures_stream::once(async move { Ok(body) })));
+        }
         let state = std::mem::replace(&mut self.body, HttpResponseBodyState::StreamingTaken);
         let backend = match state {
-            HttpResponseBodyState::Buffered(body) => {
-                return Ok(Box::pin(futures_stream::once(async move { Ok(body) })));
-            }
+            HttpResponseBodyState::Buffered(_) => unreachable!("buffered body returned above"),
             HttpResponseBodyState::Backend(backend) => backend,
             HttpResponseBodyState::StreamingTaken => {
                 return Err(HttpError::new(
@@ -846,8 +852,8 @@ impl HttpResponse {
         }
     }
 
-    /// Reads bounded preview bytes from a response body for status error
-    /// messages.
+    /// Reads bounded preview and raw capture bytes from a response body for
+    /// status errors, tracking their truncation independently.
     ///
     /// # Errors
     /// Returns [`HttpErrorKind::Cancelled`](crate::HttpErrorKind::Cancelled)
@@ -871,7 +877,8 @@ impl HttpResponse {
             .and_then(|length| usize::try_from(length).ok());
         let mut preview = Vec::new();
         let mut raw = Vec::new();
-        let mut truncated = false;
+        let mut preview_truncated = false;
+        let mut raw_truncated = false;
         let capture_limit = limit.max(raw_limit.max(1)).saturating_add(1);
         let mut capture_budget =
             ResourceBudget::new("status error response body preview", capture_limit);
@@ -900,16 +907,17 @@ impl HttpResponse {
                     let captured = capture_budget.consume_available(chunk.len());
                     let preview_remaining = limit.saturating_sub(preview.len());
                     if preview_remaining < captured {
-                        truncated = true;
+                        preview_truncated = true;
                     }
                     preview.extend_from_slice(&chunk[..captured.min(preview_remaining)]);
                     let raw_remaining = raw_limit.saturating_sub(raw.len());
                     if raw_remaining < chunk.len() {
-                        truncated = true;
+                        raw_truncated = true;
                     }
                     raw.extend_from_slice(&chunk[..chunk.len().min(raw_remaining)]);
                     if captured < chunk.len() {
-                        truncated = true;
+                        preview_truncated |= preview_remaining < chunk.len();
+                        raw_truncated |= raw_remaining < chunk.len();
                         break;
                     }
                 }
@@ -939,17 +947,15 @@ impl HttpResponse {
         }
         if preview.len() > limit {
             preview.truncate(limit);
-            truncated = true;
+            preview_truncated = true;
         }
-        let raw_truncated = truncated
-            || source_len
-                .map(|length| length > raw_limit)
-                .unwrap_or_else(|| raw.len() >= raw_limit && !preview.is_empty());
+        preview_truncated |= source_len.is_some_and(|length| length > limit);
+        raw_truncated |= source_len.is_some_and(|length| length > raw_limit);
         Ok((
             Self::render_error_body_preview(
                 &preview,
                 source_len,
-                truncated,
+                preview_truncated,
                 content_type.as_ref(),
                 &self.options.log_redactor,
             ),
