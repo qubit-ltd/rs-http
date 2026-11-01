@@ -169,6 +169,24 @@ async fn test_require_done_marker_accepts_explicit_done() {
 }
 
 #[tokio_test]
+async fn test_require_done_marker_rejects_unterminated_done() {
+    let response = stream_response_from_chunks(vec!["data: [DONE]"]);
+    let mut stream = response
+        .sse_completion_policy(SseCompletionPolicy::RequireDoneMarker)
+        .sse_chunks::<TestChunk>();
+    let error = stream.next().await.unwrap().unwrap_err();
+    assert_eq!(error.kind, HttpErrorKind::SseProtocol);
+    assert!(stream.next().await.is_none());
+
+    let response = stream_response_from_chunks(vec!["data: [DONE]\n\n"]);
+    let mut stream = response
+        .sse_completion_policy(SseCompletionPolicy::RequireDoneMarker)
+        .sse_chunks::<TestChunk>();
+    assert_eq!(stream.next().await.unwrap().unwrap(), SseChunk::Done);
+    assert!(stream.next().await.is_none());
+}
+
+#[tokio_test]
 async fn test_require_done_marker_rejects_disabled_marker_before_stream_poll() {
     let response = stream_response_from_chunks(vec!["data: {\"value\": 1}\n\n"]);
     let mut stream = response

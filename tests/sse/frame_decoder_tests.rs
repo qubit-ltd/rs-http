@@ -120,12 +120,26 @@ async fn test_decode_frames_ignores_comment_lines() {
 }
 
 #[tokio_test]
-async fn test_decode_frames_emits_last_event_without_trailing_blank_line() {
-    let response = stream_response_from_chunks(vec!["data: final"]);
-    let events = collect_results(response.sse_messages()).await;
+async fn test_decode_frames_discards_unterminated_event_at_eof() {
+    for body in [
+        "data: value",
+        "data: value\n",
+        "data: value\r",
+        "data: value\r\n",
+    ] {
+        let response = stream_response_from_chunks(vec![body]);
+        let events = collect_results(response.sse_messages()).await;
+        assert!(events.is_empty(), "unterminated frame {body:?} must not dispatch");
+    }
+    for body in ["data: value\r\r", "data: value\n\n", "data: value\r\n\r\n"] {
+        let response = stream_response_from_chunks(vec![body]);
+        let events = collect_results(response.sse_messages()).await;
+        assert_eq!(events.len(), 1, "complete frame {body:?} should dispatch");
+        assert_eq!(events[0].data, "value");
+    }
 
-    assert_eq!(events.len(), 1);
-    assert_eq!(events[0].data, "final");
+    let response = stream_response_from_chunks(vec!["id: pending\ndata: incomplete"]);
+    assert!(collect_results(response.sse_messages()).await.is_empty());
 }
 
 #[tokio_test]

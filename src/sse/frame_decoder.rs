@@ -123,22 +123,14 @@ pub(crate) fn decode_records(mut lines: SseLineStream, max_frame_bytes: usize) -
             }
         }
 
-        if has_fields {
-            if let Some(retry_ms) = current_retry {
-                yield Ok(SseRecord::Control(SseControl::ReconnectDelayMs(retry_ms)));
-            }
+        // Preserve complete control fields at EOF, but never dispatch an
+        // event whose terminating blank line was missing.
+        if let Some(retry_ms) = current_retry {
+            yield Ok(SseRecord::Control(SseControl::ReconnectDelayMs(retry_ms)));
+        }
+        if !has_data {
             if let Some(id) = current_id {
-                last_event_id = Some(id.clone());
-                if !has_data {
-                    yield Ok(SseRecord::Control(SseControl::LastEventId(id)));
-                }
-            }
-            if has_data {
-                yield Ok(SseRecord::Dispatch(SseMessage {
-                    event: current_event,
-                    data: current_data.join("\n"),
-                    last_event_id,
-                }));
+                yield Ok(SseRecord::Control(SseControl::LastEventId(id)));
             }
         }
     };

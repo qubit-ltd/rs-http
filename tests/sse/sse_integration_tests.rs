@@ -34,7 +34,7 @@ struct TestChunk {
     value: i32,
 }
 
-fn stream_response_from_chunks(chunks: Vec<Vec<u8>>) -> HttpResponse {
+fn buffered_response_from_parts(chunks: Vec<Vec<u8>>) -> HttpResponse {
     let body = chunks.into_iter().flatten().collect::<Vec<u8>>();
     HttpResponse::new(
         StatusCode::OK,
@@ -47,19 +47,19 @@ fn stream_response_from_chunks(chunks: Vec<Vec<u8>>) -> HttpResponse {
 
 #[tokio_test]
 async fn test_decode_events_reports_sse_protocol_error_on_non_utf8_line() {
-    let response = stream_response_from_chunks(vec![vec![0xFF, b'\n']]);
+    let response = buffered_response_from_parts(vec![vec![0xFF, b'\n']]);
     let mut events = response.sse_messages();
     let error = events.next().await.unwrap().unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::SseProtocol);
 }
 
 #[tokio_test]
-async fn test_decode_events_handles_chunk_boundaries_and_trailing_flush() {
-    let response = stream_response_from_chunks(vec![
+async fn test_decode_events_decodes_buffered_body_with_complete_frames() {
+    let response = buffered_response_from_parts(vec![
         b"data: {\"val".to_vec(),
         b"ue\":1}\n".to_vec(),
         b"\n".to_vec(),
-        b"data: {\"value\":2}".to_vec(),
+        b"data: {\"value\":2}\n\n".to_vec(),
     ]);
     let mut events = response.sse_messages();
 
@@ -72,7 +72,7 @@ async fn test_decode_events_handles_chunk_boundaries_and_trailing_flush() {
 
 #[tokio_test]
 async fn test_decode_events_reports_frame_limit_error() {
-    let response = stream_response_from_chunks(vec![b"data: one\ndata: two\n\n".to_vec()]);
+    let response = buffered_response_from_parts(vec![b"data: one\ndata: two\n\n".to_vec()]);
     let mut events = response.sse_max_line_bytes(1024).sse_max_frame_bytes(8).sse_messages();
     let error = events.next().await.unwrap().unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::SseProtocol);
@@ -83,7 +83,7 @@ async fn test_decode_events_reports_frame_limit_error() {
 /// `sse_messages` options”).
 #[tokio_test]
 async fn test_regression_sse_messages_chain_setters_before_decode() {
-    let response = stream_response_from_chunks(vec![b"data: ok\n\n".to_vec()]);
+    let response = buffered_response_from_parts(vec![b"data: ok\n\n".to_vec()]);
     let mut events = response
         .sse_max_line_bytes(64 * 1024)
         .sse_max_frame_bytes(1024 * 1024)
@@ -92,7 +92,7 @@ async fn test_regression_sse_messages_chain_setters_before_decode() {
     assert_eq!(ev.data, "ok");
     assert!(
         events.next().await.is_none(),
-        "the SSE stream should be exhausted after the trailing flush"
+        "the SSE stream should be exhausted after the complete frame"
     );
 }
 
