@@ -2,14 +2,14 @@
 
 [English](user_guide.en.md) | [README](../README.zh_CN.md) | [API 文档](https://docs.rs/qubit-http)
 
-本文档基于当前源码和测试整理，适用于 crate `qubit-http` 0.15.1，Rust 代码中通过库名 `qubit_http` 使用。
+本文档基于当前源码和测试整理，适用于 crate `qubit-http` 0.16.0，Rust 代码中通过库名 `qubit_http` 使用。
 
 `qubit-http` 是一个异步 HTTP 客户端基础设施库。它封装 `reqwest`，提供统一的客户端配置、请求构建、响应读取、错误分类、TRACE 日志脱敏、自动重试、代理、IPv4-only 解析、请求/响应拦截器，以及 Server-Sent Events（SSE）解码和重连能力。
 
 ## 手册目标与读者
 
 本文面向需要让多个 API 客户端共享请求、超时、重试、日志和响应处理
-规则的 Rust 服务开发者，适用于 `qubit-http` 0.15.1 及公开的
+规则的 Rust 服务开发者，适用于 `qubit-http` 0.16.0 及公开的
 `qubit_http` API。手册不替代上游服务的 API 契约，也不会替调用方决定
 认证方案或请求是否可以安全重放。
 
@@ -24,7 +24,7 @@
 
 ## 概念模型
 
-`HttpClient` 持有跨请求共享的执行策略；`HttpRequest` 组合方法、URL、请求头、请求体和请求级覆盖项。`execute` 应用客户端策略，并且只在状态码为 2xx 时返回 `HttpResponse`；拿到响应后，可以先检查元数据，再选择一种响应体读取方式。响应返回前发生的可重试失败属于内置重试边界；响应返回后读取流时出现的错误则由调用方处理。
+`HttpClient` 持有跨请求共享的执行策略；`HttpRequest` 组合方法、URL、请求头、请求体和请求级覆盖项。`execute` 应用客户端策略，并且只在状态码为 2xx 时返回 `HttpResponse`；拿到响应后，可以先检查元数据，再选择响应体读取方式；已缓存的响应仍可重复读取，未缓存的后端流只能移交一次。响应返回前发生的可重试失败属于内置重试边界；响应返回后读取流时出现的错误则由调用方处理。
 
 ## 安装与导入
 
@@ -35,7 +35,7 @@ qubit-redact = "0.10"
 http = "1.4"
 qubit-config = { version = "0.15", default-features = false }
 qubit-retry = "0.26"
-qubit-budget = { version = "0.9.1", features = ["json"] }
+qubit-budget = { version = "0.10", features = ["json"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
@@ -415,7 +415,7 @@ client.add_response_interceptor(HttpResponseInterceptor::new(|context| {
 
 ## 读取响应
 
-`HttpResponse` 暴露 `meta()`、`status()`、`headers()`、`url()`、`request_url()`、`is_success()`、`retry_after_hint()` 以及读 body / 解码 SSE 的 API。`client.execute(...).await?` 得到 `mut response` 后，按下表选择其一消费响应体；**同一 `HttpResponse` 上底层 body 只能走一条路径**（细则见表后「注意」）。表格下方 **「使用示例」** 小节给出表中各方法的典型写法。
+`HttpResponse` 暴露 `meta()`、`status()`、`headers()`、`url()`、`request_url()`、`is_success()`、`retry_after_hint()` 以及读 body / 解码 SSE 的 API。`client.execute(...).await?` 得到 `mut response` 后，按下表选择响应体读取方式。未缓存的后端 body 只能移交给流一次；成功缓存后可以重复读取或创建流。表格下方 **「使用示例」** 小节给出表中各方法的典型写法。
 
 body 可用方式：
 
@@ -517,12 +517,12 @@ async fn read_sse_examples(client: &qubit_http::HttpClient) -> qubit_http::HttpR
 }
 ```
 
-注意：底层 `reqwest` 响应体在同一 `HttpResponse` 上只能有一条消费路径。调用 `bytes`、`text` 或 `json` 会把完整 body 读入并缓存；之后 `stream` 会返回由缓存构成的单块流。若在未缓存时先调用 `stream`，底层句柄已交给返回的流，须通过该流读完 body；此时再调用 `bytes` / `text` / `json` 会返回 `ResponseBodyAlreadyConsumed`，因此不要混用「先流式、再整包读」。`sse_messages` / `sse_chunks` 也会走这条路径（内部基于 `stream`），且调用后 `HttpResponse` 已被消费，不能再对同一对象调用其它读 body 方法。
+未缓存的后端 body 只有一条所有权路径。调用 `bytes`、`text` 或 `json` 后，完整 body 会被缓存，这些读取方法可以复用缓存；每次 `stream()` 都会返回新的单块流，同时保留响应缓存。若未缓存时先调用 `stream`，底层句柄已交给返回的流，须通过该流读完 body；此时再调用 `bytes` / `text` / `json` 会返回 `ResponseBodyAlreadyConsumed`。`sse_messages` / `sse_chunks` 也基于流读取，并按值消费 `HttpResponse`。
 
 | 可以 | 避免 |
 | --- | --- |
 | `bytes()` / `text()` / `json()` 读取完整响应体并复用缓存 | 先 `stream()`，再对同一响应调用 `bytes()` / `text()` / `json()` |
-| `bytes()` 后再调用 `stream()`，得到基于缓存的单块流 | 调用 `sse_messages()` 或 `sse_chunks()` 后继续读同一个响应 |
+| `bytes()` 后调用 `stream()`；缓存仍可供后续读取或再次创建流 | 调用 `sse_messages()` 或 `sse_chunks()` 后继续使用已移动的响应值 |
 | 在同一条表达式中链式设置 `sse_*` 选项并消费 SSE | 对同一个 `HttpResponse` 同时设计多条消费路径 |
 
 `retry_after_hint()` 会在响应状态为 429 或 5xx 且存在合法 `Retry-After` header 时返回延迟。它支持 `delta-seconds` 和 HTTP-date 两种格式；HTTP-date 早于当前时间时返回 0 秒。`HttpResponseMeta` 和 `HttpResponseInterceptorContext` 上也有同名方法，响应拦截器可以在只拿到 metadata 时读取这个提示。
@@ -545,6 +545,8 @@ async fn read_sse_examples(client: &qubit_http::HttpClient) -> qubit_http::HttpR
 | `source` | 底层错误 |
 
 错误分类：
+
+非 2xx 错误的脱敏预览和保留原始 body 使用独立限额。预览可能已截断而 raw body 仍完整；`HttpStatusResponse::is_truncated()` 表示保留的原始 body 是否不完整。需要 provider 字段的错误分类器应只在 raw body 完整时解析。
 
 | 分组 | 错误类型 | 典型含义 |
 | --- | --- | --- |
@@ -570,7 +572,7 @@ async fn read_sse_examples(client: &qubit_http::HttpClient) -> qubit_http::HttpR
 | 相对请求路径返回 `InvalidUrl` | 是否设置了 `base_url` | 配置 client/request 级 base URL，或改用绝对 URL。 |
 | 跨 origin 的 URL 或重定向被拒绝 | `origin_policy` 与 base URL | 默认 `SameOrigin` 用于隔离；只有服务契约确实需要跨 origin 时才显式使用 `AnyOrigin`。 |
 | 请求没有重试 | `retry.enabled`、`max_attempts`、方法策略和错误白名单 | 开启重试，并确认当前方法及错误/状态码允许且适合重放。 |
-| 已经使用流式读取后再次读取 body 失败 | `stream()` 或 SSE decoder 是否已经取得 body | 一个 `HttpResponse` 只选择一条 body 消费路径；需要另一种表示时重新发起请求。 |
+| 流式读取后再次读取 body 失败 | 是否已移交未缓存的后端流 | 已缓存响应仍可重复读取；未缓存后端流移交后无法再取回。 |
 | 没有日志或日志出现敏感值 | `logging.enabled`、TRACE subscriber 等级和脱敏策略 | 同时开启日志条件，并在创建 client 前配置 `RedactionPolicy`。 |
 | SSE 重连拒绝响应 | `Content-Type` 和取消状态 | 自动重连要求 `text/event-stream`；取消和 SSE 协议错误默认不会触发重连。 |
 
@@ -800,11 +802,11 @@ while let Some(item) = messages.next().await {
 
 - 按 `\n` 分行，剥离行尾 `\r`。
 - 每行必须是 UTF-8，否则返回 `HttpErrorKind::SseProtocol`。
-- 空行在存在可派发 `data:` 时 flush 一个 message。
+- 只有空行会派发事件。UTF-8 BOM 仅在首行开头时忽略一个，正文其它位置的 BOM 会保留。
 - 注释行（以 `:` 开头）忽略。
 - 未知字段忽略。
 - `retry:` 和 control-only `id:` 帧只作为内部控制记录使用，不会作为 `SseMessage` 暴露。
-- 流结束时如果还有未 flush 的可派发字段，会输出最后一个 message。
+- EOF 不会派发未完成的数据事件；完整的 retry 和 control-only id 控制记录仍按既有规则处理。服务端必须用空行结束每个事件，包括最后一个事件；关闭连接不能代替数据帧终结。
 - 单行和单帧上限默认来自 `HttpClientOptions`；若本次响应需要不同上限，在调用 `sse_messages` 之前将 `sse_max_line_bytes` / `sse_max_frame_bytes` 与 `sse_messages()` 链在同一条表达式上即可（完整示例见本节上文「配置 `sse_messages` 选项」）。
 
 ### SSE JSON chunk
@@ -814,9 +816,9 @@ while let Some(item) = messages.next().await {
 `sse_chunks` 无参数：完成标记策略默认为 `DoneMarkerPolicy::DefaultDone`（即 `DoneMarkerPolicy` 的 `Default` 实现，识别 trim 后等于 `[DONE]` 的 `data:`），并可通过 `HttpClientOptions::sse_done_marker_policy` 或响应上的 `sse_done_marker_policy` 覆盖。
 
 JSON SSE 完成策略默认是 `SseCompletionPolicy::AllowEof`。设置
-`SseCompletionPolicy::RequireDoneMarker` 后必须出现已配置的完成标记；没有标记时，
-会在已解码数据之后产生一次 `SseProtocol` 错误。禁用完成标记或使用空白自定义标记时，
-该策略会被拒绝。
+`SseCompletionPolicy::RequireDoneMarker` 后，完整事件中必须出现已配置的完成标记；没有标记时，
+会在已解码数据之后产生一次 `SseProtocol` 错误。AllowEof 允许完整事件流在没有 marker 时结束，
+但不会派发未完成的末帧。禁用完成标记或使用空白自定义标记时，该策略会被拒绝。
 
 ```rust
 use futures_util::StreamExt;
@@ -866,7 +868,7 @@ while let Some(item) = chunks.next().await {
 - `DefaultDone`：`data:` 去除空白后等于 `[DONE]` 时输出 `SseChunk::Done` 并结束。
 - `Custom(String)`：使用自定义完成标记。
 
-`SseJsonMode::Lenient` 会跳过 malformed JSON chunk 并继续；`Strict` 会在第一个 malformed JSON 处返回 `HttpErrorKind::SseDecode`。JSON value 预算可通过 `HttpClientOptions::json_value_limits` 或 `json.max_*` 配置，SSE frame 限制通过 `sse.*` 配置。若只覆盖本次响应，可按上例把 `json_value_limits`、`sse_json_mode`、`sse_done_marker_policy`、`sse_max_line_bytes`、`sse_max_frame_bytes` 与 `sse_chunks::<T>()` 链在同一表达式中。
+`SseJsonMode::Lenient` 会跳过 malformed JSON chunk 并继续。自动解码错误使用固定摘要，并通过 source 保留安全的 `JsonDecodeError`。Lenient DEBUG 日志只记录错误类型/阶段以及 event/id 是否存在和字节数，不记录原文；调用方仍可读取原始 message 字段，并应自行控制日志策略。 依赖旧错误文本或记录 event/id 原文的应用应改为检查 `HttpErrorKind` 并读取 `JsonDecodeError` source；只有在明确制定应用日志策略后才记录消息字段。`Strict` 会在第一个 malformed JSON 处返回 `HttpErrorKind::SseDecode`。JSON value 预算可通过 `HttpClientOptions::json_value_limits` 或 `json.max_*` 配置，SSE frame 限制通过 `sse.*` 配置。若只覆盖本次响应，可按上例把 `json_value_limits`、`sse_json_mode`、`sse_done_marker_policy`、`sse_max_line_bytes`、`sse_max_frame_bytes` 与 `sse_chunks::<T>()` 链在同一表达式中。
 
 ### SSE 自动重连
 

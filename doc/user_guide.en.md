@@ -2,7 +2,7 @@
 
 [中文](user_guide.zh_CN.md) | [README](../README.md) | [API Reference](https://docs.rs/qubit-http)
 
-This guide is based on the current source code and tests. It applies to crate `qubit-http` 0.15.1, imported from Rust code as `qubit_http`.
+This guide is based on the current source code and tests. It applies to crate `qubit-http` 0.16.0, imported from Rust code as `qubit_http`.
 
 `qubit-http` is an asynchronous HTTP client infrastructure crate. It wraps `reqwest` and provides unified client options, request building, response reading, error classification, TRACE logging with URL/header/body redaction, retries, proxies, IPv4-only resolution, request/response interceptors, and Server-Sent Events (SSE) decoding and reconnection.
 
@@ -10,7 +10,7 @@ This guide is based on the current source code and tests. It applies to crate `q
 
 This guide is for Rust service authors who need several API clients to share the
 same request, timeout, retry, logging, and response-handling rules. It covers
-`qubit-http` 0.15.1 and the public `qubit_http` API. It does not replace the
+`qubit-http` 0.16.0 and the public `qubit_http` API. It does not replace the
 upstream service's API contract, and it does not make unsafe request replay or
 application-level authentication decisions on the caller's behalf.
 
@@ -25,7 +25,7 @@ application-level authentication decisions on the caller's behalf.
 
 ## Conceptual Model
 
-An `HttpClient` owns shared execution policy. An `HttpRequest` combines a method, URL, headers, body, and request-level overrides. `execute` applies the client policy and returns an `HttpResponse` only for a 2xx status; the response metadata can be inspected before choosing one body-consumption path. Retryable failures before a response is returned stay inside the retry boundary, while errors encountered later while reading a stream belong to the caller.
+An `HttpClient` owns shared execution policy. An `HttpRequest` combines a method, URL, headers, body, and request-level overrides. `execute` applies the client policy and returns an `HttpResponse` only for a 2xx status; the response metadata can be inspected before choosing a body-reading strategy; buffered responses remain reusable, while an unbuffered backend stream can be transferred only once. Retryable failures before a response is returned stay inside the retry boundary, while errors encountered later while reading a stream belong to the caller.
 
 ## Installation And Imports
 
@@ -36,7 +36,7 @@ qubit-redact = "0.10"
 http = "1.4"
 qubit-config = { version = "0.15", default-features = false }
 qubit-retry = "0.26"
-qubit-budget = { version = "0.9.1", features = ["json"] }
+qubit-budget = { version = "0.10", features = ["json"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
@@ -421,7 +421,7 @@ client.add_response_interceptor(HttpResponseInterceptor::new(|context| {
 
 ## Reading Responses
 
-`HttpResponse` exposes `meta()`, `status()`, `headers()`, `url()`, `request_url()`, `is_success()`, `retry_after_hint()`, and helpers to read the body or decode SSE. After `let mut response = client.execute(...).await?`, pick **one** consumption strategy from the table below; **only one body path applies per `HttpResponse`** (see the note after the table). The **Examples** subsection right after the table shows typical usage for each API listed there.
+`HttpResponse` exposes `meta()`, `status()`, `headers()`, `url()`, `request_url()`, `is_success()`, `retry_after_hint()`, and helpers to read the body or decode SSE. After `let mut response = client.execute(...).await?`, choose a body-reading strategy from the table below. An unbuffered backend body can be transferred to a stream once; once buffered, it remains available for repeated reads and streams. The **Examples** subsection right after the table shows typical usage for each API listed there.
 
 Body APIs:
 
@@ -523,12 +523,12 @@ async fn read_sse_examples(client: &qubit_http::HttpClient) -> qubit_http::HttpR
 }
 ```
 
-There is only one consumption path for the underlying `reqwest` body on a given `HttpResponse`. After `bytes`, `text`, or `json`, the full payload is buffered and `stream` becomes a one-chunk stream over that cache. If you call `stream` first while the body is not cached, the backend handle moves into that stream—you must finish reading there; later `bytes` / `text` / `json` return `ResponseBodyAlreadyConsumed`, so do not mix “stream first, then full-body read” on the same response. `sse_messages` / `sse_chunks` also use that path (they build on `stream`) and they **move** the `HttpResponse`, so you cannot call other body readers on the same value afterward.
+An unbuffered backend body has one ownership path. After `bytes`, `text`, or `json` buffers the full payload, those readers can reuse the cache and each `stream()` call returns a new one-chunk stream while leaving the response buffered. If you call `stream` first while the body is not cached, the backend handle moves into that stream—you must finish reading there; later `bytes` / `text` / `json` return `ResponseBodyAlreadyConsumed`. `sse_messages` / `sse_chunks` also use the stream path and **consume** the `HttpResponse` by value.
 
 | Safe | Avoid |
 | --- | --- |
 | Use `bytes()` / `text()` / `json()` to read and reuse the cached full body | Call `stream()` first, then call `bytes()` / `text()` / `json()` on the same response |
-| Call `stream()` after `bytes()` when a one-chunk cached stream is acceptable | Call `sse_messages()` or `sse_chunks()` and then try to read the same response body again |
+| Call `stream()` after `bytes()`; the cached response remains available for later reads or streams | Call `sse_messages()` or `sse_chunks()` and then try to use the moved response value |
 | Chain `sse_*` option setters with the SSE consumer on the same expression | Design multiple body-consumption paths for one `HttpResponse` |
 
 `retry_after_hint()` returns a delay when the response status is 429 or 5xx and the response has a valid `Retry-After` header. It supports both `delta-seconds` and HTTP-date formats; HTTP dates in the past resolve to 0 seconds. `HttpResponseMeta` and `HttpResponseInterceptorContext` expose the same method, so response interceptors can read the hint from metadata.
@@ -551,6 +551,8 @@ Runtime HTTP errors use `HttpError`; the result alias is `HttpResult<T> = Result
 | `source` | Underlying error |
 
 Error categories:
+
+For non-2xx errors, the redacted preview and retained raw body have independent limits. The preview can be truncated while the raw body remains complete; `HttpStatusResponse::is_truncated()` reports whether the retained raw body itself is incomplete. Error classifiers that need provider fields should parse the raw body only when it is complete.
 
 | Group | Error kinds | Typical meaning |
 | --- | --- | --- |
@@ -576,7 +578,7 @@ following symptoms identify the most common configuration or usage mistakes:
 | Relative request path fails with `InvalidUrl` | Whether `base_url` is set | Configure a client/request base URL or use an absolute URL. |
 | Cross-origin URL or redirect is rejected | `origin_policy` and the configured base URL | Use the default `SameOrigin` for isolation, or explicitly select `AnyOrigin` when the service contract requires it. |
 | Request never retries | `retry.enabled`, `max_attempts`, method policy, and error allowlists | Enable retry and ensure the method and error/status are safe and allowed to replay. |
-| Response body read fails after streaming | Whether `stream()` or an SSE decoder already took the body | Keep one body-consumption path per `HttpResponse`; use a fresh request for another representation. |
+| Response body read fails after streaming | Whether an unbuffered backend stream was already taken | Buffered responses remain reusable; an unbuffered backend stream cannot be recovered after it is transferred. |
 | Logs are absent or sensitive values are visible | `logging.enabled`, TRACE subscriber level, and redaction policy | Enable both logging conditions and configure `RedactionPolicy` before constructing the client. |
 | SSE reconnect rejects the response | `Content-Type` and cancellation state | Reconnect requires `text/event-stream`; cancellation and SSE protocol errors do not reconnect by default. |
 
@@ -820,11 +822,11 @@ Protocol behavior:
 
 - Splits by `\n` and strips trailing `\r`.
 - Each line must be UTF-8, otherwise `HttpErrorKind::SseProtocol` is returned.
-- A blank line flushes one message when dispatchable `data:` is present.
+- A blank line is the only event-dispatch boundary. A UTF-8 BOM is ignored only when it begins the first line; BOM characters elsewhere are preserved.
 - Comment lines starting with `:` are ignored.
 - Unknown fields are ignored.
 - `retry:` and control-only `id:` frames are internal control records; they are not exposed as `SseMessage` values.
-- If the stream ends with pending dispatchable fields, the final message is emitted.
+- EOF does not dispatch an incomplete data-bearing event; complete retry and control-only id records retain their existing control behavior. Servers must terminate each event with a blank line, including the final event; closing the connection does not complete a data frame.
 - Default line/frame limits come from `HttpClientOptions`. To override them for one response only, chain `sse_max_line_bytes` / `sse_max_frame_bytes` with `sse_messages()` on the same expression, as shown under “Configure `sse_messages` options” above.
 
 ### SSE JSON Chunks
@@ -834,8 +836,7 @@ The following snippets assume `request` is already built, and that `MyChunk` and
 `sse_chunks` takes no arguments: the done-marker policy defaults to `DoneMarkerPolicy::DefaultDone` (the `Default` for `DoneMarkerPolicy`, recognizing trimmed `data:` equal to `[DONE]`), and can be overridden via `HttpClientOptions::sse_done_marker_policy` or `HttpResponse::sse_done_marker_policy`.
 
 JSON SSE completion defaults to `SseCompletionPolicy::AllowEof`. Set
-`SseCompletionPolicy::RequireDoneMarker` to require a configured done marker.
-EOF without that marker yields one `SseProtocol` error after decoded data.
+`SseCompletionPolicy::RequireDoneMarker` to require a configured done marker in a complete event. EOF without that marker yields one `SseProtocol` error after decoded data. `AllowEof` accepts a stream of complete events without a marker; it does not dispatch an incomplete final event.
 Disabled or empty custom markers are rejected for this policy.
 
 ```rust
@@ -886,7 +887,7 @@ while let Some(item) = chunks.next().await {
 - `DefaultDone`: when trimmed `data:` equals `[DONE]`, emits `SseChunk::Done` and ends.
 - `Custom(String)`: uses a custom done marker.
 
-`SseJsonMode::Lenient` skips malformed JSON chunks and continues. `Strict` returns `HttpErrorKind::SseDecode` on the first malformed JSON chunk. Configure JSON value limits through `HttpClientOptions::json_value_limits` or `json.max_*`, and configure SSE framing under `sse.*`. For one response, chain `json_value_limits`, `sse_json_mode`, `sse_done_marker_policy`, `sse_max_line_bytes`, and `sse_max_frame_bytes` with `sse_chunks::<T>()`, as shown above.
+`SseJsonMode::Lenient` skips malformed JSON chunks and continues. Automatic decode errors use a fixed summary and keep the safe `JsonDecodeError` as their source. Lenient DEBUG logs include error kind/stage and event/id presence and byte lengths, never their contents; applications can still read the original message fields and should apply their own logging policy. Applications that matched the former error text or logged event/id values should migrate to checking `HttpErrorKind` and inspecting the `JsonDecodeError` source; record message fields only under an explicit application logging policy. `Strict` returns `HttpErrorKind::SseDecode` on the first malformed JSON chunk. Configure JSON value limits through `HttpClientOptions::json_value_limits` or `json.max_*`, and configure SSE framing under `sse.*`. For one response, chain `json_value_limits`, `sse_json_mode`, `sse_done_marker_policy`, `sse_max_line_bytes`, and `sse_max_frame_bytes` with `sse_chunks::<T>()`, as shown above.
 
 ### SSE Auto-reconnect
 

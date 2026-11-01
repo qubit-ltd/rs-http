@@ -2,7 +2,7 @@
 
 [中文设计文档](design.zh_CN.md) | [User Guide](user_guide.en.md) | [README](../README.md)
 
-This document describes the execution boundaries of `qubit-http` 0.15.1. The source code and tests define the behavior; this document records the choices that callers and maintainers need to preserve.
+This document describes the execution boundaries of `qubit-http` 0.16.0. The source code and tests define the behavior; this document records the choices that callers and maintainers need to preserve.
 
 ## Components and ownership
 
@@ -36,13 +36,13 @@ Cancellation is checked before sending and during supported I/O and retry waits.
 
 ## Response body ownership
 
-`HttpResponse` holds one of three body states: backend response, buffered bytes, or stream taken. `bytes`, `text`, and `json` aggregate within `response_body_size_limit` and cache a successful read. `stream` transfers the backend body to the returned stream; a later aggregate read cannot regain it. A failed read is retained so later reads report the original failure category. The stream path intentionally does not impose the whole-body aggregation limit; SSE line/frame and JSON limits apply to their respective decoders.
+`HttpResponse` holds one of three body states: backend response, buffered bytes, or stream taken. `bytes`, `text`, and `json` aggregate within `response_body_size_limit` and cache a successful read. Repeated reads and streams from a buffered response reuse the cache. Calling `stream` before buffering transfers the backend body to that stream; later aggregate reads cannot regain it. A failed read is retained so later reads report the original failure category. The stream path intentionally does not impose the whole-body aggregation limit; SSE line/frame and JSON limits apply to their respective decoders.
 
-Non-2xx responses are converted to errors before the caller receives a response. Error body preview and retained raw error body have separate limits. TRACE body logging reports a body only when it has already been buffered; it never consumes an unconsumed backend stream. Request, response, and error diagnostics use the client's redaction policy snapshot.
+Non-2xx responses are converted to errors before the caller receives a response. The redacted error preview and retained raw error body have independent limits and completeness state; truncating the preview does not make a complete raw body incomplete. TRACE body logging reports a body only when it has already been buffered; it never consumes an unconsumed backend stream. Request, response, and error diagnostics use the client's redaction policy snapshot.
 
 ## SSE decoding and reconnect
 
-Direct `HttpResponse::sse_messages` and `sse_chunks` are body decoders. They enforce line/frame and, for JSON chunks, JSON and completion limits, but do not validate `Content-Type`; callers requiring an SSE media type check `text/event-stream` before decoding. `HttpClient::execute_sse_with_reconnect` does validate that media type.
+Direct `HttpResponse::sse_messages` and `sse_chunks` are body decoders. An SSE data event is dispatched only by a blank line; pending data-bearing fields are not dispatched at EOF; complete retry and control-only id records retain their existing handling. A UTF-8 BOM is removed only when it begins the first line. `AllowEof` accepts a complete stream without a done marker but does not dispatch an incomplete final event; `RequireDoneMarker` recognizes a marker only in a complete event. The decoders enforce line/frame and, for JSON chunks, JSON and completion limits, but do not validate `Content-Type`; callers requiring an SSE media type check `text/event-stream` before decoding. `HttpClient::execute_sse_with_reconnect` does validate that media type.
 
 The reconnect runner opens a response with ordinary HTTP retry disabled, decodes SSE records, tracks the last event ID and server `retry:` delay, and reopens according to `SseReconnectOptions`. It sends `Last-Event-ID` on a later request when available. Cancellation and protocol errors do not reconnect by default. Reconnect budgets include attempts and waits; a configured final delay cap and the SSE one-millisecond minimum are applied by the reconnect policy.
 
