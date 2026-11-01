@@ -304,8 +304,8 @@ fn test_http_error_disabled_policy_retains_message_input_and_output_limits() {
         .expect("test policy should be valid")
         .build()
         .expect("disabled test policy should be valid");
-    let error = HttpError::transport("input exceeds the disabled policy limit")
-        .with_log_redaction_policy(input_limited);
+    let error =
+        HttpError::transport("input exceeds the disabled policy limit").with_log_redaction_policy(input_limited);
     assert_eq!(error.to_string(), "<redaction incomplete>");
 
     let output_limited = RedactionPolicy::disabled()
