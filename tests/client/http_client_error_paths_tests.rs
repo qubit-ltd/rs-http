@@ -466,6 +466,46 @@ async fn test_status_body_read_timeout_is_cumulative() {
 }
 
 #[tokio_test]
+async fn test_status_body_read_timeout_eof_within_budget_is_complete() {
+    let server = spawn_one_shot_server(ResponsePlan::Chunked {
+        status: 429,
+        headers: vec![],
+        chunks: vec![
+            crate::common::ResponseChunk {
+                delay: Duration::ZERO,
+                bytes: b"short ".to_vec(),
+            },
+            crate::common::ResponseChunk {
+                delay: Duration::from_millis(50),
+                bytes: b"body".to_vec(),
+            },
+        ],
+        finish: true,
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.read_timeout = Duration::from_millis(400);
+    options.error_response_preview_limit = 64;
+    options.error_response_body_limit = 64;
+    let client = HttpClientBuilder::new().create(options).unwrap();
+    let error = timeout(
+        Duration::from_secs(3),
+        client.execute(client.request(Method::GET, "/status-body-eof").build()),
+    )
+    .await
+    .expect("client execution timed out")
+    .unwrap_err();
+    assert_eq!(error.kind, HttpErrorKind::Status);
+    let status = error.status_response().unwrap();
+    assert_eq!(status.body().as_ref(), b"short body");
+    assert!(!status.is_truncated());
+    timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+}
+
+#[tokio_test]
 async fn test_status_body_cancellation_remains_cancelled() {
     let mut server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
         status: 429,
