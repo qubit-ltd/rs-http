@@ -1044,12 +1044,14 @@ impl HttpRequest {
         self.invalidate_effective_headers_cache();
     }
 
-    /// Installs a server cursor that wins after ordinary request header merging.
+    /// Installs a server cursor that wins after ordinary request header
+    /// merging.
     ///
     /// # Parameters
     /// - `value`: Validated non-empty SSE event ID header value.
     pub(crate) fn set_sse_last_event_id(&mut self, value: HeaderValue) {
-        self.headers.insert(HeaderName::from_static("last-event-id"), value.clone());
+        self.headers
+            .insert(HeaderName::from_static("last-event-id"), value.clone());
         self.execution_options.sse_last_event_id_override = Some(value);
         self.invalidate_effective_headers_cache();
     }

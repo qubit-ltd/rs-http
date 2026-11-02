@@ -35,25 +35,28 @@ async fn response_with_gated_body() -> (
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let (release_tx, release_rx) = tokio::sync::oneshot::channel();
-    let server = tokio::spawn(async move {
-        let (mut socket, _) = listener.accept().await.unwrap();
-        let mut request = Vec::new();
-        let mut byte = [0_u8; 1];
-        while !request.ends_with(b"\r\n\r\n") {
-            socket.read_exact(&mut byte).await.unwrap();
-            request.push(byte[0]);
-        }
-        socket.write_all(
+    let server =
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            let mut byte = [0_u8; 1];
+            while !request.ends_with(b"\r\n\r\n") {
+                socket.read_exact(&mut byte).await.unwrap();
+                request.push(byte[0]);
+            }
+            socket.write_all(
             b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n",
         ).await.unwrap();
-        socket.flush().await.unwrap();
-        let _ = release_rx.await;
-        let _ = socket.write_all(b"{}").await;
-    });
+            socket.flush().await.unwrap();
+            let _ = release_rx.await;
+            let _ = socket.write_all(b"{}").await;
+        });
     let client = HttpClientBuilder::new().create_default().unwrap();
     let request = client.request(Method::GET, &format!("http://{address}/gated")).build();
     let response = timeout(Duration::from_secs(3), client.execute(request))
-        .await.unwrap().unwrap();
+        .await
+        .unwrap()
+        .unwrap();
     (response, release_tx, server)
 }
 
@@ -61,13 +64,12 @@ async fn response_with_gated_body() -> (
 async fn test_dropped_pending_aggregate_read_consumes_backend() {
     for reader in 0..3 {
         let (mut response, release, server) = response_with_gated_body().await;
-        let mut future: std::pin::Pin<Box<dyn std::future::Future<
-            Output = qubit_http::HttpResult<()>,
-        > + '_>> = match reader {
-            0 => Box::pin(async { response.bytes().await.map(|_| ()) }),
-            1 => Box::pin(async { response.text().await.map(|_| ()) }),
-            _ => Box::pin(async { response.json::<serde_json::Value>().await.map(|_| ()) }),
-        };
+        let mut future: std::pin::Pin<Box<dyn std::future::Future<Output = qubit_http::HttpResult<()>> + '_>> =
+            match reader {
+                0 => Box::pin(async { response.bytes().await.map(|_| ()) }),
+                1 => Box::pin(async { response.text().await.map(|_| ()) }),
+                _ => Box::pin(async { response.json::<serde_json::Value>().await.map(|_| ()) }),
+            };
         assert!(matches!(futures_util::poll!(future.as_mut()), std::task::Poll::Pending));
         drop(future);
         assert_eq!(
@@ -91,7 +93,10 @@ async fn test_unpolled_aggregate_read_does_not_consume_backend() {
     let future = response.bytes();
     drop(future);
     release.send(()).unwrap();
-    let body = timeout(Duration::from_secs(3), response.bytes()).await.unwrap().unwrap();
+    let body = timeout(Duration::from_secs(3), response.bytes())
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(body.as_ref(), b"{}");
     timeout(Duration::from_secs(3), server).await.unwrap().unwrap();
 }

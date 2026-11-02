@@ -75,7 +75,11 @@ async fn test_sse_content_type_error_omits_sensitive_header_value() {
         if native_sensitive {
             client.add_response_interceptor(HttpResponseInterceptor::new(
                 |context: &mut HttpResponseInterceptorContext| {
-                    context.headers_mut().get_mut("content-type").unwrap().set_sensitive(true);
+                    context
+                        .headers_mut()
+                        .get_mut("content-type")
+                        .unwrap()
+                        .set_sensitive(true);
                     Ok(())
                 },
             ));
@@ -83,12 +87,18 @@ async fn test_sse_content_type_error_omits_sensitive_header_value() {
         let request = client.request(Method::GET, "/sse-header-secret").build();
         let mut events = client.execute_sse_with_reconnect(request, SseReconnectOptions::default());
         let error = timeout(Duration::from_secs(3), events.next())
-            .await.unwrap().unwrap().unwrap_err();
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap_err();
         assert_eq!(error.kind(), HttpErrorKind::SseProtocol);
         assert_eq!(error.method(), Some(&Method::GET));
         assert_eq!(error.status(), Some(StatusCode::OK));
         assert_eq!(error.url().unwrap().path(), "/sse-header-secret");
-        assert_eq!(error.message(), "Expected Content-Type 'text/event-stream' for SSE response");
+        assert_eq!(
+            error.message(),
+            "Expected Content-Type 'text/event-stream' for SSE response"
+        );
         for output in [error.message().to_owned(), error.to_string(), format!("{error:?}")] {
             assert!(!output.contains(SECRET), "sensitive Content-Type leaked");
         }
@@ -112,7 +122,8 @@ async fn test_sse_nonempty_cursor_wins_after_request_interceptors() {
                 headers: vec![("Content-Type".to_owned(), "text/event-stream".to_owned())],
                 body: b"data: second\n\n".to_vec(),
             },
-        ]).await;
+        ])
+        .await;
         let mut options = HttpClientOptions::default();
         options.base_url = Some(server.base_url());
         options.add_header("last-event-id", "default-old").unwrap();
@@ -129,29 +140,47 @@ async fn test_sse_nonempty_cursor_wins_after_request_interceptors() {
         }));
         client.add_request_interceptor(HttpRequestInterceptor::new(move |request: &mut HttpRequest| {
             match mutation {
-                0 => { request.set_header("last-event-id", "interceptor-old")?; }
-                1 => { request.clear_headers(); }
-                _ => { request.remove_header(&HeaderName::from_static("last-event-id")); }
+                0 => {
+                    request.set_header("last-event-id", "interceptor-old")?;
+                }
+                1 => {
+                    request.clear_headers();
+                }
+                _ => {
+                    request.remove_header(&HeaderName::from_static("last-event-id"));
+                }
             }
             Ok(())
         }));
-        let request = client.request(Method::GET, "/sse-cursor-authority")
-            .header("last-event-id", "template-old").unwrap().build();
-        let mut events = client.execute_sse_with_reconnect(request, SseReconnectOptions {
-            retry: build_retry_options(1, BackoffPolicy::immediate()),
-            ..SseReconnectOptions::default()
-        });
+        let request = client
+            .request(Method::GET, "/sse-cursor-authority")
+            .header("last-event-id", "template-old")
+            .unwrap()
+            .build();
+        let mut events = client.execute_sse_with_reconnect(
+            request,
+            SseReconnectOptions {
+                retry: build_retry_options(1, BackoffPolicy::immediate()),
+                ..SseReconnectOptions::default()
+            },
+        );
         for expected in ["first", "second"] {
             let message = timeout(Duration::from_secs(3), events.next())
-                .await.unwrap().unwrap().unwrap();
+                .await
+                .unwrap()
+                .unwrap()
+                .unwrap();
             assert_eq!(message.data, expected);
             assert_eq!(message.last_event_id.as_deref(), Some("fresh"));
         }
         assert!(events.next().await.is_none());
         let requests = timeout(Duration::from_secs(3), server.finish()).await.unwrap();
         assert_eq!(requests.len(), 2);
-        assert_eq!(requests[1].headers.get("last-event-id").map(String::as_str), Some("fresh"),
-            "interceptor mutation mode {mutation}");
+        assert_eq!(
+            requests[1].headers.get("last-event-id").map(String::as_str),
+            Some("fresh"),
+            "interceptor mutation mode {mutation}"
+        );
     }
 }
 

@@ -414,8 +414,8 @@ impl HttpResponse {
     /// backend body and before buffering completes discards the backend and any
     /// partially read bytes. Later body readers return
     /// [`HttpErrorKind::ResponseBodyAlreadyConsumed`]. An outer
-    /// `tokio::time::timeout` or a losing `tokio::select!` branch can cause this
-    /// drop.
+    /// `tokio::time::timeout` or a losing `tokio::select!` branch can cause
+    /// this drop.
     ///
     /// Dropping a future before it is polled does not take the body. A
     /// successfully buffered body remains reusable. Cancellation and read

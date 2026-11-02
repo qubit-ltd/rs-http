@@ -585,11 +585,13 @@ fn validate_sse_response_content_type(response: &HttpResponse, log_redactor: &Re
     if content_type::is_sse(content_type) {
         return Ok(());
     }
-    Err(HttpError::sse_protocol("Expected Content-Type 'text/event-stream' for SSE response")
-    .with_status(response.status())
-    .with_method(&method)
-    .with_url(&url)
-    .with_log_redactor(log_redactor.clone()))
+    Err(
+        HttpError::sse_protocol("Expected Content-Type 'text/event-stream' for SSE response")
+            .with_status(response.status())
+            .with_method(&method)
+            .with_url(&url)
+            .with_log_redactor(log_redactor.clone()),
+    )
 }
 
 /// Returns whether an HTTP error represents an unexpected stream EOF that is
