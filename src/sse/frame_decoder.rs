@@ -114,8 +114,10 @@ pub(crate) fn decode_records(mut lines: SseLineStream, max_frame_bytes: usize) -
                     }
                 }
                 "retry" => {
-                    if let Ok(retry) = value.parse::<u64>() {
-                        current_retry = Some(retry);
+                    if !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit()) {
+                        if let Ok(retry) = value.parse::<u64>() {
+                            current_retry = Some(retry);
+                        }
                     }
                     has_fields = true;
                 }
@@ -202,6 +204,36 @@ mod tests {
 
         let records = decode(vec![b"id: pending\ndata: incomplete"]).await.unwrap();
         assert!(records.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_decode_records_accepts_only_ascii_digit_retry_values() {
+        for (line, retry) in [
+            (b"retry: +120\n\n" as &'static [u8], "+120"),
+            (b"retry: -1\n\n", "-1"),
+            (b"retry:\n\n", ""),
+            (b"retry:  120\n\n", " 120"),
+            (b"retry: \xD9\xA1\xD9\xA2\xD9\xA0\n\n", "١٢٠"),
+            (b"retry: 18446744073709551616\n\n", "18446744073709551616"),
+        ] {
+            let records = decode(vec![line])
+                .await
+                .expect("invalid retry values are ignored without protocol errors");
+            assert!(records.is_empty(), "retry value {retry:?} must be ignored");
+        }
+
+        for (line, expected) in [(b"retry: 0\n\n" as &'static [u8], 0), (b"retry: 120\n\n", 120)] {
+            let records = decode(vec![line]).await.expect("valid retry value should decode");
+            assert_eq!(
+                records,
+                vec![SseRecord::Control(SseControl::ReconnectDelayMs(expected))]
+            );
+        }
+
+        let records = decode(vec![b"retry: 120\nretry: +120\n\n"])
+            .await
+            .expect("an invalid retry must not fail decoding");
+        assert_eq!(records, vec![SseRecord::Control(SseControl::ReconnectDelayMs(120))]);
     }
 
     #[tokio::test]

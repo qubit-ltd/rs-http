@@ -74,6 +74,17 @@ async fn test_decode_frames_handles_invalid_retry_value_as_known_field() {
 }
 
 #[tokio_test]
+async fn test_decode_frames_ignores_invalid_retry_values_without_protocol_error() {
+    for retry in ["+120", "-1", "", " 120", "١٢٠", "18446744073709551616"] {
+        let response = stream_response_from_chunks(vec!["retry: ", retry, "\ndata: hi\n\n"]);
+        let events = collect_results(response.sse_messages()).await;
+
+        assert_eq!(events.len(), 1, "retry value {retry:?} must be ignored");
+        assert_eq!(events[0].data, "hi");
+    }
+}
+
+#[tokio_test]
 async fn test_decode_frames_ignores_unknown_field_name() {
     let response = stream_response_from_chunks(vec!["unknown: ignored\n", "data: value\n", "\n"]);
     let events = collect_results(response.sse_messages()).await;

@@ -233,3 +233,118 @@ impl ReconnectState {
         ReconnectAction::Continue
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use http::Method;
+    use qubit_redact::Redactor;
+    use qubit_retry::BackoffPolicy;
+
+    use super::ReconnectState;
+    use crate::sse::SseReconnectOptions;
+    use crate::sse::sse_reconnect_runner::internal::reconnect_runtime::ReconnectRuntime;
+
+    fn delay_for_hint(retry: qubit_retry::RetryPolicy, options: SseReconnectOptions, hint: Duration) -> Duration {
+        let mut state = ReconnectState::new(&retry);
+        state.set_server_retry_delay(hint);
+        let method = Method::GET;
+        let redactor = Redactor::default();
+        let runtime = ReconnectRuntime {
+            retry_policy: &retry,
+            options: &options,
+            cancellation_token: None,
+            request_method: &method,
+            request_url: None,
+            log_redactor: &redactor,
+        };
+        state.sleep_delay(&runtime)
+    }
+
+    fn retry(backoff: BackoffPolicy) -> qubit_retry::RetryPolicy {
+        qubit_retry::RetryPolicy::builder()
+            .max_attempts(2)
+            .backoff(backoff)
+            .build()
+            .expect("test retry policy should be valid")
+    }
+
+    #[test]
+    fn test_sleep_delay_uses_explicit_server_retry_cap() {
+        let options = SseReconnectOptions {
+            retry: retry(BackoffPolicy::fixed(Duration::from_millis(1))),
+            server_retry_max_delay: Some(Duration::from_millis(80)),
+            apply_jitter_to_server_retry: false,
+            ..SseReconnectOptions::default()
+        };
+        let delay = delay_for_hint(options.retry.clone(), options, Duration::from_millis(800));
+        assert_eq!(delay, Duration::from_millis(80));
+    }
+
+    #[test]
+    fn test_sleep_delay_derives_server_retry_cap_from_backoff() {
+        let policy = retry(
+            BackoffPolicy::uniform(Duration::from_millis(20), Duration::from_millis(80))
+                .expect("test backoff should be valid"),
+        );
+        let options = SseReconnectOptions {
+            retry: policy.clone(),
+            server_retry_max_delay: None,
+            apply_jitter_to_server_retry: false,
+            ..SseReconnectOptions::default()
+        };
+        assert_eq!(
+            delay_for_hint(policy, options, Duration::from_millis(800)),
+            Duration::from_millis(80)
+        );
+    }
+
+    #[test]
+    fn test_sleep_delay_enforces_one_millisecond_minimum() {
+        let policy = retry(BackoffPolicy::fixed(Duration::ZERO));
+        let options = SseReconnectOptions {
+            retry: policy.clone(),
+            server_retry_max_delay: Some(Duration::ZERO),
+            apply_jitter_to_server_retry: false,
+            ..SseReconnectOptions::default()
+        };
+        assert_eq!(
+            delay_for_hint(policy, options, Duration::ZERO),
+            Duration::from_millis(1)
+        );
+    }
+
+    #[test]
+    fn test_sleep_delay_applies_jitter_without_exceeding_server_cap() {
+        let policy = retry(
+            BackoffPolicy::fixed(Duration::from_millis(1))
+                .with_bounded_jitter(1.0)
+                .expect("test jitter should be valid"),
+        );
+        let options = SseReconnectOptions {
+            retry: policy.clone(),
+            server_retry_max_delay: Some(Duration::from_millis(80)),
+            apply_jitter_to_server_retry: true,
+            ..SseReconnectOptions::default()
+        };
+        let delay = delay_for_hint(policy, options, Duration::from_millis(800));
+        assert!(delay >= Duration::from_millis(1), "delay={delay:?}");
+        assert!(delay <= Duration::from_millis(80), "delay={delay:?}");
+    }
+
+    #[test]
+    fn test_sleep_delay_preserves_exact_server_hint_without_jitter() {
+        let policy = retry(BackoffPolicy::fixed(Duration::from_millis(1)));
+        let options = SseReconnectOptions {
+            retry: policy.clone(),
+            server_retry_max_delay: Some(Duration::from_millis(200)),
+            apply_jitter_to_server_retry: false,
+            ..SseReconnectOptions::default()
+        };
+        assert_eq!(
+            delay_for_hint(policy, options, Duration::from_millis(120)),
+            Duration::from_millis(120)
+        );
+    }
+}
