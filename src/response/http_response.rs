@@ -722,6 +722,12 @@ impl HttpResponse {
     /// Overrides the maximum allowed size (in bytes) for one SSE frame on this
     /// response.
     ///
+    /// The limit counts cumulative UTF-8 bytes of non-empty, non-comment lines
+    /// between blank-line boundaries. Field names and values, including
+    /// unknown fields, count; line terminators and comment lines do not.
+    /// Comment lines remain subject to the line limit. This is not a wire-size
+    /// or whole-stream limit.
+    ///
     /// Values below 1 are clamped to 1. Returns `self` for chained
     /// configuration.
     ///

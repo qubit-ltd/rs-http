@@ -136,7 +136,11 @@ pub struct HttpClientOptions {
     pub sse_completion_policy: SseCompletionPolicy,
     /// Default maximum bytes for one SSE line.
     pub sse_max_line_bytes: usize,
-    /// Default maximum bytes for one SSE frame.
+    /// Default maximum cumulative UTF-8 bytes of non-empty, non-comment lines
+    /// between blank-line boundaries. Field names and values, including
+    /// unknown fields, count; line terminators and comment lines do not.
+    /// Comment lines remain subject to the line limit. This is not a wire-size
+    /// or whole-stream limit.
     pub sse_max_frame_bytes: usize,
 }
 

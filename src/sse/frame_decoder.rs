@@ -23,7 +23,11 @@ use super::line_decoder::SseLineStream;
 /// # Parameters
 /// - `lines`: Stream of SSE text lines from
 ///   [`super::line_decoder::decode_lines`].
-/// - `max_frame_bytes`: Maximum allowed bytes for one SSE frame.
+/// - `max_frame_bytes`: Maximum cumulative UTF-8 bytes of non-empty,
+///   non-comment lines between blank-line boundaries. Field names and values,
+///   including unknown fields, count; line terminators and comment lines do
+///   not. Comment lines remain subject to the line limit. This is not a
+///   wire-size or whole-stream limit.
 ///
 /// # Returns
 /// Stream of records or forwarded transport/protocol errors.
@@ -248,6 +252,39 @@ mod tests {
                 data: "a".to_owned(),
                 last_event_id: None,
             })]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_frame_budget_counts_field_bytes_but_not_comments_or_terminators() {
+        for source in [
+            b": heartbeat\ndata: a\n\n".as_slice(),
+            b": heartbeat\r\ndata: a\r\n\r\n".as_slice(),
+        ] {
+            let records = decode_with_limit(vec![source], 7).await.unwrap();
+            assert_eq!(records.len(), 1);
+            let SseRecord::Dispatch(message) = &records[0] else {
+                panic!("expected one data dispatch");
+            };
+            assert_eq!(message.data, "a");
+            let error = decode_with_limit(vec![source], 6).await.unwrap_err();
+            assert_eq!(error.kind(), crate::HttpErrorKind::SseProtocol);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_frame_budget_counts_unknown_fields_and_utf8_bytes() {
+        let source = b"x: 1\ndata: a\n\n";
+        assert_eq!(decode_with_limit(vec![source], 11).await.unwrap().len(), 1);
+        assert_eq!(
+            decode_with_limit(vec![source], 10).await.unwrap_err().kind(),
+            crate::HttpErrorKind::SseProtocol,
+        );
+        let source = "data: é\n\n".as_bytes();
+        assert_eq!(decode_with_limit(vec![source], 8).await.unwrap().len(), 1);
+        assert_eq!(
+            decode_with_limit(vec![source], 7).await.unwrap_err().kind(),
+            crate::HttpErrorKind::SseProtocol,
         );
     }
 }
