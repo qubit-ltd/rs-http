@@ -43,21 +43,21 @@ strum = { version = "^0.28", features = ["derive"] }
 parse-display = "^0.11"
 serde_json = "^1.0"
 qubit-json = { path = "../rs-json", version = "0.12" }
-tokio = { version = "^1.53", features = ["time", "net", "macros"] }
+tokio = { version = "^1.54", features = ["time", "net", "macros"] }
 async-stream = "^0.3"
 futures-util = "^0.3"
 
 qubit-config = { path = "../rs-config", version = "0.15", default-features = false }
-qubit-budget = { version = "0.10", features = ["json"] }
-qubit-clock = { version = "0.13" }
-qubit-argument = "0.4.6"
-qubit-error = "0.2"
-qubit-function = "0.18"
-qubit-retry = { version = "0.26", features = ["tokio"] }
+qubit-budget = { version = "^0.10", features = ["json"] }
+qubit-clock = "^0.13"
+qubit-argument = "^0.4"
+qubit-error = "^0.2"
+qubit-function = "^0.18"
+qubit-retry = { version = "^0.26", features = ["tokio"] }
 qubit-redact = { path = "../rs-redact", version = "0.10", default-features = false, features = ["http"] }
 
 [dev-dependencies]
-tokio = { version = "^1.53", features = ["full", "test-util"] }
+tokio = { version = "^1.54", features = ["full", "test-util"] }
 tracing-subscriber = { version = "^0.3", features = ["fmt"] }
 qubit-datatype = { path = "../rs-datatype", version = "0.15", default-features = false, features = ["converter"] }
 
