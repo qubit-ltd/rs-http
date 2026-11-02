@@ -536,16 +536,21 @@ impl HttpError {
 }
 
 impl From<std::io::Error> for HttpError {
-    /// Maps [`std::io::Error`] to [`HttpError::transport`] with the I/O error
-    /// as source.
+    /// Maps an I/O failure to a transport error with a fixed public summary.
+    ///
+    /// Raw I/O diagnostics are retained only in the source; they are not copied
+    /// into the public message rendered by Display or Debug.
     ///
     /// # Parameters
-    /// - `error`: Underlying I/O error.
+    /// - `error`: Original I/O failure, retained without changing its kind or
+    ///   text.
     ///
     /// # Returns
-    /// Wrapped [`HttpError`].
+    /// A transport error with the original I/O error as its source. Callers
+    /// that log the source must apply their own diagnostic redaction
+    /// policy.
     fn from(error: std::io::Error) -> Self {
-        Self::transport(error.to_string()).with_source(error)
+        Self::transport("HTTP I/O operation failed").with_source(error)
     }
 }
 

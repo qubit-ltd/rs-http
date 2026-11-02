@@ -417,12 +417,19 @@ fn test_http_error_retry_hint_status_without_status_code_is_non_retryable() {
 
 #[test]
 fn test_http_error_from_io_error_maps_to_transport_with_source() {
-    let io_error = std::io::Error::other("disk gone");
-    let error = HttpError::from(io_error);
-    assert_eq!(error.kind, HttpErrorKind::Transport);
-    assert!(error.message.contains("disk gone"));
-    assert!(error.source.is_some());
-    assert!(Error::source(&error).is_some());
+    for diagnostic in ["disk gone", "Authorization: Bearer sentinel-secret"] {
+        let error = HttpError::from(std::io::Error::other(diagnostic));
+        assert_eq!(error.kind(), HttpErrorKind::Transport);
+        assert_eq!(error.retry_hint(), RetryHint::Retryable);
+        assert_eq!(error.message(), "HTTP I/O operation failed");
+        assert_eq!(error.to_string(), "HTTP I/O operation failed");
+        assert!(!format!("{error:?}").contains(diagnostic));
+        let source = Error::source(&error)
+            .and_then(|source| source.downcast_ref::<std::io::Error>())
+            .expect("the original I/O error must remain downcastable");
+        assert_eq!(source.kind(), std::io::ErrorKind::Other);
+        assert_eq!(source.to_string(), diagnostic);
+    }
 }
 
 #[test]
