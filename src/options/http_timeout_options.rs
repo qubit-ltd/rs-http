@@ -25,11 +25,11 @@ use crate::request::response_header_deadline_is_representable;
 ///
 /// Every configured timeout must be greater than zero. In addition,
 /// `response_header_timeout` must fit in the platform's `Instant` deadline
-/// range. Optional reqwest per-attempt network request and response-body
-/// deadline. It excludes asynchronous header injection, streaming-body factory
-/// preparation, retry waits, and the duration of other attempts. Use
-/// `response_header_timeout` to bound asynchronous preparation through receipt
-/// of response headers.
+/// range. The optional `request_timeout` is a reqwest per-attempt network
+/// request and response-body deadline. It excludes asynchronous header
+/// injection, streaming-body factory preparation, retry waits, and the
+/// duration of other attempts. Use `response_header_timeout` to bound
+/// asynchronous preparation through receipt of response headers.
 ///
 /// # Examples
 ///

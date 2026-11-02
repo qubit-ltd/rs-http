@@ -40,6 +40,7 @@ Retry attempts clone the request. Buffered bodies can be replayed; a deferred st
 | `response_header_timeout` | Asynchronous preparation through response headers; synchronous request interceptor time is excluded |
 | `request_timeout` | Reqwest network execution and response-body reads for one attempt; asynchronous preparation, retry waits, and other attempts are excluded |
 | `read_timeout` | Each normal response-body read and complete non-success error-body capture |
+| `retry.max_duration` | Continuation budget that can stop later retry admission; it is not a hard total timeout and does not cancel an admitted attempt |
 
 Cancellation is checked before sending and during supported I/O and retry waits. The attempt context routes cancellation ownership so an interceptor's replacement or removal of a token can affect that attempt without incorrectly restoring a stale token on a successful response.
 

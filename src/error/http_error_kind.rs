@@ -42,7 +42,9 @@ pub enum HttpErrorKind {
     ReadTimeout,
     /// Request preparation and header-response timeout.
     ResponseHeaderTimeout,
-    /// Whole-request timeout (client/request-level deadline).
+    /// Reqwest per-attempt network request and response-body deadline expired.
+    /// This deadline excludes asynchronous header injection and streaming-body
+    /// factory preparation; use `response_header_timeout` for those phases.
     RequestTimeout,
     /// Transport-level request error.
     Transport,
