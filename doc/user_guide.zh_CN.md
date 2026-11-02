@@ -777,7 +777,9 @@ options.proxy.port = Some(1080);
 `sse_messages()` 和 `sse_chunks::<T>()` 只解码响应体，不检查 `Content-Type`。
 如果上游协议要求 SSE，直接调用这两个方法前应确认响应声明了
 `text/event-stream`。自动重连 API 会自行检查；媒体类型缺失或不合法时返回
-`SseProtocol` 错误。
+`SseProtocol` 错误。媒体类型不匹配时使用固定摘要，不包含原始
+`Content-Type`；调用方应匹配 `SseProtocol` 并检查 method、URL 和 status，
+不要再匹配 message 中的 header 原值。
 
 SSE 消息解码从 `HttpResponse` 开始：
 
@@ -938,7 +940,7 @@ while let Some(item) = events.next().await {
 }
 ```
 
-默认重连配置为 `retry.max_attempts = 4`（即最多重连 3 次），使用 `initial=1s`、`max=30s`、`multiplier=2.0` 且无 jitter 的指数 `BackoffPolicy`，并在 EOF 后重连、尊重服务端 `retry:`。最新有效的 `retry:` 会持续生效，直到新有效值替换；可用 `honor_server_retry = false` 忽略服务端提示。服务端 `retry:` 会被限制到 `server_retry_max_delay`；若该字段为 `None`，则从 backoff policy 的最大值推导，无法推导时使用 30 秒。这个上限只作用于 SSE `retry:` 字段。可重连的 429/5xx 握手错误是否采用解析出的 HTTP 提示，由最终请求的 `honor_retry_after` 偏好决定；HTTP `Retry-After` 仍是只影响单次尝试的提示，遵循独立退避策略上限和重连预算。`apply_jitter_to_server_retry` 默认开启；只有传入的 `RetryPolicy` 配置了 jitter 时，服务端给出的延迟才会被扰动。重连时会复用原始请求，并禁用内层 HTTP 自动重试；如果之前收到过 SSE `id:`，下一次请求会带上 `Last-Event-ID` header；空 ID 重置后下一次请求会省略该头。204 响应会正常结束重连流，不要求 `Content-Type`。这些是有意的行为变化：调用方应将 204 的流结束视为正常停流，服务端若要更改延迟应发送新的有效 `retry:`。本 API 不宣称完整实现 EventSource。其他成功状态仍要求 `Content-Type` 为 `text/event-stream`。SSE 解码错误会补充响应 method、原始请求 URL 和 status，同时保留更具体的原有上下文与 source。取消错误不会触发重连；SSE 协议错误默认也不会重连；超时、transport、429/5xx 等 retryable 错误，以及包含 unexpected EOF 语义的错误可触发重连。
+默认重连配置为 `retry.max_attempts = 4`（即最多重连 3 次），使用 `initial=1s`、`max=30s`、`multiplier=2.0` 且无 jitter 的指数 `BackoffPolicy`，并在 EOF 后重连、尊重服务端 `retry:`。最新有效的 `retry:` 会持续生效，直到新有效值替换；可用 `honor_server_retry = false` 忽略服务端提示。服务端 `retry:` 会被限制到 `server_retry_max_delay`；若该字段为 `None`，则从 backoff policy 的最大值推导，无法推导时使用 30 秒。这个上限只作用于 SSE `retry:` 字段。可重连的 429/5xx 握手错误是否采用解析出的 HTTP 提示，由最终请求的 `honor_retry_after` 偏好决定；HTTP `Retry-After` 仍是只影响单次尝试的提示，遵循独立退避策略上限和重连预算。`apply_jitter_to_server_retry` 默认开启；只有传入的 `RetryPolicy` 配置了 jitter 时，服务端给出的延迟才会被扰动。重连时会复用原始请求，并禁用内层 HTTP 自动重试；收到非空 SSE `id:` 字段后（包括 control-only 控制记录中的 ID），下一次请求会带上 `Last-Event-ID` header；空 ID 重置后下一次请求会省略该头。204 响应会正常结束重连流，不要求 `Content-Type`。这些是有意的行为变化：调用方应将 204 的流结束视为正常停流，服务端若要更改延迟应发送新的有效 `retry:`。本 API 不宣称完整实现 EventSource。其他成功状态仍要求 `Content-Type` 为 `text/event-stream`。SSE 解码错误会补充响应 method、原始请求 URL 和 status，同时保留更具体的原有上下文与 source。取消错误不会触发重连；SSE 协议错误默认也不会重连；超时、transport、429/5xx 等 retryable 错误，以及包含 unexpected EOF 语义的错误可触发重连。
 
 服务端一旦提供事件 ID，最终的 `Last-Event-ID` 就由重连执行器管理。它会在默认 header、注入器和请求拦截器合并完成后写入非空游标；空 ID 则删除该 header。在服务端尚未提供 ID 前，仍按普通 header 优先级处理。若应用需要自行控制每次重连游标，应通过 `execute` 分别管理各次请求。
 
