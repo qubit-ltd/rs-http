@@ -25,6 +25,19 @@ use crate::common::ResponsePlan;
 use crate::common::spawn_multi_shot_server;
 use crate::common::spawn_one_shot_server;
 
+#[test]
+fn test_client_builder_rejects_unrepresentable_response_header_deadline() {
+    let mut options = HttpClientOptions::default();
+    options.timeouts.response_header_timeout = Duration::MAX;
+
+    let error = HttpClientBuilder::new()
+        .create(options)
+        .expect_err("unrepresentable response-header deadline should be rejected");
+
+    assert_eq!(error.kind, HttpErrorKind::Other);
+    assert!(error.message.contains("response_header_timeout"));
+}
+
 #[tokio_test]
 async fn test_retry_max_duration_allows_admitted_request_to_finish_after_budget() {
     let retry_delay = Duration::from_millis(50);

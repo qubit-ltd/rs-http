@@ -45,3 +45,32 @@ fn test_http_timeout_options_validate_rejects_zero_read_timeout() {
     assert_eq!(error.kind, HttpConfigErrorKind::InvalidValue);
     assert_eq!(error.path, "read_timeout");
 }
+
+#[test]
+fn test_http_timeout_options_validate_rejects_unrepresentable_response_header_deadline() {
+    let options = HttpTimeoutOptions {
+        response_header_timeout: Duration::MAX,
+        ..HttpTimeoutOptions::default()
+    };
+
+    let error = options
+        .validate()
+        .expect_err("unrepresentable deadline should be rejected");
+
+    assert_eq!(error.kind, HttpConfigErrorKind::InvalidValue);
+    assert_eq!(error.path, "response_header_timeout");
+}
+
+#[test]
+fn test_http_timeout_options_from_config_rejects_unrepresentable_response_header_deadline() {
+    let mut config = Config::new();
+    config
+        .set("timeouts.response_header_timeout", Duration::MAX)
+        .expect("duration config should be accepted");
+
+    let error = HttpTimeoutOptions::from_config(&config.section("timeouts").expect("timeouts section"))
+        .expect_err("unrepresentable deadline should be rejected");
+
+    assert_eq!(error.kind, HttpConfigErrorKind::InvalidValue);
+    assert_eq!(error.path, "timeouts.response_header_timeout");
+}

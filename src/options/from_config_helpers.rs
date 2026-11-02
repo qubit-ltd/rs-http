@@ -153,11 +153,19 @@ where
 /// header name or value is invalid.
 pub(crate) fn hashmap_to_headermap(path: &str, map: HashMap<String, String>) -> Result<HeaderMap, HttpConfigError> {
     let mut header_map = HeaderMap::new();
-    for (name, value) in map {
+    let mut entries = map.into_iter().collect::<Vec<_>>();
+    entries.sort_by(|(left_name, _), (right_name, _)| left_name.cmp(right_name));
+    for (name, value) in entries {
         let entry_path = format!("{path}.{name}");
         let header_name = HeaderName::from_bytes(name.as_bytes()).map_err(|e| {
             HttpConfigError::invalid_header(entry_path.clone(), format!("Invalid header name '{}': {}", name, e))
         })?;
+        if header_map.contains_key(&header_name) {
+            return Err(HttpConfigError::invalid_value(
+                entry_path,
+                format!("Duplicate HTTP header name: {header_name}"),
+            ));
+        }
         let header_value = HeaderValue::from_str(&value).map_err(|e| {
             HttpConfigError::invalid_header(entry_path, format!("Invalid header value for '{}': {}", name, e))
         })?;

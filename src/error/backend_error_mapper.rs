@@ -41,13 +41,14 @@ pub(crate) fn map_reqwest_error(
     url: Url,
 ) -> HttpError {
     let is_timeout = error.is_timeout();
+    let is_connect = error.is_connect();
     let error = error.without_url();
     let kind = if contains_redirect_origin_violation(&error) {
         HttpErrorKind::OriginPolicy
     } else if contains_redirect_ipv6_violation(&error) {
         HttpErrorKind::InvalidUrl
     } else {
-        classify_reqwest_error_kind(is_timeout, phase, default_kind)
+        classify_reqwest_error_kind(is_timeout, is_connect, phase, default_kind)
     };
 
     HttpError::new(kind, "HTTP transport request failed")
@@ -94,11 +95,12 @@ fn contains_redirect_ipv6_violation(error: &ReqwestError) -> bool {
 #[inline]
 fn classify_reqwest_error_kind(
     is_timeout: bool,
+    is_connect: bool,
     phase: ReqwestErrorPhase,
     default_kind: HttpErrorKind,
 ) -> HttpErrorKind {
     if is_timeout {
-        classify_timeout_kind(phase)
+        classify_timeout_kind(is_connect, phase)
     } else {
         default_kind
     }
@@ -110,12 +112,14 @@ fn classify_reqwest_error_kind(
 /// - `phase`: Phase where timeout happened.
 ///
 /// # Returns
-/// [`HttpErrorKind::RequestTimeout`] for send-phase timeouts, or
+/// [`HttpErrorKind::ConnectTimeout`] for connect timeouts during send,
+/// [`HttpErrorKind::RequestTimeout`] for other send-phase timeouts, or
 /// [`HttpErrorKind::ReadTimeout`] for read-phase timeouts.
 #[must_use]
 #[inline]
-fn classify_timeout_kind(phase: ReqwestErrorPhase) -> HttpErrorKind {
+fn classify_timeout_kind(is_connect: bool, phase: ReqwestErrorPhase) -> HttpErrorKind {
     match phase {
+        ReqwestErrorPhase::Send if is_connect => HttpErrorKind::ConnectTimeout,
         ReqwestErrorPhase::Send => HttpErrorKind::RequestTimeout,
         ReqwestErrorPhase::Read => HttpErrorKind::ReadTimeout,
     }

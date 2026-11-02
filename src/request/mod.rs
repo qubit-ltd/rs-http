@@ -35,4 +35,6 @@ pub use http_request_interceptors::HttpRequestInterceptor;
 pub use http_request_interceptors::HttpRequestInterceptors;
 pub use http_request_retry_override::HttpRequestRetryOverride;
 pub use http_request_streaming_body::HttpRequestStreamingBody;
+pub(crate) use timeout_validation::response_header_deadline_is_representable;
 pub(crate) use timeout_validation::validate_positive_timeout;
+pub(crate) use timeout_validation::validate_response_header_timeout;

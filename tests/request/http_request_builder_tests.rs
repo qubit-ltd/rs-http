@@ -103,6 +103,56 @@ fn test_request_builder_debug_masks_sensitive_values() {
 }
 
 #[test]
+fn test_request_builder_preflight_errors_use_client_redaction_snapshot() {
+    let policy = RedactionPolicy::default()
+        .to_builder()
+        .http(|http| {
+            let _ = http.query().raise("client_secret", Sensitivity::Secret);
+        })
+        .expect("the test policy input should be valid")
+        .build()
+        .expect("the test policy should build");
+    let mut options = HttpClientOptions::new();
+    options.log_redaction_policy = policy.clone();
+    let client = HttpClientBuilder::new()
+        .create(options)
+        .expect("client should be created");
+
+    let invalid_header = client
+        .request(Method::GET, "/resource")
+        .header("https://example.test/?client_secret=synthetic-secret", "value")
+        .expect_err("URL-shaped header name should be rejected");
+    let invalid_timeout = client
+        .request(Method::GET, "/resource")
+        .request_timeout(Duration::ZERO)
+        .expect_err("zero timeout should be rejected");
+    let invalid_json = client
+        .request(Method::POST, "/resource")
+        .json_body(&FailingSerialize)
+        .expect_err("failing JSON serialization should be rejected");
+    let invalid_ndjson = client
+        .request(Method::POST, "/resource")
+        .ndjson_body(&[FailingSerialize])
+        .expect_err("failing NDJSON serialization should be rejected");
+    let invalid_multipart = client
+        .request(Method::POST, "/resource")
+        .multipart_body(Bytes::new(), "bad boundary")
+        .expect_err("invalid multipart boundary should be rejected");
+
+    for error in [
+        &invalid_header,
+        &invalid_timeout,
+        &invalid_json,
+        &invalid_ndjson,
+        &invalid_multipart,
+    ] {
+        assert_eq!(error.log_redactor.policy(), &policy);
+    }
+    assert!(!format!("{invalid_header}").contains("synthetic-secret"));
+    assert!(!format!("{invalid_header:?}").contains("synthetic-secret"));
+}
+
+#[test]
 fn test_request_builder_copies_base_url_and_ipv4_only_defaults() {
     let mut options = HttpClientOptions::default();
     options.set_base_url("https://api.example.com/v1/").unwrap();
@@ -158,6 +208,16 @@ fn test_request_builder_response_header_timeout_rejects_zero() {
     assert_eq!(error.kind, HttpErrorKind::Other);
     assert!(error.message.contains("response_header_timeout"));
     assert!(error.message.contains("greater than zero"));
+}
+
+#[test]
+fn test_request_builder_response_header_timeout_rejects_unrepresentable_deadline() {
+    let error = new_builder(Method::GET, "/v1/unrepresentable-write-timeout")
+        .response_header_timeout(Duration::MAX)
+        .expect_err("unrepresentable response-header deadline should be rejected");
+
+    assert_eq!(error.kind, HttpErrorKind::Other);
+    assert!(error.message.contains("response_header_timeout"));
 }
 
 #[test]

@@ -8,22 +8,25 @@
 
 use std::time::Duration;
 
-use qubit_argument::require_that;
 use qubit_argument::ArgumentResult;
 use qubit_argument::OptionArgument;
+use qubit_argument::require_that;
 use qubit_config::ConfigReader;
 use qubit_config::ConfigResult;
 
-use super::internal::TimeoutConfigInput;
 use super::HttpConfigError;
+use super::internal::TimeoutConfigInput;
 use crate::constants::DEFAULT_CONNECT_TIMEOUT_SECS;
 use crate::constants::DEFAULT_READ_TIMEOUT_SECS;
 use crate::constants::DEFAULT_SEND_TIMEOUT_SECS;
+use crate::request::response_header_deadline_is_representable;
 
 /// Configures connect, read, response-header, and whole-request HTTP timeouts.
 ///
-/// Every configured timeout must be greater than zero. The request timeout is
-/// optional and bounds the overall duration of an individual request.
+/// Every configured timeout must be greater than zero. In addition,
+/// `response_header_timeout` must fit in the platform's `Instant` deadline
+/// range. The request timeout is optional and bounds the overall duration of
+/// an individual request.
 ///
 /// # Examples
 ///
@@ -101,7 +104,8 @@ impl HttpTimeoutOptions {
     /// `Ok(())` when all configured durations are strictly greater than zero.
     ///
     /// # Errors
-    /// Returns [`HttpConfigError`] identifying a timeout whose value is zero.
+    /// Returns [`HttpConfigError`] identifying a zero timeout or an
+    /// unrepresentable response-header deadline.
     pub fn validate(&self) -> Result<(), HttpConfigError> {
         self.validate_arguments().map_err(HttpConfigError::from)
     }
@@ -109,14 +113,21 @@ impl HttpTimeoutOptions {
     /// Validates timeout values while retaining structured argument errors.
     ///
     /// # Errors
-    /// Returns an argument error for the first timeout value that is zero.
+    /// Returns an argument error for the first zero timeout or an
+    /// unrepresentable response-header deadline.
     pub(super) fn validate_arguments(&self) -> ArgumentResult<()> {
         validate_positive_duration("connect_timeout", self.connect_timeout)?;
         validate_positive_duration("read_timeout", self.read_timeout)?;
         validate_positive_duration("response_header_timeout", self.response_header_timeout)?;
-        self.request_timeout.validate_some(|request_timeout| {
-            validate_positive_duration("request_timeout", request_timeout)
-        })?;
+        require_that(
+            self.response_header_timeout,
+            "response_header_timeout",
+            |timeout| response_header_deadline_is_representable(*timeout),
+            "supported_deadline",
+            "Timeout value exceeds the supported deadline range",
+        )?;
+        self.request_timeout
+            .validate_some(|request_timeout| validate_positive_duration("request_timeout", request_timeout))?;
         Ok(())
     }
 

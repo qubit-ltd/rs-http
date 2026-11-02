@@ -385,6 +385,19 @@ fn test_http_request_timeout_setters_reject_zero_and_keep_previous_values() {
 }
 
 #[test]
+fn test_http_request_response_header_timeout_rejects_unrepresentable_deadline() {
+    let mut request = new_request(Method::GET, "/v1/unrepresentable-write-timeout");
+
+    let error = request
+        .set_response_header_timeout(Duration::MAX)
+        .expect_err("unrepresentable response-header deadline should be rejected");
+
+    assert_eq!(error.kind, HttpErrorKind::Other);
+    assert!(error.message.contains("response_header_timeout"));
+    assert_ne!(request.response_header_timeout(), Duration::MAX);
+}
+
+#[test]
 fn test_http_request_setters_update_resolved_url_for_base_url_and_ipv4_only() {
     let mut options = HttpClientOptions::default();
     options

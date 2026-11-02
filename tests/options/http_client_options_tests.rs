@@ -564,6 +564,78 @@ fn test_http_client_options_add_header_invalid_value_does_not_apply() {
 }
 
 #[test]
+fn test_http_client_options_header_errors_use_policy_snapshot() {
+    let policy = RedactionPolicy::default()
+        .to_builder()
+        .http(|http| {
+            let _ = http.query().raise("client_secret", Sensitivity::Secret);
+        })
+        .expect("the test policy input should be valid")
+        .build()
+        .expect("the test policy should build");
+    let mut options = HttpClientOptions::new();
+    options.log_redaction_policy = policy.clone();
+
+    let error = options
+        .add_header("https://example.test/?client_secret=synthetic-secret", "value")
+        .expect_err("URL-shaped header name should be rejected");
+    let batch_error = options
+        .add_headers(&[
+            ("x-valid", "value"),
+            ("https://example.test/?client_secret=synthetic-secret", "value"),
+        ])
+        .expect_err("invalid header in batch should be rejected");
+
+    assert_eq!(error.log_redactor.policy(), &policy);
+    assert_eq!(batch_error.log_redactor.policy(), &policy);
+    assert!(!format!("{error}").contains("synthetic-secret"));
+    assert!(!format!("{error:?}").contains("synthetic-secret"));
+    assert!(!format!("{batch_error}").contains("synthetic-secret"));
+}
+
+#[test]
+fn test_http_client_options_rejects_case_insensitive_header_collisions() {
+    for first_value in ["same-value", "first-secret"] {
+        let second_value = if first_value == "same-value" {
+            "same-value"
+        } else {
+            "second-secret"
+        };
+        for (first_name, second_name) in [("Authorization", "authorization"), ("X-Tenant", "x-tenant")] {
+            let mut json_config = Config::new();
+            json_config
+                .set(
+                    "http.default_headers",
+                    format!(r#"{{"{first_name}":"{first_value}","{second_name}":"{second_value}"}}"#),
+                )
+                .expect("JSON headers config should be accepted");
+            let json_error =
+                HttpClientOptions::from_config(&json_config.section("http").expect("HTTP section should exist"))
+                    .expect_err("case-insensitive JSON header collision must be rejected");
+
+            let mut subkey_config = Config::new();
+            subkey_config
+                .set(format!("http.default_headers.{first_name}"), first_value)
+                .expect("first header config should be accepted");
+            subkey_config
+                .set(format!("http.default_headers.{second_name}"), second_value)
+                .expect("second header config should be accepted");
+            let subkey_error =
+                HttpClientOptions::from_config(&subkey_config.section("http").expect("HTTP section should exist"))
+                    .expect_err("case-insensitive sub-key header collision must be rejected");
+
+            for error in [json_error, subkey_error] {
+                assert_eq!(error.kind, HttpConfigErrorKind::InvalidValue);
+                assert_eq!(error.path, format!("http.default_headers.{second_name}"));
+                assert!(error.message.contains(&second_name.to_ascii_lowercase()));
+                assert!(!error.message.contains(first_value));
+                assert!(!error.message.contains(second_value));
+            }
+        }
+    }
+}
+
+#[test]
 fn test_http_client_options_log_redaction_section() {
     let mut config = Config::new();
     config

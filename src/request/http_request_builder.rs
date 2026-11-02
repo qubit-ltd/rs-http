@@ -30,6 +30,7 @@ use super::http_request_body::HttpRequestBody;
 use super::http_request_retry_override::HttpRequestRetryOverride;
 use super::parse_header;
 use super::validate_positive_timeout;
+use super::validate_response_header_timeout;
 use crate::AsyncHttpHeaderInjector;
 use crate::HttpCancellationToken;
 use crate::HttpClient;
@@ -218,7 +219,8 @@ impl HttpRequestBuilder {
     /// # Returns
     /// `Ok(self)` or [`HttpError`] if name/value are invalid.
     pub fn header(mut self, name: &str, value: &str) -> HttpResult<Self> {
-        let (header_name, header_value) = parse_header(name, value)?;
+        let (header_name, header_value) =
+            parse_header(name, value).map_err(|error| Self::attach_log_redactor(error, &self.log_redactor))?;
         self.headers.insert(header_name, header_value);
         Ok(self)
     }
@@ -334,9 +336,12 @@ impl HttpRequestBuilder {
     where
         T: Serialize,
     {
-        let bytes = JsonEncoder::with_limits(limits)
-            .to_vec(value)
-            .map_err(|error| HttpError::decode("Failed to encode JSON body").with_source(error))?;
+        let bytes = JsonEncoder::with_limits(limits).to_vec(value).map_err(|error| {
+            Self::attach_log_redactor(
+                HttpError::decode("Failed to encode JSON body").with_source(error),
+                &self.log_redactor,
+            )
+        })?;
         if !self.headers.contains_key(CONTENT_TYPE) {
             self.headers
                 .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
@@ -389,35 +394,51 @@ impl HttpRequestBuilder {
     /// boundary.
     pub fn multipart_body(mut self, body: impl Into<Bytes>, boundary: &str) -> HttpResult<Self> {
         if !content_type::is_valid_multipart_boundary(boundary) {
-            return Err(HttpError::other(
-                "Invalid multipart boundary for multipart_body: expected 1 to 70 unquoted MIME-safe ASCII characters",
+            return Err(Self::attach_log_redactor(
+                HttpError::other(
+                    "Invalid multipart boundary for multipart_body: expected 1 to 70 unquoted MIME-safe ASCII characters",
+                ),
+                &self.log_redactor,
             ));
         }
         if let Some(existing) = self.headers.get(CONTENT_TYPE) {
             let existing = existing.to_str().map_err(|error| {
-                HttpError::other(format!("Existing multipart Content-Type must be valid UTF-8: {error}"))
+                Self::attach_log_redactor(
+                    HttpError::other(format!("Existing multipart Content-Type must be valid UTF-8: {error}")),
+                    &self.log_redactor,
+                )
             })?;
             if !content_type::is_multipart(existing) {
-                return Err(HttpError::other(
-                    "Existing Content-Type must be multipart when using multipart_body",
+                return Err(Self::attach_log_redactor(
+                    HttpError::other("Existing Content-Type must be multipart when using multipart_body"),
+                    &self.log_redactor,
                 ));
             }
-            let declares_boundary = content_type::has_parameter_name(existing, "boundary")
-                .ok_or_else(|| HttpError::other("Existing multipart Content-Type boundary is malformed or invalid"))?;
+            let declares_boundary = content_type::has_parameter_name(existing, "boundary").ok_or_else(|| {
+                Self::attach_log_redactor(
+                    HttpError::other("Existing multipart Content-Type boundary is malformed or invalid"),
+                    &self.log_redactor,
+                )
+            })?;
             if let Some(existing_boundary) = content_type::parameter(existing, "boundary") {
                 if !content_type::is_valid_multipart_boundary(&existing_boundary) {
-                    return Err(HttpError::other(
-                        "Existing multipart Content-Type boundary is malformed or invalid",
+                    return Err(Self::attach_log_redactor(
+                        HttpError::other("Existing multipart Content-Type boundary is malformed or invalid"),
+                        &self.log_redactor,
                     ));
                 }
                 if existing_boundary != boundary {
-                    return Err(HttpError::other(format!(
-                        "Existing multipart Content-Type boundary '{existing_boundary}' does not match multipart_body boundary '{boundary}'"
-                    )));
+                    return Err(Self::attach_log_redactor(
+                        HttpError::other(format!(
+                            "Existing multipart Content-Type boundary '{existing_boundary}' does not match multipart_body boundary '{boundary}'"
+                        )),
+                        &self.log_redactor,
+                    ));
                 }
             } else if declares_boundary {
-                return Err(HttpError::other(
-                    "Existing multipart Content-Type boundary is malformed or invalid",
+                return Err(Self::attach_log_redactor(
+                    HttpError::other("Existing multipart Content-Type boundary is malformed or invalid"),
+                    &self.log_redactor,
                 ));
             } else {
                 let value = existing.trim().trim_end_matches(';').trim_end();
@@ -477,8 +498,11 @@ impl HttpRequestBuilder {
         let limits = match limits.max_output_bytes() {
             Some(maximum) => {
                 let Some(record_output_bytes) = maximum.checked_sub(newline_bytes) else {
-                    return Err(HttpError::decode(
-                        "Failed to encode NDJSON body: output budget is smaller than required line terminators",
+                    return Err(Self::attach_log_redactor(
+                        HttpError::decode(
+                            "Failed to encode NDJSON body: output budget is smaller than required line terminators",
+                        ),
+                        &self.log_redactor,
                     ));
                 };
                 limits.into_builder().max_output_bytes(record_output_bytes).build()
@@ -488,9 +512,12 @@ impl HttpRequestBuilder {
         let mut encoder = JsonEncoder::new(JsonEncodeSession::from_limits(limits));
         let mut payload = Vec::new();
         for record in records {
-            let line = encoder
-                .to_vec(record)
-                .map_err(|error| HttpError::decode("Failed to encode NDJSON record").with_source(error))?;
+            let line = encoder.to_vec(record).map_err(|error| {
+                Self::attach_log_redactor(
+                    HttpError::decode("Failed to encode NDJSON record").with_source(error),
+                    &self.log_redactor,
+                )
+            })?;
             payload.extend_from_slice(&line);
             payload.push(b'\n');
         }
@@ -518,9 +545,14 @@ impl HttpRequestBuilder {
     /// # Errors
     /// Returns [`HttpError`] when `timeout` is zero.
     pub fn request_timeout(mut self, timeout: Duration) -> HttpResult<Self> {
-        validate_positive_timeout("request_timeout", timeout)?;
+        validate_positive_timeout("request_timeout", timeout)
+            .map_err(|error| Self::attach_log_redactor(error, &self.log_redactor))?;
         self.request_timeout = Some(timeout);
         Ok(self)
+    }
+
+    fn attach_log_redactor(error: HttpError, log_redactor: &Redactor) -> HttpError {
+        error.with_log_redactor(log_redactor.clone())
     }
 
     /// Overrides the asynchronous preparation-to-response-header deadline for
@@ -534,9 +566,11 @@ impl HttpRequestBuilder {
     /// `Ok(self)` for chaining.
     ///
     /// # Errors
-    /// Returns [`HttpError`] when `timeout` is zero.
+    /// Returns [`HttpError`] when `timeout` is zero or cannot be represented
+    /// as a platform deadline.
     pub fn response_header_timeout(mut self, timeout: Duration) -> HttpResult<Self> {
-        validate_positive_timeout("response_header_timeout", timeout)?;
+        validate_response_header_timeout(timeout)
+            .map_err(|error| Self::attach_log_redactor(error, &self.log_redactor))?;
         self.response_header_timeout = timeout;
         Ok(self)
     }
@@ -552,7 +586,8 @@ impl HttpRequestBuilder {
     /// # Errors
     /// Returns [`HttpError`] when `timeout` is zero.
     pub fn read_timeout(mut self, timeout: Duration) -> HttpResult<Self> {
-        validate_positive_timeout("read_timeout", timeout)?;
+        validate_positive_timeout("read_timeout", timeout)
+            .map_err(|error| Self::attach_log_redactor(error, &self.log_redactor))?;
         self.read_timeout = timeout;
         Ok(self)
     }
