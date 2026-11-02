@@ -94,7 +94,7 @@ Default behavior:
 | Item | Default |
 | --- | --- |
 | `base_url` | None; use an explicit absolute URL, or set a request/client base URL for relative paths |
-| `origin_policy` | `SameOrigin`; a configured base URL also restricts absolute targets, and redirects cannot cross the initial origin |
+| `origin_policy` | `SameOrigin`; a configured base URL also restricts absolute targets, and redirects cannot cross the initial origin. `AnyOrigin` permits cross-origin absolute targets and redirects |
 | Connect timeout | 10 seconds |
 | Read timeout | 120 seconds |
 | Response-header/send-phase timeout | 120 seconds |
@@ -138,7 +138,7 @@ options.retry.method_policy = HttpRetryMethodPolicy::IdempotentOnly;
 let client = HttpClientBuilder::new().create(options)?;
 ```
 
-`create` validates options before building the client. Validation includes: all timeout values must be greater than zero; enabled proxies require a non-empty host and non-zero port; a proxy password requires a username; `logging.body_size_limit` must be greater than zero when request or response body logging is enabled; `retry.max_attempts` must be greater than zero; `error_response_preview_limit` must be greater than zero; `user_agent` must be non-empty and a valid header value; SSE line and frame limits must be greater than zero. Backoff and jitter values are validated when constructing `BackoffPolicy`.
+`create` validates options before building the client. Validation includes: all timeout values must be greater than zero; `response_header_timeout` must also fit in the platform's `Instant` deadline range; enabled proxies require a non-empty host and non-zero port; a proxy password requires a username; `logging.body_size_limit` must be greater than zero when request or response body logging is enabled; `retry.max_attempts` must be greater than zero; `error_response_preview_limit` must be greater than zero; `user_agent` must be non-empty and a valid header value; SSE line and frame limits must be greater than zero. Backoff and jitter values are validated when constructing `BackoffPolicy`.
 
 When changing options after registering header injectors or interceptors, rebuild through the existing client:
 
@@ -191,7 +191,7 @@ Common configuration keys:
 | Key | Description |
 | --- | --- |
 | `base_url` | Base URL used to resolve relative request paths |
-| `origin_policy` | `same_origin` (default) or `any_origin`; other values fail with a scoped configuration error |
+| `origin_policy` | `same_origin` (default) restricts requests and redirects to the initial origin; `any_origin` permits cross-origin absolute targets and redirects |
 | `timeouts.connect_timeout` | Connect timeout |
 | `timeouts.read_timeout` | Per-read wait timeout for body/stream reads |
 | `timeouts.response_header_timeout` | Cumulative asynchronous preparation and send deadline through response headers |
@@ -229,7 +229,7 @@ config.set("http.default_headers.authorization", "Bearer token".to_string())?;
 config.set("http.default_headers.x-request-id", "abc-123".to_string())?;
 ```
 
-`default_headers` can also be a JSON map string; parsing fails if the JSON map and `default_headers.*` subkeys are both configured:
+`default_headers` can also be a JSON map string; parsing fails if the JSON map and `default_headers.*` subkeys are both configured. Header names are case-insensitive, so two configured names that differ only by case (for example, `Authorization` and `authorization`) are rejected in either form instead of overwriting one another:
 
 ```rust
 config.set(
@@ -523,7 +523,7 @@ async fn read_sse_examples(client: &qubit_http::HttpClient) -> qubit_http::HttpR
 }
 ```
 
-An unbuffered backend body has one ownership path. After `bytes`, `text`, or `json` buffers the full payload, those readers can reuse the cache and each `stream()` call returns a new one-chunk stream while leaving the response buffered. If you call `stream` first while the body is not cached, the backend handle moves into that stream—you must finish reading there; later `bytes` / `text` / `json` return `ResponseBodyAlreadyConsumed`. `sse_messages` / `sse_chunks` also use the stream path and **consume** the `HttpResponse` by value.
+An unbuffered backend body has one ownership path. After `bytes`, `text`, or `json` buffers the full payload, those readers can reuse the cache and each `stream()` call returns a new one-chunk stream while leaving the response buffered. If you call `stream` first while the body is not cached, the backend handle moves into that stream—you must finish reading there; later `bytes` / `text` / `json` return `ResponseBodyAlreadyConsumed`. If cancellation or a read error interrupts an unbuffered stream, the error is retained; do not assume the body can be read again. `sse_messages` / `sse_chunks` also use the stream path and **consume** the `HttpResponse` by value.
 
 | Safe | Avoid |
 | --- | --- |
@@ -557,7 +557,7 @@ For non-2xx errors, the redacted preview and retained raw body have independent 
 | Group | Error kinds | Typical meaning |
 | --- | --- | --- |
 | URL / configuration | `InvalidUrl`, `BuildClient`, `ProxyConfig` | URL resolution failed, client construction failed, or proxy options are invalid |
-| Timeout / network | `ConnectTimeout`, `ReadTimeout`, `ResponseHeaderTimeout`, `RequestTimeout`, `Transport` | Connect/read/write/whole-request timeout or lower-level transport failure |
+| Timeout / network | `ConnectTimeout`, `ReadTimeout`, `ResponseHeaderTimeout`, `RequestTimeout`, `Transport` | `ConnectTimeout` is a timeout reported for the connection phase; other send-phase timeouts remain `RequestTimeout`, and non-timeout connection failures remain `Transport` |
 | HTTP status | `Status` | A non-2xx status code was returned |
 | Decoding / SSE | `Decode`, `SseProtocol`, `SseDecode` | Body decoding failed, SSE framing was invalid, or an SSE JSON chunk could not be decoded |
 | Retry layer | `RetryBudgetExceeded` and `HttpRetryDiagnostics` | Retry budget or terminal-policy diagnostics |
@@ -689,7 +689,9 @@ Install the application default with
 `HttpClientOptions::new()` snapshots the current default redactor, including an
 application default installed before construction. The client creates one
 `Redactor` snapshot and preserves it through requests, responses, retries,
-interceptors, errors, and SSE diagnostics. For migration, configure one
+interceptors, errors, and SSE diagnostics. Request-builder and options
+preflight errors use the snapshot held by their owning object, even if the
+application default changes later. For migration, configure one
 `RedactionPolicyBuilder` through `fields()`, `http()`, and `limits()`;
 `qubit_http` does not re-export these redaction types.
 
@@ -824,11 +826,12 @@ while let Some(item) = messages.next().await {
 
 Protocol behavior:
 
-- Splits by `\n` and strips trailing `\r`.
+- Recognizes CR, LF, and CRLF as line endings.
 - Each line must be UTF-8, otherwise `HttpErrorKind::SseProtocol` is returned.
 - A blank line is the only event-dispatch boundary. A UTF-8 BOM is ignored only when it begins the first line; BOM characters elsewhere are preserved.
 - Comment lines starting with `:` are ignored.
 - Unknown fields are ignored.
+- `retry:` is accepted only when its value is a non-empty sequence of ASCII digits that fits in `u64`; other values are ignored without replacing a previous valid retry delay.
 - `retry:` and control-only `id:` frames are internal control records; they are not exposed as `SseMessage` values.
 - EOF does not dispatch an incomplete data-bearing event; complete retry and control-only id records retain their existing control behavior. Servers must terminate each event with a blank line, including the final event; closing the connection does not complete a data frame.
 - Default line/frame limits come from `HttpClientOptions`. To override them for one response only, chain `sse_max_line_bytes` / `sse_max_frame_bytes` with `sse_messages()` on the same expression, as shown under “Configure `sse_messages` options” above.
@@ -951,8 +954,9 @@ The table below lists every configuration key supported by `HttpClientOptions::f
 | `log_redaction.excluded_sensitive_headers` | String list of exact header names explicitly allowed to remain visible |
 | `log_redaction.excluded_sensitive_query_params` | String list of exact query-parameter names explicitly allowed to remain visible |
 | `log_redaction.excluded_sensitive_body_fields` | String list of exact structured-body field names explicitly allowed to remain visible |
-| `default_headers` | JSON map string of default request headers; cannot be combined with `default_headers.<name>` |
-| `default_headers.<name>` | One default request header subkey; cannot be combined with the `default_headers` JSON map |
+| `origin_policy` | `same_origin` (default) restricts requests and redirects to the initial origin; `any_origin` permits cross-origin absolute targets and redirects |
+| `default_headers` | JSON map string of default request headers; cannot be combined with `default_headers.<name>`; case-insensitive duplicate names are rejected |
+| `default_headers.<name>` | One default request header subkey; cannot be combined with the `default_headers` JSON map; case-insensitive duplicate names are rejected |
 | `json.max_depth` | Maximum JSON nesting depth; defaults to `128` |
 | `json.max_nodes` | Maximum total JSON nodes; defaults to `100000` |
 | `json.max_sequence_items` | Maximum items in one JSON array; defaults to `100000` |

@@ -92,7 +92,7 @@ let client = qubit_http::HttpClientBuilder::new().create_default()?;
 | 项目 | 默认值 |
 | --- | --- |
 | `base_url` | 无；可以直接使用显式绝对 URL，也可以设置 base URL 后使用相对路径 |
-| `origin_policy` | 默认 `SameOrigin`；设置 base URL 后，绝对目标也须同源，重定向不能越过初始源 |
+| `origin_policy` | 默认 `SameOrigin`；设置 base URL 后，绝对目标也须同源，重定向不能越过初始源。`AnyOrigin` 允许访问跨源绝对 URL 和跨源重定向 |
 | 连接超时 | 10 秒 |
 | 读超时 | 120 秒 |
 | 响应头／发送阶段超时 | 120 秒 |
@@ -136,7 +136,7 @@ options.retry.method_policy = HttpRetryMethodPolicy::IdempotentOnly;
 let client = HttpClientBuilder::new().create(options)?;
 ```
 
-`create` 会先执行校验。常见校验包括：超时必须大于 0；启用代理时必须有非空 host 和非 0 port；只有设置 username 时才能设置 password；日志记录请求体或响应体时 `body_size_limit` 必须大于 0；`retry.max_attempts` 必须大于 0；`error_response_preview_limit` 必须大于 0；`user_agent` 不能为空并且必须是合法 header value；SSE 行/帧上限必须大于 0。backoff 与 jitter 在构造 `BackoffPolicy` 时完成校验。
+`create` 会先执行校验。常见校验包括：超时必须大于 0；`response_header_timeout` 还必须能表示为当前平台 `Instant` 的截止时间；启用代理时必须有非空 host 和非 0 port；只有设置 username 时才能设置 password；日志记录请求体或响应体时 `body_size_limit` 必须大于 0；`retry.max_attempts` 必须大于 0；`error_response_preview_limit` 必须大于 0；`user_agent` 不能为空并且必须是合法 header value；SSE 行/帧上限必须大于 0。backoff 与 jitter 在构造 `BackoffPolicy` 时完成校验。
 
 如果已注册请求头注入器或拦截器，修改选项时应从现有客户端重建：
 
@@ -185,7 +185,7 @@ let client = HttpClientBuilder::new()
 | 键 | 说明 |
 | --- | --- |
 | `base_url` | 相对请求路径的基础 URL |
-| `origin_policy` | `same_origin`（默认）或 `any_origin`；其它值会得到包含配置路径的错误 |
+| `origin_policy` | `same_origin`（默认）限制请求和重定向处于初始源；`any_origin` 允许跨源绝对 URL 和跨源重定向 |
 | `timeouts.connect_timeout` | 连接超时 |
 | `timeouts.read_timeout` | 读取响应体或流时的单次等待超时 |
 | `timeouts.response_header_timeout` | 从异步准备到收到响应头的累计期限 |
@@ -216,7 +216,7 @@ let client = HttpClientBuilder::new()
 
 完整配置键见文末「配置参考」。
 
-`default_headers` 支持两种形式，但不能同时使用。子键形式如下：
+`default_headers` 支持两种形式，但不能同时使用。header 名称不区分大小写，因此两种形式中只差大小写的名称（例如 `Authorization` 与 `authorization`）都会被拒绝，不会互相覆盖。子键形式如下：
 
 ```rust
 config.set("http.default_headers.authorization", "Bearer token".to_string())?;
@@ -517,7 +517,7 @@ async fn read_sse_examples(client: &qubit_http::HttpClient) -> qubit_http::HttpR
 }
 ```
 
-未缓存的后端 body 只有一条所有权路径。调用 `bytes`、`text` 或 `json` 后，完整 body 会被缓存，这些读取方法可以复用缓存；每次 `stream()` 都会返回新的单块流，同时保留响应缓存。若未缓存时先调用 `stream`，底层句柄已交给返回的流，须通过该流读完 body；此时再调用 `bytes` / `text` / `json` 会返回 `ResponseBodyAlreadyConsumed`。`sse_messages` / `sse_chunks` 也基于流读取，并按值消费 `HttpResponse`。
+未缓存的后端 body 只有一条所有权路径。调用 `bytes`、`text` 或 `json` 后，完整 body 会被缓存，这些读取方法可以复用缓存；每次 `stream()` 都会返回新的单块流，同时保留响应缓存。若未缓存时先调用 `stream`，底层句柄已交给返回的流，须通过该流读完 body；此时再调用 `bytes` / `text` / `json` 会返回 `ResponseBodyAlreadyConsumed`。若取消或读取错误中断了未缓存流，错误会被保留；不要假设之后还能重新读取 body。`sse_messages` / `sse_chunks` 也基于流读取，并按值消费 `HttpResponse`。
 
 | 可以 | 避免 |
 | --- | --- |
@@ -551,7 +551,7 @@ async fn read_sse_examples(client: &qubit_http::HttpClient) -> qubit_http::HttpR
 | 分组 | 错误类型 | 典型含义 |
 | --- | --- | --- |
 | URL / 配置 | `InvalidUrl`, `BuildClient`, `ProxyConfig` | URL 无法解析、客户端构建失败或代理配置非法 |
-| 超时 / 网络 | `ConnectTimeout`, `ReadTimeout`, `ResponseHeaderTimeout`, `RequestTimeout`, `Transport` | 连接、读取、写入、整体请求超时，或底层传输失败 |
+| 超时 / 网络 | `ConnectTimeout`, `ReadTimeout`, `ResponseHeaderTimeout`, `RequestTimeout`, `Transport` | `ConnectTimeout` 表示后端报告的连接阶段超时；其它发送阶段超时仍为 `RequestTimeout`，非超时连接失败仍为 `Transport` |
 | HTTP 状态 | `Status` | 收到非 2xx 状态码 |
 | 解码 / SSE | `Decode`, `SseProtocol`, `SseDecode` | 响应体解码失败、SSE 协议错误或 SSE JSON chunk 解码失败 |
 | 重试层 | `RetryBudgetExceeded` 与 `HttpRetryDiagnostics` | 重试预算或终止策略诊断 |
@@ -671,7 +671,8 @@ HTTP 日志使用 `tracing::trace!`。必须同时满足：
 应用启动时使用 `Redactor::replace_application_default(Redactor::new(policy))` 安装默认 redactor；`RedactionPolicy::default()` 始终
 返回固定标准策略。`HttpClientOptions::new()` 会取得构造时默认 redactor 的快照，包括此前已安装的应用策略。client 创建一份
 `Redactor` 快照，并在 request、response、retry、interceptor、error 和 SSE 诊断中
-保持该快照。使用 `fields()`、`http()` 和 `limits()` 配置统一的
+保持该快照。request builder 和 options 的前置错误使用所属对象保存的策略快照，
+即使应用默认策略后来发生变化也如此。使用 `fields()`、`http()` 和 `limits()` 配置统一的
 `RedactionPolicyBuilder`；`qubit_http` 不再重导出这些脱敏类型。
 
 示例：
@@ -804,11 +805,12 @@ while let Some(item) = messages.next().await {
 
 协议行为：
 
-- 按 `\n` 分行，剥离行尾 `\r`。
+- 支持 CR、LF 和 CRLF 三种换行符。
 - 每行必须是 UTF-8，否则返回 `HttpErrorKind::SseProtocol`。
 - 只有空行会派发事件。UTF-8 BOM 仅在首行开头时忽略一个，正文其它位置的 BOM 会保留。
 - 注释行（以 `:` 开头）忽略。
 - 未知字段忽略。
+- `retry:` 只有非空且完全由 ASCII 数字组成、并能解析为 `u64` 时才生效；其它值会被忽略，也不会覆盖此前有效的延迟提示。
 - `retry:` 和 control-only `id:` 帧只作为内部控制记录使用，不会作为 `SseMessage` 暴露。
 - EOF 不会派发未完成的数据事件；完整的 retry 和 control-only id 控制记录仍按既有规则处理。服务端必须用空行结束每个事件，包括最后一个事件；关闭连接不能代替数据帧终结。
 - 单行和单帧上限默认来自 `HttpClientOptions`；若本次响应需要不同上限，在调用 `sse_messages` 之前将 `sse_max_line_bytes` / `sse_max_frame_bytes` 与 `sse_messages()` 链在同一条表达式上即可（完整示例见本节上文「配置 `sse_messages` 选项」）。
@@ -932,8 +934,9 @@ while let Some(item) = events.next().await {
 | `log_redaction.excluded_sensitive_headers` | 显式允许保持可见的精确 header 名称字符串列表 |
 | `log_redaction.excluded_sensitive_query_params` | 显式允许保持可见的精确 query 参数名称字符串列表 |
 | `log_redaction.excluded_sensitive_body_fields` | 显式允许保持可见的精确结构化 body 字段名称字符串列表 |
-| `default_headers` | 默认请求 header 的 JSON map 字符串；不能与 `default_headers.<name>` 同时使用 |
-| `default_headers.<name>` | 一个默认请求 header 子键；不能与 `default_headers` JSON map 同时使用 |
+| `origin_policy` | `same_origin`（默认）限制请求和重定向处于初始源；`any_origin` 允许跨源绝对 URL 和跨源重定向 |
+| `default_headers` | 默认请求 header 的 JSON map 字符串；不能与 `default_headers.<name>` 同时使用；大小写无关的重复名称会被拒绝 |
+| `default_headers.<name>` | 一个默认请求 header 子键；不能与 `default_headers` JSON map 同时使用；大小写无关的重复名称会被拒绝 |
 | `json.max_depth` | JSON 最大嵌套深度；默认 `128` |
 | `json.max_nodes` | JSON 最大节点总数；默认 `100000` |
 | `json.max_sequence_items` | 单个 JSON array 的最大元素数；默认 `100000` |
