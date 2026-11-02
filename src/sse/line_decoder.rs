@@ -24,17 +24,23 @@ use crate::HttpResult;
 /// Pin-boxed stream of newline-delimited text lines or errors.
 pub type SseLineStream = Pin<Box<dyn Stream<Item = HttpResult<String>> + Send>>;
 
-/// Decodes the buffered bytes as UTF-8 and clears the buffer, including when
-/// decoding fails.
+/// Removes the UTF-8 BOM from the first line when present, checks the remaining
+/// bytes against the line limit, decodes them as UTF-8, and clears the buffer.
 ///
 /// # Parameters
 /// - `buffer`: Current line bytes without the line terminator.
+/// - `first_line`: Whether this is the first line; it is set to `false` on
+///   every call. A BOM is removed only from this line.
+/// - `max_line_bytes`: Maximum number of bytes allowed after removing the
+///   first-line BOM, if present.
 ///
 /// # Returns
 /// The decoded UTF-8 line text.
 ///
 /// # Errors
-/// Returns an SSE protocol error when the buffered bytes are not valid UTF-8.
+/// Returns an SSE protocol error if the bytes exceed `max_line_bytes` after
+/// first-line BOM removal or are not valid UTF-8. The buffer is cleared on
+/// success and on either error.
 fn take_buffered_line(buffer: &mut BytesMut, first_line: &mut bool, max_line_bytes: usize) -> HttpResult<String> {
     if *first_line {
         *first_line = false;

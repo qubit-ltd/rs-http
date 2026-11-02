@@ -8,9 +8,11 @@
 //! HTTP client: builds requests, applies defaults and interceptors, executes
 //! them with optional retry, and exposes SSE helpers with reconnect.
 //!
-//! Single-shot execution is [`HttpClient::execute`] /
-//! [`HttpClient::execute_once`]; retry policy comes from
-//! [`crate::HttpClientOptions::retry`] unless overridden per request.
+//! The public execution entry point is [`HttpClient::execute`]. It selects a
+//! single attempt or automatic retry from client policy and per-request
+//! overrides. Use [`HttpRequestBuilder::disable_retry`] to disable this crate's
+//! automatic retry for one request; `execute_once` is an internal
+//! single-attempt implementation.
 
 use std::error::Error;
 use std::time::Duration;
