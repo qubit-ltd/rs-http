@@ -143,12 +143,15 @@ let client = HttpClientBuilder::new().create(options)?;
 - 内置请求重试只覆盖返回 `HttpResponse` 之前的失败。返回后的流式响应体错误会交给调用方处理。
 - SSE 重连使用独立 API：`HttpClient::execute_sse_with_reconnect(...)`。
 - 已缓存的响应体可重复读取：重复调用 `bytes` / `text` / `json`，以及基于缓存创建 `stream()`，不会移交或清空缓存。
+- SSE 自动重连在空游标重置后省略 `Last-Event-ID`，持续采用最新有效的服务端 `retry:` 直到收到新有效值，并将 HTTP 204 视为正常结束。这不代表完整实现 EventSource。
 - 错误预览与保留 raw body 使用独立限额；预览截断不会将完整 raw body 标记为不完整。
 - SSE data 事件只在空行处派发；EOF 会丢弃未完成帧，服务端必须用空行结束最后一个事件。流起始处的一个 BOM 会被忽略。`AllowEof` 允许完整事件流没有 done marker，但不会放宽 framing；`RequireDoneMarker` 只接受完整事件中的 marker。
 - 自动 SSE 解码诊断不包含原始 event 或 cursor；Lenient 日志只记录是否存在及字节数。
 - 请求与重定向默认使用 `SameOrigin`；确需跨源时显式设为 `AnyOrigin`。配置键 `origin_policy` 接受 `same_origin` 或 `any_origin`。
 - JSON SSE 调用方可以通过 `SseCompletionPolicy::RequireDoneMarker` 要求显式完成标记，
   详见 [SSE 指南](doc/user_guide.zh_CN.md#sse-json-chunk)。
+
+自动 SSE 重连的行为变化：空游标重置后不再发送该请求头；服务端 `retry:` 会持续生效，直到新有效值替换（可用 `honor_server_retry = false` 忽略服务端提示）；204 会正常结束流，调用方应将流结束视为正常停流。HTTP `Retry-After` 仍是只作用于单次尝试的提示，遵循独立的 HTTP 退避策略和上限，与 SSE retry 上限分开。
 
 ## 重试时间边界
 

@@ -430,9 +430,10 @@ body 可用方式：
 
 ### 使用示例
 
-**整包读取（`bytes` / `text` / `json`）**：三者都会把完整 body 读入并缓存；下面用三次独立请求各演示一种（同一响应上不要混用多种整包/流式路径）。
+**整包读取（`bytes` / `text` / `json`）**：三者都会把完整 body 读入并缓存；缓存可供整包读取和 `stream()` 复用，成功缓存后仍可创建流。下面的 `response` 来自本节已有的 `client.execute(...).await?`，并在同一个异步函数内连续使用：
 
 ```rust
+use futures_util::StreamExt;
 use http::Method;
 use serde::Deserialize;
 
@@ -444,10 +445,15 @@ struct VersionInfo {
 async fn read_whole_body_examples(
     client: &qubit_http::HttpClient,
 ) -> qubit_http::HttpResult<()> {
-    let mut r1 = client
+    let mut response = client
         .execute(client.request(Method::GET, "/bytes").build())
         .await?;
-    let _raw = r1.bytes().await?;
+    let expected = response.bytes().await?;
+    let mut cached_stream = response.stream()?;
+    let chunk = cached_stream.next().await.transpose()?;
+    assert_eq!(chunk.as_ref(), Some(&expected));
+    assert!(cached_stream.next().await.is_none());
+    assert_eq!(response.bytes().await?, expected);
 
     let mut r2 = client
         .execute(client.request(Method::GET, "/hello.txt").build())
@@ -462,7 +468,7 @@ async fn read_whole_body_examples(
 }
 ```
 
-**流式字节（`stream`）**：在未对同一响应调用过 `bytes` / `text` / `json` 的前提下，通过返回的流按块读取；`?` 在拿到流时展开，例如请求上的取消 token 已在开始读取 body 前触发时会在这里返回错误。
+**流式字节（`stream`）**：对未缓存的 body，`stream()` 会把后端 body 移交给返回的流，之后无法再取回以进行整包读取；`?` 在拿到流时展开，例如请求上的取消 token 已在开始读取 body 前触发时会在这里返回错误。取消或已有的 body 读取错误仍会返回错误，不能通过其他读取方式绕过。以下独立请求示例展示未缓冲的网络流式读取，不是缓存内存示例。
 
 ```rust
 use futures_util::StreamExt;
@@ -517,7 +523,7 @@ async fn read_sse_examples(client: &qubit_http::HttpClient) -> qubit_http::HttpR
 }
 ```
 
-未缓存的后端 body 只有一条所有权路径。调用 `bytes`、`text` 或 `json` 后，完整 body 会被缓存，这些读取方法可以复用缓存；每次 `stream()` 都会返回新的单块流，同时保留响应缓存。若未缓存时先调用 `stream`，底层句柄已交给返回的流，须通过该流读完 body；此时再调用 `bytes` / `text` / `json` 会返回 `ResponseBodyAlreadyConsumed`。若取消或读取错误中断了未缓存流，错误会被保留；不要假设之后还能重新读取 body。`sse_messages` / `sse_chunks` 也基于流读取，并按值消费 `HttpResponse`。
+成功调用 `bytes`、`text` 或 `json` 后，缓存可供整包读取和新的单块 `stream()` 复用。未缓存的后端 body 会移交给流，之后无法再取回以进行整包读取；取消或已有的 body 读取错误仍会返回错误。`sse_messages` / `sse_chunks` 也基于流读取，并按值消费 `HttpResponse`。
 
 | 可以 | 避免 |
 | --- | --- |
@@ -919,7 +925,7 @@ while let Some(item) = events.next().await {
 }
 ```
 
-默认重连配置为 `retry.max_attempts = 4`（即最多重连 3 次），使用 `initial=1s`、`max=30s`、`multiplier=2.0` 且无 jitter 的指数 `BackoffPolicy`，并在 EOF 后重连、尊重服务端 `retry:`。服务端 `retry:` 会被限制到 `server_retry_max_delay`；若该字段为 `None`，则从 backoff policy 的最大值推导，无法推导时使用 30 秒。这个上限只作用于 SSE `retry:` 字段。可重连的 429/5xx 握手错误是否采用解析出的 HTTP 提示，由最终请求的 `honor_retry_after` 偏好决定；用户配置的退避上限和重连预算仍然有效。`apply_jitter_to_server_retry` 默认开启；只有传入的 `RetryPolicy` 配置了 jitter 时，服务端给出的延迟才会被扰动。重连时会复用原始请求，并禁用内层 HTTP 自动重试，避免 HTTP 重试和 SSE 重连相乘；如果之前收到过 SSE `id:`，下一次请求会带上 `Last-Event-ID` header。`execute_sse_with_reconnect` 会要求响应 `Content-Type` 为 `text/event-stream`。SSE 解码错误会补充响应 method、原始请求 URL 和 status，同时保留更具体的原有上下文与 source。取消错误不会触发重连；SSE 协议错误默认也不会重连；超时、transport、429/5xx 等 retryable 错误，以及包含 unexpected EOF 语义的错误可触发重连。
+默认重连配置为 `retry.max_attempts = 4`（即最多重连 3 次），使用 `initial=1s`、`max=30s`、`multiplier=2.0` 且无 jitter 的指数 `BackoffPolicy`，并在 EOF 后重连、尊重服务端 `retry:`。最新有效的 `retry:` 会持续生效，直到新有效值替换；可用 `honor_server_retry = false` 忽略服务端提示。服务端 `retry:` 会被限制到 `server_retry_max_delay`；若该字段为 `None`，则从 backoff policy 的最大值推导，无法推导时使用 30 秒。这个上限只作用于 SSE `retry:` 字段。可重连的 429/5xx 握手错误是否采用解析出的 HTTP 提示，由最终请求的 `honor_retry_after` 偏好决定；HTTP `Retry-After` 仍是只影响单次尝试的提示，遵循独立退避策略上限和重连预算。`apply_jitter_to_server_retry` 默认开启；只有传入的 `RetryPolicy` 配置了 jitter 时，服务端给出的延迟才会被扰动。重连时会复用原始请求，并禁用内层 HTTP 自动重试；如果之前收到过 SSE `id:`，下一次请求会带上 `Last-Event-ID` header；空 ID 重置后下一次请求会省略该头。204 响应会正常结束重连流，不要求 `Content-Type`。这些是有意的行为变化：调用方应将 204 的流结束视为正常停流，服务端若要更改延迟应发送新的有效 `retry:`。本 API 不宣称完整实现 EventSource。其他成功状态仍要求 `Content-Type` 为 `text/event-stream`。SSE 解码错误会补充响应 method、原始请求 URL 和 status，同时保留更具体的原有上下文与 source。取消错误不会触发重连；SSE 协议错误默认也不会重连；超时、transport、429/5xx 等 retryable 错误，以及包含 unexpected EOF 语义的错误可触发重连。
 
 ## 配置参考
 

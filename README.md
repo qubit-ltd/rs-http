@@ -157,12 +157,15 @@ Use `HttpClient::rebuild_with_options` to change client options while retaining 
 - Built-in request retry covers failures before `HttpResponse` is returned. Stream body errors after return are surfaced to the caller.
 - SSE reconnect has a dedicated API: `HttpClient::execute_sse_with_reconnect(...)`.
 - Cached response bodies remain reusable: repeated `bytes` / `text` / `json` reads and cached `stream()` calls do not consume the cache.
+- SSE reconnect omits `Last-Event-ID` after an empty cursor reset, keeps the latest valid server `retry:` delay until a new valid value arrives, and treats HTTP 204 as normal stream termination. This is not a claim of full EventSource compliance.
 - Error preview and retained raw-body limits are independent; a preview cut does not mark a complete raw body truncated.
 - SSE data events dispatch only at a blank line. EOF drops an incomplete frame; servers must terminate the final event with a blank line. One leading BOM is ignored at the start of the stream. `AllowEof` permits complete streams without a done marker but does not relax framing; `RequireDoneMarker` accepts a marker only in a complete event.
 - Automatic SSE decode diagnostics do not include raw event or cursor values; Lenient logs report only presence and byte lengths.
 - `SameOrigin` is the default request/redirect policy. Set `origin_policy` to `AnyOrigin` explicitly when cross-origin targets are required; config accepts `same_origin` or `any_origin`.
 - JSON SSE consumers can require an explicit done marker with
   `SseCompletionPolicy::RequireDoneMarker`; see the [SSE guide](doc/user_guide.en.md#sse-json-chunks).
+
+Automatic SSE reconnect changes these behaviors: empty cursor resets now omit the request header; server `retry:` persists until replaced (set `honor_server_retry = false` to ignore it); and 204 ends the stream normally. Callers should treat stream end as normal on 204. HTTP `Retry-After` remains a single-attempt hint governed by its own backoff policy and cap, separate from the SSE retry cap.
 
 ## Retry timing boundaries
 

@@ -436,9 +436,10 @@ Body APIs:
 
 ### Examples
 
-**Whole-body reads (`bytes` / `text` / `json`)**: each loads the entire body into the cache. The snippet uses **three separate requests** so each line is valid; do not chain conflicting readers on the same response.
+**Whole-body reads (`bytes` / `text` / `json`)**: each loads the entire body into the cache. Cached bytes can be reused by whole-body readers and `stream()`; a successful cache read does not prevent creating a stream. This example uses `response` from the existing `client.execute(...).await?` in the same async function:
 
 ```rust
+use futures_util::StreamExt;
 use http::Method;
 use serde::Deserialize;
 
@@ -450,10 +451,15 @@ struct VersionInfo {
 async fn read_whole_body_examples(
     client: &qubit_http::HttpClient,
 ) -> qubit_http::HttpResult<()> {
-    let mut r1 = client
+    let mut response = client
         .execute(client.request(Method::GET, "/bytes").build())
         .await?;
-    let _raw = r1.bytes().await?;
+    let expected = response.bytes().await?;
+    let mut cached_stream = response.stream()?;
+    let chunk = cached_stream.next().await.transpose()?;
+    assert_eq!(chunk.as_ref(), Some(&expected));
+    assert!(cached_stream.next().await.is_none());
+    assert_eq!(response.bytes().await?, expected);
 
     let mut r2 = client
         .execute(client.request(Method::GET, "/hello.txt").build())
@@ -468,7 +474,7 @@ async fn read_whole_body_examples(
 }
 ```
 
-**Streaming bytes (`stream`)**: poll the returned stream chunk by chunk, as long as you have not already consumed the body with `bytes` / `text` / `json` on that same response. `?` applies when obtaining the stream, for example if a request cancellation token has already fired before body reading starts.
+**Streaming bytes (`stream`)**: for an unbuffered body, `stream()` transfers the backend body to the returned stream; it cannot be recovered for later whole-body reads. `?` applies when obtaining the stream, for example if a request cancellation token has already fired before body reading starts. A cancellation or body-read failure is retained and cannot be bypassed by another reader. This separate request example shows unbuffered network streaming, rather than cached in-memory bytes.
 
 ```rust
 use futures_util::StreamExt;
@@ -523,7 +529,7 @@ async fn read_sse_examples(client: &qubit_http::HttpClient) -> qubit_http::HttpR
 }
 ```
 
-An unbuffered backend body has one ownership path. After `bytes`, `text`, or `json` buffers the full payload, those readers can reuse the cache and each `stream()` call returns a new one-chunk stream while leaving the response buffered. If you call `stream` first while the body is not cached, the backend handle moves into that stream—you must finish reading there; later `bytes` / `text` / `json` return `ResponseBodyAlreadyConsumed`. If cancellation or a read error interrupts an unbuffered stream, the error is retained; do not assume the body can be read again. `sse_messages` / `sse_chunks` also use the stream path and **consume** the `HttpResponse` by value.
+After a successful `bytes`, `text`, or `json` read, the cache supports repeated reads and new one-chunk `stream()` calls. An unbuffered backend body transfers to its stream and cannot be recovered for whole-body reads; cancellation or an existing body-read failure remains an error. `sse_messages` / `sse_chunks` also use the stream path and **consume** the `HttpResponse` by value.
 
 | Safe | Avoid |
 | --- | --- |
@@ -939,7 +945,7 @@ while let Some(item) = events.next().await {
 }
 ```
 
-The default reconnect settings are `retry.max_attempts = 4` (that is, at most 3 reconnects), exponential `BackoffPolicy` with `initial=1s`, `max=30s`, `multiplier=2.0`, no jitter, reconnect on EOF, and honor server `retry:`. Server `retry:` delays are capped by `server_retry_max_delay`; when it is `None`, the cap is derived from the backoff policy's maximum delay, or falls back to 30 seconds when no maximum exists. This cap applies only to the SSE `retry:` field. For a reconnectable 429/5xx handshake, the final request's `honor_retry_after` preference controls whether the parsed HTTP hint is passed to the backoff policy; the policy's own delay cap and reconnect budget still apply. `apply_jitter_to_server_retry` is enabled by default, but server-provided delays remain unchanged unless the supplied `RetryPolicy` uses jitter. Reconnects reuse the original request and disable inner HTTP retry, avoiding multiplicative HTTP retry plus SSE reconnect attempts. If a previous SSE message had an `id:`, the next request includes `Last-Event-ID`. `execute_sse_with_reconnect` requires response `Content-Type` to be `text/event-stream`. SSE decoder errors include the response method, original request URL, and status while preserving more specific context and the existing error source. Cancellation does not reconnect. SSE protocol errors do not reconnect by default. Retryable timeout, transport, 429/5xx, and unexpected-EOF-like errors may reconnect.
+The default reconnect settings are `retry.max_attempts = 4` (that is, at most 3 reconnects), exponential `BackoffPolicy` with `initial=1s`, `max=30s`, `multiplier=2.0`, no jitter, reconnect on EOF, and honor server `retry:`. The latest valid `retry:` delay persists until replaced; use `honor_server_retry = false` to ignore server hints. Server `retry:` delays are capped by `server_retry_max_delay`; when it is `None`, the cap is derived from the backoff policy's maximum delay, or falls back to 30 seconds when no maximum exists. This cap applies only to the SSE `retry:` field. For a reconnectable 429/5xx handshake, the final request's `honor_retry_after` preference controls whether the parsed HTTP hint is passed to the backoff policy; this remains a single-attempt HTTP hint governed by its own policy cap and the reconnect budget. `apply_jitter_to_server_retry` is enabled by default, but server-provided delays remain unchanged unless the supplied `RetryPolicy` uses jitter. Reconnects reuse the original request and disable inner HTTP retry. If a previous SSE message had an `id:`, the next request includes `Last-Event-ID`; an empty ID reset makes the next request omit that header. A 204 response ends the reconnect stream normally without requiring `Content-Type`. These are deliberate behavior changes; callers should handle 204 as normal end-of-stream and servers should send a new valid `retry:` to change the delay. The API does not claim full EventSource compliance. `execute_sse_with_reconnect` requires response `Content-Type` to be `text/event-stream` for other successful statuses. SSE decoder errors include the response method, original request URL, and status while preserving more specific context and the existing error source. Cancellation does not reconnect. SSE protocol errors do not reconnect by default. Retryable timeout, transport, 429/5xx, and unexpected-EOF-like errors may reconnect.
 
 ## Configuration Reference
 
