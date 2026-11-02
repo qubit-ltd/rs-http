@@ -69,46 +69,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## 日志脱敏
 
-所有 TRACE 与 `Debug` 路径共享一份不可变的根 `RedactionPolicy` 快照。
-其 `http()` 视图只保存 HTTP 上下文差异；基础字段规则、掩码和静态限制与其他 adapter
-共享。规范 `qubit_redact::Redactor` 统一处理 URL 用户信息、fragment、query 字段、
-原生敏感 header、结构化 body 和硬预算。标准策略会保留 URL path 便于诊断；如果 path 可能含有不透明标识符或凭据，请使用 `RedactionPolicy::strict()` 或 `UrlPathPolicy::Redact`。敏感 query 值、header 和结构化 body 字段仍按配置规则保护。
-
-`RedactionPolicy::builder()` 使用空应用规则和标准 floor。
-扩展保守默认快照时使用 `RedactionPolicy::default().to_builder()`；
-只有在 `http(|http| { ... })` 视图内显式调用 `http.disable_all_floors()`，才会关闭 HTTP 上下文的全部 floor 保护。
-
-应用启动时使用 `Redactor::replace_application_default(Redactor::new(policy))` 安装默认 redactor；`RedactionPolicy::default()` 始终
-返回固定标准策略。`HttpClientOptions::new()` 会取得构造时默认 redactor 的快照，包括此前已安装的应用策略。既有 client、request、
-response 和 error 会保留原来的 redactor；每个脱敏操作默认使用策略中的诊断预算。如果一个记录需要渲染多个字段，
-可创建 `redactor.diagnostic_batch()`，在 `finish()` 后解析各操作返回的 handle，以共享同一个运行时预算。
-
-```rust
-use qubit_http::{HttpClientBuilder, HttpClientOptions};
-use qubit_redact::{RedactionPolicy, Sensitivity};
-use qubit_redact::formats::http::UrlPathPolicy;
-
-let mut options = HttpClientOptions::new();
-let builder = RedactionPolicy::default().to_builder().http(|http| {
-    let _ = http.header().raise("x-api-key", Sensitivity::High);
-    let _ = http.query().raise("access_token", Sensitivity::High);
-    let _ = http.body().raise("password", Sensitivity::Secret);
-    let _ = http.query().allow_exact("known_public_token");
-    http.url_path(UrlPathPolicy::Preserve);
-})?;
-options.log_redaction_policy = builder.build()?;
-
-let client = HttpClientBuilder::new().create(options)?;
-```
-
-`logging.body_size_limit` 是展示限额；结构化 body 解析由 JSON 与结构限额约束，输入与
-输出硬上限。截断 body 统一使用 `<truncated>` 标记；调用方知道源长度时，结果保留精确
-源长度元数据。配置只读取 `log_redaction` section，不兼容旧 key。只有在应用明确接受
-移除 HTTP 上下文 floor 时，才在 `http(|http| { ... })` 视图中调用
-`http.disable_all_floors()`。
-
-`HttpError` 的 `Debug` 与 `Display` 都会应用同一套日志脱敏策略，因此常规错误格式化不会
-暴露 URL 中的敏感值。
+标准策略会保留 URL path 便于诊断；如果 path 可能含有敏感标识符，请使用
+`RedactionPolicy::strict()` 或 `UrlPathPolicy::Redact`。`HttpError` 的 `Debug` 与
+`Display` 使用同一套脱敏策略。策略 floor、快照、预算、配置及示例见[日志脱敏指南](doc/user_guide.zh_CN.md#日志脱敏)。
 
 ## 后续阅读
 
@@ -143,39 +106,16 @@ let client = HttpClientBuilder::new().create(options)?;
 - 内置请求重试只覆盖返回 `HttpResponse` 之前的失败。返回后的流式响应体错误会交给调用方处理。
 - SSE 重连使用独立 API：`HttpClient::execute_sse_with_reconnect(...)`。
 - 已缓存的响应体可重复读取：重复调用 `bytes` / `text` / `json`，以及基于缓存创建 `stream()`，不会移交或清空缓存。
-- 服务端提供 SSE 事件 ID 后，重连执行器负责最终的 `Last-Event-ID`：非空游标在所有 header 合并后仍优先生效，空 ID 则删除该头；首个服务端 ID 到达前仍遵循普通优先级。SSE 重连还会持续采用最新有效的服务端 `retry:`，并将 HTTP 204 视为正常结束；这不代表完整实现 EventSource。
-- 非 SSE `Content-Type` 错误使用固定摘要，不再包含 header 原值；调用方应检查 `SseProtocol`、method、URL 和 status，不要再匹配 message 中的原值。游标行为迁移说明见 [SSE 指南](doc/user_guide.zh_CN.md#sse-自动重连)。
+- 标准脱敏策略会保留 URL path；若其中可能包含敏感标识符，可选择严格策略或 path 脱敏。详见[日志脱敏指南](doc/user_guide.zh_CN.md#日志脱敏)。
+- SSE 重连有独立的游标、retry 提示和 204 结束语义，详见 [SSE 自动重连](doc/user_guide.zh_CN.md#sse-自动重连)；这不代表完整实现 EventSource。
 - 错误预览与保留 raw body 使用独立限额；预览截断不会将完整 raw body 标记为不完整。`read_timeout` 限制完整的非成功错误体采集阶段；超时时，`Status` 错误仍保留 status 和标记为不完整的部分 raw body。
-- SSE data 事件只在空行处派发；EOF 会丢弃未完成帧，服务端必须用空行结束最后一个事件。流起始处的一个 BOM 会被忽略。`AllowEof` 允许完整事件流没有 done marker，但不会放宽 framing；`RequireDoneMarker` 只接受完整事件中的 marker。
+- SSE data 事件只在空行处派发；EOF 会丢弃未完成帧，服务端必须用空行结束最后一个事件。流起始处的一个 BOM 会被忽略。`AllowEof` 允许完整事件流没有 done marker，但不会放宽 framing；`RequireDoneMarker` 只接受完整事件中的 marker。帧和行限额见 [SSE 解码](doc/user_guide.zh_CN.md#sse-解码)。
 - 自动 SSE 解码诊断不包含原始 event 或 cursor；Lenient 日志只记录是否存在及字节数。
 - 请求与重定向默认使用 `SameOrigin`；确需跨源时显式设为 `AnyOrigin`。配置键 `origin_policy` 接受 `same_origin` 或 `any_origin`。
 - JSON SSE 调用方可以通过 `SseCompletionPolicy::RequireDoneMarker` 要求显式完成标记，
   详见 [SSE 指南](doc/user_guide.zh_CN.md#sse-json-chunk)。
 
-自动 SSE 重连的行为变化：空游标重置后不再发送该请求头；服务端 `retry:` 会持续生效，直到新有效值替换（可用 `honor_server_retry = false` 忽略服务端提示）；204 会正常结束流，调用方应将流结束视为正常停流。HTTP `Retry-After` 仍是只作用于单次尝试的提示，遵循独立的 HTTP 退避策略和上限，与 SSE retry 上限分开。
-
-## 重试时间边界
-
-HTTP 重试预算使用 qubit-retry 0.26。`max_duration` 控制是否继续尝试，
-不会主动中断当前请求，也不会覆盖已经成功的结果；请求超时需要单独配置。
-SSE 重连会把结构化预算错误保留在 HTTP 错误的 source 中。`request_timeout` 是 reqwest 单次网络请求及响应体读取期限，不包含异步准备、重试等待及其他尝试。
-预算计入操作执行、退避、`Retry-After` 等待和重试控制回调。已准入请求可以在预算耗尽后返回成功。
-普通 HTTP 重试没有设置重试层的 `attempt_timeout` 或 `flow_timeout`，需要分别配置
-request/connect/read/response-header 超时。错误转换与请求重放约束见[重试指南](doc/user_guide.zh_CN.md#自动重试)。
-如果应用也直接使用 `qubit-retry`，应同步使用 `0.26`，避免共享重试类型的版本不一致。
-
-SSE 使用服务端提示重连时，`server_retry_max_delay` 限制抖动和提示合并后的
-最终延迟，最小有效上限为 1 毫秒。该限制不影响普通 HTTP 的 `Retry-After`。
-退避策略的 `maximum_delay()` 只描述基础延迟；需要最终策略上限时使用
-`.limit_delay(duration)`。SSE 本身仍保留至少 1 毫秒的等待。
-
-### 0.15 的 retry source 契约
-
-普通 HTTP 自动重试的所有终态（包括 Abort 和 Exhausted）都以完整 `RetryError<HttpError>` 作为直接 source。
-通过 `last_error()` 或标准 `Error::source()` 链读取原始 HTTP/后端错误。
-外层保留 method、URL、status、body preview、retry-after 和脱敏策略，kind/message 仍按 HTTP 领域语义映射。
-完成诊断保存在该 retry 错误中。此 source 约定不适用于 SSE 重连，详见[错误模型](doc/user_guide.zh_CN.md#错误模型)。内置成功路径不注册完成观察者，因此显式丢弃空诊断。
-SSE 仍独立组合预算与退避，保留最终 policy cap 之后至少 1ms 的领域约束。
+重试预算、超时阶段、重放约束、诊断和保留的 `RetryError<HttpError>` source 契约见[自动重试](doc/user_guide.zh_CN.md#自动重试)及[错误模型](doc/user_guide.zh_CN.md#错误模型)。响应头期限在同步请求拦截器运行后开始；`request_timeout` 限制 reqwest 单次网络请求和响应体读取。
 
 ## 测试
 

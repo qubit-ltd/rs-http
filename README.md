@@ -69,59 +69,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Logging Redaction
 
-Every TRACE and `Debug` path uses one immutable root `RedactionPolicy`
-snapshot. Its `http()` view contains only HTTP context differences; the base
-field rules, masking, and static limits are shared with every other adapter.
-The canonical `qubit_redact::Redactor` handles URL userinfo, fragments, query
-fields, native-sensitive headers, structured bodies, and hard body budgets.
-The standard policy preserves URL paths for diagnostics. Choose
+The standard policy preserves URL paths for diagnostics. Use
 `RedactionPolicy::strict()` or `UrlPathPolicy::Redact` when paths may contain
-opaque identifiers or credentials; sensitive query values, headers, and
-structured body fields remain protected by their configured rules.
-
-`RedactionPolicy::builder()` starts with empty application rules and the
-standard floor. Use `RedactionPolicy::default().to_builder()` to extend the
-conservative runtime snapshot. The grouped `http(|http| { ... })` view exposes
-the explicit `disable_all_floors()` escape hatch.
-
-Install the application default with
-`Redactor::replace_application_default(Redactor::new(policy))` during startup.
-`RedactionPolicy::default()` remains the fixed standard policy.
-`HttpClientOptions::new()` snapshots the current default redactor, including an
-application default installed before construction. Existing clients,
-requests, responses, and errors retain their original redactor. Each redaction
-operation uses the policy's diagnostic budget; callers that render several
-fields together can use `redactor.diagnostic_batch()` and resolve the returned handles
-after `finish()` to share that budget.
-
-```rust
-use qubit_http::{HttpClientBuilder, HttpClientOptions};
-use qubit_redact::{RedactionPolicy, Sensitivity};
-use qubit_redact::formats::http::UrlPathPolicy;
-
-let mut options = HttpClientOptions::new();
-let builder = RedactionPolicy::default().to_builder().http(|http| {
-    let _ = http.header().raise("x-api-key", Sensitivity::High);
-    let _ = http.query().raise("access_token", Sensitivity::High);
-    let _ = http.body().raise("password", Sensitivity::Secret);
-    let _ = http.query().allow_exact("known_public_token");
-    http.url_path(UrlPathPolicy::Preserve);
-})?;
-options.log_redaction_policy = builder.build()?;
-
-let client = HttpClientBuilder::new().create(options)?;
-```
-
-`logging.body_size_limit` is the presentation limit. The policy's
-structured body parsing remains bounded by the configured JSON and structure limits. Truncated
-bodies use one generic `<truncated>` marker and retain exact source metadata
-when the caller knows it. Configuration uses only the `log_redaction` section;
-there is no compatibility path for the old key. Call
-`http.disable_all_floors()` inside the grouped `http(|http| { ... })` view
-only when the application explicitly accepts removing HTTP context floors.
-
-`HttpError` applies the same log-redaction policy to both `Debug` and
-`Display`, so ordinary error formatting does not expose sensitive URL values.
+opaque identifiers; sensitive query values, headers, and structured body
+fields follow their configured rules. `HttpError` applies the same policy to
+`Debug` and `Display`. See the [Logging Redaction guide](doc/user_guide.en.md#logging-redaction)
+for policy floors, snapshots, budgets, configuration, and examples.
 
 ## Common Next Steps
 
@@ -157,47 +110,20 @@ Use `HttpClient::rebuild_with_options` to change client options while retaining 
 - Built-in request retry covers failures before `HttpResponse` is returned. Stream body errors after return are surfaced to the caller.
 - SSE reconnect has a dedicated API: `HttpClient::execute_sse_with_reconnect(...)`.
 - Cached response bodies remain reusable: repeated `bytes` / `text` / `json` reads and cached `stream()` calls do not consume the cache.
-- Once an SSE server supplies an event ID, its reconnect runner owns the final `Last-Event-ID`: a non-empty cursor wins after header merging, while an empty ID removes the header. Before the first server ID, ordinary precedence remains. SSE reconnect also keeps the latest valid server `retry:` delay and treats HTTP 204 as normal stream termination; this is not a claim of full EventSource compliance.
-- Non-SSE `Content-Type` errors use a fixed summary and omit the original header value; callers should check `SseProtocol`, method, URL, and status instead of matching that value in `message`. See the [SSE guide](doc/user_guide.en.md#sse-auto-reconnect) for the cursor migration behavior.
+- The standard redaction policy preserves URL paths; choose strict/path redaction when they may contain secrets. See the [Logging Redaction guide](doc/user_guide.en.md#logging-redaction).
+- SSE reconnect has separate cursor, retry-hint, and 204 termination behavior; see [SSE Auto-reconnect](doc/user_guide.en.md#sse-auto-reconnect). Reconnect is not a claim of full EventSource compliance.
 - Error preview and retained raw-body limits are independent; a preview cut does not mark a complete raw body truncated. `read_timeout` bounds the complete non-success error-body capture phase; on expiry, the `Status` error retains its status and partial raw body marked incomplete.
-- SSE data events dispatch only at a blank line. EOF drops an incomplete frame; servers must terminate the final event with a blank line. One leading BOM is ignored at the start of the stream. `AllowEof` permits complete streams without a done marker but does not relax framing; `RequireDoneMarker` accepts a marker only in a complete event.
+- SSE data events dispatch only at a blank line. EOF drops an incomplete frame; servers must terminate the final event with a blank line. One leading BOM is ignored at the start of the stream. `AllowEof` permits complete streams without a done marker but does not relax framing; `RequireDoneMarker` accepts a marker only in a complete event. See [SSE Decoding](doc/user_guide.en.md#sse-decoding) for limits and framing details.
 - Automatic SSE decode diagnostics do not include raw event or cursor values; Lenient logs report only presence and byte lengths.
 - `SameOrigin` is the default request/redirect policy. Set `origin_policy` to `AnyOrigin` explicitly when cross-origin targets are required; config accepts `same_origin` or `any_origin`.
 - JSON SSE consumers can require an explicit done marker with
   `SseCompletionPolicy::RequireDoneMarker`; see the [SSE guide](doc/user_guide.en.md#sse-json-chunks).
 
-Automatic SSE reconnect changes these behaviors: empty cursor resets now omit the request header; server `retry:` persists until replaced (set `honor_server_retry = false` to ignore it); and 204 ends the stream normally. Callers should treat stream end as normal on 204. HTTP `Retry-After` remains a single-attempt hint governed by its own backoff policy and cap, separate from the SSE retry cap.
-
-## Retry timing boundaries
-
-HTTP retry budgets use qubit-retry 0.26. `max_duration` is a continuation budget,
-not a hard request timeout: it prevents further attempts while preserving a
-completed successful request. Request timeouts remain configured separately.
-SSE reconnects preserve structured budget errors as HTTP error sources.
-It includes attempt execution, backoff, `Retry-After` waits, and retry control
-callbacks. A request already admitted may succeed after the budget expires.
-Ordinary HTTP retries do not install a retry-layer `attempt_timeout` or
-`flow_timeout`; configure the request, connect, read, and response-header timeouts separately. The response-header timeout covers asynchronous request preparation through receipt of response headers; synchronous request interceptors run before that deadline. `request_timeout` covers reqwest network execution and response-body reads for one attempt, excluding asynchronous preparation, retry waits, and other attempts.
-See the [retry guide](doc/user_guide.en.md#automatic-retry) for error mapping and
-request replay requirements. If your application also uses `qubit-retry`
-directly, use `0.26` so shared retry types agree.
-
-For SSE server-directed reconnects, `server_retry_max_delay` caps the final
-selected delay after jitter and hint merging, with a minimum of one millisecond.
-It does not cap ordinary HTTP `Retry-After` handling. Backoff policy
-`maximum_delay()` is a base-strategy bound; `.limit_delay(duration)` configures an
-explicit final policy cap. SSE retains its one-millisecond minimum wait.
-
-### Retry source contract in 0.15
-
-For ordinary HTTP retry, every terminal, including Abort and Exhausted, stores a complete
-`RetryError<HttpError>` as its immediate source. Use `last_error()` or follow
-`Error::source()` to reach the original HTTP/backend error. Outer method, URL,
-status, body preview, retry-after hint and redaction policy remain available;
-kind/message still follow HTTP classification. Completion diagnostics remain on
-the retained retry error. This source contract does not describe SSE reconnect; see the [SSE error model](doc/user_guide.en.md#error-model). The built-in success path registers no completion
-observers and explicitly discards empty diagnostics. SSE retains its independent
-budget/backoff composition, including its 1ms minimum after the final policy cap.
+See [Automatic Retry](doc/user_guide.en.md#automatic-retry) and [Error Model](doc/user_guide.en.md#error-model)
+for retry budgets, timeout stages, replay rules, diagnostics, and the retained
+`RetryError<HttpError>` source contract. The response-header deadline starts
+after synchronous request interceptors; `request_timeout` covers reqwest's
+single-attempt network request and response-body reads.
 
 ## Testing
 

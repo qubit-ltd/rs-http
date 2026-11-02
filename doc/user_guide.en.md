@@ -194,7 +194,7 @@ Common configuration keys:
 | `origin_policy` | `same_origin` (default) restricts requests and redirects to the initial origin; `any_origin` permits cross-origin absolute targets and redirects |
 | `timeouts.connect_timeout` | Connect timeout |
 | `timeouts.read_timeout` | Bounds each normal response-body read and the complete non-success error-body capture phase |
-| `timeouts.response_header_timeout` | Cumulative asynchronous preparation and send deadline through response headers |
+| `timeouts.response_header_timeout` | Cumulative asynchronous preparation and send deadline through response headers; synchronous request interceptors run before this deadline starts |
 | `timeouts.request_timeout` | Optional reqwest per-attempt network request and response-body deadline; excludes async header injection, streaming-body factory preparation, retry waits, and other attempts |
 | `proxy.enabled` | Enables outbound proxying |
 | `use_env_proxy` | Whether to inherit environment proxies when explicit proxying is disabled |
@@ -218,7 +218,7 @@ Common configuration keys:
 | `sse.json_mode` | `LENIENT` or `STRICT` |
 | `sse.done_marker` | `DISABLED` or `DISABLE` disables done markers; `DEFAULT` uses `[DONE]`; any other non-empty string becomes a `Custom` marker compared to trimmed `data:` text |
 | `sse.max_line_bytes` | SSE single-line byte limit |
-| `sse.max_frame_bytes` | SSE single-frame byte limit |
+| `sse.max_frame_bytes` | Maximum cumulative UTF-8 bytes of non-empty, non-comment logical lines between blank-line boundaries; unknown fields count, terminators and comments do not. Comment lines remain subject to `sse.max_line_bytes`. This is not a wire-size or whole-session limit. |
 
 See “Configuration Reference” at the end of this guide for the full key list.
 
@@ -290,7 +290,7 @@ Per-request overrides:
 | Method | Purpose |
 | --- | --- |
 | `request_timeout` | Optional reqwest per-attempt network request and response-body deadline; excludes async header injection, streaming-body factory preparation, retry waits, and other attempts |
-| `response_header_timeout` | Overrides the cumulative asynchronous preparation and send deadline through response headers |
+| `response_header_timeout` | Overrides the cumulative asynchronous preparation and send deadline through response headers; synchronous request interceptors run before this deadline starts |
 | `read_timeout` | Bounds each normal body read and complete non-success error-body capture; expiry retains status and incomplete partial raw body |
 | `base_url` / `clear_base_url` | Overrides or removes base URL for this request |
 | `ipv4_only` | Overrides IPv4-only URL validation for this request |
@@ -300,7 +300,7 @@ Per-request overrides:
 | `retry_method_policy` | Overrides retryable HTTP method policy for this request |
 | `honor_retry_after` | Honors `Retry-After` for retryable 429/5xx responses on this request |
 
-`request_timeout` does not cover async header injection or streaming-body factory preparation. `response_header_timeout` covers that preparation through response headers. `read_timeout` bounds each normal response-body read and the complete capture of a non-success error body; on expiry, the returned `Status` error retains its status and partial raw body marked incomplete. Inspect `is_truncated()` and increase `read_timeout` when slow error bodies must be retained. Per-request timeout overrides reject zero durations and return `HttpError`.
+`request_timeout` does not cover async header injection or streaming-body factory preparation. `response_header_timeout` starts after synchronous request interceptors and covers asynchronous preparation through response headers. `read_timeout` bounds each normal response-body read and the complete capture of a non-success error body; on expiry, the returned `Status` error retains its status and partial raw body marked incomplete. Inspect `is_truncated()` and increase `read_timeout` when slow error bodies must be retained. Per-request timeout overrides reject zero durations and return `HttpError`.
 
 ## Headers, Injectors, And Interceptors
 
@@ -863,6 +863,8 @@ Protocol behavior:
 - EOF does not dispatch an incomplete data-bearing event; complete retry and control-only id records retain their existing control behavior. Servers must terminate each event with a blank line, including the final event; closing the connection does not complete a data frame.
 - Default line/frame limits come from `HttpClientOptions`. To override them for one response only, chain `sse_max_line_bytes` / `sse_max_frame_bytes` with `sse_messages()` on the same expression, as shown under “Configure `sse_messages` options” above.
 
+The frame limit counts cumulative UTF-8 bytes of non-empty, non-comment logical lines between blank-line boundaries. Field names, separators, values, and unknown fields count. Line terminators, blank-line separators, and comment lines do not; comment lines remain subject to `max_line_bytes`. The first-line BOM is removed before counting. Reaching the limit is allowed; exceeding it returns `SseProtocol`. This is not a wire-frame, whole-session byte, event-count, or CPU-time limit; the line limit, read timeout, and cancellation retain their separate roles.
+
 ### SSE JSON Chunks
 
 The following snippets assume `request` is already built, and that `MyChunk` and `handle` are defined by the caller.
@@ -997,7 +999,7 @@ The table below lists every configuration key supported by `HttpClientOptions::f
 | `json.max_output_bytes` | Maximum aggregate encoded JSON/NDJSON request-body bytes, including NDJSON line terminators; defaults to `8388608` |
 | `timeouts.connect_timeout` | Connect timeout |
 | `timeouts.read_timeout` | Bounds each normal response-body read and the complete non-success error-body capture phase |
-| `timeouts.response_header_timeout` | Cumulative asynchronous preparation and send deadline through response headers |
+| `timeouts.response_header_timeout` | Cumulative asynchronous preparation and send deadline through response headers; synchronous request interceptors run before this deadline starts |
 | `timeouts.request_timeout` | Optional reqwest per-attempt network request and response-body deadline; excludes async header injection, streaming-body factory preparation, retry waits, and other attempts |
 | `proxy.enabled` | Enables outbound proxying |
 | `proxy.proxy_type` | `http`, `https`, `socks5`, or `socks5h` |
@@ -1029,7 +1031,7 @@ The table below lists every configuration key supported by `HttpClientOptions::f
 | `sse.done_marker` | `DISABLED` or `DISABLE` disables done markers; `DEFAULT` uses `[DONE]`; any other non-empty string becomes a `Custom` marker compared to trimmed `data:` text |
 | `sse.completion` | `allow_eof` (default) or `require_done_marker`; the latter requires an enabled non-empty `sse.done_marker` |
 | `sse.max_line_bytes` | SSE single-line byte limit |
-| `sse.max_frame_bytes` | SSE single-frame byte limit |
+| `sse.max_frame_bytes` | Maximum cumulative UTF-8 bytes of non-empty, non-comment logical lines between blank-line boundaries; unknown fields count, terminators and comments do not. Comment lines remain subject to `sse.max_line_bytes`. This is not a wire-size or whole-session limit. |
 
 ## Limitations And Best Practices
 

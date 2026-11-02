@@ -188,7 +188,7 @@ let client = HttpClientBuilder::new()
 | `origin_policy` | `same_origin`（默认）限制请求和重定向处于初始源；`any_origin` 允许跨源绝对 URL 和跨源重定向 |
 | `timeouts.connect_timeout` | 连接超时 |
 | `timeouts.read_timeout` | 限制每次正常响应体读取及完整的非成功状态错误体采集阶段 |
-| `timeouts.response_header_timeout` | 从异步准备到收到响应头的累计期限 |
+| `timeouts.response_header_timeout` | 从异步准备到收到响应头的累计期限；同步请求拦截器在该期限开始前运行 |
 | `timeouts.request_timeout` | 可选的 reqwest 单次网络请求及响应体读取期限；不包含异步 header 注入、流式 body 工厂准备、重试等待及其他尝试 |
 | `proxy.enabled` | 是否启用代理 |
 | `use_env_proxy` | 显式代理禁用时，是否继承环境变量代理 |
@@ -212,7 +212,7 @@ let client = HttpClientBuilder::new()
 | `sse.json_mode` | `LENIENT` 或 `STRICT` |
 | `sse.done_marker` | `DISABLED`（或 `DISABLE`）禁用完成标记；`DEFAULT` 使用 `[DONE]`；其它非空字符串视为自定义完成标记（`Custom`），与 trim 后的 `data:` 文本比较 |
 | `sse.max_line_bytes` | SSE 单行字节上限 |
-| `sse.max_frame_bytes` | SSE 单帧字节上限 |
+| `sse.max_frame_bytes` | 两个空行边界间非空、非注释逻辑行的 UTF-8 累计字节上限；未知字段计入，结束符和注释不计入。注释行仍受 `sse.max_line_bytes` 限制；该项不代表线上帧大小或整个会话限额。 |
 
 完整配置键见文末「配置参考」。
 
@@ -284,7 +284,7 @@ assert_eq!(
 | 方法 | 用途 |
 | --- | --- |
 | `request_timeout` | 可选的 reqwest 单次网络请求及响应体读取期限；不包含异步 header 注入、流式 body 工厂准备、重试等待及其他尝试 |
-| `response_header_timeout` | 覆盖从异步准备到收到响应头的累计期限 |
+| `response_header_timeout` | 覆盖从异步准备到收到响应头的累计期限；同步请求拦截器在该期限开始前运行 |
 | `read_timeout` | 限制每次正常响应体读取及完整的非成功错误体采集；超时后保留 status 和标记为不完整的部分 raw body |
 | `base_url` / `clear_base_url` | 覆盖或清除本次请求 base URL |
 | `ipv4_only` | 覆盖本次请求的 IPv4-only URL 校验 |
@@ -294,7 +294,7 @@ assert_eq!(
 | `retry_method_policy` | 覆盖本次请求的可重试 HTTP 方法策略 |
 | `honor_retry_after` | 本次请求在 429/5xx 且可重试时尊重 `Retry-After` |
 
-`request_timeout` 不限制异步 header 注入或流式 body 工厂准备；这些阶段直到收到响应头由 `response_header_timeout` 限制。`read_timeout` 限制每次正常响应体读取，也限制完整采集非成功响应的错误体；超时时，返回的 `Status` 错误仍保留 status 和标记为不完整的部分 raw body。若必须保留慢错误体，请检查 `is_truncated()` 并提高 `read_timeout`。请求级 timeout 覆盖会拒绝零时长，并返回 `HttpError`。
+`request_timeout` 不限制异步 header 注入或流式 body 工厂准备；同步请求拦截器运行后，`response_header_timeout` 才开始计时，并覆盖异步准备直到收到响应头。`read_timeout` 限制每次正常响应体读取，也限制完整采集非成功响应的错误体；超时时，返回的 `Status` 错误仍保留 status 和标记为不完整的部分 raw body。若必须保留慢错误体，请检查 `is_truncated()` 并提高 `read_timeout`。请求级 timeout 覆盖会拒绝零时长，并返回 `HttpError`。
 
 ## Header、注入器和拦截器
 
@@ -843,6 +843,8 @@ while let Some(item) = messages.next().await {
 - EOF 不会派发未完成的数据事件；完整的 retry 和 control-only id 控制记录仍按既有规则处理。服务端必须用空行结束每个事件，包括最后一个事件；关闭连接不能代替数据帧终结。
 - 单行和单帧上限默认来自 `HttpClientOptions`；若本次响应需要不同上限，在调用 `sse_messages` 之前将 `sse_max_line_bytes` / `sse_max_frame_bytes` 与 `sse_messages()` 链在同一条表达式上即可（完整示例见本节上文「配置 `sse_messages` 选项」）。
 
+帧限额统计两个空行边界之间所有非空、非注释逻辑行的 UTF-8 累计字节数；字段名、分隔符、值和未知字段都计入。行结束符、空行分隔符和注释行不计入；注释行仍受 `max_line_bytes` 限制。首行 BOM 会在计数前移除。累计值等于上限时允许，超过上限返回 `SseProtocol`。该限额不代表线上完整帧大小、整个会话的字节数、事件数或 CPU 时间预算；行限额、读取超时和取消机制仍分别承担各自职责。
+
 ### SSE JSON chunk
 
 以下代码片段假设已经构建好 `request`，并且 `MyChunk` 和 `handle` 已在调用方定义。
@@ -978,7 +980,7 @@ while let Some(item) = events.next().await {
 | `json.max_output_bytes` | JSON/NDJSON 请求 body 编码后的累计最大字节数（含 NDJSON 行结束符）；默认 `8388608` |
 | `timeouts.connect_timeout` | 连接超时 |
 | `timeouts.read_timeout` | 限制每次正常响应体读取及完整的非成功状态错误体采集阶段 |
-| `timeouts.response_header_timeout` | 从异步准备到收到响应头的累计期限 |
+| `timeouts.response_header_timeout` | 从异步准备到收到响应头的累计期限；同步请求拦截器在该期限开始前运行 |
 | `timeouts.request_timeout` | 可选的 reqwest 单次网络请求及响应体读取期限；不包含异步 header 注入、流式 body 工厂准备、重试等待及其他尝试 |
 | `proxy.enabled` | 是否启用代理 |
 | `proxy.proxy_type` | `http`、`https`、`socks5` 或 `socks5h` |
@@ -1010,7 +1012,7 @@ while let Some(item) = events.next().await {
 | `sse.done_marker` | `DISABLED`（或 `DISABLE`）禁用完成标记；`DEFAULT` 使用 `[DONE]`；其它非空字符串视为自定义完成标记（`Custom`），与 trim 后的 `data:` 文本比较 |
 | `sse.completion` | `allow_eof`（默认）或 `require_done_marker`；后者要求启用且非空的 `sse.done_marker` |
 | `sse.max_line_bytes` | SSE 单行字节上限 |
-| `sse.max_frame_bytes` | SSE 单帧字节上限 |
+| `sse.max_frame_bytes` | 两个空行边界间非空、非注释逻辑行的 UTF-8 累计字节上限；未知字段计入，结束符和注释不计入。注释行仍受 `sse.max_line_bytes` 限制；该项不代表线上帧大小或整个会话限额。 |
 
 ## 限制与最佳实践
 
