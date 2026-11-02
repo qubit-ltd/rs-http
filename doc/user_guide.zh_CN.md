@@ -188,7 +188,7 @@ let client = HttpClientBuilder::new()
 | `origin_policy` | `same_origin`（默认）或 `any_origin`；其它值会得到包含配置路径的错误 |
 | `timeouts.connect_timeout` | 连接超时 |
 | `timeouts.read_timeout` | 读取响应体或流时的单次等待超时 |
-| `timeouts.response_header_timeout` | 发送前准备和发送阶段超时 |
+| `timeouts.response_header_timeout` | 从异步准备到收到响应头的累计期限 |
 | `timeouts.request_timeout` | 整体请求超时，可选 |
 | `proxy.enabled` | 是否启用代理 |
 | `use_env_proxy` | 显式代理禁用时，是否继承环境变量代理 |
@@ -282,7 +282,7 @@ assert_eq!(
 | 方法 | 用途 |
 | --- | --- |
 | `request_timeout` | 覆盖整体请求超时（reqwest 单次请求的 deadline） |
-| `response_header_timeout` | 覆盖发送前准备和发送阶段超时 |
+| `response_header_timeout` | 覆盖从异步准备到收到响应头的累计期限 |
 | `read_timeout` | 覆盖响应体读取/流读取超时 |
 | `base_url` / `clear_base_url` | 覆盖或清除本次请求 base URL |
 | `ipv4_only` | 覆盖本次请求的 IPv4-only URL 校验 |
@@ -580,6 +580,10 @@ async fn read_sse_examples(client: &qubit_http::HttpClient) -> qubit_http::HttpR
 可保留根路径上下文。重试失败时，检查 `retry_diagnostics()`，并沿
 `Error::source()` 找到保留的 `RetryError<HttpError>`。
 
+### SSE 重连取消归属
+
+原始请求取消 token 属于整个重连调用，可中断重连等待并阻止后续尝试。request interceptor 可以为当前尝试替换独立 token，控制本次发送和响应体读取，也可以移除本次尝试 token；这些操作不会改变原始重连级取消来源。
+
 ## 自动重试
 
 自动重试默认关闭。开启后，只有当 `retry.enabled = true`、`max_attempts > 1`，并且方法策略允许当前 HTTP 方法时，`execute` 才会进入重试流程。
@@ -589,7 +593,7 @@ async fn read_sse_examples(client: &qubit_http::HttpClient) -> qubit_http::HttpR
 | 类型 | 默认可重试 |
 | --- | --- |
 | 状态码 | 429 和所有 5xx |
-| 非状态错误 | connect/read/write/request timeout 和 transport |
+| 非状态错误 | connect/read/response-header/request timeout 和 transport |
 | 方法 | GET、HEAD、PUT、DELETE、OPTIONS、TRACE |
 
 可以用 `retry.status_codes` 和 `retry.error_kinds` 配置白名单。白名单一旦设置，就只重试列出的状态码或错误类型。
@@ -614,7 +618,7 @@ let request = client
 这是**软性续试预算**：它可以拒绝计划中的等待或下一次准入，但不会取消正在执行的请求，也不会覆盖成功结果。
 普通 HTTP 重试没有设置 `qubit-retry` 的 `attempt_timeout` 或 `flow_timeout`。例如，
 `max_duration = 1s` 的已准入请求仍可能耗时 2s 后成功；需要限制请求阶段耗时时，应配置
-`request_timeout` 或 connect/read/write 超时。返回后才惰性读取的响应体仍不在内置重试范围内。
+`request_timeout` 或 connect/read/response-header 超时。返回后才惰性读取的响应体仍不在内置重试范围内。
 
 可重试请求必须能够安全重放。缓冲请求体可重新发送，`streaming_body` 工厂则必须为每次尝试创建新流；
 请求头注入器和拦截器也可能重复执行。在默认 HTTP 退避策略下，`honor_retry_after` 将提示作为最小延迟；
@@ -941,7 +945,7 @@ while let Some(item) = events.next().await {
 | `json.max_output_bytes` | JSON/NDJSON 请求 body 编码后的累计最大字节数（含 NDJSON 行结束符）；默认 `8388608` |
 | `timeouts.connect_timeout` | 连接超时 |
 | `timeouts.read_timeout` | 读取响应体或流时的单次等待超时 |
-| `timeouts.response_header_timeout` | 发送前准备和发送阶段超时 |
+| `timeouts.response_header_timeout` | 从异步准备到收到响应头的累计期限 |
 | `timeouts.request_timeout` | 整体请求超时，可选 |
 | `proxy.enabled` | 是否启用代理 |
 | `proxy.proxy_type` | `http`、`https`、`socks5` 或 `socks5h` |

@@ -194,7 +194,7 @@ Common configuration keys:
 | `origin_policy` | `same_origin` (default) or `any_origin`; other values fail with a scoped configuration error |
 | `timeouts.connect_timeout` | Connect timeout |
 | `timeouts.read_timeout` | Per-read wait timeout for body/stream reads |
-| `timeouts.response_header_timeout` | Pre-send preparation and send-phase timeout |
+| `timeouts.response_header_timeout` | Cumulative asynchronous preparation and send deadline through response headers |
 | `timeouts.request_timeout` | Optional whole-request timeout |
 | `proxy.enabled` | Enables outbound proxying |
 | `use_env_proxy` | Whether to inherit environment proxies when explicit proxying is disabled |
@@ -288,7 +288,7 @@ Per-request overrides:
 | Method | Purpose |
 | --- | --- |
 | `request_timeout` | Overrides whole-request timeout (reqwest per-request deadline) |
-| `response_header_timeout` | Overrides pre-send preparation and send-phase timeout |
+| `response_header_timeout` | Overrides the cumulative asynchronous preparation and send deadline through response headers |
 | `read_timeout` | Overrides response body/stream read timeout |
 | `base_url` / `clear_base_url` | Overrides or removes base URL for this request |
 | `ipv4_only` | Overrides IPv4-only URL validation for this request |
@@ -586,6 +586,10 @@ For configuration failures, pass a scoped `config.section("http")` to retain
 root-relative error paths. For retry failures, inspect `retry_diagnostics()`
 and follow `Error::source()` to the retained `RetryError<HttpError>`.
 
+### SSE reconnect cancellation ownership
+
+The original request cancellation token belongs to the reconnect call: it can stop reconnect waiting and prevent another attempt. A request interceptor may replace it with an independent token for that attempt’s send and response-body reads, or remove the attempt token. Replacing/removing the attempt token does not change the original reconnect-level cancellation source.
+
 ## Automatic Retry
 
 Automatic retry is disabled by default. When enabled, `execute` enters the retry flow only when `retry.enabled = true`, `max_attempts > 1`, and the method policy allows the current HTTP method.
@@ -595,7 +599,7 @@ Default retryability:
 | Type | Default retryable values |
 | --- | --- |
 | Status | 429 and all 5xx |
-| Non-status errors | connect/read/write/request timeout and transport |
+| Non-status errors | connect/read/response-header/request timeout and transport |
 | Methods | GET, HEAD, PUT, DELETE, OPTIONS, TRACE |
 
 You can configure `retry.status_codes` and `retry.error_kinds` allowlists. Once an allowlist is set, only listed statuses or error kinds are retried.
@@ -621,7 +625,7 @@ This is a **soft continuation budget**: it can reject a planned delay or the nex
 admission, but it neither cancels an in-flight request nor replaces its successful
 result. Ordinary HTTP retry does not set `qubit-retry`'s `attempt_timeout` or
 `flow_timeout`. For example, `max_duration = 1s` can still return a successful
-request that took 2s; use `request_timeout` or the connect/read/write timeout
+request that took 2s; use `request_timeout` or the connect/read/response-header timeout
 settings to bound the corresponding request phase. Bodies returned lazily remain
 outside the built-in retry boundary.
 
@@ -960,7 +964,7 @@ The table below lists every configuration key supported by `HttpClientOptions::f
 | `json.max_output_bytes` | Maximum aggregate encoded JSON/NDJSON request-body bytes, including NDJSON line terminators; defaults to `8388608` |
 | `timeouts.connect_timeout` | Connect timeout |
 | `timeouts.read_timeout` | Per-read wait timeout for body/stream reads |
-| `timeouts.response_header_timeout` | Pre-send preparation and send-phase timeout |
+| `timeouts.response_header_timeout` | Cumulative asynchronous preparation and send deadline through response headers |
 | `timeouts.request_timeout` | Optional whole-request timeout |
 | `proxy.enabled` | Enables outbound proxying |
 | `proxy.proxy_type` | `http`, `https`, `socks5`, or `socks5h` |

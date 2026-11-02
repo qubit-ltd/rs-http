@@ -13,6 +13,8 @@ It builds on `reqwest` and provides the common pieces most API clients need: req
 
 Documentation: [English User Guide](doc/user_guide.en.md) | [中文用户指南](doc/user_guide.zh_CN.md) | [Design](doc/design.md) | [中文设计文档](doc/design.zh_CN.md) | [API Reference](https://docs.rs/qubit-http)
 
+A request interceptor’s final method and retry override determine whether an already admitted retry flow may continue. IPv4-only clients reject IPv6-literal redirect targets as `InvalidUrl`. Multipart boundaries must use the unquoted MIME-safe ASCII subset; update both the body delimiter and `Content-Type` together.
+
 ## Why Use It
 
 Use `qubit-http` when you need:
@@ -171,7 +173,7 @@ SSE reconnects preserve structured budget errors as HTTP error sources.
 It includes attempt execution, backoff, `Retry-After` waits, and retry control
 callbacks. A request already admitted may succeed after the budget expires.
 Ordinary HTTP retries do not install a retry-layer `attempt_timeout` or
-`flow_timeout`; configure the request/connect/read/write timeouts separately.
+`flow_timeout`; configure the request, connect, read, and response-header timeouts separately. The response-header timeout covers asynchronous request preparation through receipt of response headers; synchronous request interceptors run before that deadline.
 See the [retry guide](doc/user_guide.en.md#automatic-retry) for error mapping and
 request replay requirements. If your application also uses `qubit-retry`
 directly, use `0.26` so shared retry types agree.

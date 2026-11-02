@@ -13,6 +13,8 @@
 
 文档：[中文用户指南](doc/user_guide.zh_CN.md) | [English User Guide](doc/user_guide.en.md) | [设计文档](doc/design.zh_CN.md) | [Design](doc/design.md) | [API 文档](https://docs.rs/qubit-http)
 
+已准入的重试流程会依据 request interceptor 修改后的最终方法和覆盖项决定是否续试。IPv4-only 客户端会将指向 IPv6 字面量的重定向作为 `InvalidUrl` 拒绝。multipart boundary 必须使用未引用的 MIME 安全 ASCII 子集；请同时更新 body 分隔符和 `Content-Type`。
+
 ## 为什么使用
 
 当你需要以下能力时，可以使用 `qubit-http`：
@@ -155,7 +157,7 @@ HTTP 重试预算使用 qubit-retry 0.26。`max_duration` 控制是否继续尝�
 SSE 重连会把结构化预算错误保留在 HTTP 错误的 source 中。
 预算计入操作执行、退避、`Retry-After` 等待和重试控制回调。已准入请求可以在预算耗尽后返回成功。
 普通 HTTP 重试没有设置重试层的 `attempt_timeout` 或 `flow_timeout`，需要分别配置
-request/connect/read/write 超时。错误转换与请求重放约束见[重试指南](doc/user_guide.zh_CN.md#自动重试)。
+request/connect/read/response-header 超时。错误转换与请求重放约束见[重试指南](doc/user_guide.zh_CN.md#自动重试)。
 如果应用也直接使用 `qubit-retry`，应同步使用 `0.26`，避免共享重试类型的版本不一致。
 
 SSE 使用服务端提示重连时，`server_retry_max_delay` 限制抖动和提示合并后的
