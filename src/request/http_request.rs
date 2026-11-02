@@ -5,7 +5,7 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-//! Immutable HTTP request object.
+//! Mutable HTTP request snapshot used to prepare and execute one HTTP call.
 
 use std::fmt;
 use std::future::Future;
@@ -46,8 +46,10 @@ use crate::HttpResult;
 use crate::error::ReqwestErrorPhase;
 use crate::error::backend_error_mapper::map_reqwest_error;
 
-/// Immutable snapshot of a single HTTP call produced by
-/// [`crate::HttpRequestBuilder`].
+/// Mutable snapshot of a single HTTP call produced by
+/// [`crate::HttpRequestBuilder`]. It captures client defaults when built and
+/// can be adjusted through setters. Retries clone the request template and run
+/// interceptors independently for each attempt.
 ///
 /// # Examples
 ///
@@ -129,7 +131,7 @@ impl fmt::Debug for HttpRequest {
 }
 
 impl HttpRequest {
-    /// Consumes a finished [`HttpRequestBuilder`] and freezes its fields into
+    /// Consumes a finished [`HttpRequestBuilder`] and snapshots its fields into
     /// an [`HttpRequest`].
     ///
     /// # Parameters
@@ -841,9 +843,9 @@ impl HttpRequest {
     /// when already computed).
     ///
     /// # Errors
-    /// Returns [`HttpError::invalid_url`] when parsing fails, the base URL is
-    /// missing for a relative path, joining fails, or [`Self::ipv4_only`]
-    /// rejects an IPv6 literal host.
+    /// Returns [`HttpError::invalid_url`] when parsing fails, the resolved URL
+    /// does not use HTTP or HTTPS, the base URL is missing for a relative path,
+    /// joining fails, or [`Self::ipv4_only`] rejects an IPv6 literal host.
     fn resolved_base_url(&self) -> Result<Url, HttpError> {
         let cached = match self.resolved_url.read() {
             Ok(guard) => guard.clone(),
@@ -909,7 +911,7 @@ impl HttpRequest {
     /// Computes the resolved URL from current path/base/ipv4 settings.
     fn compute_resolved_url(&self) -> Result<Url, HttpError> {
         if let Ok(url) = Url::parse(&self.path) {
-            self.validate_resolved_url_host(&url)?;
+            self.validate_resolved_url(&url)?;
             return Ok(url);
         }
 
@@ -922,11 +924,11 @@ impl HttpRequest {
         let url = base.join(&self.path).map_err(|error| {
             HttpError::invalid_url("Failed to resolve request path against base URL").with_source(error)
         })?;
-        self.validate_resolved_url_host(&url)?;
+        self.validate_resolved_url(&url)?;
         Ok(url)
     }
 
-    /// Enforces [`Self::ipv4_only`] by rejecting IPv6 literal hosts in `url`.
+    /// Enforces the HTTP(S) scheme and IPv4 literal policy for `url`.
     ///
     /// # Parameters
     /// - `url`: Candidate URL after parsing or joining.
@@ -935,9 +937,12 @@ impl HttpRequest {
     /// `Ok(())` when the host is acceptable.
     ///
     /// # Errors
-    /// [`HttpError::invalid_url`] when `ipv4_only` is `true` and the host is an
-    /// IPv6 literal.
-    fn validate_resolved_url_host(&self, url: &Url) -> Result<(), HttpError> {
+    /// [`HttpError::invalid_url`] when the scheme is unsupported or `ipv4_only`
+    /// is `true` and the host is an IPv6 literal.
+    fn validate_resolved_url(&self, url: &Url) -> Result<(), HttpError> {
+        if !crate::http_url::is_http_url(url) {
+            return Err(HttpError::invalid_url("Request URL must use HTTP or HTTPS"));
+        }
         if self.context.ipv4_only && matches!(url.host(), Some(Host::Ipv6(_))) {
             return Err(HttpError::invalid_url(format!(
                 "IPv6 literal host is not allowed when ipv4_only=true: {}",

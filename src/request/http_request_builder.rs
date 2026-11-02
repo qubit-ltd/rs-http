@@ -690,7 +690,7 @@ impl HttpRequestBuilder {
         self
     }
 
-    /// Consumes the builder into a frozen [`HttpRequest`].
+    /// Consumes the builder into a mutable [`HttpRequest`] snapshot.
     ///
     /// # Returns
     /// Built [`HttpRequest`].

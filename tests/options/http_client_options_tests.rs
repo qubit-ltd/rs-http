@@ -354,6 +354,35 @@ fn test_http_client_options_set_base_url_invalid_url_does_not_apply() {
 }
 
 #[test]
+fn test_http_client_options_rejects_non_http_base_url() {
+    let mut options = HttpClientOptions::new();
+    options.set_base_url("https://example.invalid/api/").unwrap();
+    let before = options.base_url.clone();
+    let error = options
+        .set_base_url("ftp://user:password@sensitive.invalid/api/?access_token=private")
+        .unwrap_err();
+    assert_eq!(error.kind, HttpConfigErrorKind::InvalidValue);
+    assert_eq!(error.path, "base_url");
+    assert!(!error.message.contains("sensitive.invalid"));
+    assert!(!error.message.contains("private"));
+    assert_eq!(options.base_url, before);
+
+    options.base_url = Some(url::Url::parse("file:///tmp/http-input").unwrap());
+    let error = options.validate().unwrap_err();
+    assert_eq!(error.kind, HttpConfigErrorKind::InvalidValue);
+    assert_eq!(error.path, "base_url");
+
+    let mut config = Config::new();
+    config
+        .set("service.http.base_url", "ftp://example.invalid/api/")
+        .unwrap();
+    let section = config.section("service.http").unwrap();
+    let error = HttpClientOptions::from_config(&section).unwrap_err();
+    assert_eq!(error.kind, HttpConfigErrorKind::InvalidValue);
+    assert_eq!(error.path, "service.http.base_url");
+}
+
+#[test]
 fn test_http_client_options_from_empty_config() {
     let config = Config::new();
     let opts = HttpClientOptions::from_config(&config).unwrap();

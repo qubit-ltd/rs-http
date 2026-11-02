@@ -6,6 +6,8 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use http::Method;
@@ -15,6 +17,10 @@ use qubit_http::HttpCancellationToken;
 use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
+use qubit_http::HttpRequest;
+use qubit_http::HttpRequestInterceptor;
+use qubit_http::HttpRetryTermination;
+use qubit_retry::BackoffPolicy;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
@@ -24,6 +30,50 @@ use tokio::time::timeout;
 
 use crate::common::ResponsePlan;
 use crate::common::spawn_one_shot_server;
+
+#[tokio_test]
+async fn test_non_http_scheme_does_not_retry() {
+    let mut options = HttpClientOptions::default();
+    options.retry.enabled = true;
+    options.retry.max_attempts = 3;
+    options.retry.backoff = BackoffPolicy::immediate();
+    let client = HttpClientBuilder::new().create(options).unwrap();
+    let error = client
+        .execute(client.request(Method::GET, "ftp://sensitive.invalid/path").build())
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind, HttpErrorKind::InvalidUrl);
+    let diagnostics = error.retry_diagnostics().expect("retry diagnostics should be attached");
+    assert_eq!(diagnostics.attempts(), 1);
+    assert_eq!(diagnostics.termination(), HttpRetryTermination::Aborted);
+    assert!(!error.message.contains("sensitive.invalid"));
+}
+
+#[tokio_test]
+async fn test_interceptor_non_http_scheme_does_not_retry() {
+    let mut options = HttpClientOptions::default();
+    options.retry.enabled = true;
+    options.retry.max_attempts = 3;
+    options.retry.backoff = BackoffPolicy::immediate();
+    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let calls = std::sync::Arc::new(AtomicUsize::new(0));
+    let captured = calls.clone();
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |request: &mut HttpRequest| {
+        captured.fetch_add(1, Ordering::SeqCst);
+        request.set_path("ftp://sensitive.invalid/path");
+        Ok(())
+    }));
+    let error = client
+        .execute(client.request(Method::GET, "http://example.invalid/").build())
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind, HttpErrorKind::InvalidUrl);
+    let diagnostics = error.retry_diagnostics().expect("retry diagnostics should be attached");
+    assert_eq!(diagnostics.attempts(), 1);
+    assert_eq!(diagnostics.termination(), HttpRetryTermination::Aborted);
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert!(!error.message.contains("sensitive.invalid"));
+}
 
 #[tokio_test]
 async fn test_execute_maps_retry_after_to_retryable_http_error() {

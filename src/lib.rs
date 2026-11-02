@@ -26,6 +26,7 @@ mod client;
 pub mod constants;
 mod content_type;
 mod error;
+mod http_url;
 mod json_limits;
 mod options;
 mod redact;

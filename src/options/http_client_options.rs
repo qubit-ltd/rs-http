@@ -44,6 +44,7 @@ use crate::constants::DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES;
 use crate::constants::DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES;
 use crate::constants::DEFAULT_SSE_MAX_FRAME_BYTES;
 use crate::constants::DEFAULT_SSE_MAX_LINE_BYTES;
+use crate::http_url::is_http_url;
 use crate::json_limits::default_json_encode_limits;
 use crate::json_limits::default_json_value_limits;
 use crate::json_limits::json_decode_limits;
@@ -121,7 +122,11 @@ pub struct HttpClientOptions {
     pub retry: HttpRetryOptions,
     /// Log redaction policy for URL, header, and body previews.
     pub log_redaction_policy: RedactionPolicy,
-    /// Whether IPv4-only DNS behavior is requested.
+    /// Whether the local resolver filters DNS results to IPv4 and request URL
+    /// validation rejects IPv6 literal targets. Existing proxy-host literal
+    /// checks remain active. This does not constrain target addresses resolved
+    /// remotely by a proxy. Request-level overrides affect URL checks only and
+    /// cannot reconfigure the client's resolver.
     pub ipv4_only: bool,
     /// Default JSON handling mode used by [`crate::HttpResponse::sse_chunks`].
     pub sse_json_mode: SseJsonMode,
@@ -706,6 +711,12 @@ impl HttpClientOptions {
     /// # Returns
     /// `Ok(())` or the first sub-validator error.
     pub fn validate(&self) -> Result<(), HttpConfigError> {
+        if self.base_url.as_ref().is_some_and(|url| !is_http_url(url)) {
+            return Err(HttpConfigError::invalid_value(
+                "base_url",
+                "Base URL must use HTTP or HTTPS",
+            ));
+        }
         self.timeouts.validate_arguments().with_path_prefix("timeouts")?;
         self.proxy.validate_arguments()?;
         self.logging.validate_arguments()?;
@@ -965,10 +976,17 @@ impl HttpClientOptions {
     /// The parsed absolute URL.
     ///
     /// # Errors
-    /// Returns an error when the input is not a valid URL.
+    /// Returns an error when the input is not a valid HTTP(S) URL.
     fn parse_base_url(base_url: &str) -> Result<Url, HttpConfigError> {
-        Url::parse(base_url)
-            .map_err(|error| HttpConfigError::invalid_value("base_url", format!("Invalid URL: {error}")))
+        let url = Url::parse(base_url)
+            .map_err(|error| HttpConfigError::invalid_value("base_url", format!("Invalid URL: {error}")))?;
+        if !is_http_url(&url) {
+            return Err(HttpConfigError::invalid_value(
+                "base_url",
+                "Base URL must use HTTP or HTTPS",
+            ));
+        }
+        Ok(url)
     }
 
     /// Parses a configured SSE JSON mode name.

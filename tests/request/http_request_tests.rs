@@ -38,6 +38,45 @@ fn new_request(method: Method, path: &str) -> HttpRequest {
 }
 
 #[test]
+fn test_http_request_rejects_non_http_schemes() {
+    for target in [
+        "ftp://example.invalid/file",
+        "file:///tmp/http-input",
+        "data:text/plain,payload",
+    ] {
+        let error = new_request(Method::GET, target)
+            .resolved_url()
+            .expect_err("non-HTTP targets must fail before sending");
+        assert_eq!(error.kind(), HttpErrorKind::InvalidUrl);
+    }
+    for target in [
+        "http://example.invalid",
+        "https://example.invalid",
+        "HTTPS://example.invalid",
+    ] {
+        assert!(new_request(Method::GET, target).resolved_url().is_ok());
+    }
+    let mut options = HttpClientOptions::new();
+    options.set_base_url("https://example.invalid/api/").unwrap();
+    let client = HttpClientBuilder::new().create(options).unwrap();
+    assert_eq!(
+        client
+            .request(Method::GET, "items")
+            .build()
+            .resolved_url()
+            .unwrap()
+            .path(),
+        "/api/items"
+    );
+    let mut request = new_request(Method::GET, "https://example.invalid/ok");
+    request.set_path("ftp://example.invalid/file");
+    assert_eq!(request.resolved_url().unwrap_err().kind(), HttpErrorKind::InvalidUrl);
+    let mut request = new_request(Method::GET, "items");
+    request.set_base_url(Url::parse("ftp://example.invalid/api/").unwrap());
+    assert_eq!(request.resolved_url().unwrap_err().kind(), HttpErrorKind::InvalidUrl);
+}
+
+#[test]
 fn test_http_request_setters_update_method_path_query_and_body() {
     let mut request = new_request(Method::GET, "/v1/items");
     assert_eq!(request.method(), &Method::GET);
