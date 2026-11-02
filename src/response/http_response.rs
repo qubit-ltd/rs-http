@@ -217,7 +217,8 @@ impl HttpResponse {
     /// # Parameters
     /// - `meta`: Response status, headers, final URL, and request method.
     /// - `backend`: Backend response whose body will be consumed on demand.
-    /// - `read_timeout`: Maximum wait for each backend body read.
+    /// - `read_timeout`: Maximum wait for each backend body read and complete
+    ///   non-success error-body capture phase.
     /// - `cancellation_token`: Optional request cancellation signal.
     /// - `request_url`: Original URL used in read diagnostics.
     /// - `options`: Response decoding, size, and logging policy snapshot.

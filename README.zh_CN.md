@@ -145,7 +145,7 @@ let client = HttpClientBuilder::new().create(options)?;
 - 已缓存的响应体可重复读取：重复调用 `bytes` / `text` / `json`，以及基于缓存创建 `stream()`，不会移交或清空缓存。
 - 服务端提供 SSE 事件 ID 后，重连执行器负责最终的 `Last-Event-ID`：非空游标在所有 header 合并后仍优先生效，空 ID 则删除该头；首个服务端 ID 到达前仍遵循普通优先级。SSE 重连还会持续采用最新有效的服务端 `retry:`，并将 HTTP 204 视为正常结束；这不代表完整实现 EventSource。
 - 非 SSE `Content-Type` 错误使用固定摘要，不再包含 header 原值；调用方应检查 `SseProtocol`、method、URL 和 status，不要再匹配 message 中的原值。游标行为迁移说明见 [SSE 指南](doc/user_guide.zh_CN.md#sse-自动重连)。
-- 错误预览与保留 raw body 使用独立限额；预览截断不会将完整 raw body 标记为不完整。
+- 错误预览与保留 raw body 使用独立限额；预览截断不会将完整 raw body 标记为不完整。`read_timeout` 限制完整的非成功错误体采集阶段；超时时，`Status` 错误仍保留 status 和标记为不完整的部分 raw body。
 - SSE data 事件只在空行处派发；EOF 会丢弃未完成帧，服务端必须用空行结束最后一个事件。流起始处的一个 BOM 会被忽略。`AllowEof` 允许完整事件流没有 done marker，但不会放宽 framing；`RequireDoneMarker` 只接受完整事件中的 marker。
 - 自动 SSE 解码诊断不包含原始 event 或 cursor；Lenient 日志只记录是否存在及字节数。
 - 请求与重定向默认使用 `SameOrigin`；确需跨源时显式设为 `AnyOrigin`。配置键 `origin_policy` 接受 `same_origin` 或 `any_origin`。
@@ -158,7 +158,7 @@ let client = HttpClientBuilder::new().create(options)?;
 
 HTTP 重试预算使用 qubit-retry 0.26。`max_duration` 控制是否继续尝试，
 不会主动中断当前请求，也不会覆盖已经成功的结果；请求超时需要单独配置。
-SSE 重连会把结构化预算错误保留在 HTTP 错误的 source 中。
+SSE 重连会把结构化预算错误保留在 HTTP 错误的 source 中。`request_timeout` 是 reqwest 单次网络请求及响应体读取期限，不包含异步准备、重试等待及其他尝试。
 预算计入操作执行、退避、`Retry-After` 等待和重试控制回调。已准入请求可以在预算耗尽后返回成功。
 普通 HTTP 重试没有设置重试层的 `attempt_timeout` 或 `flow_timeout`，需要分别配置
 request/connect/read/response-header 超时。错误转换与请求重放约束见[重试指南](doc/user_guide.zh_CN.md#自动重试)。

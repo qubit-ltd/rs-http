@@ -529,14 +529,14 @@ impl HttpRequestBuilder {
         Ok(self)
     }
 
-    /// Overrides the client-wide request timeout for this request only.
-    ///
-    /// This sets reqwest's per-request [`reqwest::RequestBuilder::timeout`],
-    /// i.e. a whole-request deadline for that HTTP call (see reqwest docs
-    /// for exact semantics).
+    /// Sets an optional reqwest per-attempt network request and response-body
+    /// deadline, overriding the client default. It excludes asynchronous header
+    /// injection, streaming-body factory preparation, retry waits, and the
+    /// duration of other attempts. Use `response_header_timeout` to bound
+    /// asynchronous preparation through receipt of response headers.
     ///
     /// # Parameters
-    /// - `timeout`: Maximum time for the whole request (reqwest `timeout`).
+    /// - `timeout`: The reqwest per-attempt network request and response-body deadline.
     ///
     /// # Returns
     /// `Ok(self)` for chaining.
@@ -574,10 +574,13 @@ impl HttpRequestBuilder {
         Ok(self)
     }
 
-    /// Overrides the read-phase timeout for this request only.
+    /// Bounds each normal response-body read. For non-success status responses,
+    /// it also bounds complete error-body capture from when capture begins;
+    /// expiry retains the status and partial raw body marked incomplete.
     ///
     /// # Parameters
-    /// - `timeout`: Maximum time allowed for one read wait on response body.
+    /// - `timeout`: Maximum duration allowed for each normal body read and the
+    ///   complete non-success error-body capture phase.
     ///
     /// # Returns
     /// `Ok(self)` for chaining.

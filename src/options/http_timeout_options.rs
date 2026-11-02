@@ -21,12 +21,15 @@ use crate::constants::DEFAULT_READ_TIMEOUT_SECS;
 use crate::constants::DEFAULT_SEND_TIMEOUT_SECS;
 use crate::request::response_header_deadline_is_representable;
 
-/// Configures connect, read, response-header, and whole-request HTTP timeouts.
+/// Configures connect, read, response-header, and reqwest per-attempt HTTP timeouts.
 ///
 /// Every configured timeout must be greater than zero. In addition,
 /// `response_header_timeout` must fit in the platform's `Instant` deadline
-/// range. The request timeout is optional and bounds the overall duration of
-/// an individual request.
+/// range. Optional reqwest per-attempt network request and response-body
+/// deadline. It excludes asynchronous header injection, streaming-body factory
+/// preparation, retry waits, and the duration of other attempts. Use
+/// `response_header_timeout` to bound asynchronous preparation through receipt
+/// of response headers.
 ///
 /// # Examples
 ///
@@ -42,14 +45,19 @@ use crate::request::response_header_deadline_is_representable;
 pub struct HttpTimeoutOptions {
     /// Maximum time allowed to establish a connection; must be nonzero.
     pub connect_timeout: Duration,
-    /// Maximum wait for a read operation; must be nonzero.
+    /// Bounds each normal response-body read. For non-success status responses,
+    /// it also bounds complete error-body capture from when capture begins;
+    /// expiry retains the status and partial raw body marked incomplete. Must be nonzero.
     pub read_timeout: Duration,
     /// Cumulative deadline from asynchronous request preparation through
     /// receipt of response headers; synchronous request interceptors run
     /// beforehand.
     pub response_header_timeout: Duration,
-    /// Optional maximum duration for an entire request; when set, must be
-    /// nonzero.
+    /// Optional reqwest per-attempt network request and response-body deadline.
+    /// It excludes asynchronous header injection, streaming-body factory
+    /// preparation, retry waits, and the duration of other attempts. Use
+    /// `response_header_timeout` to bound asynchronous preparation through
+    /// receipt of response headers. When set, this must be nonzero.
     pub request_timeout: Option<Duration>,
 }
 

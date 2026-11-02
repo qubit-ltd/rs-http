@@ -96,7 +96,7 @@ let client = qubit_http::HttpClientBuilder::new().create_default()?;
 | 连接超时 | 10 秒 |
 | 读超时 | 120 秒 |
 | 响应头／发送阶段超时 | 120 秒 |
-| 整体请求超时 | 无 |
+| reqwest 单次网络请求及响应体读取期限 | 无 |
 | 代理 | 显式代理禁用，且 `use_env_proxy = false`，因此调用 `reqwest` 的 `no_proxy()`，不会继承环境代理 |
 | 日志 | 开启，但只有 tracing TRACE 级别启用时才输出 |
 | 日志体预览 | 16 KiB |
@@ -187,9 +187,9 @@ let client = HttpClientBuilder::new()
 | `base_url` | 相对请求路径的基础 URL |
 | `origin_policy` | `same_origin`（默认）限制请求和重定向处于初始源；`any_origin` 允许跨源绝对 URL 和跨源重定向 |
 | `timeouts.connect_timeout` | 连接超时 |
-| `timeouts.read_timeout` | 读取响应体或流时的单次等待超时 |
+| `timeouts.read_timeout` | 限制每次正常响应体读取及完整的非成功状态错误体采集阶段 |
 | `timeouts.response_header_timeout` | 从异步准备到收到响应头的累计期限 |
-| `timeouts.request_timeout` | 整体请求超时，可选 |
+| `timeouts.request_timeout` | 可选的 reqwest 单次网络请求及响应体读取期限；不包含异步 header 注入、流式 body 工厂准备、重试等待及其他尝试 |
 | `proxy.enabled` | 是否启用代理 |
 | `use_env_proxy` | 显式代理禁用时，是否继承环境变量代理 |
 | `logging.enabled` | 是否允许 TRACE HTTP 日志 |
@@ -283,9 +283,9 @@ assert_eq!(
 
 | 方法 | 用途 |
 | --- | --- |
-| `request_timeout` | 覆盖整体请求超时（reqwest 单次请求的 deadline） |
+| `request_timeout` | 可选的 reqwest 单次网络请求及响应体读取期限；不包含异步 header 注入、流式 body 工厂准备、重试等待及其他尝试 |
 | `response_header_timeout` | 覆盖从异步准备到收到响应头的累计期限 |
-| `read_timeout` | 覆盖响应体读取/流读取超时 |
+| `read_timeout` | 限制每次正常响应体读取及完整的非成功错误体采集；超时后保留 status 和标记为不完整的部分 raw body |
 | `base_url` / `clear_base_url` | 覆盖或清除本次请求 base URL |
 | `ipv4_only` | 覆盖本次请求的 IPv4-only URL 校验 |
 | `cancellation_token` | 绑定 `CancellationToken`，发送前、发送中、读 body/stream 时都会检查 |
@@ -294,7 +294,7 @@ assert_eq!(
 | `retry_method_policy` | 覆盖本次请求的可重试 HTTP 方法策略 |
 | `honor_retry_after` | 本次请求在 429/5xx 且可重试时尊重 `Retry-After` |
 
-请求级 timeout 覆盖会拒绝零时长，并返回 `HttpError`。
+`request_timeout` 不限制异步 header 注入或流式 body 工厂准备；这些阶段直到收到响应头由 `response_header_timeout` 限制。`read_timeout` 限制每次正常响应体读取，也限制完整采集非成功响应的错误体；超时时，返回的 `Status` 错误仍保留 status 和标记为不完整的部分 raw body。若必须保留慢错误体，请检查 `is_truncated()` 并提高 `read_timeout`。请求级 timeout 覆盖会拒绝零时长，并返回 `HttpError`。
 
 ## Header、注入器和拦截器
 
@@ -640,8 +640,7 @@ let request = client
 
 这是**软性续试预算**：它可以拒绝计划中的等待或下一次准入，但不会取消正在执行的请求，也不会覆盖成功结果。
 普通 HTTP 重试没有设置 `qubit-retry` 的 `attempt_timeout` 或 `flow_timeout`。例如，
-`max_duration = 1s` 的已准入请求仍可能耗时 2s 后成功；需要限制请求阶段耗时时，应配置
-`request_timeout` 或 connect/read/response-header 超时。返回后才惰性读取的响应体仍不在内置重试范围内。
+`max_duration = 1s` 的已准入请求仍可能耗时 2s 后成功；`request_timeout` 仅限制 reqwest 单次网络执行和响应体读取，不包含异步 header 注入、流式 body 工厂准备、重试等待及其他尝试；异步准备到响应头使用 `response_header_timeout`。`read_timeout` 也限制完整的非成功响应错误体采集；慢错误体超时后可检查 `is_truncated()`，并在需要时提高 `read_timeout`。返回后才惰性读取的响应体仍不在内置重试范围内。
 
 可重试请求必须能够安全重放。缓冲请求体可重新发送，`streaming_body` 工厂则必须为每次尝试创建新流；
 请求头注入器和拦截器也可能重复执行。在默认 HTTP 退避策略下，`honor_retry_after` 将提示作为最小延迟；
@@ -978,9 +977,9 @@ while let Some(item) = events.next().await {
 | `json.max_payload_bytes` | key、string 与 number 的累计 payload 字节上限；默认 `8388608` |
 | `json.max_output_bytes` | JSON/NDJSON 请求 body 编码后的累计最大字节数（含 NDJSON 行结束符）；默认 `8388608` |
 | `timeouts.connect_timeout` | 连接超时 |
-| `timeouts.read_timeout` | 读取响应体或流时的单次等待超时 |
+| `timeouts.read_timeout` | 限制每次正常响应体读取及完整的非成功状态错误体采集阶段 |
 | `timeouts.response_header_timeout` | 从异步准备到收到响应头的累计期限 |
-| `timeouts.request_timeout` | 整体请求超时，可选 |
+| `timeouts.request_timeout` | 可选的 reqwest 单次网络请求及响应体读取期限；不包含异步 header 注入、流式 body 工厂准备、重试等待及其他尝试 |
 | `proxy.enabled` | 是否启用代理 |
 | `proxy.proxy_type` | `http`、`https`、`socks5` 或 `socks5h` |
 | `proxy.host` | 代理主机 |

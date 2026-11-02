@@ -17,6 +17,6 @@ pub(in crate::options) struct TimeoutConfigInput {
     pub(in crate::options) read_timeout: Option<Duration>,
     /// Configured response-header limit, if present.
     pub(in crate::options) response_header_timeout: Option<Duration>,
-    /// Configured whole-request limit, if present.
+    /// Configured reqwest per-attempt network request and response-body deadline, if present.
     pub(in crate::options) request_timeout: Option<Duration>,
 }

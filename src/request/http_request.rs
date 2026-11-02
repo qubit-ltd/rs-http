@@ -371,7 +371,7 @@ impl HttpRequest {
         self
     }
 
-    /// Returns the per-request total timeout, if any.
+    /// Returns the optional reqwest per-attempt network request and response-body deadline.
     ///
     /// # Returns
     /// `Some(duration)` when a request-specific timeout overrides the client
@@ -381,12 +381,15 @@ impl HttpRequest {
         self.execution_options.request_timeout
     }
 
-    /// Sets a per-request total timeout that overrides the client default for
-    /// this send.
+    /// Sets the optional reqwest per-attempt network request and response-body
+    /// deadline, overriding the client default for this send. It excludes
+    /// asynchronous header injection, streaming-body factory preparation,
+    /// retry waits, and the duration of other attempts. Use
+    /// `response_header_timeout` to bound asynchronous preparation through
+    /// receipt of response headers.
     ///
     /// # Parameters
-    /// - `timeout`: Upper bound for the entire request lifecycle handled by
-    ///   reqwest.
+    /// - `timeout`: The reqwest per-attempt network request and response-body deadline.
     ///
     /// # Returns
     /// `Ok(self)` for method chaining.
@@ -440,19 +443,23 @@ impl HttpRequest {
         Ok(self)
     }
 
-    /// Returns the read-phase timeout used while reading response body bytes.
+    /// Returns the timeout for each normal body read and complete non-success error-body capture.
     ///
     /// # Returns
-    /// Maximum duration allowed for each response body read phase.
+    /// Maximum duration for each normal response-body read and for complete
+    /// non-success error-body capture from when capture begins.
     #[inline]
     pub fn read_timeout(&self) -> Duration {
         self.execution_options.read_timeout
     }
 
-    /// Sets the read-phase timeout used while reading response body bytes.
+    /// Bounds each normal response-body read. For non-success status responses,
+    /// it also bounds complete error-body capture from when capture begins;
+    /// expiry retains the status and partial raw body marked incomplete.
     ///
     /// # Parameters
-    /// - `timeout`: Maximum duration allowed for each response body read phase.
+    /// - `timeout`: Maximum duration allowed for each normal body read and the
+    ///   complete non-success error-body capture phase.
     ///
     /// # Returns
     /// `Ok(self)` for method chaining.

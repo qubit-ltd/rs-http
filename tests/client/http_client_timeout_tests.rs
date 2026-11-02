@@ -8,22 +8,156 @@
 
 use std::time::Duration;
 use std::time::Instant;
+use std::future::Future;
+use std::pin::Pin;
 
+use bytes::Bytes;
+use futures_util::stream;
 use futures_util::StreamExt;
+use http::HeaderMap;
 use http::Method;
 use http::StatusCode;
+use qubit_http::AsyncHttpHeaderInjector;
 use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
+use qubit_http::HttpRequestBodyByteStream;
 use qubit_http::RetryHint;
 use qubit_retry::BackoffPolicy;
 use tokio::test as tokio_test;
+use tokio::time::sleep;
 use tokio::time::timeout;
 
 use crate::common::ResponseChunk;
 use crate::common::ResponsePlan;
 use crate::common::spawn_multi_shot_server;
 use crate::common::spawn_one_shot_server;
+
+#[tokio_test]
+async fn test_async_header_injector_preparation_is_outside_request_timeout() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 200,
+        headers: vec![],
+        body: b"ok".to_vec(),
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.request_timeout = Some(Duration::from_millis(100));
+    options.timeouts.response_header_timeout = Duration::from_secs(2);
+    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    client.add_async_header_injector(AsyncHttpHeaderInjector::new(|_headers: &mut HeaderMap| {
+        Box::pin(async move {
+            sleep(Duration::from_millis(300)).await;
+            Ok(())
+        })
+    }));
+
+    let request = client.request(Method::GET, "/slow-header-preparation").build();
+    let mut response = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .expect("preparation should not consume request_timeout");
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.bytes().await.unwrap(), b"ok".as_slice());
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.target, "/slow-header-preparation");
+}
+
+#[tokio_test]
+async fn test_streaming_body_preparation_is_outside_request_timeout() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 200,
+        headers: vec![],
+        body: b"ok".to_vec(),
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.request_timeout = Some(Duration::from_millis(100));
+    options.timeouts.response_header_timeout = Duration::from_secs(2);
+    let client = HttpClientBuilder::new().create(options).unwrap();
+
+    let factory = || -> Pin<Box<dyn Future<Output = HttpRequestBodyByteStream> + Send>> {
+        Box::pin(async move {
+            sleep(Duration::from_millis(300)).await;
+            Box::pin(stream::iter([Ok(Bytes::from_static(b"payload"))])) as HttpRequestBodyByteStream
+        })
+    };
+    let request = client
+        .request(Method::POST, "/slow-body-preparation")
+        .streaming_body(factory)
+        .build();
+    let mut response = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .expect("preparation should not consume request_timeout");
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.bytes().await.unwrap(), b"ok".as_slice());
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.body, b"payload");
+}
+
+#[tokio_test]
+async fn test_async_header_preparation_uses_response_header_timeout() {
+    let server = spawn_multi_shot_server(vec![]).await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.request_timeout = Some(Duration::from_secs(2));
+    options.timeouts.response_header_timeout = Duration::from_millis(50);
+    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    client.add_async_header_injector(AsyncHttpHeaderInjector::new(|_headers: &mut HeaderMap| {
+        Box::pin(async move {
+            sleep(Duration::from_millis(300)).await;
+            Ok(())
+        })
+    }));
+
+    let request = client.request(Method::GET, "/header-preparation-timeout").build();
+    let error = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .expect_err("slow preparation should hit response_header_timeout");
+    assert_eq!(error.kind, HttpErrorKind::ResponseHeaderTimeout);
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("empty server should finish without a request");
+    assert!(captured.is_empty());
+}
+
+#[tokio_test]
+async fn test_streaming_body_preparation_uses_response_header_timeout() {
+    let server = spawn_multi_shot_server(vec![]).await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.request_timeout = Some(Duration::from_secs(2));
+    options.timeouts.response_header_timeout = Duration::from_millis(50);
+    let client = HttpClientBuilder::new().create(options).unwrap();
+
+    let factory = || -> Pin<Box<dyn Future<Output = HttpRequestBodyByteStream> + Send>> {
+        Box::pin(async move {
+            sleep(Duration::from_millis(300)).await;
+            Box::pin(stream::iter([Ok(Bytes::from_static(b"payload"))])) as HttpRequestBodyByteStream
+        })
+    };
+    let request = client
+        .request(Method::POST, "/body-preparation-timeout")
+        .streaming_body(factory)
+        .build();
+    let error = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .expect_err("slow preparation should hit response_header_timeout");
+    assert_eq!(error.kind, HttpErrorKind::ResponseHeaderTimeout);
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("empty server should finish without a request");
+    assert!(captured.is_empty());
+}
 
 #[test]
 fn test_client_builder_rejects_unrepresentable_response_header_deadline() {

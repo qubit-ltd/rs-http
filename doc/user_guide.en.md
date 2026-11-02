@@ -98,7 +98,7 @@ Default behavior:
 | Connect timeout | 10 seconds |
 | Read timeout | 120 seconds |
 | Response-header/send-phase timeout | 120 seconds |
-| Whole-request timeout | None |
+| Reqwest per-attempt network request and response-body deadline | None |
 | Proxy | Explicit proxy disabled, and `use_env_proxy = false`; calls reqwest `no_proxy()`, so environment proxies are not inherited |
 | Logging | Enabled, but logs are emitted only when tracing TRACE is active |
 | Log body preview | 16 KiB |
@@ -193,9 +193,9 @@ Common configuration keys:
 | `base_url` | Base URL used to resolve relative request paths |
 | `origin_policy` | `same_origin` (default) restricts requests and redirects to the initial origin; `any_origin` permits cross-origin absolute targets and redirects |
 | `timeouts.connect_timeout` | Connect timeout |
-| `timeouts.read_timeout` | Per-read wait timeout for body/stream reads |
+| `timeouts.read_timeout` | Bounds each normal response-body read and the complete non-success error-body capture phase |
 | `timeouts.response_header_timeout` | Cumulative asynchronous preparation and send deadline through response headers |
-| `timeouts.request_timeout` | Optional whole-request timeout |
+| `timeouts.request_timeout` | Optional reqwest per-attempt network request and response-body deadline; excludes async header injection, streaming-body factory preparation, retry waits, and other attempts |
 | `proxy.enabled` | Enables outbound proxying |
 | `use_env_proxy` | Whether to inherit environment proxies when explicit proxying is disabled |
 | `logging.enabled` | Allows TRACE HTTP logs |
@@ -289,9 +289,9 @@ Per-request overrides:
 
 | Method | Purpose |
 | --- | --- |
-| `request_timeout` | Overrides whole-request timeout (reqwest per-request deadline) |
+| `request_timeout` | Optional reqwest per-attempt network request and response-body deadline; excludes async header injection, streaming-body factory preparation, retry waits, and other attempts |
 | `response_header_timeout` | Overrides the cumulative asynchronous preparation and send deadline through response headers |
-| `read_timeout` | Overrides response body/stream read timeout |
+| `read_timeout` | Bounds each normal body read and complete non-success error-body capture; expiry retains status and incomplete partial raw body |
 | `base_url` / `clear_base_url` | Overrides or removes base URL for this request |
 | `ipv4_only` | Overrides IPv4-only URL validation for this request |
 | `cancellation_token` | Binds a `CancellationToken`, checked before send, during send, and during body/stream reads |
@@ -300,7 +300,7 @@ Per-request overrides:
 | `retry_method_policy` | Overrides retryable HTTP method policy for this request |
 | `honor_retry_after` | Honors `Retry-After` for retryable 429/5xx responses on this request |
 
-Per-request timeout overrides reject zero durations and return `HttpError`.
+`request_timeout` does not cover async header injection or streaming-body factory preparation. `response_header_timeout` covers that preparation through response headers. `read_timeout` bounds each normal response-body read and the complete capture of a non-success error body; on expiry, the returned `Status` error retains its status and partial raw body marked incomplete. Inspect `is_truncated()` and increase `read_timeout` when slow error bodies must be retained. Per-request timeout overrides reject zero durations and return `HttpError`.
 
 ## Headers, Injectors, And Interceptors
 
@@ -648,9 +648,7 @@ This is a **soft continuation budget**: it can reject a planned delay or the nex
 admission, but it neither cancels an in-flight request nor replaces its successful
 result. Ordinary HTTP retry does not set `qubit-retry`'s `attempt_timeout` or
 `flow_timeout`. For example, `max_duration = 1s` can still return a successful
-request that took 2s; use `request_timeout` or the connect/read/response-header timeout
-settings to bound the corresponding request phase. Bodies returned lazily remain
-outside the built-in retry boundary.
+request that took 2s. `request_timeout` bounds reqwest network execution and response-body reads for one attempt; it excludes asynchronous header injection, streaming-body factory preparation, retry waits, and other attempts. Use `response_header_timeout` for asynchronous preparation through response headers. `read_timeout` also bounds complete non-success error-body capture; if a slow error body times out, inspect `is_truncated()` and raise `read_timeout` if needed. Bodies returned lazily remain outside the built-in retry boundary.
 
 Retryable requests must be safe to replay. Buffered bodies can be sent again;
 `streaming_body` factories must create a fresh stream for each attempt, and header
@@ -998,9 +996,9 @@ The table below lists every configuration key supported by `HttpClientOptions::f
 | `json.max_payload_bytes` | Maximum cumulative key, string, and number payload bytes; defaults to `8388608` |
 | `json.max_output_bytes` | Maximum aggregate encoded JSON/NDJSON request-body bytes, including NDJSON line terminators; defaults to `8388608` |
 | `timeouts.connect_timeout` | Connect timeout |
-| `timeouts.read_timeout` | Per-read wait timeout for body/stream reads |
+| `timeouts.read_timeout` | Bounds each normal response-body read and the complete non-success error-body capture phase |
 | `timeouts.response_header_timeout` | Cumulative asynchronous preparation and send deadline through response headers |
-| `timeouts.request_timeout` | Optional whole-request timeout |
+| `timeouts.request_timeout` | Optional reqwest per-attempt network request and response-body deadline; excludes async header injection, streaming-body factory preparation, retry waits, and other attempts |
 | `proxy.enabled` | Enables outbound proxying |
 | `proxy.proxy_type` | `http`, `https`, `socks5`, or `socks5h` |
 | `proxy.host` | Proxy host |
