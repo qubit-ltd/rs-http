@@ -447,6 +447,19 @@ async fn test_execute_retry_sleep_can_be_cancelled() {
         "/cancel-retry-sleep"
     );
     assert_eq!(retry_error(&error).context().attempts(), 1);
+    let diagnostics = error
+        .retry_diagnostics()
+        .expect("cancelled retry diagnostics");
+    assert_eq!(
+        diagnostics.termination(),
+        qubit_http::HttpRetryTermination::Cancelled
+    );
+    let retry = retry_error(&error);
+    let last_error = retry
+        .last_error()
+        .expect("cancelled retry keeps prior failure");
+    assert_eq!(last_error.kind, HttpErrorKind::Transport);
+    assert_ne!(error.kind, last_error.kind);
     assert_eq!(attempt_calls.load(Ordering::SeqCst), 1);
 }
 

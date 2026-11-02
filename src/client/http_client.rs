@@ -439,6 +439,14 @@ impl HttpClient {
             .map_err(HttpAttemptFailure::into_error)
     }
 
+    /// Performs one SSE attempt and preserves the final request's
+    /// `Retry-After` preference when the attempt fails.
+    pub(crate) async fn execute_once_for_sse(&self, request: HttpRequest) -> Result<HttpResponse, HttpAttemptFailure> {
+        self.execute_once_with_context(request, HttpAttemptExecutionContext::direct())
+            .await
+            .map(|attempt| attempt.into_parts().0)
+    }
+
     /// Performs one attempt with private cancellation ownership routing.
     ///
     /// # Parameters

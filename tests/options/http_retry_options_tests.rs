@@ -68,6 +68,52 @@ fn test_http_retry_options_alias_exponential_dash_normalizes_to_exponential_back
 }
 
 #[test]
+fn test_http_retry_options_maps_backoff_error_fields_from_policy() {
+    let mut multiplier = Config::new();
+    multiplier
+        .set("retry.backoff_initial_delay", Duration::from_millis(40))
+        .unwrap();
+    multiplier
+        .set("retry.backoff_max_delay", Duration::from_secs(1))
+        .unwrap();
+    multiplier.set("retry.backoff_multiplier", 0.5_f64).unwrap();
+    let error = HttpRetryOptions::from_config(&multiplier.section("retry").unwrap()).unwrap_err();
+    assert_eq!(error.path, "retry.backoff_multiplier");
+    assert!(error.message.to_ascii_lowercase().contains("multiplier"));
+    assert!(!error.message.contains("inconsistent"));
+
+    let mut maximum = Config::new();
+    maximum
+        .set("retry.backoff_initial_delay", Duration::from_secs(2))
+        .unwrap();
+    maximum
+        .set("retry.backoff_max_delay", Duration::from_secs(1))
+        .unwrap();
+    let error = HttpRetryOptions::from_config(&maximum.section("retry").unwrap()).unwrap_err();
+    assert_eq!(error.path, "retry.backoff_max_delay");
+}
+
+#[test]
+fn test_http_retry_options_rejects_non_finite_config_multiplier_at_available_boundary() {
+    for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        let mut config = Config::new();
+        let set_result = config.set("client.retry.backoff_multiplier", value);
+        if let Err(error) = set_result {
+            assert!(
+                !error.to_string().is_empty(),
+                "the config carrier should explain rejecting non-finite values"
+            );
+            continue;
+        }
+
+        let error = HttpRetryOptions::from_config(&config.section("client.retry").unwrap())
+            .expect_err("non-finite multiplier should fail validation");
+        assert_eq!(error.kind, HttpConfigErrorKind::InvalidValue);
+        assert_eq!(error.path, "client.retry.backoff_multiplier");
+    }
+}
+
+#[test]
 fn test_http_retry_options_none_policy_disables_retries() {
     let mut options = HttpRetryOptions::default();
     options.enabled = true;

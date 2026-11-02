@@ -118,6 +118,38 @@ pub struct HttpResponse {
     options: HttpResponseOptions,
 }
 
+/// Adds missing response context to an SSE decoder error while preserving
+/// specific fields, classification, and source already supplied by its origin.
+///
+/// # Parameters
+/// - `error`: Decoder or body-read error to enrich.
+/// - `method`: Request method used when producing the response.
+/// - `url`: Request URL used when producing the response.
+/// - `status`: HTTP response status.
+/// - `redactor`: Policy used to render the error's diagnostic context.
+///
+/// # Returns
+/// The error with missing method, URL, or status fields filled and the response
+/// redaction policy attached.
+fn attach_sse_error_context(
+    mut error: HttpError,
+    method: &Method,
+    url: &Url,
+    status: StatusCode,
+    redactor: &Redactor,
+) -> HttpError {
+    if error.method.is_none() {
+        error.method = Some(method.clone());
+    }
+    if error.url.is_none() {
+        error.url = Some(url.clone());
+    }
+    if error.status.is_none() {
+        error.status = Some(status);
+    }
+    error.with_log_redactor(redactor.clone())
+}
+
 impl fmt::Debug for HttpResponse {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut batch = self.options.log_redactor.diagnostic_batch();
@@ -729,11 +761,16 @@ impl HttpResponse {
         let max_line_bytes = self.options.sse_max_line_bytes;
         let max_frame_bytes = self.options.sse_max_frame_bytes;
         let log_redactor = self.log_redactor().clone();
+        let method = self.meta.method().clone();
+        let url = self.request_url().clone();
+        let status = self.status();
         let decoded: SseMessageStream = match self.stream() {
             Ok(stream) => crate::sse::decode_messages_from_stream_with_limits(stream, max_line_bytes, max_frame_bytes),
             Err(error) => Box::pin(futures_stream::once(async move { Err(error) })),
         };
-        Box::pin(decoded.map(move |result| result.map_err(|error| error.with_log_redactor(log_redactor.clone()))))
+        Box::pin(decoded.map(move |result| result.map_err(|error| {
+            attach_sse_error_context(error, &method, &url, status, &log_redactor)
+        })))
     }
 
     /// Decodes body stream as internal SSE records for reconnect state
@@ -746,11 +783,16 @@ impl HttpResponse {
         let max_line_bytes = self.options.sse_max_line_bytes;
         let max_frame_bytes = self.options.sse_max_frame_bytes;
         let log_redactor = self.log_redactor().clone();
+        let method = self.meta.method().clone();
+        let url = self.request_url().clone();
+        let status = self.status();
         let decoded: crate::sse::SseRecordStream = match self.stream() {
             Ok(stream) => crate::sse::decode_records_from_stream_with_limits(stream, max_line_bytes, max_frame_bytes),
             Err(error) => Box::pin(futures_stream::once(async move { Err(error) })),
         };
-        Box::pin(decoded.map(move |result| result.map_err(|error| error.with_log_redactor(log_redactor.clone()))))
+        Box::pin(decoded.map(move |result| result.map_err(|error| {
+            attach_sse_error_context(error, &method, &url, status, &log_redactor)
+        })))
     }
 
     /// Decodes SSE `data:` lines as JSON chunks using this response's SSE JSON
@@ -779,6 +821,9 @@ impl HttpResponse {
         let json_value_limits = self.options.json_value_limits;
         let completion_policy = self.options.sse_completion_policy;
         let log_redactor = self.log_redactor().clone();
+        let method = self.meta.method().clone();
+        let url = self.request_url().clone();
+        let status = self.status();
         let decoded: SseChunkStream<T> = match self.stream() {
             Ok(stream) => crate::sse::decode_json_chunks_from_stream_with_limits(
                 stream,
@@ -791,7 +836,9 @@ impl HttpResponse {
             ),
             Err(error) => Box::pin(futures_stream::once(async move { Err(error) })),
         };
-        Box::pin(decoded.map(move |result| result.map_err(|error| error.with_log_redactor(log_redactor.clone()))))
+        Box::pin(decoded.map(move |result| result.map_err(|error| {
+            attach_sse_error_context(error, &method, &url, status, &log_redactor)
+        })))
     }
 
     /// Returns the shared log redactor used for response diagnostics and
@@ -1028,14 +1075,53 @@ mod tests {
     use std::time::Duration;
 
     use http::Method;
+    use http::StatusCode;
+    use qubit_redact::Redactor;
     use tokio::io::AsyncReadExt;
     use tokio::io::AsyncWriteExt;
     use tokio::net::TcpListener;
     use tokio::sync::oneshot;
 
+    use super::attach_sse_error_context;
     use super::HttpResponse;
     use super::HttpResponseMeta;
     use super::HttpResponseOptions;
+    use crate::HttpError;
+    use crate::HttpErrorKind;
+
+    #[test]
+    fn test_attach_sse_error_context_preserves_existing_error_fields() {
+        let original_url = url::Url::parse("https://original.example/path").unwrap();
+        let supplied_url = url::Url::parse("https://supplied.example/other").unwrap();
+        let original_method = Method::POST;
+        let error = HttpError::transport("existing transport error")
+            .with_method(&original_method)
+            .with_url(&original_url)
+            .with_status(StatusCode::BAD_GATEWAY)
+            .with_source(std::io::Error::other("source sentinel"));
+
+        let enriched = attach_sse_error_context(
+            error,
+            &Method::GET,
+            &supplied_url,
+            StatusCode::OK,
+            &Redactor::application_default(),
+        );
+
+        assert_eq!(enriched.kind, HttpErrorKind::Transport);
+        assert_eq!(enriched.method, Some(original_method));
+        assert_eq!(enriched.url, Some(original_url));
+        assert_eq!(enriched.status, Some(StatusCode::BAD_GATEWAY));
+        assert_eq!(
+            enriched
+                .source
+                .as_deref()
+                .and_then(|source| source.downcast_ref::<std::io::Error>())
+                .map(std::io::Error::to_string)
+                .as_deref(),
+            Some("source sentinel")
+        );
+    }
 
     async fn make_backend(method: Method, status: u16) -> (reqwest::Response, url::Url) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();

@@ -7,6 +7,7 @@
 // =============================================================================
 
 use qubit_config::Config;
+use qubit_http::HttpClientOptions;
 use qubit_http::HttpConfigErrorKind;
 use qubit_http::ProxyOptions;
 use qubit_http::ProxyType;
@@ -227,6 +228,57 @@ fn test_proxy_validate_enabled_blank_host() {
     let err = opts.validate().expect_err("blank proxy host should fail validation");
     assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
     assert_eq!(err.path, "proxy.host");
+}
+
+#[test]
+fn test_proxy_validate_rejects_structured_host_values() {
+    for host in [
+        "127.0.0.1/",
+        "127.0.0.1:8123/path",
+        "user:secret@host",
+        "host?x",
+        "host#x",
+        "http://host",
+        "host:8080",
+        "host\\path",
+        "host%2fpath",
+        "[::1",
+    ] {
+        let options = ProxyOptions {
+            enabled: true,
+            host: Some(host.to_string()),
+            port: Some(8080),
+            ..ProxyOptions::default()
+        };
+        let error = options.validate().expect_err("proxy host must be a pure host");
+        assert_eq!(error.path, "proxy.host");
+        assert!(!error.to_string().contains("secret"));
+    }
+}
+
+#[test]
+fn test_proxy_validate_accepts_domain_ip_and_ipv6_hosts() {
+    for host in ["proxy.example", "127.0.0.1", "::1", "[::1]"] {
+        let options = ProxyOptions {
+            enabled: true,
+            host: Some(host.to_string()),
+            port: Some(8080),
+            ..ProxyOptions::default()
+        };
+        assert!(options.validate().is_ok(), "valid proxy host rejected: {host}");
+    }
+}
+
+#[test]
+fn test_proxy_config_invalid_host_keeps_scoped_path_and_safe_message() {
+    let mut config = Config::new();
+    config.set("service.http.proxy.enabled", true).unwrap();
+    config.set("service.http.proxy.host", "user:secret@host").unwrap();
+    config.set("service.http.proxy.port", 8080_u16).unwrap();
+    let section = config.section("service.http").unwrap();
+    let error = HttpClientOptions::from_config(&section).unwrap_err();
+    assert_eq!(error.path, "service.http.proxy.host");
+    assert!(!error.to_string().contains("secret"));
 }
 
 #[test]

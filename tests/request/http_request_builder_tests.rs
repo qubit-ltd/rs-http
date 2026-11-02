@@ -649,6 +649,23 @@ fn test_request_builder_multipart_body_sets_content_type_with_boundary() {
 }
 
 #[test]
+fn test_multipart_rejects_duplicate_boundary_parameters() {
+    for value in [
+        "multipart/form-data; boundary=abc; boundary=other",
+        "multipart/form-data; boundary=abc; boundary=abc",
+        "multipart/form-data; boundary=abc; Boundary=other",
+        "multipart/form-data; boundary=abc; boundary",
+        "multipart/form-data; boundary=abc; boundary=\"unterminated",
+    ] {
+        let result = new_builder(Method::POST, "https://example.test/upload")
+            .header(CONTENT_TYPE.as_str(), value)
+            .unwrap()
+            .multipart_body(Bytes::from_static(b"--abc--\r\n"), "abc");
+        assert!(result.is_err(), "invalid boundary parameters must fail: {value}");
+    }
+}
+
+#[test]
 fn test_request_builder_multipart_body_rejects_empty_boundary() {
     let error = new_builder(Method::POST, "/v1/multipart")
         .multipart_body(Bytes::from_static(b"payload"), "")

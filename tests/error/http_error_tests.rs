@@ -51,6 +51,14 @@ fn test_http_error_accessors_expose_optional_context() {
 }
 
 #[test]
+#[allow(deprecated)]
+fn test_http_error_legacy_retry_metadata_remains_empty() {
+    let error = HttpError::other("retry metadata compatibility");
+    assert!(error.retry_metadata().is_none());
+    assert!(error.retry_diagnostics().is_none());
+}
+
+#[test]
 fn test_http_error_debug_masks_sensitive_url_values() {
     let url = url::Url::parse(
         "https://debug-user:debug-url-secret@example.com/path?accessToken=debug-query-secret#debug-fragment-secret",

@@ -257,6 +257,10 @@ impl HttpRequestBuilder {
     /// # Parameters
     /// - `chunks`: Iterator of chunks in send order.
     ///
+    /// The iterator is eagerly collected into memory during this call and must
+    /// be finite. Memory usage grows with the total payload. Use
+    /// [`Self::streaming_body`] for a deferred per-attempt stream factory.
+    ///
     /// # Returns
     /// `self` for chaining.
     pub fn stream_body<I, B>(mut self, chunks: I) -> Self
@@ -414,13 +418,13 @@ impl HttpRequestBuilder {
                     &self.log_redactor,
                 ));
             }
-            let declares_boundary = content_type::has_parameter_name(existing, "boundary").ok_or_else(|| {
+            let existing_boundary = content_type::unique_parameter(existing, "boundary").map_err(|_| {
                 Self::attach_log_redactor(
                     HttpError::other("Existing multipart Content-Type boundary is malformed or invalid"),
                     &self.log_redactor,
                 )
             })?;
-            if let Some(existing_boundary) = content_type::parameter(existing, "boundary") {
+            if let Some(existing_boundary) = existing_boundary {
                 if !content_type::is_valid_multipart_boundary(&existing_boundary) {
                     return Err(Self::attach_log_redactor(
                         HttpError::other("Existing multipart Content-Type boundary is malformed or invalid"),
@@ -435,11 +439,6 @@ impl HttpRequestBuilder {
                         &self.log_redactor,
                     ));
                 }
-            } else if declares_boundary {
-                return Err(Self::attach_log_redactor(
-                    HttpError::other("Existing multipart Content-Type boundary is malformed or invalid"),
-                    &self.log_redactor,
-                ));
             } else {
                 let value = existing.trim().trim_end_matches(';').trim_end();
                 let value = HeaderValue::from_str(&format!("{value}; boundary={boundary}"))

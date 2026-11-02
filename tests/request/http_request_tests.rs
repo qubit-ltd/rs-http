@@ -6,6 +6,7 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
+use std::error::Error as _;
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -107,6 +108,43 @@ fn test_http_request_debug_masks_sensitive_values() {
     assert!(!debug.contains("debug-header-secret"));
     assert!(!debug.contains("debug-body-secret"));
     assert!(debug.contains("****"));
+}
+
+#[tokio::test]
+async fn test_relative_url_error_does_not_expose_query_or_fragment() {
+    let client = HttpClientBuilder::new().create_default().unwrap();
+    let request = client
+        .request(Method::GET, "/v1?access_token=PRIVATE_QUERY#PRIVATE_FRAGMENT")
+        .build();
+    let error = request.resolved_url().unwrap_err();
+    assert_eq!(error.kind(), HttpErrorKind::InvalidUrl);
+    for rendered in [error.message().to_owned(), error.to_string(), format!("{error:?}")] {
+        assert!(!rendered.contains("PRIVATE_QUERY"));
+        assert!(!rendered.contains("PRIVATE_FRAGMENT"));
+    }
+    let error = client.execute(request).await.unwrap_err();
+    assert_eq!(error.kind(), HttpErrorKind::InvalidUrl);
+    assert!(!error.to_string().contains("PRIVATE_QUERY"));
+    assert!(!format!("{error:?}").contains("PRIVATE_FRAGMENT"));
+}
+
+#[test]
+fn test_failed_base_url_join_keeps_safe_summary_and_parse_source() {
+    let mut options = HttpClientOptions::default();
+    options.set_base_url("https://example.test/api/").unwrap();
+    options.log_redaction_policy = RedactionPolicy::strict();
+    let client = HttpClientBuilder::new().create(options).unwrap();
+    let error = client
+        .request(Method::GET, "//[invalid]?access_token=PRIVATE_QUERY")
+        .build()
+        .resolved_url()
+        .unwrap_err();
+    assert_eq!(error.kind(), HttpErrorKind::InvalidUrl);
+    assert!(error.source().unwrap().is::<url::ParseError>());
+    for rendered in [error.message().to_owned(), error.to_string(), format!("{error:?}")] {
+        assert!(!rendered.contains("PRIVATE_QUERY"));
+        assert!(rendered.contains("Failed to resolve request path against base URL"));
+    }
 }
 
 #[test]

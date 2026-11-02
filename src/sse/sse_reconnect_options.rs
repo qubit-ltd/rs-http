@@ -65,7 +65,8 @@ pub struct SseReconnectOptions {
     /// Whether to honor SSE `retry:` field as the next reconnect delay.
     pub honor_server_retry: bool,
     /// Upper bound for a server-directed reconnect delay after hint merging
-    /// and jitter. The effective bound is at least one millisecond.
+    /// and jitter. The effective bound is at least one millisecond. This cap
+    /// applies only to SSE `retry:` fields, not HTTP `Retry-After` hints.
     ///
     /// When `None`, reconnect runner derives a cap from retry delay strategy
     /// from its base maximum when greater than one millisecond; otherwise

@@ -7,12 +7,15 @@
 // =============================================================================
 
 use std::fmt;
+use std::net::Ipv6Addr;
 use std::str::FromStr;
 
 use qubit_argument::ArgumentResult;
 use qubit_argument::require_that;
 use qubit_config::ConfigReader;
 use qubit_config::ConfigResult;
+use url::Host;
+use url::Url;
 
 use super::HttpConfigError;
 use super::internal::ProxyConfigInput;
@@ -188,6 +191,41 @@ impl ProxyOptions {
         self.validate_arguments().map_err(HttpConfigError::from)
     }
 
+    /// Builds a proxy URL from the validated host and independent port.
+    ///
+    /// # Returns
+    /// `None` when the proxy is disabled, or a URL containing the configured
+    /// scheme, pure host, and port when enabled.
+    ///
+    /// # Errors
+    /// Returns [`HttpConfigError`] when enabled options are invalid or the
+    /// host or port cannot be represented in a URL.
+    pub(crate) fn to_proxy_url(&self) -> Result<Option<Url>, HttpConfigError> {
+        self.validate()?;
+        if !self.enabled {
+            return Ok(None);
+        }
+        let host = parse_proxy_host(self.host.as_deref().expect("validated proxy host exists"))
+            .map_err(|_| HttpConfigError::invalid_value("proxy.host", "Invalid proxy host"))?;
+        let port = self.port.expect("validated proxy port exists");
+        let mut url = Url::parse(&format!("{}://proxy.invalid/", self.proxy_type.scheme()))
+            .expect("supported proxy scheme with a fixed authority is valid");
+        match host {
+            Host::Domain(domain) => url
+                .set_host(Some(&domain))
+                .map_err(|_| HttpConfigError::invalid_value("proxy.host", "Invalid proxy host"))?,
+            Host::Ipv4(ip) => url
+                .set_host(Some(&ip.to_string()))
+                .map_err(|_| HttpConfigError::invalid_value("proxy.host", "Invalid proxy host"))?,
+            Host::Ipv6(ip) => url
+                .set_host(Some(&format!("[{ip}]")))
+                .map_err(|_| HttpConfigError::invalid_value("proxy.host", "Invalid proxy host"))?,
+        }
+        url.set_port(Some(port))
+            .map_err(|_| HttpConfigError::invalid_value("proxy.port", "Invalid proxy port"))?;
+        Ok(Some(url))
+    }
+
     /// Validates proxy fields while retaining structured argument errors.
     ///
     /// # Parameters
@@ -211,9 +249,9 @@ impl ProxyOptions {
             require_that(
                 self.host.as_deref(),
                 "proxy.host",
-                |host| host.is_none_or(|value| !value.trim().is_empty()),
-                "blank_proxy_host",
-                "Proxy host cannot be empty when proxy is enabled",
+                |host| host.is_none_or(|value| parse_proxy_host(value).is_ok()),
+                "invalid_proxy_host",
+                "Proxy host must be a pure domain name or IP address",
             )?;
             require_that(
                 self.port,
@@ -250,6 +288,30 @@ impl ProxyOptions {
         }
         Ok(())
     }
+}
+
+fn parse_proxy_host(value: &str) -> Result<Host<String>, ()> {
+    if value.is_empty()
+        || value.trim() != value
+        || value.chars().any(char::is_whitespace)
+        || value
+            .bytes()
+            .any(|byte| matches!(byte, b'/' | b'\\' | b'@' | b'?' | b'#' | b'%'))
+    {
+        return Err(());
+    }
+    let ipv6 = if value.starts_with('[') && value.ends_with(']') {
+        &value[1..value.len() - 1]
+    } else {
+        value
+    };
+    if let Ok(address) = ipv6.parse::<Ipv6Addr>() {
+        return Ok(Host::Ipv6(address));
+    }
+    if value.starts_with('[') || value.ends_with(']') || value.contains(':') {
+        return Err(());
+    }
+    Host::parse(value).map_err(|_| ())
 }
 
 /// Parses a proxy scheme after trimming surrounding whitespace.

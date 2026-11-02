@@ -45,6 +45,7 @@ use crate::HttpRequest;
 use crate::HttpResponse;
 use crate::HttpResult;
 use crate::RetryHint;
+use crate::client::HttpAttemptFailure;
 
 /// Header name used for SSE resume token propagation.
 const LAST_EVENT_ID_HEADER: &str = "last-event-id";
@@ -183,15 +184,18 @@ impl SseReconnectRunner {
                     }
                 }
 
-                let response = match client.execute_once(request).await {
+                let response = match client.execute_once_for_sse(request).await {
                     Ok(response) => response,
-                    Err(error) => {
+                    Err(failure) => {
+                        let failure: HttpAttemptFailure = failure;
                         if let Err(error) = retry_budget.finish_attempt(attempt) {
                             yield Err(reconnect_budget_error(error, &runtime));
                             return;
                         }
+                        let honor_retry_after = failure.honor_retry_after;
+                        let error = failure.error;
                         if should_reconnect_sse_error(&error) {
-                            match reconnect_state.after_error(error, &mut retry_budget, &runtime).await {
+                            match reconnect_state.after_error(error, honor_retry_after, &mut retry_budget, &runtime).await {
                                 ReconnectAction::Continue => continue,
                                 ReconnectAction::Stop => return,
                                 ReconnectAction::Fail(error) => {
@@ -252,7 +256,7 @@ impl SseReconnectRunner {
 
                 if let Some(error) = stream_error {
                     if should_reconnect_sse_error(&error) {
-                        match reconnect_state.after_error(error, &mut retry_budget, &runtime).await {
+                        match reconnect_state.after_error(error, false, &mut retry_budget, &runtime).await {
                             ReconnectAction::Continue => continue,
                             ReconnectAction::Stop => return,
                             ReconnectAction::Fail(error) => {
@@ -743,7 +747,7 @@ mod tests {
             .backoff()
             .start_with_random_source(Arc::new(MaximumRandom));
         state.set_server_retry_delay(Duration::from_secs(10));
-        assert_eq!(state.sleep_delay(&runtime), Duration::from_secs(10));
+        assert_eq!(state.sleep_delay(&runtime, None), Duration::from_secs(10));
     }
 
     /// SSE imposes its 1ms floor after the retry policy's final cap.
@@ -779,9 +783,9 @@ mod tests {
                 state.backoff = policy
                     .backoff()
                     .start_with_random_source(Arc::new(MaximumRandom));
-                assert_eq!(state.sleep_delay(&runtime), Duration::from_millis(1));
+                assert_eq!(state.sleep_delay(&runtime, None), Duration::from_millis(1));
                 state.set_server_retry_delay(hint);
-                assert_eq!(state.sleep_delay(&runtime), Duration::from_millis(1));
+                assert_eq!(state.sleep_delay(&runtime, None), Duration::from_millis(1));
             }
         }
     }

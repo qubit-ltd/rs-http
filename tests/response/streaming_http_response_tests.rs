@@ -81,16 +81,11 @@ async fn test_http_stream_response_backend_taken_then_repeated_reads_fail() {
     let mut response = client.execute(request).await.expect("request should succeed");
 
     let mut first_stream = response.stream().expect("first stream should take backend response");
-    let first_chunk = first_stream
-        .next()
-        .await
-        .expect("first stream should yield one item")
-        .expect("first stream chunk should be valid");
-    assert_eq!(first_chunk, Bytes::from_static(b"stream-from-backend"));
-    assert!(
-        first_stream.next().await.is_none(),
-        "first stream should end after one chunk"
-    );
+    let mut collected = Vec::new();
+    while let Some(item) = first_stream.next().await {
+        collected.extend_from_slice(&item.expect("backend stream item should succeed"));
+    }
+    assert_eq!(collected, b"stream-from-backend");
 
     let second_error = match response.stream() {
         Err(error) => error,

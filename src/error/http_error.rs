@@ -310,11 +310,18 @@ impl HttpError {
         Self::new(HttpErrorKind::Other, message)
     }
 
-    /// Returns retry metadata attached by the HTTP retry adapter.
+    /// Returns legacy retry metadata, which is no longer populated.
+    ///
+    /// This method always returns `None` and cannot indicate whether an error
+    /// passed through retry execution. Use [`Self::retry_diagnostics`] for
+    /// completion details and inspect the [`std::error::Error::source`] chain
+    /// for `RetryError<HttpError>` when retry context is needed.
     #[must_use]
     #[inline]
+    #[deprecated(note = "Use retry_diagnostics() and the RetryError<HttpError> source instead")]
     pub fn retry_metadata(&self) -> Option<&RetryErrorMetadata> {
-        self.retry_metadata.as_ref()
+        let _ = &self.retry_metadata;
+        None
     }
 
     /// Returns the classified kind of this HTTP error.

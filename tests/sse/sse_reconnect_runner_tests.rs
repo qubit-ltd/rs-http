@@ -18,6 +18,8 @@ use std::task::Context;
 use std::task::Poll;
 use std::task::Waker;
 use std::time::Duration;
+use std::time::Instant;
+use std::time::SystemTime;
 
 use futures_util::StreamExt;
 use http::Method;
@@ -29,6 +31,7 @@ use qubit_http::HttpError;
 use qubit_http::HttpErrorKind;
 use qubit_http::HttpRequest;
 use qubit_http::HttpRequestInterceptor;
+use qubit_http::HttpRequestRetryOverride;
 use qubit_http::HttpResponseInterceptor;
 use qubit_http::HttpResponseInterceptorContext;
 use qubit_http::sse::SseReconnectOptions;
@@ -80,6 +83,82 @@ fn build_retry_policy(max_reconnects: u32, max_elapsed: Option<Duration>, backof
         builder = builder.total_time_budget(max_elapsed);
     }
     builder.build().unwrap()
+}
+
+async fn run_retry_after_sse_reconnect(
+    retry_after: &str,
+    template_honor_retry_after: bool,
+    interceptor_honor_retry_after: bool,
+) -> Duration {
+    let server = spawn_multi_shot_server(vec![
+        ResponsePlan::Immediate {
+            status: 503,
+            headers: vec![("Retry-After".to_string(), retry_after.to_string())],
+            body: b"retry".to_vec(),
+        },
+        ResponsePlan::Immediate {
+            status: 200,
+            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+            body: b"data: connected\n\n".to_vec(),
+        },
+    ])
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |request: &mut HttpRequest| {
+        request.set_retry_override(
+            HttpRequestRetryOverride::default().with_honor_retry_after(interceptor_honor_retry_after),
+        );
+        Ok(())
+    }));
+    let request = client
+        .request(Method::GET, "/sse-retry-after")
+        .honor_retry_after(template_honor_retry_after)
+        .build();
+    let mut events = client.execute_sse_with_reconnect(
+        request,
+        SseReconnectOptions {
+            retry: build_retry_options(1, BackoffPolicy::immediate().prefer_retry_after()),
+            reconnect_on_eof: false,
+            honor_server_retry: false,
+            ..SseReconnectOptions::default()
+        },
+    );
+    let started = Instant::now();
+    assert_eq!(events.next().await.unwrap().unwrap().data, "connected");
+    assert!(events.next().await.is_none());
+    let requests = timeout(Duration::from_secs(3), server.finish()).await.unwrap();
+    assert_eq!(requests.len(), 2);
+    started.elapsed()
+}
+
+#[tokio_test]
+async fn test_execute_sse_reconnect_honors_delta_seconds_after_interceptor_override() {
+    let elapsed = run_retry_after_sse_reconnect("1", false, true).await;
+    assert!(elapsed >= Duration::from_millis(650), "elapsed={elapsed:?}");
+}
+
+#[tokio_test]
+async fn test_execute_sse_reconnect_honors_http_date_after_interceptor_override() {
+    let date = httpdate::fmt_http_date(SystemTime::now() + Duration::from_secs(2));
+    let elapsed = run_retry_after_sse_reconnect(&date, false, true).await;
+    assert!(elapsed >= Duration::from_millis(650), "elapsed={elapsed:?}");
+}
+
+#[tokio_test]
+async fn test_execute_sse_reconnect_ignores_invalid_and_past_http_dates() {
+    let past = httpdate::fmt_http_date(SystemTime::now() - Duration::from_secs(2));
+    for value in ["invalid-date", past.as_str()] {
+        let elapsed = run_retry_after_sse_reconnect(value, false, true).await;
+        assert!(elapsed < Duration::from_millis(650), "{value}: elapsed={elapsed:?}");
+    }
+}
+
+#[tokio_test]
+async fn test_execute_sse_reconnect_interceptor_can_disable_template_retry_after() {
+    let elapsed = run_retry_after_sse_reconnect("1", true, false).await;
+    assert!(elapsed < Duration::from_millis(650), "elapsed={elapsed:?}");
 }
 
 #[tokio_test]

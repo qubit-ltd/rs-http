@@ -77,50 +77,34 @@ pub(crate) fn is_valid_multipart_boundary(boundary: &str) -> bool {
     (1..=MAX_MULTIPART_BOUNDARY_LEN).contains(&len) && boundary.bytes().all(is_valid_multipart_boundary_byte)
 }
 
-/// Extracts one semicolon-separated header parameter.
+/// Extracts a unique semicolon-separated header parameter.
 ///
 /// # Parameters
 /// - `value`: Header value containing parameters.
 /// - `parameter_name`: Parameter name to find.
 ///
 /// # Returns
-/// Decoded parameter value, or `None` when absent or malformed.
-pub(crate) fn parameter(value: &str, parameter_name: &str) -> Option<String> {
-    for segment in header_parameter_segments(value)?.into_iter().skip(1) {
+/// Decoded parameter value, or `None` when absent. Returns an error for
+/// malformed or duplicate occurrences, including duplicates with equal values.
+pub(crate) fn unique_parameter(value: &str, parameter_name: &str) -> Result<Option<String>, &'static str> {
+    let segments = header_parameter_segments(value).ok_or("Malformed header parameters")?;
+    let mut found = None;
+    for segment in segments.into_iter().skip(1) {
         let Some((name, raw_value)) = segment.split_once('=') else {
+            if segment.trim().eq_ignore_ascii_case(parameter_name) {
+                return Err("Malformed header parameter");
+            }
             continue;
         };
         if !name.trim().eq_ignore_ascii_case(parameter_name) {
             continue;
         }
-        return decode_header_parameter(raw_value.trim());
-    }
-    None
-}
-
-/// Returns whether a header value declares a parameter name.
-///
-/// # Parameters
-/// - `value`: Header value containing semicolon-separated parameters.
-/// - `parameter_name`: Parameter name to find.
-///
-/// # Returns
-/// `Some(true)` when a `name=value` segment uses `parameter_name`,
-/// `Some(false)` when no such parameter exists, or `None` when parameter
-/// quoting is malformed.
-pub(crate) fn has_parameter_name(value: &str, parameter_name: &str) -> Option<bool> {
-    for parameter in header_parameter_segments(value)?.into_iter().skip(1) {
-        let Some((name, _)) = parameter.split_once('=') else {
-            if parameter.trim().eq_ignore_ascii_case(parameter_name) {
-                return None;
-            }
-            continue;
-        };
-        if name.trim().eq_ignore_ascii_case(parameter_name) {
-            return Some(true);
+        if found.is_some() {
+            return Err("Duplicate header parameter");
         }
+        found = Some(decode_header_parameter(raw_value.trim()).ok_or("Malformed header parameter")?);
     }
-    Some(false)
+    Ok(found)
 }
 
 /// Returns whether one byte is allowed in generated multipart boundaries.

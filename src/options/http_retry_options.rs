@@ -361,18 +361,12 @@ fn parse_retry_backoff(raw: &HttpRetryConfigInput) -> Result<BackoffPolicy, Http
             raw.backoff_max_delay.unwrap_or(DEFAULT_RETRY_MAX_DELAY),
         )
         .map_err(|error| {
-            let field = if error.message().to_ascii_lowercase().contains("multiplier") {
-                "backoff_multiplier"
-            } else {
-                "backoff_max_delay"
+            let field = match error.field() {
+                "backoff.exponential.multiplier" => "backoff_multiplier",
+                "backoff.exponential" => "backoff_max_delay",
+                _ => "delay_strategy",
             };
-            HttpConfigError::invalid_value(
-                field,
-                format!(
-                    "backoff_initial_delay and backoff_max_delay are inconsistent: {}",
-                    error.message()
-                ),
-            )
+            HttpConfigError::invalid_value(field, error.message())
         })?,
         _ => {
             return Err(HttpConfigError::invalid_value(

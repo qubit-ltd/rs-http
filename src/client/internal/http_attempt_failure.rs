@@ -14,13 +14,13 @@ use crate::HttpError;
 
 /// HTTP error plus retry decisions derived from the final attempt request.
 #[derive(Debug)]
-pub(in crate::client) struct HttpAttemptFailure {
+pub(crate) struct HttpAttemptFailure {
     /// Public HTTP error produced by the attempt.
-    pub(in crate::client) error: HttpError,
+    pub(crate) error: HttpError,
     /// Whether the final request permits another attempt.
     pub(in crate::client) retry_allowed: bool,
     /// Whether the final request permits a Retry-After hint.
-    pub(in crate::client) honor_retry_after: bool,
+    pub(crate) honor_retry_after: bool,
 }
 
 impl HttpAttemptFailure {

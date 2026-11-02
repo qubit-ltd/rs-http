@@ -176,14 +176,11 @@ async fn test_execute_with_stream_body_uses_chunked_transfer_encoding() {
         .create(options)
         .expect("client should be created");
 
+    let large_chunk = vec![b'x'; 2048];
     let request = client
         .request(Method::POST, "/stream-upload")
         .query_param("kind", "stream")
-        .stream_body([
-            Bytes::from_static(b"first-"),
-            Bytes::from_static(b"second-"),
-            Bytes::from_static(b"third"),
-        ])
+        .stream_body([Bytes::from(large_chunk.clone()), Bytes::from_static(b"tail")])
         .request_timeout(Duration::from_secs(1))
         .expect("positive request timeout should be accepted")
         .build();
@@ -198,6 +195,9 @@ async fn test_execute_with_stream_body_uses_chunked_transfer_encoding() {
         .expect("server finish timed out");
     assert_eq!(captured.target, "/stream-upload?kind=stream");
     assert_eq!(captured.headers.get("transfer-encoding"), Some(&"chunked".to_string()));
+    let mut expected = large_chunk;
+    expected.extend_from_slice(b"tail");
+    assert_eq!(captured.body, expected);
 }
 
 #[tokio_test]
@@ -233,6 +233,7 @@ async fn test_execute_with_stream_body_uses_chunked_transfer_encoding_without_ea
         .expect("server finish timed out");
     assert_eq!(captured.target, "/stream-upload-streaming?kind=stream-body");
     assert_eq!(captured.headers.get("transfer-encoding"), Some(&"chunked".to_string()));
+    assert_eq!(captured.body, b"ab");
 }
 
 #[tokio_test]
@@ -269,10 +270,16 @@ async fn test_execute_with_streaming_body_factory_supports_retry_rebuild() {
             let stream_factory_calls_for_future = Arc::clone(&stream_factory_calls_for_builder);
             Box::pin(async move {
                 stream_factory_calls_for_future.fetch_add(1, Ordering::Relaxed);
-                Box::pin(stream::iter(vec![
-                    Ok(Bytes::from_static(b"part-1-")),
-                    Ok(Bytes::from_static(b"part-2")),
-                ])) as HttpRequestBodyByteStream
+                Box::pin(stream::unfold(0, |index| async move {
+                    let chunk = match index {
+                        0 => Some(Bytes::from_static(b"part-1-")),
+                        1 => Some(Bytes::from_static(b"part-2")),
+                        2 => Some(Bytes::from_static(b"part-3")),
+                        _ => None,
+                    }?;
+                    sleep(Duration::from_millis(5)).await;
+                    Some((Ok(chunk), index + 1))
+                })) as HttpRequestBodyByteStream
             })
         })
         .build();
@@ -287,6 +294,9 @@ async fn test_execute_with_streaming_body_factory_supports_retry_rebuild() {
         .await
         .expect("server finish timed out");
     assert_eq!(captured.len(), 2);
+    for request in &captured {
+        assert_eq!(request.body, b"part-1-part-2part-3");
+    }
     assert_eq!(
         captured[0].headers.get("transfer-encoding"),
         Some(&"chunked".to_string())

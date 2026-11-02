@@ -371,6 +371,11 @@ async fn test_execute_maps_non_success_status_to_http_error() {
     assert_eq!(error.kind, HttpErrorKind::Status);
     assert_eq!(error.status, Some(StatusCode::SERVICE_UNAVAILABLE));
     assert_eq!(error.method, Some(Method::GET));
+    assert!(error.retry_diagnostics().is_none());
+    assert!(
+        error.source().is_none(),
+        "direct send should not wrap a retry source"
+    );
     assert_eq!(
         error.response_body_preview.as_deref(),
         Some("<redacted: unsupported HTTP body>")
@@ -1513,6 +1518,18 @@ async fn test_execute_does_not_retry_non_retryable_status() {
         .unwrap_err();
 
     assert_eq!(error.kind, HttpErrorKind::Status);
+    let diagnostics = error
+        .retry_diagnostics()
+        .expect("aborted retry diagnostics");
+    assert_eq!(diagnostics.termination(), HttpRetryTermination::Aborted);
+    let retry = error
+        .source()
+        .and_then(|source| source.downcast_ref::<RetryError<HttpError>>())
+        .expect("aborted retry should retain RetryError source");
+    assert_eq!(
+        retry.last_error().map(|last| last.kind),
+        Some(HttpErrorKind::Status)
+    );
     let inner = retry_abort_inner_http(&error);
     assert_eq!(inner.kind, HttpErrorKind::Status);
     assert_eq!(inner.status, Some(StatusCode::BAD_REQUEST));
@@ -1565,6 +1582,10 @@ async fn test_execute_returns_last_error_after_retry_attempts_exhausted() {
     assert!(diagnostics.elapsed() <= Duration::from_secs(3));
     assert_eq!(diagnostics.termination(), HttpRetryTermination::AttemptsExhausted);
 
+    let inner = retry_abort_inner_http(&error);
+    assert_eq!(inner.kind, HttpErrorKind::Status);
+    assert_eq!(inner.status, Some(StatusCode::SERVICE_UNAVAILABLE));
+
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
         .expect("server finish timed out");
@@ -1597,6 +1618,16 @@ async fn test_execute_retry_max_duration_returns_last_error_after_retry_delay() 
     assert_eq!(error.kind, HttpErrorKind::Status);
     assert_eq!(error.status, Some(StatusCode::SERVICE_UNAVAILABLE));
     assert!(error.message.contains("retry max duration exceeded"));
+    let diagnostics = error
+        .retry_diagnostics()
+        .expect("duration retry diagnostics");
+    assert_eq!(
+        diagnostics.termination(),
+        HttpRetryTermination::DurationExceeded
+    );
+    let inner = retry_abort_inner_http(&error);
+    assert_eq!(inner.kind, HttpErrorKind::Status);
+    assert_eq!(inner.status, Some(StatusCode::SERVICE_UNAVAILABLE));
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await

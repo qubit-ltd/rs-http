@@ -71,11 +71,28 @@ fn test_http_client_options_rejects_unknown_origin_policy_with_scoped_path() {
 /// through an explicitly environment-friendly reader.
 #[test]
 fn test_http_client_options_requires_explicit_environment_fallback() {
-    const ENV_NAME: &str = "QUBIT_HTTP_CONFIG_EXPLICIT_ENV_FALLBACK";
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .arg("--exact")
+        .arg("options::http_client_options_tests::test_http_client_options_environment_fallback_worker")
+        .arg("--nocapture")
+        .env("RS_HTTP_CONFIG_ENV_WORKER", "1")
+        .env("QUBIT_HTTP_CONFIG_EXPLICIT_ENV_FALLBACK", "Bearer test-token")
+        .output()
+        .expect("configuration worker must start");
+    assert!(
+        output.status.success(),
+        "worker failed; stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
 
-    unsafe {
-        env::set_var(ENV_NAME, "Bearer test-token");
+#[test]
+fn test_http_client_options_environment_fallback_worker() {
+    if env::var("RS_HTTP_CONFIG_ENV_WORKER").as_deref() != Ok("1") {
+        return;
     }
+    const ENV_NAME: &str = "QUBIT_HTTP_CONFIG_EXPLICIT_ENV_FALLBACK";
 
     let mut config = Config::new();
     config
@@ -91,10 +108,6 @@ fn test_http_client_options_requires_explicit_environment_fallback() {
         .build();
     let env_view = section.read_with(&read_policy);
     let explicit_result = HttpClientOptions::from_config(&env_view);
-
-    unsafe {
-        env::remove_var(ENV_NAME);
-    }
 
     assert!(
         default_result.is_err(),

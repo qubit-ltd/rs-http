@@ -77,16 +77,18 @@ async fn test_ipv4_only_rejects_ipv6_literal_request_url() {
 
 #[test]
 fn test_ipv4_only_rejects_ipv6_literal_proxy_host() {
-    let mut options = HttpClientOptions::default();
-    options.ipv4_only = true;
-    options.proxy.enabled = true;
-    options.proxy.host = Some("[::1]".to_string());
-    options.proxy.port = Some(8080);
+    for host in ["[::1]", "::1"] {
+        let mut options = HttpClientOptions::default();
+        options.ipv4_only = true;
+        options.proxy.enabled = true;
+        options.proxy.host = Some(host.to_string());
+        options.proxy.port = Some(8080);
 
-    let error = HttpClientBuilder::new().create(options).unwrap_err();
+        let error = HttpClientBuilder::new().create(options).unwrap_err();
 
-    assert_eq!(error.kind, HttpErrorKind::ProxyConfig);
-    assert!(error.message.contains("not allowed when ipv4_only=true"));
+        assert_eq!(error.kind, HttpErrorKind::ProxyConfig);
+        assert!(error.message.contains("not allowed when ipv4_only=true"));
+    }
 }
 
 #[tokio_test]

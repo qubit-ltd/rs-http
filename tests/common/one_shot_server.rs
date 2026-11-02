@@ -313,15 +313,21 @@ async fn read_request(stream: &mut TcpStream) -> std::io::Result<CapturedRequest
             ));
         }
         buffer.extend_from_slice(&chunk[..read_size]);
+        if buffer.len() > 64 * 1024 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "request headers exceed 64 KiB",
+            ));
+        }
         if let Some(index) = find_subsequence(&buffer, b"\r\n\r\n") {
             break index + 4;
         }
     };
 
-    let header_bytes = &buffer[..header_end_index];
-    let body = buffer[header_end_index..].to_vec();
+    let header_bytes = buffer[..header_end_index].to_vec();
+    buffer.drain(..header_end_index);
 
-    let header_text = String::from_utf8_lossy(header_bytes);
+    let header_text = String::from_utf8_lossy(&header_bytes);
     let mut lines = header_text.split("\r\n");
     let request_line = lines.next().unwrap_or_default();
     let mut request_parts = request_line.split_whitespace();
@@ -329,14 +335,60 @@ async fn read_request(stream: &mut TcpStream) -> std::io::Result<CapturedRequest
     let target = request_parts.next().unwrap_or_default().to_string();
 
     let mut headers = HashMap::new();
+    let mut content_lengths = Vec::new();
+    let mut transfer_encodings = Vec::new();
     for line in lines {
         if line.is_empty() {
             break;
         }
         if let Some((name, value)) = line.split_once(':') {
-            headers.insert(name.trim().to_ascii_lowercase(), value.trim().to_string());
+            let name = name.trim().to_ascii_lowercase();
+            let value = value.trim().to_string();
+            if name == "content-length" {
+                content_lengths.push(value.clone());
+            }
+            if name == "transfer-encoding" {
+                transfer_encodings.push(value.clone());
+            }
+            headers.entry(name).or_insert(value);
         }
     }
+
+    if !content_lengths.is_empty() && !transfer_encodings.is_empty() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "request has both Transfer-Encoding and Content-Length",
+        ));
+    }
+    if content_lengths.iter().any(|value| value != &content_lengths[0]) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "conflicting Content-Length headers",
+        ));
+    }
+    let body = if !transfer_encodings.is_empty() {
+        let codings = transfer_encodings.join(",");
+        if !codings.eq_ignore_ascii_case("chunked") {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "unsupported request transfer coding",
+            ));
+        }
+        read_chunked_body(stream, &mut buffer, read_timeout).await?
+    } else if let Some(length) = content_lengths.first() {
+        let length = length
+            .parse::<usize>()
+            .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid Content-Length"))?;
+        if length > 16 * 1024 * 1024 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "request body exceeds 16 MiB",
+            ));
+        }
+        read_buffered_exact(stream, &mut buffer, length, read_timeout).await?
+    } else {
+        Vec::new()
+    };
 
     Ok(CapturedRequest {
         method,
@@ -344,6 +396,167 @@ async fn read_request(stream: &mut TcpStream) -> std::io::Result<CapturedRequest
         headers,
         body,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io;
+    use std::time::Duration;
+
+    use tokio::io::AsyncWriteExt;
+    use tokio::net::TcpListener;
+    use tokio::net::TcpStream;
+    use tokio::task::spawn;
+    use tokio::time::sleep;
+
+    use super::CapturedRequest;
+    use super::read_request;
+
+    async fn read_fragments(fragments: &[&[u8]], close: bool) -> io::Result<CapturedRequest> {
+        let listener = TcpListener::bind("127.0.0.1:0").await?;
+        let address = listener.local_addr()?;
+        let server = spawn(async move {
+            let (mut stream, _) = listener.accept().await?;
+            read_request(&mut stream).await
+        });
+        let mut client = TcpStream::connect(address).await?;
+        for fragment in fragments {
+            client.write_all(fragment).await?;
+            sleep(Duration::from_millis(2)).await;
+        }
+        if close {
+            client.shutdown().await?;
+        }
+        server.await.expect("request reader task should not panic")
+    }
+
+    #[tokio::test]
+    async fn test_read_request_decodes_fragmented_chunked_body_and_trailers() {
+        let captured = read_fragments(
+            &[
+                b"POST /upload HTTP/1.1\r\nTransfer-Encoding: chunked\r\n",
+                b"\r\n4;ext=x\r",
+                b"\npart\r\n3\r\n-1!\r\n0\r\nX-Check: yes\r\n\r\n",
+            ],
+            false,
+        )
+        .await
+        .expect("chunked request should be captured");
+        assert_eq!(captured.body, b"part-1!");
+        assert_eq!(
+            captured.headers.get("transfer-encoding").map(String::as_str),
+            Some("chunked")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_read_request_rejects_early_content_length_eof() {
+        let error = read_fragments(&[b"POST /upload HTTP/1.1\r\nContent-Length: 4\r\n\r\nabc"], true)
+            .await
+            .expect_err("truncated body must fail");
+        assert_eq!(error.kind(), io::ErrorKind::UnexpectedEof);
+    }
+
+    #[tokio::test]
+    async fn test_read_request_rejects_malformed_chunk_crlf() {
+        let error = read_fragments(
+            &[b"POST /upload HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n1\r\naXX"],
+            false,
+        )
+        .await
+        .expect_err("malformed chunk delimiter must fail");
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+    }
+}
+
+async fn read_more(stream: &mut TcpStream, buffer: &mut Vec<u8>, timeout_duration: Duration) -> std::io::Result<()> {
+    let mut chunk = [0_u8; 1024];
+    let size = timeout(timeout_duration, stream.read(&mut chunk))
+        .await
+        .map_err(|_| std::io::Error::new(std::io::ErrorKind::TimedOut, "timed out while reading request body"))??;
+    if size == 0 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::UnexpectedEof,
+            "request body ended early",
+        ));
+    }
+    buffer.extend_from_slice(&chunk[..size]);
+    Ok(())
+}
+
+async fn read_buffered_exact(
+    stream: &mut TcpStream,
+    buffer: &mut Vec<u8>,
+    length: usize,
+    timeout_duration: Duration,
+) -> std::io::Result<Vec<u8>> {
+    while buffer.len() < length {
+        read_more(stream, buffer, timeout_duration).await?;
+    }
+    Ok(buffer.drain(..length).collect())
+}
+
+async fn read_http_line(
+    stream: &mut TcpStream,
+    buffer: &mut Vec<u8>,
+    timeout_duration: Duration,
+) -> std::io::Result<Vec<u8>> {
+    loop {
+        if let Some(index) = find_subsequence(buffer, b"\r\n") {
+            let line = buffer.drain(..index + 2).take(index).collect();
+            return Ok(line);
+        }
+        if buffer.len() > 64 * 1024 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "request line exceeds 64 KiB",
+            ));
+        }
+        read_more(stream, buffer, timeout_duration).await?;
+    }
+}
+
+async fn read_chunked_body(
+    stream: &mut TcpStream,
+    buffer: &mut Vec<u8>,
+    timeout_duration: Duration,
+) -> std::io::Result<Vec<u8>> {
+    let mut body = Vec::new();
+    loop {
+        let line = read_http_line(stream, buffer, timeout_duration).await?;
+        let size_token = line.split(|byte| *byte == b';').next().unwrap_or_default();
+        let size_text = std::str::from_utf8(size_token)
+            .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid chunk size"))?;
+        if size_text.is_empty() {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "empty chunk size"));
+        }
+        let size = usize::from_str_radix(size_text, 16)
+            .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid chunk size"))?;
+        if size == 0 {
+            loop {
+                if read_http_line(stream, buffer, timeout_duration).await?.is_empty() {
+                    return Ok(body);
+                }
+            }
+        }
+        let new_length = body
+            .len()
+            .checked_add(size)
+            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, "chunked body length overflow"))?;
+        if new_length > 16 * 1024 * 1024 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "request body exceeds 16 MiB",
+            ));
+        }
+        body.extend(read_buffered_exact(stream, buffer, size, timeout_duration).await?);
+        if read_buffered_exact(stream, buffer, 2, timeout_duration).await? != b"\r\n" {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "chunk data missing CRLF",
+            ));
+        }
+    }
 }
 
 async fn write_response(

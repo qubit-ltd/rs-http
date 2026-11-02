@@ -7,8 +7,6 @@
 // =============================================================================
 //! Reqwest-backed HTTP client factory.
 
-use std::net::IpAddr;
-
 use qubit_config::ConfigReader;
 use reqwest::Client;
 use reqwest::Proxy;
@@ -136,24 +134,18 @@ impl HttpClientBuilder {
         }
 
         if options.proxy.enabled {
-            let host = options
+            let proxy_url = options
                 .proxy
-                .host
-                .clone()
-                .expect("proxy.host must exist after HttpClientOptions::validate");
-            if options.ipv4_only && is_ipv6_literal_host(&host) {
-                return Err(HttpError::proxy_config(format!(
-                    "Proxy host '{host}' is IPv6, which is not allowed when ipv4_only=true",
-                )));
+                .to_proxy_url()
+                .map_err(map_validation_error)?
+                .expect("enabled proxy options produce a proxy URL");
+            if options.ipv4_only && matches!(proxy_url.host(), Some(Host::Ipv6(_))) {
+                return Err(HttpError::proxy_config(
+                    "Proxy host is IPv6, which is not allowed when ipv4_only=true",
+                ));
             }
-            let port = options
-                .proxy
-                .port
-                .expect("proxy.port must exist after HttpClientOptions::validate");
-
-            let proxy_url = format!("{}://{}:{}", options.proxy.proxy_type.scheme(), host, port);
-            let mut proxy = Proxy::all(&proxy_url)
-                .map_err(|error| HttpError::proxy_config(format!("Invalid proxy URL '{}': {}", proxy_url, error)))?;
+            let mut proxy = Proxy::all(proxy_url)
+                .map_err(|error| HttpError::proxy_config(format!("Invalid proxy URL: {error}")))?;
 
             if let Some(username) = options.proxy.username.clone() {
                 let password = options.proxy.password.as_deref().unwrap_or("");
@@ -231,18 +223,6 @@ fn map_validation_error(error: HttpConfigError) -> HttpError {
     } else {
         HttpError::other(format!("Invalid HTTP client options: {error}"))
     }
-}
-
-/// Checks whether `host` is an IPv6 literal value.
-///
-/// # Parameters
-/// - `host`: Raw host text, optionally wrapped by square brackets.
-///
-/// # Returns
-/// `true` if `host` parses as an IPv6 literal.
-fn is_ipv6_literal_host(host: &str) -> bool {
-    let trimmed = host.trim().trim_start_matches('[').trim_end_matches(']');
-    matches!(trimmed.parse::<IpAddr>(), Ok(IpAddr::V6(_)))
 }
 
 /// Returns whether two URLs share scheme, host, and effective port.

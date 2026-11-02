@@ -17,7 +17,7 @@ mod redirect_ipv6_violation;
 mod redirect_origin_violation;
 
 pub(in crate::client) use http_attempt_execution_context::HttpAttemptExecutionContext;
-pub(in crate::client) use http_attempt_failure::HttpAttemptFailure;
+pub(crate) use http_attempt_failure::HttpAttemptFailure;
 pub(in crate::client) use http_attempt_response::HttpAttemptResponse;
 pub(in crate::client) use http_retry_application_source::HttpRetryApplicationSource;
 pub(in crate::client) use http_retry_rule::HttpRetryRule;

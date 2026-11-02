@@ -24,6 +24,19 @@ use crate::common::ResponsePlan;
 use crate::common::spawn_one_shot_server;
 use crate::common::spawn_simple_proxy_server;
 
+#[test]
+fn test_http_proxy_rejects_path_in_host_before_building_client() {
+    let mut options = HttpClientOptions::default();
+    options.proxy.enabled = true;
+    options.proxy.host = Some("127.0.0.1/".to_string());
+    options.proxy.port = Some(1234);
+    let error = HttpClientBuilder::new()
+        .create(options)
+        .expect_err("proxy host containing a path must be rejected before any request");
+    assert_eq!(error.kind, HttpErrorKind::ProxyConfig);
+    assert!(error.message.contains("proxy.host"));
+}
+
 #[tokio_test]
 async fn test_http_proxy_forwards_request_and_sends_proxy_auth() {
     let backend = spawn_one_shot_server(ResponsePlan::Immediate {
