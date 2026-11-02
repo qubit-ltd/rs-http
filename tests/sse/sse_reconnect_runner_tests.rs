@@ -22,6 +22,7 @@ use std::time::Instant;
 use std::time::SystemTime;
 
 use futures_util::StreamExt;
+use http::HeaderName;
 use http::Method;
 use http::StatusCode;
 use qubit_http::AsyncHttpHeaderInjector;
@@ -47,6 +48,112 @@ use crate::common::ResponseChunk;
 use crate::common::ResponsePlan;
 use crate::common::spawn_multi_shot_server;
 use crate::common::spawn_one_shot_server;
+
+#[tokio_test]
+async fn test_sse_content_type_error_omits_sensitive_header_value() {
+    const SECRET: &str = "content-type-review-secret";
+    for native_sensitive in [true, false] {
+        let server = spawn_one_shot_server(ResponsePlan::Immediate {
+            status: 200,
+            headers: vec![("Content-Type".to_owned(), format!("text/plain; token={SECRET}"))],
+            body: Vec::new(),
+        })
+        .await;
+        let mut options = HttpClientOptions::default();
+        options.base_url = Some(server.base_url());
+        if !native_sensitive {
+            options.log_redaction_policy = qubit_redact::RedactionPolicy::default()
+                .to_builder()
+                .http(|http| {
+                    let _ = http.header().raise("content-type", qubit_redact::Sensitivity::Secret);
+                })
+                .unwrap()
+                .build()
+                .unwrap();
+        }
+        let mut client = HttpClientBuilder::new().create(options).unwrap();
+        if native_sensitive {
+            client.add_response_interceptor(HttpResponseInterceptor::new(
+                |context: &mut HttpResponseInterceptorContext| {
+                    context.headers_mut().get_mut("content-type").unwrap().set_sensitive(true);
+                    Ok(())
+                },
+            ));
+        }
+        let request = client.request(Method::GET, "/sse-header-secret").build();
+        let mut events = client.execute_sse_with_reconnect(request, SseReconnectOptions::default());
+        let error = timeout(Duration::from_secs(3), events.next())
+            .await.unwrap().unwrap().unwrap_err();
+        assert_eq!(error.kind(), HttpErrorKind::SseProtocol);
+        assert_eq!(error.method(), Some(&Method::GET));
+        assert_eq!(error.status(), Some(StatusCode::OK));
+        assert_eq!(error.url().unwrap().path(), "/sse-header-secret");
+        assert_eq!(error.message(), "Expected Content-Type 'text/event-stream' for SSE response");
+        for output in [error.message().to_owned(), error.to_string(), format!("{error:?}")] {
+            assert!(!output.contains(SECRET), "sensitive Content-Type leaked");
+        }
+        assert!(events.next().await.is_none());
+        let captured = timeout(Duration::from_secs(3), server.finish()).await.unwrap();
+        assert_eq!(captured.target, "/sse-header-secret");
+    }
+}
+
+#[tokio_test]
+async fn test_sse_nonempty_cursor_wins_after_request_interceptors() {
+    for mutation in 0..3 {
+        let server = spawn_multi_shot_server(vec![
+            ResponsePlan::Immediate {
+                status: 200,
+                headers: vec![("Content-Type".to_owned(), "text/event-stream".to_owned())],
+                body: b"id: fresh\ndata: first\n\n".to_vec(),
+            },
+            ResponsePlan::Immediate {
+                status: 200,
+                headers: vec![("Content-Type".to_owned(), "text/event-stream".to_owned())],
+                body: b"data: second\n\n".to_vec(),
+            },
+        ]).await;
+        let mut options = HttpClientOptions::default();
+        options.base_url = Some(server.base_url());
+        options.add_header("last-event-id", "default-old").unwrap();
+        let mut client = HttpClientBuilder::new().create(options).unwrap();
+        client.add_header_injector(HttpHeaderInjector::new(|headers: &mut http::HeaderMap| {
+            headers.insert("last-event-id", "sync-old".parse().unwrap());
+            Ok(())
+        }));
+        client.add_async_header_injector(AsyncHttpHeaderInjector::new(|headers: &mut http::HeaderMap| {
+            Box::pin(async move {
+                headers.insert("last-event-id", "async-old".parse().unwrap());
+                Ok(())
+            })
+        }));
+        client.add_request_interceptor(HttpRequestInterceptor::new(move |request: &mut HttpRequest| {
+            match mutation {
+                0 => { request.set_header("last-event-id", "interceptor-old")?; }
+                1 => { request.clear_headers(); }
+                _ => { request.remove_header(&HeaderName::from_static("last-event-id")); }
+            }
+            Ok(())
+        }));
+        let request = client.request(Method::GET, "/sse-cursor-authority")
+            .header("last-event-id", "template-old").unwrap().build();
+        let mut events = client.execute_sse_with_reconnect(request, SseReconnectOptions {
+            retry: build_retry_options(1, BackoffPolicy::immediate()),
+            ..SseReconnectOptions::default()
+        });
+        for expected in ["first", "second"] {
+            let message = timeout(Duration::from_secs(3), events.next())
+                .await.unwrap().unwrap().unwrap();
+            assert_eq!(message.data, expected);
+            assert_eq!(message.last_event_id.as_deref(), Some("fresh"));
+        }
+        assert!(events.next().await.is_none());
+        let requests = timeout(Duration::from_secs(3), server.finish()).await.unwrap();
+        assert_eq!(requests.len(), 2);
+        assert_eq!(requests[1].headers.get("last-event-id").map(String::as_str), Some("fresh"),
+            "interceptor mutation mode {mutation}");
+    }
+}
 
 /// Builds retry options for SSE reconnect tests.
 ///

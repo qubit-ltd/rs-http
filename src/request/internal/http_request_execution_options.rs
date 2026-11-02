@@ -9,6 +9,8 @@
 
 use std::time::Duration;
 
+use http::HeaderValue;
+
 use crate::HttpCancellationToken;
 use crate::request::http_request_retry_override::HttpRequestRetryOverride;
 
@@ -30,7 +32,8 @@ pub(in crate::request) struct HttpRequestExecutionOptions {
     /// Request-level retry settings that override the client's retry policy
     /// for enablement, eligible methods, and `Retry-After` handling.
     pub(in crate::request) retry_override: HttpRequestRetryOverride,
-    /// Whether an SSE reset record must remove `Last-Event-ID` after all
-    /// client, injector, interceptor, and request-local header layers merge.
-    pub(in crate::request) omit_sse_last_event_id: bool,
+    /// Optional final SSE cursor override applied after ordinary header
+    /// merging. `None` preserves ordinary precedence, an empty value removes
+    /// `Last-Event-ID`, and a non-empty value replaces every merged value.
+    pub(in crate::request) sse_last_event_id_override: Option<HeaderValue>,
 }

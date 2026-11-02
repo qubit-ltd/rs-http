@@ -154,7 +154,7 @@ impl HttpRequest {
                 read_timeout: builder.read_timeout,
                 cancellation_token: builder.cancellation_token,
                 retry_override: builder.retry_override,
-                omit_sse_last_event_id: false,
+                sse_last_event_id_override: None,
             },
             context: HttpRequestContext {
                 base_url: builder.base_url,
@@ -1037,10 +1037,20 @@ impl HttpRequest {
         self.effective_headers = None;
     }
 
-    /// Suppresses `Last-Event-ID` from the effective headers for an SSE reset.
+    /// Suppresses the final `Last-Event-ID` header after an SSE cursor reset.
     pub(crate) fn suppress_sse_last_event_id(&mut self) {
-        self.execution_options.omit_sse_last_event_id = true;
+        self.execution_options.sse_last_event_id_override = Some(HeaderValue::from_static(""));
         self.headers.remove("last-event-id");
+        self.invalidate_effective_headers_cache();
+    }
+
+    /// Installs a server cursor that wins after ordinary request header merging.
+    ///
+    /// # Parameters
+    /// - `value`: Validated non-empty SSE event ID header value.
+    pub(crate) fn set_sse_last_event_id(&mut self, value: HeaderValue) {
+        self.headers.insert(HeaderName::from_static("last-event-id"), value.clone());
+        self.execution_options.sse_last_event_id_override = Some(value);
         self.invalidate_effective_headers_cache();
     }
 
@@ -1056,8 +1066,12 @@ impl HttpRequest {
         }
 
         headers.extend(self.headers.clone());
-        if self.execution_options.omit_sse_last_event_id {
-            headers.remove("last-event-id");
+        if let Some(value) = self.execution_options.sse_last_event_id_override.as_ref() {
+            if value.as_bytes().is_empty() {
+                headers.remove("last-event-id");
+            } else {
+                headers.insert(HeaderName::from_static("last-event-id"), value.clone());
+            }
         }
         Ok(headers)
     }

@@ -823,6 +823,12 @@ impl HttpClient {
     /// - SSE protocol errors (non-reconnectable by default);
     /// - transport/read errors after reconnect budget is exhausted.
     ///
+    /// Once the server supplies an event ID, the reconnect runner owns the
+    /// final `Last-Event-ID` header. Its non-empty cursor wins after defaults,
+    /// injectors, and request interceptors have been merged; an empty ID
+    /// removes the header. Before any server ID is received, ordinary header
+    /// precedence continues to apply.
+    ///
     /// # Side effects
     /// Performs repeated HTTP requests and reads on reconnect; may sleep
     /// between attempts according to reconnect options.

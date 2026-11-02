@@ -19,7 +19,6 @@ use futures_util::StreamExt;
 use http::Method;
 use http::StatusCode;
 use http::header::CONTENT_TYPE;
-use http::header::HeaderName;
 use http::header::HeaderValue;
 use qubit_clock::StdMonotonicClock;
 use qubit_redact::Redactor;
@@ -47,9 +46,6 @@ use crate::HttpResult;
 use crate::RetryHint;
 use crate::client::HttpAttemptFailure;
 use crate::content_type;
-
-/// Header name used for SSE resume token propagation.
-const LAST_EVENT_ID_HEADER: &str = "last-event-id";
 
 /// Stateful SSE reconnect runner for one stream invocation.
 pub(crate) struct SseReconnectRunner {
@@ -320,7 +316,7 @@ fn apply_last_event_id_header(
         ))
         .with_log_redactor(log_redactor.clone())
     })?;
-    request.set_typed_header(HeaderName::from_static(LAST_EVENT_ID_HEADER), header_value);
+    request.set_sse_last_event_id(header_value);
     Ok(())
 }
 
@@ -589,9 +585,7 @@ fn validate_sse_response_content_type(response: &HttpResponse, log_redactor: &Re
     if content_type::is_sse(content_type) {
         return Ok(());
     }
-    Err(HttpError::sse_protocol(format!(
-        "Expected Content-Type 'text/event-stream' for SSE response, got '{content_type}'"
-    ))
+    Err(HttpError::sse_protocol("Expected Content-Type 'text/event-stream' for SSE response")
     .with_status(response.status())
     .with_method(&method)
     .with_url(&url)
