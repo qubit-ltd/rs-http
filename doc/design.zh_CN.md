@@ -46,6 +46,10 @@ flowchart LR
 
 重连执行器禁用内层普通 HTTP 重试，打开响应、解码 SSE record、保存最近的事件 ID 和服务端 `retry:` 延迟，然后依照 `SseReconnectOptions` 再次建立连接。有事件 ID 时，后续请求携带 `Last-Event-ID`；未收到新 ID 的消息继承最近游标，control-only ID 更新以及显式空 ID 重置也会保留。取消与协议错误默认不会重连。重连预算覆盖尝试和等待；最终延迟上限及 SSE 的一毫秒最小等待由重连策略处理。
 
+对于可重连的 429/5xx 握手错误，是否把解析出的 HTTP 提示交给重连退避策略，由最终请求的 `honor_retry_after` 偏好决定。`server_retry_max_delay` 只限制 SSE `retry:` 延迟；HTTP 提示仍遵守退避策略本身的上限和重连预算。SSE 解码错误会从响应补齐缺失的 method、原始请求 URL 和 status，同时保留更具体的已有上下文、脱敏规则和 source。
+
+请求构造不会把原始相对路径带入 URL 解析错误。显式代理 URL 由校验后的域名或 IP 字面量和独立配置的 port 结构化生成，避免 `proxy.host` 混入 authority 分隔符或凭据。multipart 解析会拒绝重复 `boundary`。`stream_body` 调用时会把有限迭代器完整收集到内存；需要延迟创建每次尝试的流时使用 `streaming_body`。
+
 ## 修改设计时需要验证的不变量
 
 - 响应已返回后发生的错误不能触发普通 HTTP 重试。

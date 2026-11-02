@@ -46,6 +46,10 @@ Direct `HttpResponse::sse_messages` and `sse_chunks` are body decoders. An SSE d
 
 The reconnect runner opens a response with ordinary HTTP retry disabled, decodes SSE records, tracks the last event ID and server `retry:` delay, and reopens according to `SseReconnectOptions`. Messages without a new ID inherit the latest reconnect cursor, including control-only ID updates and explicit empty-ID resets. The original request token controls reconnect waiting and later admission; an interceptor replacement controls only that attempt’s I/O, and removing it does not remove the flow token. It sends `Last-Event-ID` on a later request when available. Cancellation and protocol errors do not reconnect by default. Reconnect budgets include attempts and waits; a configured final delay cap and the SSE one-millisecond minimum are applied by the reconnect policy.
 
+For reconnectable 429/5xx handshake failures, the final request's `honor_retry_after` preference controls whether the parsed HTTP hint enters the reconnect backoff. `server_retry_max_delay` caps only SSE `retry:` delays; the configured backoff policy and reconnect budget still govern HTTP hints. SSE decoder errors inherit missing method, original request URL, and status from the response while retaining existing specific context, redaction, and source.
+
+Request construction keeps raw relative-path input out of URL resolution errors. Explicit proxy URLs are built from a validated domain or IP literal plus the separate configured port, so authority separators and embedded credentials cannot be smuggled through `proxy.host`. Multipart parsing rejects duplicate `boundary` parameters. `stream_body` eagerly collects a finite iterator into memory; use `streaming_body` when a deferred per-attempt stream factory is required.
+
 ## Invariants to test when changing this design
 
 - A failure after a response is returned must not trigger ordinary HTTP retry.

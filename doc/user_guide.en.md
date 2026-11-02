@@ -273,13 +273,13 @@ Request body builders:
 | Method | Behavior |
 | --- | --- |
 | `bytes_body` | Raw bytes; does not set `Content-Type` |
-| `stream_body` | Sends already-buffered ordered byte chunks through reqwest streaming body support |
+| `stream_body` | Eagerly collects a finite iterator into memory during this call, then sends the ordered chunks through reqwest streaming body support; memory grows with the total payload |
 | `streaming_body` | Installs an async factory that creates a fresh byte stream for each send attempt; useful for true streaming uploads and retryable upload streams |
 | `text_body` | Text body; sets `text/plain; charset=utf-8` when `Content-Type` is absent |
 | `json_body` | Serializes JSON; sets `application/json` when `Content-Type` is absent |
 | `json_body_with_limits` | Serializes JSON with per-request value and output-byte limits |
 | `form_body` | `application/x-www-form-urlencoded` |
-| `multipart_body` | Raw multipart bytes; requires a 1 to 70 character token-safe boundary; inserts a default multipart `Content-Type`, adds a missing boundary to an existing multipart `Content-Type`, and rejects non-UTF-8, non-multipart, malformed-boundary, or mismatched-boundary `Content-Type` values |
+| `multipart_body` | Raw multipart bytes; requires a 1 to 70 character token-safe boundary; inserts a default multipart `Content-Type`, adds a missing boundary to an existing multipart `Content-Type`, and rejects duplicate, malformed, or mismatched boundary parameters |
 | `ndjson_body` | One JSON record per line; sets `application/x-ndjson` when absent |
 | `ndjson_body_with_limits` | Serializes an NDJSON sequence with one aggregate output budget, including line terminators |
 
@@ -566,6 +566,8 @@ For non-2xx errors, the redacted preview and retained raw body have independent 
 
 `RetryBudgetExceeded` is used only when no application error was captured. Otherwise the original HTTP error kind and status are preserved and `HttpRetryDiagnostics` records the terminal condition; the complete `RetryError<HttpError>` remains available as `source`.
 
+`retry_metadata()` is a deprecated compatibility getter that always returns `None`; it does not indicate whether retry execution occurred. Use `retry_diagnostics()` for terminal details and inspect `Error::source()` for the retained `RetryError<HttpError>` context. SSE decoding errors also carry the response method, original request URL, and status when those fields were not already present; URL rendering continues to use the response redaction policy.
+
 `retry_hint()` marks timeouts, transport errors, 429, and 5xx statuses as retryable hints. The new retry-layer error categories are non-retryable themselves. Actual retry behavior still depends on `HttpRetryOptions` and the method policy.
 
 ## Troubleshooting
@@ -617,7 +619,7 @@ let request = client
     .build();
 ```
 
-`honor_retry_after(true)` is request-level. For retryable 429 or 5xx responses, it passes the response's `Retry-After` value to the backoff policy as a hint. The default HTTP backoff policy uses this hint as a minimum: the next attempt waits for the longer of the planned backoff and the hint. A custom `BackoffPolicy` can change that behavior: `ignore_retry_after()` ignores the hint, and `limit_delay(duration)` caps the final delay even when the hint is longer.
+`honor_retry_after(true)` is request-level. For retryable 429 or 5xx responses, it passes the response's `Retry-After` value to the backoff policy as a hint. The default HTTP backoff policy uses this hint as a minimum: the next attempt waits for the longer of the planned backoff and the hint. A custom `BackoffPolicy` can change that behavior: `ignore_retry_after()` ignores the hint, and `limit_delay(duration)` caps the final delay even when the hint is longer. SSE reconnect uses the final request preference too: when enabled, a retryable 429/5xx handshake can supply its parsed hint to the reconnect backoff. `server_retry_max_delay` applies only to the SSE `retry:` field; a policy delay cap and the reconnect budget still apply to HTTP hints.
 
 When retry is enabled, `execute` runs attempts through `qubit-retry`'s `Retry`. HTTP `max_duration` uses monotonic accounting. Retryable failures that exhaust `max_attempts` or `max_duration` preserve the last HTTP error and attach `HttpRetryDiagnostics`; the complete `RetryError<HttpError>` remains available as `source`.
 
@@ -654,16 +656,22 @@ The old `into_parts_with_diagnostics()` name has been removed. Exhaustive matche
 | Retryable failure exhausts `max_attempts` | Last `HttpError` | `message` includes attempts-exhausted context |
 | Retryable failure exhausts `max_duration` | Last `HttpError` or `RetryBudgetExceeded` | Returns the last error if one was captured; otherwise returns `RetryBudgetExceeded` |
 
-To inspect status, kind, and retry diagnostics, use the typed getters:
+To inspect retry completion and the underlying retry context, use the supported diagnostics and source chain. `retry_metadata()` remains only for source compatibility; it is deprecated and always returns `None`.
 
 ```rust
-if error.retry_diagnostics().is_some() {
-    if let Some(source) = error.source.as_deref() {
-        if let Some(retry) = source.downcast_ref::<qubit_retry::RetryError<qubit_http::HttpError>>() {
-            if let Some(inner) = retry.last_error() {
-                eprintln!("original kind={:?}, status={:?}", inner.kind, inner.status);
-            }
-        }
+use std::error::Error;
+use qubit_http::HttpError;
+use qubit_retry::RetryError;
+
+fn inspect_retry(error: &HttpError) {
+    if let Some(diagnostics) = error.retry_diagnostics() {
+        eprintln!("{diagnostics:?}");
+    }
+    if let Some(retry) = error
+        .source()
+        .and_then(|source| source.downcast_ref::<RetryError<HttpError>>())
+    {
+        eprintln!("reason={:?}, attempts={}", retry.reason(), retry.context().attempts());
     }
 }
 ```
@@ -736,6 +744,8 @@ Important: if TRACE logging is active and `log_response_body = true`, response-b
 ## Proxy And IPv4-only
 
 Proxying is disabled by default. `use_env_proxy` is also `false` by default, so the client calls `no_proxy()` and ignores environment proxy variables. To inherit `HTTP_PROXY` / `HTTPS_PROXY` and similar variables when no explicit proxy is configured, set `options.use_env_proxy = true` or configure `use_env_proxy = true`. Enabled explicit proxies require host and port.
+
+`proxy.host` accepts only a domain name, IPv4 literal, or complete IPv6 literal (with or without matching square brackets). Keep the port in `proxy.port` and credentials in `username` / `password`; schemes, paths, query strings, userinfo, and embedded ports are rejected.
 
 ```rust
 use qubit_http::{ProxyType, HttpClientOptions};
@@ -929,7 +939,7 @@ while let Some(item) = events.next().await {
 }
 ```
 
-The default reconnect settings are `retry.max_attempts = 4` (that is, at most 3 reconnects), exponential `BackoffPolicy` with `initial=1s`, `max=30s`, `multiplier=2.0`, no jitter, reconnect on EOF, and honor server `retry:`. Server `retry:` delays are capped by `server_retry_max_delay`; when it is `None`, the cap is derived from the backoff policy's maximum delay, or falls back to 30 seconds when no maximum exists. `apply_jitter_to_server_retry` is enabled by default, but server-provided delays remain unchanged unless the supplied `RetryPolicy` uses jitter. Reconnects reuse the original request and disable inner HTTP retry, avoiding multiplicative HTTP retry plus SSE reconnect attempts. If a previous SSE message had an `id:`, the next request includes `Last-Event-ID`. `execute_sse_with_reconnect` requires response `Content-Type` to be `text/event-stream`. Cancellation does not reconnect. SSE protocol errors do not reconnect by default. Retryable timeout, transport, 429/5xx, and unexpected-EOF-like errors may reconnect.
+The default reconnect settings are `retry.max_attempts = 4` (that is, at most 3 reconnects), exponential `BackoffPolicy` with `initial=1s`, `max=30s`, `multiplier=2.0`, no jitter, reconnect on EOF, and honor server `retry:`. Server `retry:` delays are capped by `server_retry_max_delay`; when it is `None`, the cap is derived from the backoff policy's maximum delay, or falls back to 30 seconds when no maximum exists. This cap applies only to the SSE `retry:` field. For a reconnectable 429/5xx handshake, the final request's `honor_retry_after` preference controls whether the parsed HTTP hint is passed to the backoff policy; the policy's own delay cap and reconnect budget still apply. `apply_jitter_to_server_retry` is enabled by default, but server-provided delays remain unchanged unless the supplied `RetryPolicy` uses jitter. Reconnects reuse the original request and disable inner HTTP retry, avoiding multiplicative HTTP retry plus SSE reconnect attempts. If a previous SSE message had an `id:`, the next request includes `Last-Event-ID`. `execute_sse_with_reconnect` requires response `Content-Type` to be `text/event-stream`. SSE decoder errors include the response method, original request URL, and status while preserving more specific context and the existing error source. Cancellation does not reconnect. SSE protocol errors do not reconnect by default. Retryable timeout, transport, 429/5xx, and unexpected-EOF-like errors may reconnect.
 
 ## Configuration Reference
 

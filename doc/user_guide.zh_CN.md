@@ -267,13 +267,13 @@ assert_eq!(
 | 方法 | 行为 |
 | --- | --- |
 | `bytes_body` | 原始字节体，不自动设置 `Content-Type` |
-| `stream_body` | 把已在内存中的有序字节块作为 reqwest streaming body 发送 |
+| `stream_body` | 调用时会把有限迭代器完整收集到内存，再通过 reqwest streaming body 按顺序发送；内存占用随总载荷增长 |
 | `streaming_body` | 设置异步工厂，每次发送尝试生成新的字节流；适合真正流式上传，也让重试可以重建上传流 |
 | `text_body` | 文本体；缺少 `Content-Type` 时设置 `text/plain; charset=utf-8` |
 | `json_body` | 序列化 JSON；缺少 `Content-Type` 时设置 `application/json` |
 | `json_body_with_limits` | 使用本请求的 value 与输出字节上限序列化 JSON |
 | `form_body` | `application/x-www-form-urlencoded` |
-| `multipart_body` | 原始 multipart 字节；需要 1 到 70 个 token-safe 字符的 boundary；缺少 `Content-Type` 时设置默认 multipart，已有 multipart `Content-Type` 但缺少 boundary 时补齐，已有非 UTF-8、非 multipart、boundary 畸形或 boundary 不一致时拒绝 |
+| `multipart_body` | 原始 multipart 字节；需要 1 到 70 个 token-safe 字符的 boundary；缺少 `Content-Type` 时设置默认 multipart，已有 multipart `Content-Type` 但缺少 boundary 时补齐；重复、格式错误或与 body 不一致的 boundary 会被拒绝 |
 | `ndjson_body` | 每条记录一行 JSON；缺少 `Content-Type` 时设置 `application/x-ndjson` |
 | `ndjson_body_with_limits` | 使用一个累计输出预算序列化 NDJSON，且包含行结束符 |
 
@@ -560,6 +560,8 @@ async fn read_sse_examples(client: &qubit_http::HttpClient) -> qubit_http::HttpR
 
 只有在尚未捕获业务错误时，重试预算错误才使用 `RetryBudgetExceeded`；如果已有业务错误，则保留其 kind/status，并通过 `HttpRetryDiagnostics` 记录终止原因，完整 `RetryError<HttpError>` 仍作为 `source` 保留。
 
+`retry_metadata()` 是已弃用的兼容 getter，始终返回 `None`，不能用来判断错误是否经过重试。需要终态信息时使用 `retry_diagnostics()`；需要重试上下文时，从 `Error::source()` 读取保留的 `RetryError<HttpError>`。SSE 解码错误会在原错误未提供相应字段时补上响应 method、原始请求 URL 和 status；URL 格式化仍使用响应对应的脱敏策略。
+
 `retry_hint()` 会把超时、transport、429 和 5xx 状态视为可重试提示，其余默认不可重试。新增的重试层错误分类本身也不可重试。真正是否重试还要结合 `HttpRetryOptions` 和方法策略。
 
 ## 排障
@@ -611,7 +613,7 @@ let request = client
     .build();
 ```
 
-`honor_retry_after(true)` 只在请求级启用。遇到可重试的 429 或 5xx 时，它会把响应中的 `Retry-After` 值作为提示交给退避策略。默认 HTTP 退避策略将提示作为最小延迟，下一次尝试等待计划退避和提示中的较大值。自定义 `BackoffPolicy` 可以改变这一行为：`ignore_retry_after()` 会忽略提示，`limit_delay(duration)` 则限制最终延迟，即使提示更长也会受此上限约束。
+`honor_retry_after(true)` 只在请求级启用。遇到可重试的 429 或 5xx 时，它会把响应中的 `Retry-After` 值作为提示交给退避策略。默认 HTTP 退避策略将提示作为最小延迟，下一次尝试等待计划退避和提示中的较大值。自定义 `BackoffPolicy` 可以改变这一行为：`ignore_retry_after()` 会忽略提示，`limit_delay(duration)` 则限制最终延迟，即使提示更长也会受此上限约束。SSE 重连也采用最终请求偏好；开启后，可重连的 429/5xx 握手错误会把解析出的提示交给重连退避策略。`server_retry_max_delay` 只限制 SSE `retry:` 字段；HTTP 提示仍受用户配置的退避上限和重连预算约束。
 
 开启重试后，`execute` 会把每次尝试交给 `qubit-retry` 的 `Retry`。HTTP `max_duration` 使用单调时钟统计。可重试错误耗尽 `max_attempts` 或 `max_duration` 后仍返回最后一次 HTTP 错误并附加 `HttpRetryDiagnostics`，完整 `RetryError<HttpError>` 作为 `source` 保留。
 
@@ -639,16 +641,22 @@ SSE 重连仍禁用内层 HTTP 重试。
 | 可重试，但耗尽 `max_attempts` | 最后一次 `HttpError` | `message` 会追加 attempts exhausted 上下文 |
 | 可重试，但耗尽 `max_duration` | 最后一次 `HttpError` 或 `RetryBudgetExceeded` | 已捕获错误时返回最后一次错误；尚未捕获时返回 `RetryBudgetExceeded` |
 
-如需读取状态码、错误分类和重试诊断，直接使用类型化 getter：
+读取重试终态和底层上下文时，使用受支持的诊断信息及 source 链。`retry_metadata()` 仅为源码兼容保留，现已弃用并始终返回 `None`。
 
 ```rust
-if error.retry_diagnostics().is_some() {
-    if let Some(source) = error.source.as_deref() {
-        if let Some(retry) = source.downcast_ref::<qubit_retry::RetryError<qubit_http::HttpError>>() {
-            if let Some(inner) = retry.last_error() {
-                eprintln!("original kind={:?}, status={:?}", inner.kind, inner.status);
-            }
-        }
+use std::error::Error;
+use qubit_http::HttpError;
+use qubit_retry::RetryError;
+
+fn inspect_retry(error: &HttpError) {
+    if let Some(diagnostics) = error.retry_diagnostics() {
+        eprintln!("{diagnostics:?}");
+    }
+    if let Some(retry) = error
+        .source()
+        .and_then(|source| source.downcast_ref::<RetryError<HttpError>>())
+    {
+        eprintln!("reason={:?}, attempts={}", retry.reason(), retry.context().attempts());
     }
 }
 ```
@@ -716,6 +724,8 @@ client.execute(request).await?;
 ## 代理与 IPv4-only
 
 代理默认禁用；同时 `use_env_proxy` 默认也是 `false`，因此客户端调用 `no_proxy()`，不会使用环境变量代理。若需要在未配置显式代理时继承 `HTTP_PROXY` / `HTTPS_PROXY` 等环境变量，可设置 `options.use_env_proxy = true` 或配置 `use_env_proxy = true`。启用显式代理时必须设置 host 和 port。
+
+`proxy.host` 只接受域名、IPv4 字面量或完整 IPv6 字面量（可以带成对方括号）。端口填写在 `proxy.port`，凭据分别填写在 `username` / `password`；scheme、路径、query、userinfo 和 host 中的端口都会被拒绝。
 
 ```rust
 use qubit_http::{ProxyType, HttpClientOptions};
@@ -909,7 +919,7 @@ while let Some(item) = events.next().await {
 }
 ```
 
-默认重连配置为 `retry.max_attempts = 4`（即最多重连 3 次），使用 `initial=1s`、`max=30s`、`multiplier=2.0` 且无 jitter 的指数 `BackoffPolicy`，并在 EOF 后重连、尊重服务端 `retry:`。服务端 `retry:` 会被限制到 `server_retry_max_delay`；若该字段为 `None`，则从 backoff policy 的最大值推导，无法推导时使用 30 秒。`apply_jitter_to_server_retry` 默认开启；只有传入的 `RetryPolicy` 配置了 jitter 时，服务端给出的延迟才会被扰动。重连时会复用原始请求，并禁用内层 HTTP 自动重试，避免 HTTP 重试和 SSE 重连相乘；如果之前收到过 SSE `id:`，下一次请求会带上 `Last-Event-ID` header。`execute_sse_with_reconnect` 会要求响应 `Content-Type` 为 `text/event-stream`。取消错误不会触发重连；SSE 协议错误默认也不会重连；超时、transport、429/5xx 等 retryable 错误，以及包含 unexpected EOF 语义的错误可触发重连。
+默认重连配置为 `retry.max_attempts = 4`（即最多重连 3 次），使用 `initial=1s`、`max=30s`、`multiplier=2.0` 且无 jitter 的指数 `BackoffPolicy`，并在 EOF 后重连、尊重服务端 `retry:`。服务端 `retry:` 会被限制到 `server_retry_max_delay`；若该字段为 `None`，则从 backoff policy 的最大值推导，无法推导时使用 30 秒。这个上限只作用于 SSE `retry:` 字段。可重连的 429/5xx 握手错误是否采用解析出的 HTTP 提示，由最终请求的 `honor_retry_after` 偏好决定；用户配置的退避上限和重连预算仍然有效。`apply_jitter_to_server_retry` 默认开启；只有传入的 `RetryPolicy` 配置了 jitter 时，服务端给出的延迟才会被扰动。重连时会复用原始请求，并禁用内层 HTTP 自动重试，避免 HTTP 重试和 SSE 重连相乘；如果之前收到过 SSE `id:`，下一次请求会带上 `Last-Event-ID` header。`execute_sse_with_reconnect` 会要求响应 `Content-Type` 为 `text/event-stream`。SSE 解码错误会补充响应 method、原始请求 URL 和 status，同时保留更具体的原有上下文与 source。取消错误不会触发重连；SSE 协议错误默认也不会重连；超时、transport、429/5xx 等 retryable 错误，以及包含 unexpected EOF 语义的错误可触发重连。
 
 ## 配置参考
 
