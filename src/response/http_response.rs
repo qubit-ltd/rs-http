@@ -408,6 +408,22 @@ impl HttpResponse {
     /// configured limit. A successfully buffered body remains available to
     /// later calls.
     ///
+    /// # Cancellation safety
+    ///
+    /// For an unbuffered response, dropping this future after it has taken the
+    /// backend body and before buffering completes discards the backend and any
+    /// partially read bytes. Later body readers return
+    /// [`HttpErrorKind::ResponseBodyAlreadyConsumed`]. An outer
+    /// `tokio::time::timeout` or a losing `tokio::select!` branch can cause this
+    /// drop.
+    ///
+    /// Dropping a future before it is polled does not take the body. A
+    /// successfully buffered body remains reusable. Cancellation and read
+    /// timeouts returned by the built-in reader follow the existing
+    /// retained-failure behavior instead. Configure the request's read timeout
+    /// or cancellation token before sending when the reader should return a
+    /// classified failure.
+    ///
     /// # Errors
     /// Returns the backend read, timeout, cancellation, or body-size error.
     pub async fn bytes(&mut self) -> HttpResult<Bytes> {
@@ -616,11 +632,18 @@ impl HttpResponse {
     ///
     /// # Errors
     /// Returns a body read error or a decoding error for invalid UTF-8.
+    ///
+    /// # Cancellation safety
+    ///
+    /// This method aggregates through [`Self::bytes`] and has the same
+    /// cancellation-safety boundary: dropping a polled read future before
+    /// buffering completes can consume an unbuffered backend body permanently.
     pub async fn text(&mut self) -> HttpResult<String> {
         let body = self.bytes().await?;
         String::from_utf8(body.to_vec()).map_err(|error| {
             HttpError::decode(format!("Failed to decode response body as UTF-8: {}", error))
                 .with_status(self.meta.status())
+                .with_method(self.meta.method())
                 .with_url(self.meta.url())
                 .with_log_redactor(self.log_redactor().clone())
         })
@@ -636,6 +659,12 @@ impl HttpResponse {
     ///
     /// # Errors
     /// Returns a body read error or a JSON decoding error.
+    ///
+    /// # Cancellation safety
+    ///
+    /// This method aggregates through [`Self::bytes`] and has the same
+    /// cancellation-safety boundary: dropping a polled read future before
+    /// buffering completes can consume an unbuffered backend body permanently.
     pub async fn json<T>(&mut self) -> HttpResult<T>
     where
         T: DeserializeOwned,
@@ -649,6 +678,7 @@ impl HttpResponse {
         .map_err(|error| {
             HttpError::decode("Failed to decode response JSON")
                 .with_status(self.meta.status())
+                .with_method(self.meta.method())
                 .with_url(self.meta.url())
                 .with_source(error)
                 .with_log_redactor(self.log_redactor().clone())

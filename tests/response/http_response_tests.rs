@@ -105,10 +105,11 @@ async fn test_http_response_text_decode_error_contains_status_and_url() {
         HeaderMap::new(),
         Bytes::from_static(&[0xFF, 0xFE]),
         Url::parse("https://example.com/bin").unwrap(),
-        Method::GET,
+        Method::POST,
     );
     let error = response.text().await.unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::Decode);
+    assert_eq!(error.method, Some(Method::POST));
     assert_eq!(error.status, Some(StatusCode::OK));
     assert_eq!(error.url, Some(Url::parse("https://example.com/bin").unwrap()));
 }
@@ -146,10 +147,11 @@ async fn test_http_response_json_decode_error_contains_status_and_url() {
         HeaderMap::new(),
         Bytes::from_static(b"not-json"),
         Url::parse("https://example.com/json").unwrap(),
-        Method::GET,
+        Method::POST,
     );
     let error = response.json::<serde_json::Value>().await.unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::Decode);
+    assert_eq!(error.method, Some(Method::POST));
     assert_eq!(error.status, Some(StatusCode::OK));
     assert_eq!(error.url, Some(Url::parse("https://example.com/json").unwrap()));
 }
