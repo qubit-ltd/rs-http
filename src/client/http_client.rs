@@ -800,8 +800,13 @@ impl HttpClient {
     /// Reconnect behavior:
     /// - retryable transport/read failures trigger reconnects;
     /// - optional reconnect on clean EOF (`reconnect_on_eof`);
-    /// - `Last-Event-ID` is set from the latest parsed SSE last-event-id state;
-    /// - optional use of SSE `retry:` as next reconnect delay.
+    /// - `Last-Event-ID` follows the latest parsed SSE last-event-id state; an
+    ///   empty `id:` reset omits the header even when client header layers set
+    ///   it;
+    /// - the latest valid SSE `retry:` delay persists until another valid
+    ///   `retry:` field replaces it;
+    /// - a successful `204 No Content` response ends the stream normally before
+    ///   SSE content-type validation.
     ///
     /// # Parameters
     /// - `request`: SSE request template reused on reconnect.

@@ -24,11 +24,13 @@ use std::time::SystemTime;
 use futures_util::StreamExt;
 use http::Method;
 use http::StatusCode;
+use qubit_http::AsyncHttpHeaderInjector;
 use qubit_http::HttpCancellationToken;
 use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpError;
 use qubit_http::HttpErrorKind;
+use qubit_http::HttpHeaderInjector;
 use qubit_http::HttpRequest;
 use qubit_http::HttpRequestInterceptor;
 use qubit_http::HttpRequestRetryOverride;
@@ -133,10 +135,165 @@ async fn run_retry_after_sse_reconnect(
     started.elapsed()
 }
 
+async fn run_sse_reset_header_layers(first_body: &'static [u8], reset: bool) {
+    let server = spawn_multi_shot_server(vec![
+        ResponsePlan::Immediate {
+            status: 200,
+            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+            body: first_body.to_vec(),
+        },
+        ResponsePlan::Immediate {
+            status: 200,
+            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+            body: b"data: after\n\n".to_vec(),
+        },
+    ])
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.add_header("last-event-id", "default-old").unwrap();
+    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    client.add_header_injector(HttpHeaderInjector::new(|headers: &mut http::HeaderMap| {
+        headers.insert("last-event-id", "sync-old".parse().unwrap());
+        Ok(())
+    }));
+    client.add_async_header_injector(AsyncHttpHeaderInjector::new(|headers: &mut http::HeaderMap| {
+        Box::pin(async move {
+            headers.insert("last-event-id", "async-old".parse().unwrap());
+            Ok(())
+        })
+    }));
+    client.add_request_interceptor(HttpRequestInterceptor::new(|request: &mut HttpRequest| {
+        request.set_header("last-event-id", "interceptor-old")?;
+        Ok(())
+    }));
+    let request = client
+        .request(Method::GET, "/sse-reset-layers")
+        .header("last-event-id", "template-old")
+        .unwrap()
+        .build();
+    let mut events = client.execute_sse_with_reconnect(
+        request,
+        SseReconnectOptions {
+            retry: build_retry_options(1, BackoffPolicy::immediate()),
+            reconnect_on_eof: true,
+            ..SseReconnectOptions::default()
+        },
+    );
+    let first = events.next().await.unwrap().unwrap();
+    assert_eq!(
+        first.data,
+        if first_body.starts_with(b"id:") {
+            "reset"
+        } else {
+            "first"
+        }
+    );
+    assert_eq!(events.next().await.unwrap().unwrap().data, "after");
+    assert!(events.next().await.is_none());
+    let requests = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(requests.len(), 2);
+    assert_eq!(
+        requests[0].headers.get("last-event-id").map(String::as_str),
+        Some("interceptor-old")
+    );
+    if reset {
+        assert!(!requests[1].headers.contains_key("last-event-id"));
+    } else {
+        assert_eq!(
+            requests[1].headers.get("last-event-id").map(String::as_str),
+            Some("interceptor-old")
+        );
+    }
+}
+
+#[tokio_test]
+async fn test_sse_reset_omits_last_event_id_from_all_header_layers() {
+    run_sse_reset_header_layers(b"id:\n\ndata: reset\n\n", true).await;
+}
+
+#[tokio_test]
+async fn test_sse_template_last_event_id_survives_without_server_reset() {
+    run_sse_reset_header_layers(b"data: first\n\n", false).await;
+}
+
 #[tokio_test]
 async fn test_execute_sse_reconnect_honors_delta_seconds_after_interceptor_override() {
     let elapsed = run_retry_after_sse_reconnect("1", false, true).await;
     assert!(elapsed >= Duration::from_millis(650), "elapsed={elapsed:?}");
+}
+
+#[tokio_test]
+async fn test_execute_sse_with_reconnect_stops_normally_on_204() {
+    for headers in [
+        vec![],
+        vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+    ] {
+        let server = spawn_one_shot_server(ResponsePlan::Immediate {
+            status: 204,
+            headers,
+            body: vec![],
+        })
+        .await;
+        let mut options = HttpClientOptions::default();
+        options.base_url = Some(server.base_url());
+        let mut client = HttpClientBuilder::new().create(options).unwrap();
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let observed = attempts.clone();
+        client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
+            observed.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }));
+        let request = client.request(Method::GET, "/sse-stop").build();
+        let mut events = client.execute_sse_with_reconnect(request, SseReconnectOptions::default());
+        let item = timeout(Duration::from_secs(3), events.next()).await.unwrap();
+        assert!(item.is_none(), "204 must terminate normally without an SSE error");
+        let captured = timeout(Duration::from_secs(3), server.finish()).await.unwrap();
+        assert_eq!(captured.target, "/sse-stop");
+        assert_eq!(attempts.load(Ordering::SeqCst), 1);
+    }
+}
+
+#[tokio_test]
+async fn test_execute_sse_with_reconnect_stops_on_204_after_reconnect() {
+    let server = spawn_multi_shot_server(vec![
+        ResponsePlan::Immediate {
+            status: 200,
+            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+            body: b"data: once\n\n".to_vec(),
+        },
+        ResponsePlan::Immediate {
+            status: 204,
+            headers: vec![],
+            body: vec![],
+        },
+    ])
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let observed = attempts.clone();
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
+        observed.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }));
+    let request = client.request(Method::GET, "/sse-stop-after-reconnect").build();
+    let mut events = client.execute_sse_with_reconnect(
+        request,
+        SseReconnectOptions {
+            retry: build_retry_options(2, BackoffPolicy::immediate()),
+            reconnect_on_eof: true,
+            ..SseReconnectOptions::default()
+        },
+    );
+    assert_eq!(events.next().await.unwrap().unwrap().data, "once");
+    assert!(events.next().await.is_none());
+    let requests = timeout(Duration::from_secs(3), server.finish()).await.unwrap();
+    assert_eq!(requests.len(), 2);
+    assert_eq!(attempts.load(Ordering::SeqCst), 2);
 }
 
 #[tokio_test]
@@ -179,6 +336,8 @@ async fn test_execute_sse_with_reconnect_propagates_and_resets_last_event_id() {
         plan(b"data: third\n\n"),
         plan(b"id:\n\n"),
         plan(b"data: fifth\n\n"),
+        plan(b"id: evt-3\ndata: resumed\n\n"),
+        plan(b"data: after-resume\n\n"),
     ])
     .await;
     let mut options = HttpClientOptions::default();
@@ -190,7 +349,7 @@ async fn test_execute_sse_with_reconnect_propagates_and_resets_last_event_id() {
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
-            retry: build_retry_options(5, BackoffPolicy::fixed(Duration::from_millis(1))),
+            retry: build_retry_options(7, BackoffPolicy::fixed(Duration::from_millis(1))),
             reconnect_on_eof: true,
             honor_server_retry: false,
             ..SseReconnectOptions::default()
@@ -201,6 +360,8 @@ async fn test_execute_sse_with_reconnect_propagates_and_resets_last_event_id() {
         ("second", Some("evt-1")),
         ("third", Some("evt-2")),
         ("fifth", Some("")),
+        ("resumed", Some("evt-3")),
+        ("after-resume", Some("evt-3")),
     ];
     for (data, id) in expected {
         let message = events.next().await.unwrap().unwrap();
@@ -209,7 +370,7 @@ async fn test_execute_sse_with_reconnect_propagates_and_resets_last_event_id() {
     }
     assert!(events.next().await.is_none());
     let requests = timeout(Duration::from_secs(3), server.finish()).await.unwrap();
-    assert_eq!(requests.len(), 6);
+    assert_eq!(requests.len(), 8);
     assert_eq!(
         requests[1].headers.get("last-event-id").map(String::as_str),
         Some("evt-1")
@@ -226,7 +387,12 @@ async fn test_execute_sse_with_reconnect_propagates_and_resets_last_event_id() {
         requests[4].headers.get("last-event-id").map(String::as_str),
         Some("evt-2")
     );
-    assert_eq!(requests[5].headers.get("last-event-id").map(String::as_str), Some(""));
+    assert!(!requests[5].headers.contains_key("last-event-id"));
+    assert!(!requests[6].headers.contains_key("last-event-id"));
+    assert_eq!(
+        requests[7].headers.get("last-event-id").map(String::as_str),
+        Some("evt-3")
+    );
 }
 
 #[tokio_test]
@@ -279,7 +445,7 @@ async fn test_execute_sse_with_reconnect_honors_server_retry_delay() {
 }
 
 #[tokio_test]
-async fn test_execute_sse_with_reconnect_server_retry_overrides_once_and_preserves_backoff_progression() {
+async fn test_execute_sse_with_reconnect_preserves_server_retry_across_reconnects() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Chunked {
             status: 200,
@@ -296,6 +462,24 @@ async fn test_execute_sse_with_reconnect_server_retry_overrides_once_and_preserv
             chunks: vec![ResponseChunk {
                 delay: Duration::from_millis(0),
                 bytes: b"data: second\n\n".to_vec(),
+            }],
+            finish: false,
+        },
+        ResponsePlan::Chunked {
+            status: 200,
+            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+            chunks: vec![ResponseChunk {
+                delay: Duration::from_millis(0),
+                bytes: b"retry: +1\ndata: third\n\n".to_vec(),
+            }],
+            finish: false,
+        },
+        ResponsePlan::Chunked {
+            status: 200,
+            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+            chunks: vec![ResponseChunk {
+                delay: Duration::from_millis(0),
+                bytes: b"retry: 40\ndata: fourth\n\n".to_vec(),
             }],
             finish: false,
         },
@@ -324,7 +508,7 @@ async fn test_execute_sse_with_reconnect_server_retry_overrides_once_and_preserv
         request,
         SseReconnectOptions {
             retry: build_retry_options(
-                2,
+                4,
                 BackoffPolicy::exponential(Duration::from_millis(40), 2.0, Duration::from_millis(200))
                     .expect("test backoff should be valid"),
             ),
@@ -336,13 +520,15 @@ async fn test_execute_sse_with_reconnect_server_retry_overrides_once_and_preserv
     );
     assert_eq!(events.next().await.unwrap().unwrap().data, "first");
     assert_eq!(events.next().await.unwrap().unwrap().data, "second");
+    assert_eq!(events.next().await.unwrap().unwrap().data, "third");
+    assert_eq!(events.next().await.unwrap().unwrap().data, "fourth");
     assert_eq!(events.next().await.unwrap().unwrap().data, "done");
     assert!(events.next().await.is_none());
 
     let requests = timeout(Duration::from_secs(3), server.finish())
         .await
         .expect("server finish timed out");
-    assert_eq!(requests.len(), 3);
+    assert_eq!(requests.len(), 5);
 }
 
 #[tokio_test]

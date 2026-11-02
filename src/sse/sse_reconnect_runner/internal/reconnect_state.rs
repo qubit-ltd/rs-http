@@ -31,9 +31,9 @@ use crate::sse::sse_reconnect_runner::sleep_reconnect_delay;
 pub(in crate::sse) struct ReconnectState {
     /// Current local backoff delay before jitter/server override.
     pub(in crate::sse) backoff: BackoffState,
-    /// Optional one-shot server-provided retry delay from an SSE `retry:`
+    /// Persistent server-provided retry delay from the latest SSE `retry:`
     /// record.
-    pending_server_retry_delay: Option<Duration>,
+    server_retry_delay: Option<Duration>,
 }
 
 impl ReconnectState {
@@ -47,11 +47,11 @@ impl ReconnectState {
     pub(in crate::sse) fn new(retry_policy: &RetryPolicy) -> Self {
         Self {
             backoff: retry_policy.backoff().start(),
-            pending_server_retry_delay: None,
+            server_retry_delay: None,
         }
     }
 
-    /// Stores one server-provided retry delay for the next reconnect only.
+    /// Stores the server-provided retry delay used for subsequent reconnects.
     ///
     /// # Parameters
     /// - `delay`: Delay derived from an SSE `retry:` record.
@@ -59,7 +59,7 @@ impl ReconnectState {
     /// # Returns
     /// Nothing.
     pub(in crate::sse) fn set_server_retry_delay(&mut self, delay: Duration) {
-        self.pending_server_retry_delay = Some(delay);
+        self.server_retry_delay = Some(delay);
     }
 
     /// Attempts to schedule a reconnect after a retryable error.
@@ -196,7 +196,7 @@ impl ReconnectState {
     ) -> Duration {
         let (request, from_sse) = if let Some(delay) = http_retry_after {
             (BackoffRequest::hint(delay), false)
-        } else if let Some(delay) = self.pending_server_retry_delay {
+        } else if let Some(delay) = self.server_retry_delay {
             let request = if runtime.options.apply_jitter_to_server_retry {
                 BackoffRequest::jittered_hint(delay)
             } else {
@@ -218,7 +218,7 @@ impl ReconnectState {
         }
     }
 
-    /// Sleeps before reconnect and clears one-shot reconnect state.
+    /// Sleeps before reconnect and advances the local backoff state.
     ///
     /// # Parameters
     /// - `sleep_delay`: Effective reconnect delay to wait.
@@ -229,7 +229,7 @@ impl ReconnectState {
     /// [`ReconnectAction::Fail`] when cancellation interrupts the sleep.
     ///
     /// # Side effects
-    /// Sleeps asynchronously and clears the one-shot server retry delay.
+    /// Sleeps asynchronously while preserving the latest server retry delay.
     async fn sleep_and_advance(&mut self, sleep_delay: Duration, runtime: &ReconnectRuntime<'_>) -> ReconnectAction {
         if let Err(error) = sleep_reconnect_delay(
             sleep_delay,
@@ -242,7 +242,6 @@ impl ReconnectState {
         {
             return ReconnectAction::Fail(Box::new(error));
         }
-        self.pending_server_retry_delay = None;
         ReconnectAction::Continue
     }
 }
@@ -447,7 +446,7 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn test_wait_consumes_one_shot_hint_and_advances_backoff() {
+    async fn test_wait_preserves_server_retry_and_advances_backoff() {
         let policy = qubit_retry::RetryPolicy::builder()
             .max_attempts(3)
             .backoff(BackoffPolicy::exponential(Duration::from_millis(40), 2.0, Duration::from_millis(200)).unwrap())
@@ -471,7 +470,7 @@ mod tests {
         let mut budget = RetryBudget::new(&clock, *policy.admission_limits()).unwrap();
         let mut state = ReconnectState::new(&policy);
         state.set_server_retry_delay(Duration::from_millis(120));
-        for expected_ms in [120_u64, 80_u64] {
+        for expected_ms in [120_u64, 120_u64] {
             let attempt = budget.begin_attempt().unwrap();
             let _snapshot = budget.finish_attempt(attempt).unwrap();
             {
@@ -486,8 +485,40 @@ mod tests {
                     std::task::Poll::Ready(super::ReconnectAction::Continue)
                 ));
             }
-            assert!(state.pending_server_retry_delay.is_none());
+            assert_eq!(state.server_retry_delay, Some(Duration::from_millis(120)));
         }
+    }
+
+    #[test]
+    fn test_http_retry_after_does_not_clear_persistent_sse_delay() {
+        let policy = retry(BackoffPolicy::fixed(Duration::from_millis(5)).prefer_retry_after());
+        let options = SseReconnectOptions {
+            retry: policy.clone(),
+            server_retry_max_delay: Some(Duration::from_millis(500)),
+            apply_jitter_to_server_retry: false,
+            ..SseReconnectOptions::default()
+        };
+        let method = Method::GET;
+        let redactor = Redactor::default();
+        let runtime = ReconnectRuntime {
+            retry_policy: &policy,
+            options: &options,
+            cancellation_token: None,
+            request_method: &method,
+            request_url: None,
+            log_redactor: &redactor,
+        };
+        let mut state = ReconnectState::new(&policy);
+        state.set_server_retry_delay(Duration::from_millis(120));
+        assert_eq!(state.sleep_delay(&runtime, None), Duration::from_millis(120));
+        assert_eq!(state.sleep_delay(&runtime, None), Duration::from_millis(120));
+        assert_eq!(
+            state.sleep_delay(&runtime, Some(Duration::from_millis(250))),
+            Duration::from_millis(250),
+        );
+        assert_eq!(state.sleep_delay(&runtime, None), Duration::from_millis(120));
+        state.set_server_retry_delay(Duration::from_millis(40));
+        assert_eq!(state.sleep_delay(&runtime, None), Duration::from_millis(40));
     }
 
     #[tokio::test(start_paused = true)]

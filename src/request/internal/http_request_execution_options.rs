@@ -30,4 +30,7 @@ pub(in crate::request) struct HttpRequestExecutionOptions {
     /// Request-level retry settings that override the client's retry policy
     /// for enablement, eligible methods, and `Retry-After` handling.
     pub(in crate::request) retry_override: HttpRequestRetryOverride,
+    /// Whether an SSE reset record must remove `Last-Event-ID` after all
+    /// client, injector, interceptor, and request-local header layers merge.
+    pub(in crate::request) omit_sse_last_event_id: bool,
 }

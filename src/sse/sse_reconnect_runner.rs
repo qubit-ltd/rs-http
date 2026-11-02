@@ -16,10 +16,11 @@ use std::time::Duration;
 
 use async_stream::stream;
 use futures_util::StreamExt;
+use http::Method;
+use http::StatusCode;
+use http::header::CONTENT_TYPE;
 use http::header::HeaderName;
 use http::header::HeaderValue;
-use http::header::CONTENT_TYPE;
-use http::Method;
 use qubit_clock::StdMonotonicClock;
 use qubit_redact::Redactor;
 use qubit_retry::RetryBudget;
@@ -208,6 +209,13 @@ impl SseReconnectRunner {
                         return;
                     }
                 };
+                if response.status() == StatusCode::NO_CONTENT {
+                    if let Err(error) = retry_budget.finish_attempt(attempt) {
+                        yield Err(reconnect_budget_error(error, &runtime));
+                        return;
+                    }
+                    return;
+                }
                 if let Err(error) =
                     validate_sse_response_content_type(&response, runtime.log_redactor)
                 {
@@ -286,7 +294,8 @@ impl SseReconnectRunner {
     }
 }
 
-/// Applies `Last-Event-ID` request header for SSE reconnection.
+/// Applies `Last-Event-ID` request header for SSE reconnection, or suppresses
+/// that header when the server reset the event ID with an empty value.
 ///
 /// # Parameters
 /// - `request`: Outbound request to mutate.
@@ -294,7 +303,7 @@ impl SseReconnectRunner {
 /// - `log_redactor`: Redactor attached to errors when the header is invalid.
 ///
 /// # Returns
-/// `Ok(())` when header is applied.
+/// `Ok(())` when the header is applied or suppressed for an empty ID.
 ///
 /// # Errors
 /// Returns [`HttpError`] when `last_event_id` cannot be represented as an HTTP
@@ -304,6 +313,10 @@ fn apply_last_event_id_header(
     last_event_id: &str,
     log_redactor: &Redactor,
 ) -> HttpResult<()> {
+    if last_event_id.is_empty() {
+        request.suppress_sse_last_event_id();
+        return Ok(());
+    }
     let header_value = HeaderValue::from_str(last_event_id).map_err(|error| {
         HttpError::other(format!(
             "Invalid Last-Event-ID header value ({} bytes): {error}",

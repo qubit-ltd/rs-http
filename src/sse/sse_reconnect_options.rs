@@ -62,7 +62,8 @@ pub struct SseReconnectOptions {
     /// Whether to reconnect when the SSE stream ends without an explicit
     /// error.
     pub reconnect_on_eof: bool,
-    /// Whether to honor SSE `retry:` field as the next reconnect delay.
+    /// Whether to honor SSE `retry:` field as the reconnect delay until a
+    /// later valid `retry:` field replaces it.
     pub honor_server_retry: bool,
     /// Upper bound for a server-directed reconnect delay after hint merging
     /// and jitter. The effective bound is at least one millisecond. This cap

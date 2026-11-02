@@ -154,6 +154,7 @@ impl HttpRequest {
                 read_timeout: builder.read_timeout,
                 cancellation_token: builder.cancellation_token,
                 retry_override: builder.retry_override,
+                omit_sse_last_event_id: false,
             },
             context: HttpRequestContext {
                 base_url: builder.base_url,
@@ -1034,6 +1035,13 @@ impl HttpRequest {
         self.effective_headers = None;
     }
 
+    /// Suppresses `Last-Event-ID` from the effective headers for an SSE reset.
+    pub(crate) fn suppress_sse_last_event_id(&mut self) {
+        self.execution_options.omit_sse_last_event_id = true;
+        self.headers.remove("last-event-id");
+        self.invalidate_effective_headers_cache();
+    }
+
     /// Computes merged outbound headers without touching the cache.
     async fn compute_effective_headers(&self) -> HttpResult<HeaderMap> {
         let mut headers = self.context.default_headers.clone();
@@ -1046,6 +1054,9 @@ impl HttpRequest {
         }
 
         headers.extend(self.headers.clone());
+        if self.execution_options.omit_sse_last_event_id {
+            headers.remove("last-event-id");
+        }
         Ok(headers)
     }
 
