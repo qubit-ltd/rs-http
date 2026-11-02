@@ -6,14 +6,14 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use std::time::Duration;
-use std::time::Instant;
 use std::future::Future;
 use std::pin::Pin;
+use std::time::Duration;
+use std::time::Instant;
 
 use bytes::Bytes;
-use futures_util::stream;
 use futures_util::StreamExt;
+use futures_util::stream;
 use http::HeaderMap;
 use http::Method;
 use http::StatusCode;

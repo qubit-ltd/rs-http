@@ -371,7 +371,8 @@ impl HttpRequest {
         self
     }
 
-    /// Returns the optional reqwest per-attempt network request and response-body deadline.
+    /// Returns the optional reqwest per-attempt network request and
+    /// response-body deadline.
     ///
     /// # Returns
     /// `Some(duration)` when a request-specific timeout overrides the client
@@ -389,7 +390,8 @@ impl HttpRequest {
     /// receipt of response headers.
     ///
     /// # Parameters
-    /// - `timeout`: The reqwest per-attempt network request and response-body deadline.
+    /// - `timeout`: The reqwest per-attempt network request and response-body
+    ///   deadline.
     ///
     /// # Returns
     /// `Ok(self)` for method chaining.
@@ -443,7 +445,8 @@ impl HttpRequest {
         Ok(self)
     }
 
-    /// Returns the timeout for each normal body read and complete non-success error-body capture.
+    /// Returns the timeout for each normal body read and complete non-success
+    /// error-body capture.
     ///
     /// # Returns
     /// Maximum duration for each normal response-body read and for complete

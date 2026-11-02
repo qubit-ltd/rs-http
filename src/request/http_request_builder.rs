@@ -536,7 +536,8 @@ impl HttpRequestBuilder {
     /// asynchronous preparation through receipt of response headers.
     ///
     /// # Parameters
-    /// - `timeout`: The reqwest per-attempt network request and response-body deadline.
+    /// - `timeout`: The reqwest per-attempt network request and response-body
+    ///   deadline.
     ///
     /// # Returns
     /// `Ok(self)` for chaining.

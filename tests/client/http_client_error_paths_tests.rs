@@ -455,7 +455,14 @@ async fn test_status_body_read_timeout_is_cumulative() {
     assert_eq!(error.status, Some(StatusCode::TOO_MANY_REQUESTS));
     assert_eq!(error.retry_after, Some(Duration::from_secs(1)));
     assert_eq!(error.method, Some(Method::GET));
-    assert!(error.url.as_ref().unwrap().as_str().ends_with("/status-body-cumulative"));
+    assert!(
+        error
+            .url
+            .as_ref()
+            .unwrap()
+            .as_str()
+            .ends_with("/status-body-cumulative")
+    );
     let status = error.status_response().unwrap();
     assert_eq!(status.headers().get("x-test").unwrap(), "preserved");
     assert!(status.body().starts_with(b"first"));

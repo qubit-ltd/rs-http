@@ -213,7 +213,8 @@ impl HttpError {
     /// Builds [`HttpErrorKind::RequestTimeout`].
     ///
     /// # Parameters
-    /// - `message`: Timeout context for the reqwest per-attempt network request and response-body deadline.
+    /// - `message`: Timeout context for the reqwest per-attempt network request
+    ///   and response-body deadline.
     ///
     /// # Returns
     /// New [`HttpError`].

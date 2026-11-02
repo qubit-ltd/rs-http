@@ -21,7 +21,8 @@ use crate::constants::DEFAULT_READ_TIMEOUT_SECS;
 use crate::constants::DEFAULT_SEND_TIMEOUT_SECS;
 use crate::request::response_header_deadline_is_representable;
 
-/// Configures connect, read, response-header, and reqwest per-attempt HTTP timeouts.
+/// Configures connect, read, response-header, and reqwest per-attempt HTTP
+/// timeouts.
 ///
 /// Every configured timeout must be greater than zero. In addition,
 /// `response_header_timeout` must fit in the platform's `Instant` deadline
@@ -47,7 +48,8 @@ pub struct HttpTimeoutOptions {
     pub connect_timeout: Duration,
     /// Bounds each normal response-body read. For non-success status responses,
     /// it also bounds complete error-body capture from when capture begins;
-    /// expiry retains the status and partial raw body marked incomplete. Must be nonzero.
+    /// expiry retains the status and partial raw body marked incomplete. Must
+    /// be nonzero.
     pub read_timeout: Duration,
     /// Cumulative deadline from asynchronous request preparation through
     /// receipt of response headers; synchronous request interceptors run

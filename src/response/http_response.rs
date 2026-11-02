@@ -931,13 +931,13 @@ impl HttpResponse {
                 .as_ref()
                 .is_some_and(HttpCancellationToken::is_cancelled)
             {
-                return Err(HttpError::cancelled(
-                    "Request cancelled while reading status error response body preview",
-                )
-                .with_method(&method)
-                .with_url(&url)
-                .with_status(status)
-                .with_log_redactor(self.log_redactor().clone()));
+                return Err(
+                    HttpError::cancelled("Request cancelled while reading status error response body preview")
+                        .with_method(&method)
+                        .with_url(&url)
+                        .with_status(status)
+                        .with_log_redactor(self.log_redactor().clone()),
+                );
             }
             let remaining = read_timeout.saturating_sub(capture_started_at.elapsed());
             if remaining.is_zero() {
