@@ -17,8 +17,4 @@ pub(in crate::client) struct HttpRetryRule {
     /// Fully resolved retry policy used to classify HTTP failures and select
     /// the retry schedule for this request.
     pub(in crate::client) options: HttpRetryOptions,
-
-    /// Whether the request permits a server-provided `Retry-After` delay to
-    /// replace the policy-selected delay after a retryable failure.
-    pub(in crate::client) honor_retry_after: bool,
 }

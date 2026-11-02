@@ -880,6 +880,9 @@ impl HttpResponse {
                         raw_truncated |= raw_remaining < chunk.len();
                         break;
                     }
+                    if capture_budget.used() == capture_limit && (preview_truncated || raw_truncated) {
+                        break;
+                    }
                 }
                 Ok(Ok(None)) => break,
                 Ok(Err(error)) => {
@@ -948,6 +951,9 @@ impl HttpResponse {
     /// Returns `Content-Length` parsed from response headers when present and
     /// valid.
     fn content_length_hint(&self) -> Option<u64> {
+        if self.meta.method() == Method::HEAD {
+            return Some(0);
+        }
         self.meta
             .headers()
             .get(CONTENT_LENGTH)
@@ -1014,5 +1020,148 @@ impl HttpResponse {
     /// Owned Content-Type value when present, including non-UTF-8 values.
     fn content_type_header(headers: &HeaderMap) -> Option<HeaderValue> {
         headers.get(CONTENT_TYPE).cloned()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use http::Method;
+    use tokio::io::AsyncReadExt;
+    use tokio::io::AsyncWriteExt;
+    use tokio::net::TcpListener;
+    use tokio::sync::oneshot;
+
+    use super::HttpResponse;
+    use super::HttpResponseMeta;
+    use super::HttpResponseOptions;
+
+    async fn make_backend(method: Method, status: u16) -> (reqwest::Response, url::Url) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            let mut byte = [0_u8; 1];
+            while !request.ends_with(b"\r\n\r\n") {
+                stream.read_exact(&mut byte).await.unwrap();
+                request.push(byte[0]);
+            }
+            stream
+                .write_all(
+                    format!("HTTP/1.1 {status} response\r\nContent-Length: 100\r\nConnection: close\r\n\r\n")
+                        .as_bytes(),
+                )
+                .await
+                .unwrap();
+            stream.flush().await.unwrap();
+        });
+        let url = url::Url::parse(&format!("http://{address}/")).unwrap();
+        let backend = reqwest::Client::new()
+            .request(method, url.clone())
+            .send()
+            .await
+            .unwrap();
+        (backend, url)
+    }
+
+    #[tokio::test]
+    async fn test_head_content_length_is_not_a_body_length_hint() {
+        let (backend, url) = make_backend(Method::HEAD, 200).await;
+        let meta = HttpResponseMeta::new(
+            backend.status(),
+            backend.headers().clone(),
+            backend.url().clone(),
+            Method::HEAD,
+        );
+        let options = HttpResponseOptions {
+            response_body_size_limit: 1,
+            ..HttpResponseOptions::default()
+        };
+        let mut response = HttpResponse::from_backend(meta, backend, Duration::from_secs(1), None, url, options);
+        assert_eq!(response.headers().get("content-length").unwrap(), "100");
+        assert!(response.bytes().await.unwrap().is_empty());
+        assert!(response.text().await.unwrap().is_empty());
+
+        let (backend, url) = make_backend(Method::HEAD, 404).await;
+        let meta = HttpResponseMeta::new(
+            backend.status(),
+            backend.headers().clone(),
+            backend.url().clone(),
+            Method::HEAD,
+        );
+        let response = HttpResponse::from_backend(
+            meta,
+            backend,
+            Duration::from_secs(1),
+            None,
+            url,
+            HttpResponseOptions::default(),
+        );
+        let error = response.into_success_or_status_error("failed").await.unwrap_err();
+        let capture = error.status_response().unwrap();
+        assert!(capture.body().is_empty());
+        assert!(!capture.is_truncated());
+
+        let (backend, url) = make_backend(Method::GET, 200).await;
+        let meta = HttpResponseMeta::new(
+            backend.status(),
+            backend.headers().clone(),
+            backend.url().clone(),
+            Method::GET,
+        );
+        let options = HttpResponseOptions {
+            response_body_size_limit: 1,
+            ..HttpResponseOptions::default()
+        };
+        let mut response = HttpResponse::from_backend(meta, backend, Duration::from_secs(1), None, url, options);
+        let error = response.bytes().await.unwrap_err();
+        assert_eq!(error.kind, crate::HttpErrorKind::ResponseBodyTooLarge);
+    }
+
+    #[tokio::test]
+    async fn test_status_capture_stops_when_truncation_is_known() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (sent_tx, sent_rx) = oneshot::channel();
+        let (release_tx, release_rx) = oneshot::channel();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            let mut byte = [0_u8; 1];
+            while !request.ends_with(b"\r\n\r\n") {
+                stream.read_exact(&mut byte).await.unwrap();
+                request.push(byte[0]);
+            }
+            stream.write_all(b"HTTP/1.1 400 Bad Request\r\nTransfer-Encoding: chunked\r\nContent-Type: text/plain\r\n\r\n5\r\nabcde\r\n").await.unwrap();
+            stream.flush().await.unwrap();
+            let _ = sent_tx.send(());
+            let _ = release_rx.await;
+        });
+        let url = url::Url::parse(&format!("http://{address}/")).unwrap();
+        let backend = reqwest::Client::new().get(url.clone()).send().await.unwrap();
+        sent_rx.await.unwrap();
+        let meta = HttpResponseMeta::new(
+            backend.status(),
+            backend.headers().clone(),
+            backend.url().clone(),
+            Method::GET,
+        );
+        let options = HttpResponseOptions {
+            error_response_preview_limit: 4,
+            error_response_body_limit: 4,
+            ..HttpResponseOptions::default()
+        };
+        let response = HttpResponse::from_backend(meta, backend, Duration::from_secs(30), None, url, options);
+        let error = tokio::time::timeout(Duration::from_secs(1), response.into_success_or_status_error("failed"))
+            .await
+            .expect("known truncation should finish before EOF")
+            .unwrap_err();
+        let captured = error.status_response().unwrap();
+        assert_eq!(captured.body().as_ref(), b"abcd");
+        assert!(captured.is_truncated());
+        let _ = release_tx.send(());
+        server.await.unwrap();
     }
 }

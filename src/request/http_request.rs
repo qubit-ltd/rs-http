@@ -414,20 +414,22 @@ impl HttpRequest {
         self
     }
 
-    /// Returns the write-phase timeout used while sending the request.
+    /// Returns the cumulative response-header timeout.
     ///
     /// # Returns
-    /// Maximum duration allowed for request preparation and sending.
+    /// Maximum duration from asynchronous request preparation through receipt
+    /// of response headers.
     #[inline]
     pub fn response_header_timeout(&self) -> Duration {
         self.execution_options.response_header_timeout
     }
 
-    /// Sets the write-phase timeout used while sending the request.
+    /// Sets the cumulative response-header timeout.
     ///
     /// # Parameters
-    /// - `timeout`: Maximum duration allowed for request preparation and
-    ///   sending.
+    /// - `timeout`: Maximum duration from asynchronous request preparation
+    ///   through receipt of response headers. The synchronous request
+    ///   interceptor runs before this deadline begins.
     ///
     /// # Returns
     /// `Ok(self)` for method chaining.
@@ -609,13 +611,13 @@ impl HttpRequest {
     }
 
     /// Assembles a reqwest [`RequestBuilder`](reqwest::RequestBuilder), applies
-    /// this snapshot's body, then sends with a bounded write phase.
+    /// this snapshot's body, then sends before a response-header deadline.
     ///
     /// Centralizes send-attempt preparation and transport wiring:
     /// - invalidates and recomputes effective headers for each attempt;
     /// - emits request TRACE logs via the provided logger;
     /// - applies query/timeout/body wiring plus cooperative cancellation and
-    ///   write-timeout handling.
+    ///   response-header-timeout handling.
     ///
     /// # Parameters
     /// - `backend`: Shared reqwest client.
@@ -629,8 +631,10 @@ impl HttpRequest {
     /// # Errors
     /// - Cooperative cancellation while waiting on the send future.
     /// - Transport failures mapped from reqwest.
-    /// - Write timeout when the send future does not complete within
-    ///   `response_header_timeout`.
+    /// - Response-header timeout when asynchronous request preparation,
+    ///   streaming-body creation, sending, and waiting for response headers
+    ///   exceed `response_header_timeout`. Synchronous request interceptors run
+    ///   before this deadline starts.
     pub(crate) async fn send_impl(
         &mut self,
         backend: &Client,
@@ -655,7 +659,7 @@ impl HttpRequest {
             request_url_context.as_ref(),
             "Request cancelled while preparing request",
             format!(
-                "Write timeout after {:?} while preparing request",
+                "Response-header timeout after {:?} while preparing request",
                 response_header_timeout
             ),
         )
@@ -685,7 +689,7 @@ impl HttpRequest {
                 Some(&request_url),
                 "Request cancelled while preparing streaming request body",
                 format!(
-                    "Write timeout after {:?} while preparing streaming request body",
+                    "Response-header timeout after {:?} while preparing streaming request body",
                     self.execution_options.response_header_timeout
                 ),
             )
@@ -725,7 +729,7 @@ impl HttpRequest {
             )
             .with_log_redactor(log_redactor.clone())),
             Err(_) => Err(HttpError::response_header_timeout(format!(
-                "Write timeout after {:?} while sending request",
+                "Response-header timeout after {:?} while sending request",
                 self.execution_options.response_header_timeout
             ))
             .with_method(&method)
@@ -735,7 +739,7 @@ impl HttpRequest {
     }
 
     /// Waits for one asynchronous pre-send preparation step with cancellation
-    /// and write-timeout handling.
+    /// and response-header-timeout handling.
     ///
     /// # Parameters
     /// - `future`: Preparation future, such as async header injection or
@@ -813,7 +817,7 @@ impl HttpRequest {
         error
     }
 
-    /// Builds a write-timeout error for pre-send preparation.
+    /// Builds a response-header-timeout error for pre-send preparation.
     ///
     /// # Parameters
     /// - `message`: Timeout message.
@@ -821,7 +825,7 @@ impl HttpRequest {
     /// - `request_url`: Optional request URL for context.
     ///
     /// # Returns
-    /// Write-timeout [`HttpError`] with request context attached.
+    /// Response-header-timeout [`HttpError`] with request context attached.
     fn pre_send_response_header_timeout_error(
         message: String,
         method: &Method,

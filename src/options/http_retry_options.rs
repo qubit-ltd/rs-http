@@ -141,10 +141,8 @@ impl HttpRetryOptions {
                 })?);
         }
 
-        if raw.delay_strategy.is_some() || raw.jitter_factor.is_some() {
-            opts.backoff = parse_retry_backoff(&raw)
-                .map_err(|error| super::from_config_helpers::resolve_config_error(config, error))?;
-        }
+        opts.backoff = parse_retry_backoff(&raw)
+            .map_err(|error| super::from_config_helpers::resolve_config_error(config, error))?;
 
         opts.validate()
             .map_err(|error| super::from_config_helpers::resolve_config_error(config, error))?;
@@ -347,14 +345,35 @@ fn parse_retry_backoff(raw: &HttpRetryConfigInput) -> Result<BackoffPolicy, Http
             raw.random_min_delay.unwrap_or(DEFAULT_RETRY_INITIAL_DELAY),
             raw.random_max_delay.unwrap_or(DEFAULT_RETRY_MAX_DELAY),
         )
-        .map_err(|error| HttpConfigError::invalid_value(error.field(), error.message()))?,
+        .map_err(|error| {
+            HttpConfigError::invalid_value(
+                "random_max_delay",
+                format!(
+                    "random_min_delay and random_max_delay are inconsistent: {}",
+                    error.message()
+                ),
+            )
+        })?,
         "exponential_backoff" | "exponential" => BackoffPolicy::exponential(
             raw.backoff_initial_delay
                 .unwrap_or(DEFAULT_RETRY_INITIAL_DELAY),
             raw.backoff_multiplier.unwrap_or(DEFAULT_RETRY_MULTIPLIER),
             raw.backoff_max_delay.unwrap_or(DEFAULT_RETRY_MAX_DELAY),
         )
-        .map_err(|error| HttpConfigError::invalid_value(error.field(), error.message()))?,
+        .map_err(|error| {
+            let field = if error.message().to_ascii_lowercase().contains("multiplier") {
+                "backoff_multiplier"
+            } else {
+                "backoff_max_delay"
+            };
+            HttpConfigError::invalid_value(
+                field,
+                format!(
+                    "backoff_initial_delay and backoff_max_delay are inconsistent: {}",
+                    error.message()
+                ),
+            )
+        })?,
         _ => {
             return Err(HttpConfigError::invalid_value(
                 "delay_strategy",
@@ -365,7 +384,7 @@ fn parse_retry_backoff(raw: &HttpRetryConfigInput) -> Result<BackoffPolicy, Http
     let jitter = raw.jitter_factor.unwrap_or(DEFAULT_RETRY_JITTER_FACTOR);
     backoff
         .with_bounded_jitter(jitter)
-        .map_err(|error| HttpConfigError::invalid_value(error.field(), error.message()))
+        .map_err(|error| HttpConfigError::invalid_value("jitter_factor", error.message()))
 }
 
 /// Builds the validated default HTTP retry backoff policy.

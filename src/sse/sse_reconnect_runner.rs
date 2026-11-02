@@ -223,9 +223,11 @@ impl SseReconnectRunner {
                 let mut stream_error: Option<HttpError> = None;
                 while let Some(item) = records.next().await {
                     match item {
-                        Ok(SseRecord::Dispatch(message)) => {
+                        Ok(SseRecord::Dispatch(mut message)) => {
                             if let Some(id) = message.last_event_id.clone() {
                                 last_event_id = Some(id);
+                            } else {
+                                message.last_event_id = last_event_id.clone();
                             }
                             yield Ok(message);
                         }

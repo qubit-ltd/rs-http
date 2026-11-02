@@ -15,6 +15,10 @@ use qubit_http::HttpCancellationToken;
 use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
+use tokio::net::TcpListener;
+use tokio::sync::oneshot;
 use tokio::test as tokio_test;
 use tokio::time::timeout;
 
@@ -372,4 +376,90 @@ async fn test_status_body_cancellation_remains_cancelled() {
         .unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::Cancelled);
     timeout(Duration::from_secs(3), server.finish()).await.unwrap();
+}
+
+#[tokio_test]
+async fn test_head_response_ignores_representation_content_length() {
+    let server = spawn_one_shot_server(ResponsePlan::ImmediateRawHeaders {
+        status: 200,
+        headers: vec![("Content-Length".to_string(), b"100".to_vec())],
+        body: vec![],
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.response_body_size_limit = 1;
+    let client = HttpClientBuilder::new().create(options).unwrap();
+    let mut response = client
+        .execute(client.request(Method::HEAD, "/head").build())
+        .await
+        .unwrap();
+    assert_eq!(response.headers().get("content-length").unwrap(), "100");
+    assert!(response.bytes().await.unwrap().is_empty());
+    assert!(response.text().await.unwrap().is_empty());
+    let _ = server.finish().await;
+}
+
+#[tokio_test]
+async fn test_head_status_error_has_complete_empty_raw_body() {
+    let server = spawn_one_shot_server(ResponsePlan::ImmediateRawHeaders {
+        status: 404,
+        headers: vec![("Content-Length".to_string(), b"100".to_vec())],
+        body: vec![],
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    let client = HttpClientBuilder::new().create(options).unwrap();
+    let error = client
+        .execute(client.request(Method::HEAD, "/head-missing").build())
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind, HttpErrorKind::Status);
+    let status = error.status_response().unwrap();
+    assert!(status.body().is_empty());
+    assert!(!status.is_truncated());
+    let _ = server.finish().await;
+}
+
+#[tokio_test]
+async fn test_error_body_capture_returns_at_known_truncation_boundary() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let (sent_tx, sent_rx) = oneshot::channel();
+    let (release_tx, release_rx) = oneshot::channel();
+    let server = tokio::spawn(async move {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        let mut request = Vec::new();
+        let mut byte = [0_u8; 1];
+        while !request.ends_with(b"\r\n\r\n") {
+            stream.read_exact(&mut byte).await.unwrap();
+            request.push(byte[0]);
+        }
+        stream.write_all(b"HTTP/1.1 400 Bad Request\r\nTransfer-Encoding: chunked\r\nContent-Type: text/plain\r\n\r\n5\r\nabcde\r\n").await.unwrap();
+        stream.flush().await.unwrap();
+        let _ = sent_tx.send(());
+        let _ = release_rx.await;
+    });
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(url::Url::parse(&format!("http://{address}/")).unwrap());
+    options.error_response_preview_limit = 4;
+    options.error_response_body_limit = 4;
+    options.timeouts.read_timeout = Duration::from_secs(30);
+    options.timeouts.response_header_timeout = Duration::from_secs(2);
+    let client = HttpClientBuilder::new().create(options).unwrap();
+    let result = timeout(
+        Duration::from_secs(2),
+        client.execute(client.request(Method::GET, "/capture").build()),
+    )
+    .await;
+    sent_rx.await.unwrap();
+    let error = result.expect("capture must stop without waiting for EOF").unwrap_err();
+    assert_eq!(error.kind, HttpErrorKind::Status);
+    let captured = error.status_response().unwrap();
+    assert_eq!(captured.body().as_ref(), b"abcd");
+    assert!(captured.is_truncated());
+    assert!(!error.message.contains("body unavailable"));
+    let _ = release_tx.send(());
+    server.await.unwrap();
 }

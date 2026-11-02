@@ -16,6 +16,7 @@ use url::Url;
 use super::ReqwestErrorPhase;
 use crate::HttpError;
 use crate::HttpErrorKind;
+use crate::client::RedirectIpv6Violation;
 use crate::client::RedirectOriginViolation;
 
 /// Maps a [`ReqwestError`] into [`HttpError`] with phase-aware timeout
@@ -43,6 +44,8 @@ pub(crate) fn map_reqwest_error(
     let error = error.without_url();
     let kind = if contains_redirect_origin_violation(&error) {
         HttpErrorKind::OriginPolicy
+    } else if contains_redirect_ipv6_violation(&error) {
+        HttpErrorKind::InvalidUrl
     } else {
         classify_reqwest_error_kind(is_timeout, phase, default_kind)
     };
@@ -58,6 +61,18 @@ fn contains_redirect_origin_violation(error: &ReqwestError) -> bool {
     let mut source = error.source();
     while let Some(candidate) = source {
         if candidate.downcast_ref::<RedirectOriginViolation>().is_some() {
+            return true;
+        }
+        source = candidate.source();
+    }
+    false
+}
+
+/// Returns whether an error source chain contains an IPv6 redirect violation.
+fn contains_redirect_ipv6_violation(error: &ReqwestError) -> bool {
+    let mut source = error.source();
+    while let Some(candidate) = source {
+        if candidate.downcast_ref::<RedirectIpv6Violation>().is_some() {
             return true;
         }
         source = candidate.source();

@@ -6,12 +6,16 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
+use std::error::Error as StdError;
+use std::net::TcpListener;
 use std::time::Duration;
 
 use http::Method;
 use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
+use qubit_http::HttpOriginPolicy;
+use tokio::io::AsyncWriteExt;
 use tokio::test as tokio_test;
 use tokio::time::timeout;
 
@@ -107,7 +111,196 @@ async fn test_ipv4_only_fails_on_hostname_without_ipv4_address() {
             error.kind,
             HttpErrorKind::Transport | HttpErrorKind::ResponseHeaderTimeout
         ),
-        "expected IPv4-only DNS failure to be transport or write timeout, got {:?}",
+        "expected IPv4-only DNS failure to be transport or response-header timeout, got {:?}",
         error.kind
     );
+}
+
+#[tokio_test]
+async fn test_ipv4_only_rejects_ipv6_redirect_target_as_invalid_url() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 302,
+        headers: vec![("Location".to_string(), "http://[::1]:9/redirect-target".to_string())],
+        body: vec![],
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.origin_policy = HttpOriginPolicy::AnyOrigin;
+    options.ipv4_only = true;
+    options.retry.enabled = false;
+    options.base_url = Some(server.base_url());
+    let client = HttpClientBuilder::new().create(options).unwrap();
+    let error = client
+        .execute(client.request(Method::GET, "/redirect").build())
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind, HttpErrorKind::InvalidUrl);
+    let mut source: Option<&(dyn StdError + 'static)> = error
+        .source
+        .as_deref()
+        .map(|source| source as &(dyn StdError + 'static));
+    let mut marker_found = false;
+    while let Some(candidate) = source {
+        if candidate.to_string() == "redirect target is IPv6 while ipv4_only=true" {
+            marker_found = true;
+            break;
+        }
+        source = candidate.source();
+    }
+    assert!(marker_found, "redirect marker must remain in source chain");
+    let _ = server.finish().await;
+}
+
+#[tokio_test]
+async fn test_ipv4_only_rejects_ipv4_mapped_ipv6_redirect() {
+    let source = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 302,
+        headers: vec![("Location".to_string(), "http://[::ffff:127.0.0.1]:9/mapped".to_string())],
+        body: vec![],
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.origin_policy = HttpOriginPolicy::AnyOrigin;
+    options.ipv4_only = true;
+    options.retry.enabled = false;
+    options.base_url = Some(source.base_url());
+    let client = HttpClientBuilder::new().create(options).unwrap();
+    let error = client
+        .execute(client.request(Method::GET, "/redirect-mapped").build())
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind, HttpErrorKind::InvalidUrl);
+    let mut source_error: Option<&(dyn StdError + 'static)> = error
+        .source
+        .as_deref()
+        .map(|source| source as &(dyn StdError + 'static));
+    let mut marker_found = false;
+    while let Some(candidate) = source_error {
+        if candidate.to_string() == "redirect target is IPv6 while ipv4_only=true" {
+            marker_found = true;
+            break;
+        }
+        source_error = candidate.source();
+    }
+    assert!(
+        marker_found,
+        "mapped IPv6 target should retain the private marker source"
+    );
+    let _ = source.finish().await;
+}
+
+#[tokio_test]
+async fn test_ipv4_only_redirect_never_connects_to_ipv6_target() {
+    let target = TcpListener::bind("[::1]:0").ok();
+    if let Some(target) = target.as_ref() {
+        target.set_nonblocking(true).unwrap();
+    }
+    let location = target
+        .as_ref()
+        .map(|listener| format!("http://[::1]:{}/target", listener.local_addr().unwrap().port()))
+        .unwrap_or_else(|| "http://[::1]:9/target".to_string());
+    let source = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 302,
+        headers: vec![("Location".to_string(), location)],
+        body: vec![],
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.origin_policy = HttpOriginPolicy::AnyOrigin;
+    options.ipv4_only = true;
+    options.retry.enabled = false;
+    options.base_url = Some(source.base_url());
+    let client = HttpClientBuilder::new().create(options).unwrap();
+    let error = client
+        .execute(client.request(Method::GET, "/redirect-ipv6").build())
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind, HttpErrorKind::InvalidUrl);
+    if let Some(target) = target {
+        let error = target
+            .accept()
+            .expect_err("IPv4-only redirect must reject before connecting");
+        assert_eq!(error.kind(), std::io::ErrorKind::WouldBlock);
+    }
+    let _ = source.finish().await;
+}
+
+#[tokio_test]
+async fn test_ipv4_only_disabled_allows_ipv6_redirect_policy() {
+    let target = tokio::net::TcpListener::bind("[::1]:0").await.ok();
+    let location = target
+        .as_ref()
+        .map(|listener| format!("http://[::1]:{}/target", listener.local_addr().unwrap().port()))
+        .unwrap_or_else(|| "http://[::1]:9/target".to_string());
+    let source = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 302,
+        headers: vec![("Location".to_string(), location)],
+        body: vec![],
+    })
+    .await;
+    let mut target_task = target.map(|listener| {
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            socket
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok")
+                .await
+                .unwrap();
+        })
+    });
+    let mut options = HttpClientOptions::default();
+    options.origin_policy = HttpOriginPolicy::AnyOrigin;
+    options.ipv4_only = false;
+    options.retry.enabled = false;
+    options.base_url = Some(source.base_url());
+    let client = HttpClientBuilder::new().create(options).unwrap();
+    let result = timeout(
+        Duration::from_secs(3),
+        client.execute(client.request(Method::GET, "/redirect-ipv6-disabled").build()),
+    )
+    .await
+    .expect("redirect should finish");
+    match target_task.as_mut() {
+        Some(task) => {
+            let response = result.expect("ipv4_only=false should not reject the IPv6 marker");
+            assert_eq!(response.status().as_u16(), 200);
+            timeout(Duration::from_secs(3), task).await.unwrap().unwrap();
+        }
+        None => match result {
+            Ok(response) => assert_eq!(response.status().as_u16(), 200),
+            Err(error) => assert_ne!(
+                error.kind,
+                HttpErrorKind::InvalidUrl,
+                "an unavailable IPv6 address may fail transport, but must not match the IPv4-only marker"
+            ),
+        },
+    }
+    let _ = source.finish().await;
+}
+
+#[tokio_test]
+async fn test_ipv4_only_allows_ipv4_to_ipv4_redirect() {
+    let server = crate::common::spawn_multi_shot_server(vec![
+        ResponsePlan::Immediate {
+            status: 302,
+            headers: vec![("Location".to_string(), "/final".to_string())],
+            body: vec![],
+        },
+        ResponsePlan::Immediate {
+            status: 200,
+            headers: vec![],
+            body: b"ok".to_vec(),
+        },
+    ])
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.origin_policy = HttpOriginPolicy::AnyOrigin;
+    options.ipv4_only = true;
+    options.base_url = Some(server.base_url());
+    let client = HttpClientBuilder::new().create(options).unwrap();
+    let response = client
+        .execute(client.request(Method::GET, "/start").build())
+        .await
+        .unwrap();
+    assert_eq!(response.status().as_u16(), 200);
+    assert_eq!(server.finish().await.len(), 2);
 }

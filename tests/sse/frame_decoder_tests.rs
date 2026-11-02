@@ -146,3 +146,16 @@ async fn test_decode_frames_accepts_field_value_without_space_after_colon() {
     assert_eq!(events[0].event.as_deref(), Some("update"));
     assert_eq!(events[0].data, "value");
 }
+
+#[tokio_test]
+async fn test_decode_frames_resets_budget_after_unknown_only_frame() {
+    let response = stream_response_from_chunks(vec!["x: 123\n\n", "x: 123\n\n", "data: a\n\n"]);
+    let mut events = response.sse_max_line_bytes(128).sse_max_frame_bytes(8).sse_messages();
+    let event = events
+        .next()
+        .await
+        .expect("message should be emitted")
+        .expect("each empty line resets frame budget");
+    assert_eq!(event.data, "a");
+    assert!(events.next().await.is_none());
+}

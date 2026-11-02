@@ -6,6 +6,7 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
+use std::error::Error as StdError;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
@@ -18,9 +19,14 @@ use http::Method;
 use http::StatusCode;
 use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
+use qubit_http::HttpError;
 use qubit_http::HttpErrorKind;
+use qubit_http::HttpRequest;
+use qubit_http::HttpRequestInterceptor;
+use qubit_http::HttpRequestRetryOverride;
 use qubit_http::HttpRetryMethodPolicy;
 use qubit_retry::BackoffPolicy;
+use qubit_retry::RetryError;
 use tokio::spawn;
 use tokio::test as tokio_test;
 use tokio::time::sleep;
@@ -409,4 +415,167 @@ async fn test_request_retry_override_honor_retry_after_does_not_block_runtime_th
         .await
         .expect("server finish timed out");
     assert_eq!(captured.len(), 2);
+}
+
+#[tokio_test]
+async fn test_retry_eligibility_uses_intercepted_method() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 503,
+        headers: vec![],
+        body: b"unavailable".to_vec(),
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.retry.enabled = true;
+    options.retry.max_attempts = 3;
+    options.retry.backoff = BackoffPolicy::immediate();
+    let mut client = HttpClientBuilder::new()
+        .create(options)
+        .expect("client should be created");
+    let calls = Arc::new(AtomicUsize::new(0));
+    let observed = calls.clone();
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |request: &mut HttpRequest| {
+        observed.fetch_add(1, Ordering::SeqCst);
+        request.set_method(Method::POST);
+        Ok(())
+    }));
+    let error = client
+        .execute(client.request(Method::GET, "/intercepted-post").build())
+        .await
+        .expect_err("intercepted POST is not replayable by the default policy");
+    assert_eq!(error.kind, HttpErrorKind::Status);
+    assert_eq!(error.method, Some(Method::POST));
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert_eq!(server.finish().await.method, "POST");
+}
+
+#[tokio_test]
+async fn test_intercepted_post_retries_when_final_override_allows_it() {
+    let server = spawn_multi_shot_server(vec![
+        ResponsePlan::Immediate {
+            status: 503,
+            headers: vec![],
+            body: b"retry".to_vec(),
+        },
+        ResponsePlan::Immediate {
+            status: 200,
+            headers: vec![],
+            body: b"ok".to_vec(),
+        },
+    ])
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.retry.enabled = true;
+    options.retry.max_attempts = 2;
+    options.retry.backoff = BackoffPolicy::immediate();
+    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let observed = calls.clone();
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |request: &mut HttpRequest| {
+        observed.fetch_add(1, Ordering::SeqCst);
+        request.set_method(Method::POST);
+        request.set_retry_override(
+            qubit_http::HttpRequestRetryOverride::new().with_method_policy(HttpRetryMethodPolicy::AllMethods),
+        );
+        Ok(())
+    }));
+    let response = client
+        .execute(client.request(Method::GET, "/intercepted-allow-post").build())
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+    let requests = server.finish().await;
+    assert_eq!(requests.len(), 2);
+    assert!(requests.iter().all(|request| request.method == "POST"));
+}
+
+#[tokio_test]
+async fn test_original_post_is_not_admitted_after_interceptor_changes_to_get() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 503,
+        headers: vec![],
+        body: b"unavailable".to_vec(),
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.retry.enabled = true;
+    options.retry.max_attempts = 3;
+    options.retry.backoff = BackoffPolicy::immediate();
+    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let observed = attempts.clone();
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |request: &mut HttpRequest| {
+        observed.fetch_add(1, Ordering::SeqCst);
+        request.set_method(Method::GET);
+        Ok(())
+    }));
+    let error = client
+        .execute(client.request(Method::POST, "/post-to-get").build())
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind, HttpErrorKind::Status);
+    assert_eq!(attempts.load(Ordering::SeqCst), 1);
+    assert_eq!(server.finish().await.method, "GET");
+}
+
+#[tokio_test]
+async fn test_interceptor_transport_failure_uses_final_method_and_preserves_retry_source() {
+    let mut options = HttpClientOptions::default();
+    options.retry.enabled = true;
+    options.retry.max_attempts = 3;
+    options.retry.backoff = BackoffPolicy::immediate();
+    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let observed = attempts.clone();
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |request: &mut HttpRequest| {
+        observed.fetch_add(1, Ordering::SeqCst);
+        request.set_method(Method::POST);
+        Err(HttpError::transport("interceptor transport failure"))
+    }));
+    let error = client
+        .execute(client.request(Method::GET, "http://127.0.0.1:9/final-method").build())
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind, HttpErrorKind::Transport);
+    assert_eq!(attempts.load(Ordering::SeqCst), 1);
+    let retry = error
+        .source
+        .as_deref()
+        .and_then(|source| (source as &(dyn StdError + 'static)).downcast_ref::<RetryError<HttpError>>())
+        .expect("public source retains RetryError<HttpError>");
+    assert_eq!(retry.context().attempts(), 1);
+}
+
+#[tokio_test]
+async fn test_interceptor_force_disable_stops_an_admitted_retry_flow() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 503,
+        headers: vec![],
+        body: b"unavailable".to_vec(),
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.retry.enabled = true;
+    options.retry.max_attempts = 3;
+    options.retry.backoff = BackoffPolicy::immediate();
+    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let observed = attempts.clone();
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |request: &mut HttpRequest| {
+        observed.fetch_add(1, Ordering::SeqCst);
+        request.set_retry_override(HttpRequestRetryOverride::new().force_disable());
+        Ok(())
+    }));
+    let error = client
+        .execute(client.request(Method::GET, "/interceptor-disable").build())
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind, HttpErrorKind::Status);
+    assert_eq!(attempts.load(Ordering::SeqCst), 1);
+    let _ = server.finish().await;
 }

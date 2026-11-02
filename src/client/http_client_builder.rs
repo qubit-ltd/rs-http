@@ -13,8 +13,10 @@ use qubit_config::ConfigReader;
 use reqwest::Client;
 use reqwest::Proxy;
 use reqwest::redirect::Policy;
+use url::Host;
 use url::Url;
 
+use super::RedirectIpv6Violation;
 use super::RedirectOriginViolation;
 use super::internal::Ipv4OnlyResolver;
 use crate::HttpClient;
@@ -108,22 +110,21 @@ impl HttpClientBuilder {
             builder = builder.user_agent(user_agent);
         }
         let redirect_policy = options.max_redirects.map(Policy::limited).unwrap_or_default();
-        if matches!(options.origin_policy, crate::HttpOriginPolicy::SameOrigin) {
-            let redirect_policy = Policy::custom(move |attempt| {
-                let same_origin = attempt
-                    .previous()
-                    .first()
-                    .is_none_or(|origin| same_origin(origin, attempt.url()));
-                if same_origin {
-                    redirect_policy.redirect(attempt)
-                } else {
-                    attempt.error(RedirectOriginViolation)
-                }
-            });
-            builder = builder.redirect(redirect_policy);
-        } else {
-            builder = builder.redirect(redirect_policy);
-        }
+        let same_origin_only = matches!(options.origin_policy, crate::HttpOriginPolicy::SameOrigin);
+        let ipv4_only = options.ipv4_only;
+        builder = builder.redirect(Policy::custom(move |attempt| {
+            let same_origin_target = attempt
+                .previous()
+                .first()
+                .is_none_or(|origin| same_origin(origin, attempt.url()));
+            if same_origin_only && !same_origin_target {
+                return attempt.error(RedirectOriginViolation);
+            }
+            if ipv4_only && matches!(attempt.url().host(), Some(Host::Ipv6(_))) {
+                return attempt.error(RedirectIpv6Violation);
+            }
+            redirect_policy.redirect(attempt)
+        }));
         if let Some(pool_idle_timeout) = options.pool_idle_timeout {
             builder = builder.pool_idle_timeout(pool_idle_timeout);
         }

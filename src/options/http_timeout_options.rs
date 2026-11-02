@@ -41,7 +41,9 @@ pub struct HttpTimeoutOptions {
     pub connect_timeout: Duration,
     /// Maximum wait for a read operation; must be nonzero.
     pub read_timeout: Duration,
-    /// Maximum wait for response headers; must be nonzero.
+    /// Cumulative deadline from asynchronous request preparation through
+    /// receipt of response headers; synchronous request interceptors run
+    /// beforehand.
     pub response_header_timeout: Duration,
     /// Optional maximum duration for an entire request; when set, must be
     /// nonzero.
@@ -49,7 +51,7 @@ pub struct HttpTimeoutOptions {
 }
 
 impl Default for HttpTimeoutOptions {
-    /// Connect / read / write durations use
+    /// Connect / read / response-header durations use
     /// [`crate::constants::DEFAULT_CONNECT_TIMEOUT_SECS`],
     /// [`crate::constants::DEFAULT_READ_TIMEOUT_SECS`], and
     /// [`crate::constants::DEFAULT_SEND_TIMEOUT_SECS`]; no global request

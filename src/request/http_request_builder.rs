@@ -78,7 +78,8 @@ pub struct HttpRequestBuilder {
     pub(super) streaming_body: Option<HttpRequestStreamingBody>,
     /// Per-request timeout; if unset, the client default applies.
     pub(super) request_timeout: Option<Duration>,
-    /// Per-request write timeout used by the send phase.
+    /// Per-request response-header timeout covering asynchronous preparation
+    /// and sending.
     pub(super) response_header_timeout: Duration,
     /// Per-request read timeout used by buffered/stream response reading.
     pub(super) read_timeout: Duration,
@@ -383,12 +384,13 @@ impl HttpRequestBuilder {
     ///
     /// # Errors
     /// Returns [`HttpError`] when `boundary` is not a 1 to 70 character
-    /// ASCII token-safe multipart boundary, or when an existing `Content-Type`
-    /// is not UTF-8 multipart content with a valid matching boundary.
+    /// ASCII boundary from the unquoted MIME-safe subset, or when an existing
+    /// `Content-Type` is not UTF-8 multipart content with a valid matching
+    /// boundary.
     pub fn multipart_body(mut self, body: impl Into<Bytes>, boundary: &str) -> HttpResult<Self> {
         if !content_type::is_valid_multipart_boundary(boundary) {
             return Err(HttpError::other(
-                "Invalid multipart boundary for multipart_body: expected 1 to 70 token-safe ASCII characters",
+                "Invalid multipart boundary for multipart_body: expected 1 to 70 unquoted MIME-safe ASCII characters",
             ));
         }
         if let Some(existing) = self.headers.get(CONTENT_TYPE) {
@@ -521,10 +523,12 @@ impl HttpRequestBuilder {
         Ok(self)
     }
 
-    /// Overrides the write-phase timeout for this request only.
+    /// Overrides the asynchronous preparation-to-response-header deadline for
+    /// this request.
     ///
     /// # Parameters
-    /// - `timeout`: Maximum time allowed for sending the request bytes.
+    /// - `timeout`: Maximum time from asynchronous request preparation through
+    ///   response headers.
     ///
     /// # Returns
     /// `Ok(self)` for chaining.

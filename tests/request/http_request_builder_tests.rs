@@ -1013,3 +1013,49 @@ fn test_request_builder_ndjson_body_allows_unlimited_output() {
         _ => panic!("expected ndjson body"),
     }
 }
+
+#[test]
+fn test_request_builder_multipart_boundary_uses_unquoted_mime_safe_subset() {
+    for invalid in ["!", "#", "$", "%", "&", "*", "^", "`", "|", "~"] {
+        let error = new_builder(Method::POST, "/upload")
+            .multipart_body(Bytes::from_static(b"payload"), invalid)
+            .expect_err("HTTP-token-only punctuation is not MIME boundary-safe");
+        assert!(error.message.contains("Invalid multipart boundary"));
+        let error = new_builder(Method::POST, "/upload")
+            .header(
+                CONTENT_TYPE.as_str(),
+                &format!("multipart/form-data; boundary={invalid}"),
+            )
+            .unwrap()
+            .multipart_body(Bytes::from_static(b"payload"), invalid)
+            .expect_err("an invalid boundary in Content-Type must also fail");
+        assert!(error.message.contains("boundary"));
+    }
+    let request = new_builder(Method::POST, "/upload")
+        .multipart_body(Bytes::from_static(b"--Az09'+_-."), "Az09'+_-.")
+        .expect("MIME-safe punctuation is accepted")
+        .build();
+    assert_eq!(
+        request.headers().get(CONTENT_TYPE).unwrap(),
+        "multipart/form-data; boundary=Az09'+_-."
+    );
+}
+
+#[test]
+fn test_request_builder_accepts_mime_boundary_length_limits() {
+    for boundary in ["a".to_owned(), "a".repeat(70)] {
+        let request = new_builder(Method::POST, "/upload")
+            .multipart_body(Bytes::from_static(b"payload"), &boundary)
+            .expect("boundary length one through seventy is accepted")
+            .build();
+        assert!(
+            request
+                .headers()
+                .get(CONTENT_TYPE)
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .contains(&boundary)
+        );
+    }
+}

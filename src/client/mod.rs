@@ -14,4 +14,5 @@ mod internal;
 
 pub use http_client::HttpClient;
 pub use http_client_builder::HttpClientBuilder;
+pub(crate) use internal::RedirectIpv6Violation;
 pub(crate) use internal::RedirectOriginViolation;

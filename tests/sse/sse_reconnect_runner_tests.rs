@@ -85,59 +85,71 @@ fn build_retry_policy(max_reconnects: u32, max_elapsed: Option<Duration>, backof
 }
 
 #[tokio_test]
-async fn test_execute_sse_with_reconnect_propagates_last_event_id() {
+async fn test_execute_sse_with_reconnect_propagates_and_resets_last_event_id() {
+    let plan = |body: &'static [u8]| ResponsePlan::Chunked {
+        status: 200,
+        headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+        chunks: vec![ResponseChunk {
+            delay: Duration::ZERO,
+            bytes: body.to_vec(),
+        }],
+        finish: true,
+    };
     let server = spawn_multi_shot_server(vec![
-        ResponsePlan::Chunked {
-            status: 200,
-            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
-            chunks: vec![ResponseChunk {
-                delay: Duration::from_millis(0),
-                bytes: b"id: evt-1\ndata: first\n\n".to_vec(),
-            }],
-            finish: false,
-        },
-        ResponsePlan::Chunked {
-            status: 200,
-            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
-            chunks: vec![ResponseChunk {
-                delay: Duration::from_millis(0),
-                bytes: b"data: second\n\n".to_vec(),
-            }],
-            finish: true,
-        },
+        plan(b"id: evt-1\ndata: first\n\n"),
+        plan(b"data: second\n\n"),
+        plan(b"id: evt-2\n\n"),
+        plan(b"data: third\n\n"),
+        plan(b"id:\n\n"),
+        plan(b"data: fifth\n\n"),
     ])
     .await;
-
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.response_header_timeout = Duration::from_secs(2);
     let client = HttpClientBuilder::new().create(options).unwrap();
-
     let request = client.request(Method::GET, "/sse-reconnect").build();
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
-            retry: build_retry_options(1, BackoffPolicy::fixed(Duration::from_millis(1))),
+            retry: build_retry_options(5, BackoffPolicy::fixed(Duration::from_millis(1))),
             reconnect_on_eof: true,
             honor_server_retry: false,
             ..SseReconnectOptions::default()
         },
     );
-    let first = events.next().await.unwrap().unwrap();
-    assert_eq!(first.data, "first");
-    assert_eq!(first.last_event_id.as_deref(), Some("evt-1"));
-    let second = events.next().await.unwrap().unwrap();
-    assert_eq!(second.data, "second");
+    let expected = [
+        ("first", Some("evt-1")),
+        ("second", Some("evt-1")),
+        ("third", Some("evt-2")),
+        ("fifth", Some("")),
+    ];
+    for (data, id) in expected {
+        let message = events.next().await.unwrap().unwrap();
+        assert_eq!(message.data, data);
+        assert_eq!(message.last_event_id.as_deref(), id);
+    }
     assert!(events.next().await.is_none());
-
-    let requests = timeout(Duration::from_secs(3), server.finish())
-        .await
-        .expect("server finish timed out");
-    assert_eq!(requests.len(), 2);
-    assert_eq!(requests[0].target, "/sse-reconnect");
-    assert_eq!(requests[1].target, "/sse-reconnect");
-    assert_eq!(requests[1].headers.get("last-event-id"), Some(&"evt-1".to_string()));
+    let requests = timeout(Duration::from_secs(3), server.finish()).await.unwrap();
+    assert_eq!(requests.len(), 6);
+    assert_eq!(
+        requests[1].headers.get("last-event-id").map(String::as_str),
+        Some("evt-1")
+    );
+    assert_eq!(
+        requests[2].headers.get("last-event-id").map(String::as_str),
+        Some("evt-1")
+    );
+    assert_eq!(
+        requests[3].headers.get("last-event-id").map(String::as_str),
+        Some("evt-2")
+    );
+    assert_eq!(
+        requests[4].headers.get("last-event-id").map(String::as_str),
+        Some("evt-2")
+    );
+    assert_eq!(requests[5].headers.get("last-event-id").map(String::as_str), Some(""));
 }
 
 #[tokio_test]
@@ -661,7 +673,13 @@ async fn test_execute_sse_with_reconnect_sleep_can_be_cancelled() {
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.response_header_timeout = Duration::from_secs(2);
-    let client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let observed = attempts.clone();
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
+        observed.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }));
 
     let token = HttpCancellationToken::new();
 
@@ -704,6 +722,11 @@ async fn test_execute_sse_with_reconnect_sleep_can_be_cancelled() {
         Poll::Pending => panic!("ready cancellation must interrupt backoff"),
     };
     assert_eq!(error.kind, HttpErrorKind::Cancelled);
+    assert_eq!(
+        attempts.load(Ordering::SeqCst),
+        1,
+        "A cancellation must stop the next attempt"
+    );
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
@@ -1268,6 +1291,12 @@ async fn test_execute_sse_with_reconnect_reports_cancelled_stream_before_reading
     options.timeouts.read_timeout = Duration::from_secs(1);
     options.timeouts.response_header_timeout = Duration::from_secs(1);
     let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let observed = attempts.clone();
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
+        observed.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }));
 
     let token = HttpCancellationToken::new();
     let token_for_interceptor = token.clone();
@@ -1303,9 +1332,227 @@ async fn test_execute_sse_with_reconnect_reports_cancelled_stream_before_reading
         "error should explain cancellation: {error:?}"
     );
     assert!(events.next().await.is_none());
+    assert_eq!(
+        attempts.load(Ordering::SeqCst),
+        1,
+        "unchanged A cancellation must not admit a reconnect"
+    );
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
         .expect("server finish timed out");
     assert_eq!(captured.target, "/sse-cancel-before-body");
+}
+
+#[tokio_test]
+async fn test_sse_reconnect_replacement_token_cancels_current_body_read() {
+    let mut server = spawn_one_shot_server(ResponsePlan::Chunked {
+        status: 200,
+        headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+        chunks: vec![
+            ResponseChunk {
+                delay: Duration::ZERO,
+                bytes: b"data:".to_vec(),
+            },
+            ResponseChunk {
+                delay: Duration::from_millis(250),
+                bytes: b" not-read\n\n".to_vec(),
+            },
+        ],
+        finish: true,
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let token_a = HttpCancellationToken::new();
+    let token_b = HttpCancellationToken::new();
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let observed = attempts.clone();
+    let replacement = token_b.clone();
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |request: &mut HttpRequest| {
+        observed.fetch_add(1, Ordering::SeqCst);
+        request.set_cancellation_token(replacement.clone());
+        Ok(())
+    }));
+    let request = client
+        .request(Method::GET, "/replace-token-b")
+        .cancellation_token(token_a)
+        .build();
+    let mut events = client.execute_sse_with_reconnect(
+        request,
+        SseReconnectOptions {
+            retry: build_retry_options(2, BackoffPolicy::immediate()),
+            reconnect_on_eof: true,
+            ..SseReconnectOptions::default()
+        },
+    );
+    let next = events.next();
+    tokio::pin!(next);
+    tokio::select! {
+        _ = server.wait_until_response_started() => {},
+        item = &mut next => panic!("stream ended before response body became readable: {item:?}"),
+    }
+    token_b.cancel();
+    let error = next.await.unwrap().unwrap_err();
+    assert_eq!(error.kind, HttpErrorKind::Cancelled);
+    assert_eq!(
+        attempts.load(Ordering::SeqCst),
+        1,
+        "B cancellation must not admit another request"
+    );
+    let _ = server.finish().await;
+}
+
+#[tokio_test]
+async fn test_sse_reconnect_replacement_keeps_original_token_for_reconnect_wait() {
+    let server = spawn_one_shot_server(ResponsePlan::Chunked {
+        status: 200,
+        headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+        chunks: vec![ResponseChunk {
+            delay: Duration::ZERO,
+            bytes: b"data: delivered\n\n".to_vec(),
+        }],
+        finish: true,
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let token_a = HttpCancellationToken::new();
+    let token_b = HttpCancellationToken::new();
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let observed = attempts.clone();
+    let replacement = token_b.clone();
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |request: &mut HttpRequest| {
+        observed.fetch_add(1, Ordering::SeqCst);
+        request.set_cancellation_token(replacement.clone());
+        Ok(())
+    }));
+    let cancel_flow = token_a.clone();
+    client.add_response_interceptor(HttpResponseInterceptor::new(
+        move |_meta: &mut HttpResponseInterceptorContext| {
+            cancel_flow.cancel();
+            Ok(())
+        },
+    ));
+    let request = client
+        .request(Method::GET, "/flow-token-wait")
+        .cancellation_token(token_a)
+        .build();
+    let mut events = client.execute_sse_with_reconnect(
+        request,
+        SseReconnectOptions {
+            retry: build_retry_options(2, BackoffPolicy::fixed(Duration::from_secs(10))),
+            reconnect_on_eof: true,
+            ..SseReconnectOptions::default()
+        },
+    );
+    assert_eq!(events.next().await.unwrap().unwrap().data, "delivered");
+    let error = timeout(Duration::from_secs(3), events.next())
+        .await
+        .expect("flow cancellation should interrupt reconnect wait")
+        .expect("flow cancellation should yield an error")
+        .expect_err("cancelled flow must not yield another message");
+    assert_eq!(error.kind, HttpErrorKind::Cancelled);
+    assert_eq!(
+        attempts.load(Ordering::SeqCst),
+        1,
+        "flow cancellation must prevent the next request"
+    );
+    let _ = server.finish().await;
+}
+
+#[tokio_test]
+async fn test_sse_reconnect_removing_attempt_token_preserves_flow_cancellation() {
+    let server = spawn_one_shot_server(ResponsePlan::Chunked {
+        status: 200,
+        headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+        chunks: vec![ResponseChunk {
+            delay: Duration::ZERO,
+            bytes: b"data: delivered\n\n".to_vec(),
+        }],
+        finish: true,
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let token_a = HttpCancellationToken::new();
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let observed = attempts.clone();
+    let clear_token = HttpRequestInterceptor::new(move |request: &mut HttpRequest| {
+        observed.fetch_add(1, Ordering::SeqCst);
+        request.clear_cancellation_token();
+        Ok(())
+    });
+    client.add_request_interceptor(clear_token);
+    let cancel_flow = token_a.clone();
+    client.add_response_interceptor(HttpResponseInterceptor::new(
+        move |_meta: &mut HttpResponseInterceptorContext| {
+            cancel_flow.cancel();
+            Ok(())
+        },
+    ));
+    let request = client
+        .request(Method::GET, "/remove-attempt-token")
+        .cancellation_token(token_a)
+        .build();
+    let mut events = client.execute_sse_with_reconnect(
+        request,
+        SseReconnectOptions {
+            retry: build_retry_options(2, BackoffPolicy::fixed(Duration::from_secs(10))),
+            reconnect_on_eof: true,
+            ..SseReconnectOptions::default()
+        },
+    );
+    assert_eq!(events.next().await.unwrap().unwrap().data, "delivered");
+    let error = timeout(Duration::from_secs(3), events.next())
+        .await
+        .expect("flow token should stop reconnect wait")
+        .expect("flow cancellation should yield an error")
+        .expect_err("cancelled flow must not yield another message");
+    assert_eq!(error.kind, HttpErrorKind::Cancelled);
+    assert_eq!(
+        attempts.load(Ordering::SeqCst),
+        1,
+        "flow cancellation must prevent the next request"
+    );
+    let _ = server.finish().await;
+}
+
+#[tokio_test]
+async fn test_sse_reconnect_original_token_cancels_after_interceptor_before_send() {
+    let mut options = HttpClientOptions::default();
+    options.set_base_url("http://127.0.0.1:9").unwrap();
+    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let token_a = HttpCancellationToken::new();
+    let cancel = token_a.clone();
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let observed = attempts.clone();
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
+        observed.fetch_add(1, Ordering::SeqCst);
+        cancel.cancel();
+        Ok(())
+    }));
+    let request = client
+        .request(Method::GET, "/cancel-before-send")
+        .cancellation_token(token_a)
+        .build();
+    let mut events = client.execute_sse_with_reconnect(
+        request,
+        SseReconnectOptions {
+            retry: build_retry_options(3, BackoffPolicy::immediate()),
+            reconnect_on_eof: true,
+            ..SseReconnectOptions::default()
+        },
+    );
+    let error = events.next().await.unwrap().unwrap_err();
+    assert_eq!(error.kind, HttpErrorKind::Cancelled);
+    assert_eq!(
+        attempts.load(Ordering::SeqCst),
+        1,
+        "A cancellation before send must prevent another attempt"
+    );
+    assert!(events.next().await.is_none());
 }

@@ -33,6 +33,7 @@ use qubit_retry::TokioRetry;
 use url::Url;
 
 use super::internal::HttpAttemptExecutionContext;
+use super::internal::HttpAttemptFailure;
 use super::internal::HttpAttemptResponse;
 use super::internal::HttpRetryApplicationSource;
 use super::internal::HttpRetryRule;
@@ -101,7 +102,7 @@ pub struct HttpClient {
     response_interceptors: HttpResponseInterceptors,
 }
 
-impl RetryRule<HttpError> for HttpRetryRule {
+impl RetryRule<HttpAttemptFailure> for HttpRetryRule {
     /// Applies HTTP-specific retryability and optional server delay hints.
     ///
     /// # Parameters
@@ -111,15 +112,15 @@ impl RetryRule<HttpError> for HttpRetryRule {
     /// # Returns
     /// Aborts non-retryable HTTP errors, supplies an allowed `Retry-After`
     /// hint, or delegates retry timing to the configured policy.
-    fn decide(&self, failure: &AttemptFailure<HttpError>, _context: &RetryContext) -> RetryDecision {
-        let AttemptFailure::Error(error) = failure else {
+    fn decide(&self, failure: &AttemptFailure<HttpAttemptFailure>, _context: &RetryContext) -> RetryDecision {
+        let AttemptFailure::Error(failure) = failure else {
             return RetryDecision::UseDefault;
         };
-        if !HttpClient::is_retryable_error(error, &self.options) {
+        if !failure.retry_allowed || !HttpClient::is_retryable_error(&failure.error, &self.options) {
             return RetryDecision::Abort;
         }
-        if self.honor_retry_after {
-            if let Some(delay) = error.retry_after {
+        if failure.honor_retry_after {
+            if let Some(delay) = failure.error.retry_after {
                 return RetryDecision::RetryWithHint(delay);
             }
         }
@@ -435,6 +436,7 @@ impl HttpClient {
         self.execute_once_with_context(request, HttpAttemptExecutionContext::direct())
             .await
             .map(|attempt| attempt.into_parts().0)
+            .map_err(HttpAttemptFailure::into_error)
     }
 
     /// Performs one attempt with private cancellation ownership routing.
@@ -455,16 +457,22 @@ impl HttpClient {
         &self,
         request: HttpRequest,
         context: HttpAttemptExecutionContext,
-    ) -> HttpResult<HttpAttemptResponse> {
+    ) -> Result<HttpAttemptResponse, HttpAttemptFailure> {
+        let mut request = request;
+        let mut retry_allowed = self.options.retry.resolve(&request).should_retry(&request);
+        let mut honor_retry_after = request.retry_override().should_honor_retry_after();
         let result = async {
-            let mut request = request;
             if let Some(error) = request.cancelled_error_if_needed(
                 "Request cancelled before sending",
                 context.io_cancellation_token(&request),
             ) {
                 return Err(error);
             }
-            self.request_interceptors.apply(&mut request)?;
+            let intercepted = self.request_interceptors.apply(&mut request);
+            let effective_retry = self.options.retry.resolve(&request);
+            retry_allowed = effective_retry.should_retry(&request);
+            honor_retry_after = request.retry_override().should_honor_retry_after();
+            intercepted?;
             let restore_retry_flow_token = context.should_restore_retry_flow_token(&request);
             let response = self
                 .prepare_and_send_once(request, "Request cancelled before sending", context)
@@ -476,7 +484,13 @@ impl HttpClient {
             Ok(HttpAttemptResponse::new(response, restore_retry_flow_token))
         }
         .await;
-        result.map_err(|error| error.with_log_redactor(self.log_redactor.clone()))
+        result.map_err(|error| {
+            HttpAttemptFailure::new(
+                error.with_log_redactor(self.log_redactor.clone()),
+                retry_allowed,
+                honor_retry_after,
+            )
+        })
     }
 
     /// Single low-level send: cancellation check, request logging, one backend
@@ -557,15 +571,13 @@ impl HttpClient {
     /// # Side effects
     /// Multiple async HTTP attempts and optional sleeps.
     async fn execute_with_retry(&self, request: HttpRequest, options: HttpRetryOptions) -> HttpResult<HttpResponse> {
-        let honor_retry_after = request.retry_override().should_honor_retry_after();
         let retry_policy = options.to_executor_policy();
         let started_at = Instant::now();
 
-        let retry_config = RetryConfig::<HttpError>::builder()
+        let retry_config = RetryConfig::<HttpAttemptFailure>::builder()
             .policy(retry_policy)
             .rule(HttpRetryRule {
                 options: options.clone(),
-                honor_retry_after,
             })
             .build()
             .expect("validated HTTP retry options should build");
@@ -599,15 +611,18 @@ impl HttpClient {
                 }
                 Ok(response)
             }
-            Err(error) => Err(Self::map_retry_error(
-                &error,
-                started_at,
-                options.max_duration,
-                options.max_attempts,
-                &request_method,
-                request_url.as_ref(),
-            )
-            .with_source(error)),
+            Err(error) => {
+                let error = error.map_error(HttpAttemptFailure::into_error);
+                Err(Self::map_retry_error(
+                    &error,
+                    started_at,
+                    options.max_duration,
+                    options.max_attempts,
+                    &request_method,
+                    request_url.as_ref(),
+                )
+                .with_source(error))
+            }
         }
     }
 
