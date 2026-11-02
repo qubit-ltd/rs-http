@@ -136,6 +136,15 @@ fn find_url_start(text: &str, cursor: usize) -> Option<(usize, usize)> {
     None
 }
 
+/// Finds the byte limit of an embedded HTTP URL candidate.
+///
+/// # Parameters
+/// - `text`: Diagnostic text containing the recognized HTTP scheme.
+/// - `start`: Byte offset of the ASCII h at that scheme's start.
+///
+/// # Returns
+/// The next whitespace or HTTP scheme offset, or the input length. Scanning
+/// advances by UTF-8 characters so the result remains a string boundary.
 fn url_candidate_limit(text: &str, start: usize) -> usize {
     let bytes = text.as_bytes();
     let mut index = start + 1;
@@ -155,6 +164,17 @@ fn url_candidate_limit(text: &str, start: usize) -> usize {
     text.len()
 }
 
+/// Removes selected trailing punctuation from a bounded URL candidate.
+///
+/// # Parameters
+/// - `text`: Diagnostic text containing the candidate.
+/// - `start`: Candidate start at a valid UTF-8 boundary.
+/// - `limit`: Candidate limit at a valid UTF-8 boundary, not before start.
+///
+/// # Returns
+/// The UTF-8 boundary after stripping trailing . , ; : ! ? ) ] and }.
+/// The caller renders those punctuation characters as surrounding plain text;
+/// this helper does not validate URL syntax.
 fn url_candidate_end(text: &str, start: usize, limit: usize) -> usize {
     let mut end = limit;
     while let Some((index, character)) = text[start..end].char_indices().next_back() {

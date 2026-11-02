@@ -141,6 +141,16 @@ pub fn decode_lines(mut stream: HttpByteStream, max_line_bytes: usize) -> SseLin
     Box::pin(output)
 }
 
+/// Computes the temporary byte allowance while collecting an SSE line.
+///
+/// # Parameters
+/// - `max_line_bytes`: Maximum logical line length after BOM removal.
+/// - `first_line`: Whether the line may start with the stream's UTF-8 BOM.
+///
+/// # Returns
+/// The configured limit, with three extra bytes for the first line only.
+/// Addition saturates at usize::MAX. The completed first line is still checked
+/// against max_line_bytes after removing its optional leading BOM.
 fn line_limit(max_line_bytes: usize, first_line: bool) -> usize {
     if first_line {
         max_line_bytes.saturating_add(3)

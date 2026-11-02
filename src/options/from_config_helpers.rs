@@ -117,21 +117,21 @@ where
     resolve_config_error(config, error)
 }
 
-/// Reads an optional fixed-width unsigned value and converts it to `usize`.
+/// Requests an optional platform-sized unsigned value from the config reader.
 ///
-/// Configuration data stays platform-independent as `u64`; conversion to the
-/// platform-sized type happens only at the HTTP API boundary.
+/// This helper delegates conversion and range checking to ConfigReader; it
+/// does not read a u64 value and perform a separate HTTP-layer conversion.
 ///
 /// # Parameters
-/// - `config`: Reader containing the value.
+/// - `config`: Reader responsible for converting the configured value.
 /// - `key`: Reader-relative configuration key.
 ///
 /// # Returns
-/// `None` when the key is absent, or its value converted to `usize`.
+/// None when the key is absent, or Some with the converted usize value.
 ///
 /// # Errors
-/// Returns a configuration read error or an error when the value exceeds the
-/// platform's `usize` range.
+/// Returns the reader's configuration error when conversion fails, including
+/// when the configured value is outside the platform's usize range.
 pub(crate) fn get_optional_usize<R>(config: &R, key: &str) -> ConfigResult<Option<usize>>
 where
     R: ConfigReader + ?Sized,
