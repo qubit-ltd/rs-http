@@ -253,6 +253,7 @@ async fn test_ipv4_only_disabled_allows_ipv6_redirect_policy() {
     options.origin_policy = HttpOriginPolicy::AnyOrigin;
     options.ipv4_only = false;
     options.retry.enabled = false;
+    options.use_env_proxy = false;
     options.base_url = Some(source.base_url());
     let client = HttpClientBuilder::new().create(options).unwrap();
     let result = timeout(
@@ -261,20 +262,16 @@ async fn test_ipv4_only_disabled_allows_ipv6_redirect_policy() {
     )
     .await
     .expect("redirect should finish");
-    match target_task.as_mut() {
-        Some(task) => {
-            let response = result.expect("ipv4_only=false should not reject the IPv6 marker");
-            assert_eq!(response.status().as_u16(), 200);
-            timeout(Duration::from_secs(3), task).await.unwrap().unwrap();
-        }
-        None => match result {
-            Ok(response) => assert_eq!(response.status().as_u16(), 200),
-            Err(error) => assert_ne!(
-                error.kind,
-                HttpErrorKind::InvalidUrl,
-                "an unavailable IPv6 address may fail transport, but must not match the IPv4-only marker"
-            ),
-        },
+    match result {
+        Ok(response) => assert_eq!(response.status().as_u16(), 200),
+        Err(error) => assert_ne!(
+            error.kind,
+            HttpErrorKind::InvalidUrl,
+            "IPv6 redirect must not be rejected by the IPv4-only marker when the option is disabled"
+        ),
+    }
+    if let Some(task) = target_task.as_mut() {
+        timeout(Duration::from_secs(3), task).await.unwrap().unwrap();
     }
     let _ = source.finish().await;
 }

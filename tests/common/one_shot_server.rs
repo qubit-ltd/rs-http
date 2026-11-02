@@ -398,77 +398,6 @@ async fn read_request(stream: &mut TcpStream) -> std::io::Result<CapturedRequest
     })
 }
 
-#[cfg(test)]
-mod tests {
-    use std::io;
-    use std::time::Duration;
-
-    use tokio::io::AsyncWriteExt;
-    use tokio::net::TcpListener;
-    use tokio::net::TcpStream;
-    use tokio::task::spawn;
-    use tokio::time::sleep;
-
-    use super::CapturedRequest;
-    use super::read_request;
-
-    async fn read_fragments(fragments: &[&[u8]], close: bool) -> io::Result<CapturedRequest> {
-        let listener = TcpListener::bind("127.0.0.1:0").await?;
-        let address = listener.local_addr()?;
-        let server = spawn(async move {
-            let (mut stream, _) = listener.accept().await?;
-            read_request(&mut stream).await
-        });
-        let mut client = TcpStream::connect(address).await?;
-        for fragment in fragments {
-            client.write_all(fragment).await?;
-            sleep(Duration::from_millis(2)).await;
-        }
-        if close {
-            client.shutdown().await?;
-        }
-        server.await.expect("request reader task should not panic")
-    }
-
-    #[tokio::test]
-    async fn test_read_request_decodes_fragmented_chunked_body_and_trailers() {
-        let captured = read_fragments(
-            &[
-                b"POST /upload HTTP/1.1\r\nTransfer-Encoding: chunked\r\n",
-                b"\r\n4;ext=x\r",
-                b"\npart\r\n3\r\n-1!\r\n0\r\nX-Check: yes\r\n\r\n",
-            ],
-            false,
-        )
-        .await
-        .expect("chunked request should be captured");
-        assert_eq!(captured.body, b"part-1!");
-        assert_eq!(
-            captured.headers.get("transfer-encoding").map(String::as_str),
-            Some("chunked")
-        );
-    }
-
-    #[tokio::test]
-    async fn test_read_request_rejects_early_content_length_eof() {
-        let error = read_fragments(&[b"POST /upload HTTP/1.1\r\nContent-Length: 4\r\n\r\nabc"], true)
-            .await
-            .expect_err("truncated body must fail");
-        assert_eq!(error.kind(), io::ErrorKind::UnexpectedEof);
-    }
-
-    #[tokio::test]
-    async fn test_read_request_rejects_malformed_chunk_crlf() {
-        let error = read_fragments(
-            &[b"POST /upload HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n1\r\naXX"],
-            false,
-        )
-        .await
-        .expect_err("malformed chunk delimiter must fail");
-        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
-    }
-}
-
 async fn read_more(stream: &mut TcpStream, buffer: &mut Vec<u8>, timeout_duration: Duration) -> std::io::Result<()> {
     let mut chunk = [0_u8; 1024];
     let size = timeout(timeout_duration, stream.read(&mut chunk))
@@ -751,5 +680,76 @@ fn reason_phrase(status: u16) -> &'static str {
         503 => "Service Unavailable",
         504 => "Gateway Timeout",
         _ => "Unknown",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io;
+    use std::time::Duration;
+
+    use tokio::io::AsyncWriteExt;
+    use tokio::net::TcpListener;
+    use tokio::net::TcpStream;
+    use tokio::task::spawn;
+    use tokio::time::sleep;
+
+    use super::CapturedRequest;
+    use super::read_request;
+
+    async fn read_fragments(fragments: &[&[u8]], close: bool) -> io::Result<CapturedRequest> {
+        let listener = TcpListener::bind("127.0.0.1:0").await?;
+        let address = listener.local_addr()?;
+        let server = spawn(async move {
+            let (mut stream, _) = listener.accept().await?;
+            read_request(&mut stream).await
+        });
+        let mut client = TcpStream::connect(address).await?;
+        for fragment in fragments {
+            client.write_all(fragment).await?;
+            sleep(Duration::from_millis(2)).await;
+        }
+        if close {
+            client.shutdown().await?;
+        }
+        server.await.expect("request reader task should not panic")
+    }
+
+    #[tokio::test]
+    async fn test_read_request_decodes_fragmented_chunked_body_and_trailers() {
+        let captured = read_fragments(
+            &[
+                b"POST /upload HTTP/1.1\r\nTransfer-Encoding: chunked\r\n",
+                b"\r\n4;ext=x\r",
+                b"\npart\r\n3\r\n-1!\r\n0\r\nX-Check: yes\r\n\r\n",
+            ],
+            false,
+        )
+        .await
+        .expect("chunked request should be captured");
+        assert_eq!(captured.body, b"part-1!");
+        assert_eq!(
+            captured.headers.get("transfer-encoding").map(String::as_str),
+            Some("chunked")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_read_request_rejects_early_content_length_eof() {
+        let error = read_fragments(&[b"POST /upload HTTP/1.1\r\nContent-Length: 4\r\n\r\nabc"], true)
+            .await
+            .expect_err("truncated body must fail");
+        assert_eq!(error.kind(), io::ErrorKind::UnexpectedEof);
+    }
+
+    #[tokio::test]
+    async fn test_read_request_rejects_malformed_chunk_crlf() {
+        let error = read_fragments(
+            &[b"POST /upload HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n1\r\naXX"],
+            false,
+        )
+        .await
+        .expect_err("malformed chunk delimiter must fail");
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
     }
 }

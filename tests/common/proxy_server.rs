@@ -29,7 +29,6 @@ pub struct ProxyCapturedRequest {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProxyBehavior {
-    CaptureOnly,
     ForwardHttp,
     ConnectProbe,
 }
@@ -78,11 +77,6 @@ pub async fn spawn_simple_proxy_server(behavior: ProxyBehavior) -> SimpleProxySe
         let _ = request_tx.send(request.clone());
 
         match behavior {
-            ProxyBehavior::CaptureOnly => {
-                write_simple_response(&mut client_stream, 502, b"proxy capture only")
-                    .await
-                    .expect("proxy server failed to write capture response");
-            }
             ProxyBehavior::ConnectProbe => {
                 if request.method.eq_ignore_ascii_case("CONNECT") {
                     write_simple_response(&mut client_stream, 200, b"")

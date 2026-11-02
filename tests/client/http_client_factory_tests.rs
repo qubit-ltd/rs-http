@@ -269,7 +269,7 @@ fn test_factory_create_rejects_blank_proxy_host() {
         .expect_err("blank proxy host should fail");
 
     assert_eq!(error.kind, HttpErrorKind::ProxyConfig);
-    assert!(error.message.contains("cannot be empty"));
+    assert!(error.message.contains("pure domain name or IP address"));
 }
 
 #[test]
@@ -314,7 +314,7 @@ fn test_factory_create_rejects_invalid_proxy_url() {
         .expect_err("invalid proxy host should fail");
 
     assert_eq!(error.kind, HttpErrorKind::ProxyConfig);
-    assert!(error.message.contains("Invalid proxy URL"));
+    assert!(error.message.contains("pure domain name or IP address"));
 }
 
 #[test]
@@ -372,7 +372,7 @@ fn test_factory_create_from_config_type_error_is_prefixed() {
 }
 
 #[test]
-fn test_factory_create_from_config_maps_create_error_to_invalid_value() {
+fn test_factory_create_from_config_maps_proxy_validation_error_to_invalid_value() {
     let mut config = Config::new();
     config
         .set("svc.proxy.enabled", true)
@@ -389,6 +389,6 @@ fn test_factory_create_from_config_maps_create_error_to_invalid_value() {
         .expect_err("invalid proxy URL should map to invalid value");
 
     assert_eq!(error.kind, HttpConfigErrorKind::InvalidValue);
-    assert_eq!(error.path, "svc");
-    assert!(error.message.contains("Invalid proxy URL"));
+    assert_eq!(error.path, "svc.proxy.host");
+    assert!(error.message.contains("pure domain name or IP address"));
 }

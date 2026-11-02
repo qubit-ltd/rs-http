@@ -913,9 +913,11 @@ impl HttpRequest {
             return Ok(url);
         }
 
-        let base = self.context.base_url.as_ref().ok_or_else(|| {
-            HttpError::invalid_url("Cannot resolve relative request path without base_url")
-        })?;
+        let base = self
+            .context
+            .base_url
+            .as_ref()
+            .ok_or_else(|| HttpError::invalid_url("Cannot resolve relative request path without base_url"))?;
 
         let url = base.join(&self.path).map_err(|error| {
             HttpError::invalid_url("Failed to resolve request path against base URL").with_source(error)

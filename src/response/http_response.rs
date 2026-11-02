@@ -768,9 +768,9 @@ impl HttpResponse {
             Ok(stream) => crate::sse::decode_messages_from_stream_with_limits(stream, max_line_bytes, max_frame_bytes),
             Err(error) => Box::pin(futures_stream::once(async move { Err(error) })),
         };
-        Box::pin(decoded.map(move |result| result.map_err(|error| {
-            attach_sse_error_context(error, &method, &url, status, &log_redactor)
-        })))
+        Box::pin(decoded.map(move |result| {
+            result.map_err(|error| attach_sse_error_context(error, &method, &url, status, &log_redactor))
+        }))
     }
 
     /// Decodes body stream as internal SSE records for reconnect state
@@ -790,9 +790,9 @@ impl HttpResponse {
             Ok(stream) => crate::sse::decode_records_from_stream_with_limits(stream, max_line_bytes, max_frame_bytes),
             Err(error) => Box::pin(futures_stream::once(async move { Err(error) })),
         };
-        Box::pin(decoded.map(move |result| result.map_err(|error| {
-            attach_sse_error_context(error, &method, &url, status, &log_redactor)
-        })))
+        Box::pin(decoded.map(move |result| {
+            result.map_err(|error| attach_sse_error_context(error, &method, &url, status, &log_redactor))
+        }))
     }
 
     /// Decodes SSE `data:` lines as JSON chunks using this response's SSE JSON
@@ -836,9 +836,9 @@ impl HttpResponse {
             ),
             Err(error) => Box::pin(futures_stream::once(async move { Err(error) })),
         };
-        Box::pin(decoded.map(move |result| result.map_err(|error| {
-            attach_sse_error_context(error, &method, &url, status, &log_redactor)
-        })))
+        Box::pin(decoded.map(move |result| {
+            result.map_err(|error| attach_sse_error_context(error, &method, &url, status, &log_redactor))
+        }))
     }
 
     /// Returns the shared log redactor used for response diagnostics and
@@ -1082,10 +1082,10 @@ mod tests {
     use tokio::net::TcpListener;
     use tokio::sync::oneshot;
 
-    use super::attach_sse_error_context;
     use super::HttpResponse;
     use super::HttpResponseMeta;
     use super::HttpResponseOptions;
+    use super::attach_sse_error_context;
     use crate::HttpError;
     use crate::HttpErrorKind;
 

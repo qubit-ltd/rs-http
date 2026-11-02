@@ -86,9 +86,7 @@ fn test_http_retry_options_maps_backoff_error_fields_from_policy() {
     maximum
         .set("retry.backoff_initial_delay", Duration::from_secs(2))
         .unwrap();
-    maximum
-        .set("retry.backoff_max_delay", Duration::from_secs(1))
-        .unwrap();
+    maximum.set("retry.backoff_max_delay", Duration::from_secs(1)).unwrap();
     let error = HttpRetryOptions::from_config(&maximum.section("retry").unwrap()).unwrap_err();
     assert_eq!(error.path, "retry.backoff_max_delay");
 }

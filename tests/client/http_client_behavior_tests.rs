@@ -351,7 +351,11 @@ async fn test_execute_returns_invalid_url_for_bad_relative_path() {
         .expect_err("invalid relative path should fail before request is sent");
 
     assert_eq!(error.kind, HttpErrorKind::InvalidUrl);
-    assert!(error.message.contains("Failed to resolve path 'http://[::1'"));
+    assert!(
+        error
+            .message
+            .contains("Failed to resolve request path against base URL")
+    );
 }
 
 #[tokio_test]

@@ -11,16 +11,16 @@ use std::time::Duration;
 
 use http::Method;
 use http::StatusCode;
-use qubit_argument::require_that;
 use qubit_argument::ArgumentResult;
+use qubit_argument::require_that;
 use qubit_config::ConfigReader;
 use qubit_config::ConfigResult;
 use qubit_retry::BackoffPolicy;
 use qubit_retry::RetryPolicy;
 
+use super::HttpConfigError;
 use super::http_retry_method_policy::HttpRetryMethodPolicy;
 use super::internal::HttpRetryConfigInput;
-use super::HttpConfigError;
 use crate::HttpErrorKind;
 use crate::HttpRequest;
 
@@ -81,10 +81,7 @@ fn is_retryable_status(status: StatusCode, retry_status_codes: Option<&[StatusCo
 /// Returns whether `kind` is retryable for the given optional allowlist.
 ///
 /// When `retry_error_kinds` is `None`, uses [`default_retryable_error_kind`].
-fn is_retryable_error_kind(
-    kind: HttpErrorKind,
-    retry_error_kinds: Option<&[HttpErrorKind]>,
-) -> bool {
+fn is_retryable_error_kind(kind: HttpErrorKind, retry_error_kinds: Option<&[HttpErrorKind]>) -> bool {
     if let Some(error_kinds) = retry_error_kinds {
         error_kinds.contains(&kind)
     } else {
@@ -129,16 +126,16 @@ impl HttpRetryOptions {
                 .map_err(|error| super::from_config_helpers::resolve_config_error(config, error))?;
         }
         if let Some(status_codes) = raw.status_codes.as_ref() {
-            opts.retry_status_codes =
-                Some(parse_retry_status_codes(status_codes).map_err(|error| {
-                    super::from_config_helpers::resolve_config_error(config, error)
-                })?);
+            opts.retry_status_codes = Some(
+                parse_retry_status_codes(status_codes)
+                    .map_err(|error| super::from_config_helpers::resolve_config_error(config, error))?,
+            );
         }
         if let Some(error_kinds) = raw.error_kinds.as_ref() {
-            opts.retry_error_kinds =
-                Some(parse_retry_error_kinds(error_kinds).map_err(|error| {
-                    super::from_config_helpers::resolve_config_error(config, error)
-                })?);
+            opts.retry_error_kinds = Some(
+                parse_retry_error_kinds(error_kinds)
+                    .map_err(|error| super::from_config_helpers::resolve_config_error(config, error))?,
+            );
         }
 
         opts.backoff = parse_retry_backoff(&raw)
@@ -259,9 +256,7 @@ impl HttpRetryOptions {
     pub fn resolve(&self, request: &HttpRequest) -> Self {
         let mut options = self.clone();
         options.enabled = request.retry_override().resolve_enabled(options.enabled);
-        options.method_policy = request
-            .retry_override()
-            .resolve_method_policy(options.method_policy);
+        options.method_policy = request.retry_override().resolve_method_policy(options.method_policy);
         options
     }
 
@@ -355,8 +350,7 @@ fn parse_retry_backoff(raw: &HttpRetryConfigInput) -> Result<BackoffPolicy, Http
             )
         })?,
         "exponential_backoff" | "exponential" => BackoffPolicy::exponential(
-            raw.backoff_initial_delay
-                .unwrap_or(DEFAULT_RETRY_INITIAL_DELAY),
+            raw.backoff_initial_delay.unwrap_or(DEFAULT_RETRY_INITIAL_DELAY),
             raw.backoff_multiplier.unwrap_or(DEFAULT_RETRY_MULTIPLIER),
             raw.backoff_max_delay.unwrap_or(DEFAULT_RETRY_MAX_DELAY),
         )
@@ -425,8 +419,7 @@ fn parse_retry_status_codes(values: &[String]) -> Result<Vec<StatusCode>, HttpCo
                 format!("Retry status code must be in range 100..=599, got {raw_code}"),
             ));
         }
-        let status = StatusCode::from_u16(raw_code)
-            .expect("retry status code range is pre-validated to 100..=599");
+        let status = StatusCode::from_u16(raw_code).expect("retry status code range is pre-validated to 100..=599");
         if !result.contains(&status) {
             result.push(status);
         }
@@ -457,10 +450,7 @@ fn parse_retry_error_kinds(values: &[String]) -> Result<Vec<HttpErrorKind>, Http
         }
         let normalized = trimmed.replace('-', "_");
         let kind = HttpErrorKind::from_str(&normalized).map_err(|_| {
-            HttpConfigError::invalid_value(
-                "error_kinds",
-                format!("Unsupported retry error kind: {trimmed}"),
-            )
+            HttpConfigError::invalid_value("error_kinds", format!("Unsupported retry error kind: {trimmed}"))
         })?;
         if !result.contains(&kind) {
             result.push(kind);

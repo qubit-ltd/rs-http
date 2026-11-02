@@ -56,10 +56,7 @@ async fn test_decode_events_reports_sse_protocol_error_on_non_utf8_line() {
     assert_eq!(error.kind, HttpErrorKind::SseProtocol);
     assert_eq!(error.method(), Some(&Method::GET));
     assert_eq!(error.status(), Some(StatusCode::OK));
-    assert_eq!(
-        error.url().unwrap().query(),
-        Some("access_token=SSE_PRIVATE")
-    );
+    assert_eq!(error.url().unwrap().query(), Some("access_token=SSE_PRIVATE"));
     assert!(!error.to_string().contains("SSE_PRIVATE"));
     assert!(!format!("{error:?}").contains("SSE_PRIVATE"));
 }
@@ -89,10 +86,7 @@ async fn test_decode_events_reports_frame_limit_error() {
     assert_eq!(error.kind, HttpErrorKind::SseProtocol);
     assert_eq!(error.method(), Some(&Method::GET));
     assert_eq!(error.status(), Some(StatusCode::OK));
-    assert_eq!(
-        error.url().unwrap().query(),
-        Some("access_token=SSE_PRIVATE")
-    );
+    assert_eq!(error.url().unwrap().query(), Some("access_token=SSE_PRIVATE"));
     assert!(!format!("{error:?}").contains("SSE_PRIVATE"));
 }
 
@@ -104,10 +98,7 @@ async fn test_decode_events_reports_line_limit_with_http_context() {
     assert_eq!(error.kind, HttpErrorKind::SseProtocol);
     assert_eq!(error.method(), Some(&Method::GET));
     assert_eq!(error.status(), Some(StatusCode::OK));
-    assert_eq!(
-        error.url().unwrap().query(),
-        Some("access_token=SSE_PRIVATE")
-    );
+    assert_eq!(error.url().unwrap().query(), Some("access_token=SSE_PRIVATE"));
     assert!(!format!("{error:?}").contains("SSE_PRIVATE"));
 }
 
@@ -126,10 +117,7 @@ async fn test_sse_missing_done_marker_error_has_http_context() {
     assert_eq!(error.kind, HttpErrorKind::SseProtocol);
     assert_eq!(error.method(), Some(&Method::GET));
     assert_eq!(error.status(), Some(StatusCode::OK));
-    assert_eq!(
-        error.url().unwrap().query(),
-        Some("access_token=SSE_PRIVATE")
-    );
+    assert_eq!(error.url().unwrap().query(), Some("access_token=SSE_PRIVATE"));
     assert!(!format!("{error:?}").contains("SSE_PRIVATE"));
 }
 
@@ -235,10 +223,7 @@ async fn test_execute_stream_decode_events_reports_read_timeout_when_interrupted
     assert_eq!(error.method, Some(Method::GET));
     assert_eq!(error.url.as_ref().map(url::Url::path), Some("/sse-timeout"));
     assert_eq!(error.status, Some(StatusCode::OK));
-    assert!(
-        error.source().is_none(),
-        "timeout wrapper has no backend source"
-    );
+    assert!(error.source().is_none(), "timeout wrapper has no backend source");
 }
 
 #[tokio_test]
@@ -287,15 +272,13 @@ async fn test_execute_stream_decode_json_chunks_uses_client_default_strict_mode(
     assert_eq!(error.log_redactor.policy(), &expected_policy);
     assert_eq!(error.method(), Some(&Method::GET));
     assert_eq!(error.status(), Some(StatusCode::OK));
-    assert_eq!(
-        error.url(),
-        Some(&server.base_url().join("/sse-strict").unwrap())
+    assert_eq!(error.url(), Some(&server.base_url().join("/sse-strict").unwrap()));
+    assert!(
+        error
+            .source
+            .as_deref()
+            .is_some_and(|source| { source.downcast_ref::<qubit_json::decode::JsonDecodeError>().is_some() })
     );
-    assert!(error.source.as_deref().is_some_and(|source| {
-        source
-            .downcast_ref::<qubit_json::decode::JsonDecodeError>()
-            .is_some()
-    }));
 }
 
 #[tokio_test]
