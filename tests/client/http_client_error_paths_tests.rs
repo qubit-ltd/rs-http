@@ -393,6 +393,79 @@ async fn test_status_body_read_timeout_keeps_partial_raw_truncated() {
 }
 
 #[tokio_test]
+async fn test_status_body_read_timeout_is_cumulative() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let (headers_sent_tx, headers_sent_rx) = oneshot::channel();
+    let server = tokio::spawn(async move {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        let mut request = Vec::new();
+        let mut byte = [0_u8; 1];
+        while !request.ends_with(b"\r\n\r\n") {
+            stream.read_exact(&mut byte).await.unwrap();
+            request.push(byte[0]);
+        }
+        let headers = b"HTTP/1.1 429 Too Many Requests\r\nTransfer-Encoding: chunked\r\nRetry-After: 1\r\nX-Test: preserved\r\nContent-Type: text/plain\r\n\r\n";
+        if let Err(error) = stream.write_all(headers).await {
+            assert!(matches!(
+                error.kind(),
+                std::io::ErrorKind::BrokenPipe | std::io::ErrorKind::ConnectionReset
+            ));
+            return;
+        }
+        if let Err(error) = stream.write_all(b"5\r\nfirst\r\n").await {
+            assert!(matches!(
+                error.kind(),
+                std::io::ErrorKind::BrokenPipe | std::io::ErrorKind::ConnectionReset
+            ));
+            return;
+        }
+        let _ = headers_sent_tx.send(());
+        for _ in 0..11 {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            if let Err(error) = stream.write_all(b"1\r\nx\r\n").await {
+                assert!(matches!(
+                    error.kind(),
+                    std::io::ErrorKind::BrokenPipe | std::io::ErrorKind::ConnectionReset
+                ));
+                return;
+            }
+        }
+        let _ = stream.write_all(b"0\r\n\r\n").await;
+    });
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(url::Url::parse(&format!("http://{address}/")).unwrap());
+    options.timeouts.read_timeout = Duration::from_millis(400);
+    options.error_response_preview_limit = 256;
+    options.error_response_body_limit = 256;
+    options.retry.enabled = false;
+    let client = HttpClientBuilder::new().create(options).unwrap();
+    let request = client.request(Method::GET, "/status-body-cumulative").build();
+    let result = tokio::spawn(async move { client.execute(request).await });
+    timeout(Duration::from_secs(2), headers_sent_rx)
+        .await
+        .expect("server did not send response headers")
+        .unwrap();
+    let error = timeout(Duration::from_secs(3), result)
+        .await
+        .expect("client execution hung")
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(error.kind, HttpErrorKind::Status);
+    assert_eq!(error.status, Some(StatusCode::TOO_MANY_REQUESTS));
+    assert_eq!(error.retry_after, Some(Duration::from_secs(1)));
+    assert_eq!(error.method, Some(Method::GET));
+    assert!(error.url.as_ref().unwrap().as_str().ends_with("/status-body-cumulative"));
+    let status = error.status_response().unwrap();
+    assert_eq!(status.headers().get("x-test").unwrap(), "preserved");
+    assert!(status.body().starts_with(b"first"));
+    assert!(status.body().len() < b"firstxxxxxxxxxxx".len());
+    assert!(status.is_truncated());
+    assert!(error.response_body_preview.as_ref().unwrap().contains("read timeout"));
+    server.await.unwrap();
+}
+
+#[tokio_test]
 async fn test_status_body_cancellation_remains_cancelled() {
     let mut server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
         status: 429,

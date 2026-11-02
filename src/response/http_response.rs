@@ -26,6 +26,7 @@ use qubit_json::decode::JsonDecoder;
 use qubit_redact::Redactor;
 use qubit_redact::formats::http::BodyCapture;
 use serde::de::DeserializeOwned;
+use tokio::time::Instant;
 use url::Url;
 
 use super::HttpResponseMeta;
@@ -891,7 +892,10 @@ impl HttpResponse {
     }
 
     /// Reads bounded preview and raw capture bytes from a response body for
-    /// status errors, tracking their truncation independently.
+    /// status errors, tracking their truncation independently. The read
+    /// timeout is a cumulative budget starting when this capture begins; if it
+    /// expires, the caller retains the status and any partial raw body marked
+    /// incomplete.
     ///
     /// # Errors
     /// Returns [`HttpErrorKind::Cancelled`](crate::HttpErrorKind::Cancelled)
@@ -919,8 +923,29 @@ impl HttpResponse {
         let mut raw_truncated = false;
         let capture_limit = limit.max(raw_limit.max(1)).saturating_add(1);
         let mut capture_budget = ResourceBudget::new("status error response body preview", capture_limit);
+        let capture_started_at = Instant::now();
 
         loop {
+            if cancellation_token
+                .as_ref()
+                .is_some_and(HttpCancellationToken::is_cancelled)
+            {
+                return Err(HttpError::cancelled(
+                    "Request cancelled while reading status error response body preview",
+                )
+                .with_method(&method)
+                .with_url(&url)
+                .with_status(status)
+                .with_log_redactor(self.log_redactor().clone()));
+            }
+            let remaining = read_timeout.saturating_sub(capture_started_at.elapsed());
+            if remaining.is_zero() {
+                return Ok((
+                    format!("<error body unavailable: read timeout after {:?}>", read_timeout),
+                    Bytes::from(raw),
+                    true,
+                ));
+            }
             let next = if let Some(token) = cancellation_token.as_ref() {
                 tokio::select! {
                     _ = token.cancelled() => {
@@ -934,10 +959,10 @@ impl HttpResponse {
                             self.log_redactor().clone(),
                         ));
                     }
-                    item = tokio::time::timeout(read_timeout, response.chunk()) => item,
+                    item = tokio::time::timeout(remaining, response.chunk()) => item,
                 }
             } else {
-                tokio::time::timeout(read_timeout, response.chunk()).await
+                tokio::time::timeout(remaining, response.chunk()).await
             };
             match next {
                 Ok(Ok(Some(chunk))) => {
