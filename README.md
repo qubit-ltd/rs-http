@@ -13,7 +13,7 @@ It builds on `reqwest` and provides the common pieces most API clients need: req
 
 Documentation: [English User Guide](doc/user_guide.en.md) | [中文用户指南](doc/user_guide.zh_CN.md) | [Design](doc/design.md) | [中文设计文档](doc/design.zh_CN.md) | [API Reference](https://docs.rs/qubit-http)
 
-A request interceptor’s final method and retry override determine whether an already admitted retry flow may continue. IPv4-only clients reject IPv6-literal redirect targets as `InvalidUrl`. Explicit proxy hosts must contain only a domain or IP literal; keep the port and credentials in their separate options. Multipart `Content-Type` values may contain only one `boundary` parameter, and the body delimiter must match it. For retry failures, use `retry_diagnostics()` and the retained `RetryError<HttpError>` source; the legacy `retry_metadata()` getter is deprecated and always empty.
+A request interceptor’s final method and retry override determine whether an already admitted retry flow may continue. IPv4-only clients reject IPv6-literal redirect targets as `InvalidUrl`. Explicit proxy hosts must contain only a domain or IP literal; keep the port and credentials in their separate options. Multipart `Content-Type` values may contain only one `boundary` parameter, and the body delimiter must match it. For ordinary HTTP retry failures, use `retry_diagnostics()` and the retained `RetryError<HttpError>` source; the legacy `retry_metadata()` getter is deprecated and always empty.
 
 ## Why Use It
 
@@ -157,7 +157,8 @@ Use `HttpClient::rebuild_with_options` to change client options while retaining 
 - Built-in request retry covers failures before `HttpResponse` is returned. Stream body errors after return are surfaced to the caller.
 - SSE reconnect has a dedicated API: `HttpClient::execute_sse_with_reconnect(...)`.
 - Cached response bodies remain reusable: repeated `bytes` / `text` / `json` reads and cached `stream()` calls do not consume the cache.
-- SSE reconnect omits `Last-Event-ID` after an empty cursor reset, keeps the latest valid server `retry:` delay until a new valid value arrives, and treats HTTP 204 as normal stream termination. This is not a claim of full EventSource compliance.
+- Once an SSE server supplies an event ID, its reconnect runner owns the final `Last-Event-ID`: a non-empty cursor wins after header merging, while an empty ID removes the header. Before the first server ID, ordinary precedence remains. SSE reconnect also keeps the latest valid server `retry:` delay and treats HTTP 204 as normal stream termination; this is not a claim of full EventSource compliance.
+- Non-SSE `Content-Type` errors use a fixed summary and omit the original header value; callers should check `SseProtocol`, method, URL, and status instead of matching that value in `message`. See the [SSE guide](doc/user_guide.en.md#sse-auto-reconnect) for the cursor migration behavior.
 - Error preview and retained raw-body limits are independent; a preview cut does not mark a complete raw body truncated.
 - SSE data events dispatch only at a blank line. EOF drops an incomplete frame; servers must terminate the final event with a blank line. One leading BOM is ignored at the start of the stream. `AllowEof` permits complete streams without a done marker but does not relax framing; `RequireDoneMarker` accepts a marker only in a complete event.
 - Automatic SSE decode diagnostics do not include raw event or cursor values; Lenient logs report only presence and byte lengths.
@@ -189,12 +190,12 @@ explicit final policy cap. SSE retains its one-millisecond minimum wait.
 
 ### Retry source contract in 0.15
 
-Every retry terminal, including Abort and Exhausted, now stores a complete
+For ordinary HTTP retry, every terminal, including Abort and Exhausted, stores a complete
 `RetryError<HttpError>` as its immediate source. Use `last_error()` or follow
 `Error::source()` to reach the original HTTP/backend error. Outer method, URL,
 status, body preview, retry-after hint and redaction policy remain available;
 kind/message still follow HTTP classification. Completion diagnostics remain on
-the retained retry error. The built-in success path registers no completion
+the retained retry error. This source contract does not describe SSE reconnect; see the [SSE error model](doc/user_guide.en.md#error-model). The built-in success path registers no completion
 observers and explicitly discards empty diagnostics. SSE retains its independent
 budget/backoff composition, including its 1ms minimum after the final policy cap.
 

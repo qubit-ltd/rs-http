@@ -476,6 +476,8 @@ async fn read_whole_body_examples(
 
 **Streaming bytes (`stream`)**: for an unbuffered body, `stream()` transfers the backend body to the returned stream; it cannot be recovered for later whole-body reads. `?` applies when obtaining the stream, for example if a request cancellation token has already fired before body reading starts. A cancellation or body-read failure is retained and cannot be bypassed by another reader. This separate request example shows unbuffered network streaming, rather than cached in-memory bytes.
 
+For `bytes`, `text`, and `json`, an unbuffered backend body is also transferred when the aggregate-read future is first polled. If an outer `timeout` or a losing `select!` branch then drops that future before buffering succeeds, the backend and any partial bytes are lost; later readers return `ResponseBodyAlreadyConsumed`. Dropping an unpolled future does not take the body, and a successfully cached body remains reusable. This external drop differs from cancellation or read-timeout errors returned by the built-in reader, which retain their existing failure category. Configure the request read timeout or cancellation token before sending when a classified read failure is needed; treat an externally cancelled unbuffered response as unreadable afterward.
+
 ```rust
 use futures_util::StreamExt;
 use http::Method;
@@ -570,7 +572,18 @@ For non-2xx errors, the redacted preview and retained raw body have independent 
 | Response body | `ResponseBodyTooLarge`, `ResponseBodyAlreadyConsumed` | Whole-body aggregation exceeded its configured limit, or a body stream was already taken |
 | Cancellation / fallback | `Cancelled`, `Other` | The request was cancelled, or the failure does not fit another category |
 
-`RetryBudgetExceeded` is used only when no application error was captured. Otherwise the original HTTP error kind and status are preserved and `HttpRetryDiagnostics` records the terminal condition; the complete `RetryError<HttpError>` remains available as `source`.
+Ordinary HTTP retry and SSE reconnect have separate terminal-error contracts:
+
+| Path | Terminal condition | Result and direct source |
+| --- | --- | --- |
+| Ordinary HTTP retry | A final business error exists when attempts or duration are exhausted | Preserve its HTTP kind, attach `HttpRetryDiagnostics`, and retain the complete `RetryError<HttpError>` as source |
+| Ordinary HTTP retry | Budget expires before a business error is captured | May return `RetryBudgetExceeded` with the retry error as source; cancellation and other terminal mappings keep their own behavior |
+| SSE reconnect | Attempts are exhausted with a retryable error | Return the last HTTP/SSE error with its original source; ordinary HTTP retry diagnostics are not promised |
+| SSE reconnect | Operation/total time budget expires | Return `RetryBudgetExceeded`, preserve available request context, and use the last `HttpError` as direct source when one exists |
+| SSE reconnect | Budget accounting itself fails | Keep the existing `Other` kind and `RetryBudgetError` source |
+| SSE reconnect | Clean EOF exhausts attempts, or response is 204 | End the stream normally |
+
+SSE does not promise the ordinary HTTP retry source type or diagnostics.
 
 `retry_metadata()` is a deprecated compatibility getter that always returns `None`; it does not indicate whether retry execution occurred. Use `retry_diagnostics()` for terminal details and inspect `Error::source()` for the retained `RetryError<HttpError>` context. SSE decoding errors also carry the response method, original request URL, and status when those fields were not already present; URL rendering continues to use the response redaction policy.
 
@@ -946,6 +959,8 @@ while let Some(item) = events.next().await {
 ```
 
 The default reconnect settings are `retry.max_attempts = 4` (that is, at most 3 reconnects), exponential `BackoffPolicy` with `initial=1s`, `max=30s`, `multiplier=2.0`, no jitter, reconnect on EOF, and honor server `retry:`. The latest valid `retry:` delay persists until replaced; use `honor_server_retry = false` to ignore server hints. Server `retry:` delays are capped by `server_retry_max_delay`; when it is `None`, the cap is derived from the backoff policy's maximum delay, or falls back to 30 seconds when no maximum exists. This cap applies only to the SSE `retry:` field. For a reconnectable 429/5xx handshake, the final request's `honor_retry_after` preference controls whether the parsed HTTP hint is passed to the backoff policy; this remains a single-attempt HTTP hint governed by its own policy cap and the reconnect budget. `apply_jitter_to_server_retry` is enabled by default, but server-provided delays remain unchanged unless the supplied `RetryPolicy` uses jitter. Reconnects reuse the original request and disable inner HTTP retry. If a previous SSE message had an `id:`, the next request includes `Last-Event-ID`; an empty ID reset makes the next request omit that header. A 204 response ends the reconnect stream normally without requiring `Content-Type`. These are deliberate behavior changes; callers should handle 204 as normal end-of-stream and servers should send a new valid `retry:` to change the delay. The API does not claim full EventSource compliance. `execute_sse_with_reconnect` requires response `Content-Type` to be `text/event-stream` for other successful statuses. SSE decoder errors include the response method, original request URL, and status while preserving more specific context and the existing error source. Cancellation does not reconnect. SSE protocol errors do not reconnect by default. Retryable timeout, transport, 429/5xx, and unexpected-EOF-like errors may reconnect.
+
+Once the server supplies an event ID, the reconnect runner owns the final `Last-Event-ID` header. Its non-empty cursor wins after default headers, injectors, and request interceptors have been merged; an empty ID removes the header. Before any server ID is received, ordinary header precedence continues to apply. Applications that intentionally control every reconnect cursor should manage individual requests through `execute` instead.
 
 ## Configuration Reference
 

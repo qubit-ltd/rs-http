@@ -13,7 +13,7 @@
 
 文档：[中文用户指南](doc/user_guide.zh_CN.md) | [English User Guide](doc/user_guide.en.md) | [设计文档](doc/design.zh_CN.md) | [Design](doc/design.md) | [API 文档](https://docs.rs/qubit-http)
 
-已准入的重试流程会依据 request interceptor 修改后的最终方法和覆盖项决定是否续试。IPv4-only 客户端会将指向 IPv6 字面量的重定向作为 `InvalidUrl` 拒绝。显式代理的 host 只能填写域名或 IP 字面量，端口和凭据应放在各自配置项中。multipart `Content-Type` 只能有一个 `boundary` 参数，且须与 body 分隔符一致。读取重试失败时请使用 `retry_diagnostics()` 和保留的 `RetryError<HttpError>` source；旧 `retry_metadata()` getter 已弃用且始终返回空值。
+已准入的重试流程会依据 request interceptor 修改后的最终方法和覆盖项决定是否续试。IPv4-only 客户端会将指向 IPv6 字面量的重定向作为 `InvalidUrl` 拒绝。显式代理的 host 只能填写域名或 IP 字面量，端口和凭据应放在各自配置项中。multipart `Content-Type` 只能有一个 `boundary` 参数，且须与 body 分隔符一致。普通 HTTP 自动重试失败时，请使用 `retry_diagnostics()` 和保留的 `RetryError<HttpError>` source；旧 `retry_metadata()` getter 已弃用且始终返回空值。
 
 ## 为什么使用
 
@@ -143,7 +143,8 @@ let client = HttpClientBuilder::new().create(options)?;
 - 内置请求重试只覆盖返回 `HttpResponse` 之前的失败。返回后的流式响应体错误会交给调用方处理。
 - SSE 重连使用独立 API：`HttpClient::execute_sse_with_reconnect(...)`。
 - 已缓存的响应体可重复读取：重复调用 `bytes` / `text` / `json`，以及基于缓存创建 `stream()`，不会移交或清空缓存。
-- SSE 自动重连在空游标重置后省略 `Last-Event-ID`，持续采用最新有效的服务端 `retry:` 直到收到新有效值，并将 HTTP 204 视为正常结束。这不代表完整实现 EventSource。
+- 服务端提供 SSE 事件 ID 后，重连执行器负责最终的 `Last-Event-ID`：非空游标在所有 header 合并后仍优先生效，空 ID 则删除该头；首个服务端 ID 到达前仍遵循普通优先级。SSE 重连还会持续采用最新有效的服务端 `retry:`，并将 HTTP 204 视为正常结束；这不代表完整实现 EventSource。
+- 非 SSE `Content-Type` 错误使用固定摘要，不再包含 header 原值；调用方应检查 `SseProtocol`、method、URL 和 status，不要再匹配 message 中的原值。游标行为迁移说明见 [SSE 指南](doc/user_guide.zh_CN.md#sse-自动重连)。
 - 错误预览与保留 raw body 使用独立限额；预览截断不会将完整 raw body 标记为不完整。
 - SSE data 事件只在空行处派发；EOF 会丢弃未完成帧，服务端必须用空行结束最后一个事件。流起始处的一个 BOM 会被忽略。`AllowEof` 允许完整事件流没有 done marker，但不会放宽 framing；`RequireDoneMarker` 只接受完整事件中的 marker。
 - 自动 SSE 解码诊断不包含原始 event 或 cursor；Lenient 日志只记录是否存在及字节数。
@@ -170,10 +171,10 @@ SSE 使用服务端提示重连时，`server_retry_max_delay` 限制抖动和提
 
 ### 0.15 的 retry source 契约
 
-所有重试终态（包括 Abort 和 Exhausted）的直接 source 现在都是完整 `RetryError<HttpError>`。
+普通 HTTP 自动重试的所有终态（包括 Abort 和 Exhausted）都以完整 `RetryError<HttpError>` 作为直接 source。
 通过 `last_error()` 或标准 `Error::source()` 链读取原始 HTTP/后端错误。
 外层保留 method、URL、status、body preview、retry-after 和脱敏策略，kind/message 仍按 HTTP 领域语义映射。
-完成诊断保存在该 retry 错误中。内置成功路径不注册完成观察者，因此显式丢弃空诊断。
+完成诊断保存在该 retry 错误中。此 source 约定不适用于 SSE 重连，详见[错误模型](doc/user_guide.zh_CN.md#错误模型)。内置成功路径不注册完成观察者，因此显式丢弃空诊断。
 SSE 仍独立组合预算与退避，保留最终 policy cap 之后至少 1ms 的领域约束。
 
 ## 测试

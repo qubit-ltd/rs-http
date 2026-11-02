@@ -525,6 +525,8 @@ async fn read_sse_examples(client: &qubit_http::HttpClient) -> qubit_http::HttpR
 
 成功调用 `bytes`、`text` 或 `json` 后，缓存可供整包读取和新的单块 `stream()` 复用。未缓存的后端 body 会移交给流，之后无法再取回以进行整包读取；取消或已有的 body 读取错误仍会返回错误。`sse_messages` / `sse_chunks` 也基于流读取，并按值消费 `HttpResponse`。
 
+未缓冲响应调用 `bytes`、`text` 或 `json` 时，聚合读取 future 首次被轮询后会接管后端 body。若外层 `timeout` 或 `select!` 落败分支随后丢弃该 future，而缓存尚未完成，后端响应和已读字节都会丢失；后续读取返回 `ResponseBodyAlreadyConsumed`。尚未轮询的 future 被丢弃不会接管 body，已成功缓存的数据仍可复用。这与库内读取器返回的取消或读取超时错误不同，后者会保留原有失败分类。需要得到分类明确的读取失败时，应在发送请求前配置 read timeout 或取消令牌；外部取消未缓冲读取后，应将该响应视为不可再读。
+
 | 可以 | 避免 |
 | --- | --- |
 | `bytes()` / `text()` / `json()` 读取完整响应体并复用缓存 | 先 `stream()`，再对同一响应调用 `bytes()` / `text()` / `json()` |
@@ -564,9 +566,20 @@ async fn read_sse_examples(client: &qubit_http::HttpClient) -> qubit_http::HttpR
 | 响应体 | `ResponseBodyTooLarge`, `ResponseBodyAlreadyConsumed` | 整包聚合超出配置上限，或响应体流已经被取走 |
 | 取消 / 兜底 | `Cancelled`, `Other` | 请求取消，或无法归入其它分类的错误 |
 
-只有在尚未捕获业务错误时，重试预算错误才使用 `RetryBudgetExceeded`；如果已有业务错误，则保留其 kind/status，并通过 `HttpRetryDiagnostics` 记录终止原因，完整 `RetryError<HttpError>` 仍作为 `source` 保留。
+普通 HTTP 自动重试与 SSE 自动重连有不同的终止错误契约：
 
-`retry_metadata()` 是已弃用的兼容 getter，始终返回 `None`，不能用来判断错误是否经过重试。需要终态信息时使用 `retry_diagnostics()`；需要重试上下文时，从 `Error::source()` 读取保留的 `RetryError<HttpError>`。SSE 解码错误会在原错误未提供相应字段时补上响应 method、原始请求 URL 和 status；URL 格式化仍使用响应对应的脱敏策略。
+| 路径 | 终止条件 | 返回结果与直接 source |
+| --- | --- | --- |
+| 普通 HTTP 自动重试 | 耗尽次数或时长预算时已有最后一次业务错误 | 保留该 HTTP kind，附加 `HttpRetryDiagnostics`，并将完整 `RetryError<HttpError>` 保留为 source |
+| 普通 HTTP 自动重试 | 捕获业务错误前预算已耗尽 | 可返回 `RetryBudgetExceeded` 并保留 retry 错误；取消等终态仍按各自映射处理 |
+| SSE 重连 | 存在可重试错误但次数已耗尽 | 返回最后的 HTTP/SSE 错误并保持其原有 source；不承诺普通 HTTP 的 retry diagnostics |
+| SSE 重连 | operation/total 时间预算耗尽 | 返回 `RetryBudgetExceeded`，保留已有请求上下文；若有最后一次 `HttpError`，直接以该错误作为 source |
+| SSE 重连 | 预算记账自身失败 | 保持现有 `Other` kind 和 `RetryBudgetError` source |
+| SSE 重连 | 清洁 EOF 耗尽次数，或收到 204 | 正常结束流 |
+
+SSE 不承诺普通 HTTP 自动重试的直接 source 类型或诊断信息。
+
+`retry_metadata()` 是已弃用的兼容 getter，始终返回 `None`，不能用来判断错误是否经过普通 HTTP 重试。需要该路径的终态信息时使用 `retry_diagnostics()`，并从 `Error::source()` 检查 `RetryError<HttpError>`。SSE 解码错误会在原错误未提供相应字段时补上响应 method、原始请求 URL 和 status；URL 格式化仍使用响应对应的脱敏策略。
 
 `retry_hint()` 会把超时、transport、429 和 5xx 状态视为可重试提示，其余默认不可重试。新增的重试层错误分类本身也不可重试。真正是否重试还要结合 `HttpRetryOptions` 和方法策略。
 
@@ -926,6 +939,8 @@ while let Some(item) = events.next().await {
 ```
 
 默认重连配置为 `retry.max_attempts = 4`（即最多重连 3 次），使用 `initial=1s`、`max=30s`、`multiplier=2.0` 且无 jitter 的指数 `BackoffPolicy`，并在 EOF 后重连、尊重服务端 `retry:`。最新有效的 `retry:` 会持续生效，直到新有效值替换；可用 `honor_server_retry = false` 忽略服务端提示。服务端 `retry:` 会被限制到 `server_retry_max_delay`；若该字段为 `None`，则从 backoff policy 的最大值推导，无法推导时使用 30 秒。这个上限只作用于 SSE `retry:` 字段。可重连的 429/5xx 握手错误是否采用解析出的 HTTP 提示，由最终请求的 `honor_retry_after` 偏好决定；HTTP `Retry-After` 仍是只影响单次尝试的提示，遵循独立退避策略上限和重连预算。`apply_jitter_to_server_retry` 默认开启；只有传入的 `RetryPolicy` 配置了 jitter 时，服务端给出的延迟才会被扰动。重连时会复用原始请求，并禁用内层 HTTP 自动重试；如果之前收到过 SSE `id:`，下一次请求会带上 `Last-Event-ID` header；空 ID 重置后下一次请求会省略该头。204 响应会正常结束重连流，不要求 `Content-Type`。这些是有意的行为变化：调用方应将 204 的流结束视为正常停流，服务端若要更改延迟应发送新的有效 `retry:`。本 API 不宣称完整实现 EventSource。其他成功状态仍要求 `Content-Type` 为 `text/event-stream`。SSE 解码错误会补充响应 method、原始请求 URL 和 status，同时保留更具体的原有上下文与 source。取消错误不会触发重连；SSE 协议错误默认也不会重连；超时、transport、429/5xx 等 retryable 错误，以及包含 unexpected EOF 语义的错误可触发重连。
+
+服务端一旦提供事件 ID，最终的 `Last-Event-ID` 就由重连执行器管理。它会在默认 header、注入器和请求拦截器合并完成后写入非空游标；空 ID 则删除该 header。在服务端尚未提供 ID 前，仍按普通 header 优先级处理。若应用需要自行控制每次重连游标，应通过 `execute` 分别管理各次请求。
 
 ## 配置参考
 
