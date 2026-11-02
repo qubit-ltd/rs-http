@@ -70,3 +70,40 @@ where
     }
     Ok(Box::new(ipv4_addrs.into_iter()) as Addrs)
 }
+
+#[cfg(test)]
+mod tests {
+    use std::io::ErrorKind;
+    use std::net::SocketAddr;
+
+    use super::filter_ipv4_addrs;
+
+    #[test]
+    fn test_filter_ipv4_addrs_preserves_ipv4_order_and_ports() {
+        let first = "127.0.0.1:81".parse::<SocketAddr>().unwrap();
+        let second = "192.0.2.1:443".parse::<SocketAddr>().unwrap();
+        let ipv6 = "[::1]:82".parse::<SocketAddr>().unwrap();
+        let actual = filter_ipv4_addrs("fixed.invalid", [ipv6, first, ipv6, second])
+            .expect("mixed addresses must retain IPv4")
+            .collect::<Vec<_>>();
+        assert_eq!(actual, vec![first, second]);
+
+        let actual = filter_ipv4_addrs("fixed.invalid", [second, first])
+            .expect("IPv4 addresses must be retained")
+            .collect::<Vec<_>>();
+        assert_eq!(actual, vec![second, first]);
+    }
+
+    #[test]
+    fn test_filter_ipv4_addrs_rejects_inputs_without_ipv4() {
+        let ipv6 = "[::1]:80".parse::<SocketAddr>().unwrap();
+        let mapped = "[::ffff:127.0.0.1]:81".parse::<SocketAddr>().unwrap();
+        for input in [Vec::new(), vec![ipv6], vec![mapped], vec![ipv6, mapped]] {
+            let error = filter_ipv4_addrs("fixed.invalid", input)
+                .err()
+                .expect("input without IPv4 must fail");
+            let io_error = error.downcast_ref::<std::io::Error>().expect("typed I/O error");
+            assert_eq!(io_error.kind(), ErrorKind::AddrNotAvailable);
+        }
+    }
+}
