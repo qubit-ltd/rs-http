@@ -30,7 +30,7 @@ struct SocksServer {
     host: String,
     port: u16,
     join_handle: JoinHandle<()>,
-    target_rx: oneshot::Receiver<(String, u16)>,
+    target_rx: oneshot::Receiver<(u8, String, u16)>,
 }
 
 impl SocksServer {
@@ -42,7 +42,7 @@ impl SocksServer {
         self.port
     }
 
-    async fn finish(self) -> (String, u16) {
+    async fn finish(self) -> (u8, String, u16) {
         let target = self.target_rx.await.expect("failed to receive socks target");
         self.join_handle.await.expect("socks server task panicked");
         target
@@ -54,14 +54,14 @@ async fn spawn_socks5_server() -> SocksServer {
         .await
         .expect("failed to bind socks5 server");
     let addr = listener.local_addr().expect("failed to query socks5 address");
-    let (target_tx, target_rx) = oneshot::channel::<(String, u16)>();
+    let (target_tx, target_rx) = oneshot::channel::<(u8, String, u16)>();
 
     let join_handle = spawn(async move {
         let (mut stream, _) = listener.accept().await.expect("failed to accept socks5");
-        let (host, port) = socks5_handshake_and_target(&mut stream)
+        let (atyp, host, port) = socks5_handshake_and_target(&mut stream)
             .await
             .expect("failed socks5 handshake");
-        let _ = target_tx.send((host.clone(), port));
+        let _ = target_tx.send((atyp, host.clone(), port));
 
         let mut upstream = TcpStream::connect((host.as_str(), port))
             .await
@@ -98,7 +98,7 @@ async fn spawn_socks5_server() -> SocksServer {
     }
 }
 
-async fn socks5_handshake_and_target(stream: &mut TcpStream) -> std::io::Result<(String, u16)> {
+async fn socks5_handshake_and_target(stream: &mut TcpStream) -> std::io::Result<(u8, String, u16)> {
     let mut greeting = [0_u8; 2];
     stream.read_exact(&mut greeting).await?;
     let nmethods = greeting[1] as usize;
@@ -144,7 +144,44 @@ async fn socks5_handshake_and_target(stream: &mut TcpStream) -> std::io::Result<
     // Success with 127.0.0.1:0 as bound addr.
     let reply = [0x05, 0x00, 0x00, 0x01, 127, 0, 0, 1, 0, 0];
     stream.write_all(&reply).await?;
-    Ok((host, port))
+    Ok((atyp, host, port))
+}
+
+async fn spawn_socks5_capture_server() -> SocksServer {
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("failed to bind socks5 server");
+    let addr = listener.local_addr().expect("failed to query socks5 address");
+    let (target_tx, target_rx) = oneshot::channel::<(u8, String, u16)>();
+    let join_handle = spawn(async move {
+        let (mut stream, _) = timeout(Duration::from_secs(5), listener.accept())
+            .await
+            .expect("socks accept timed out")
+            .expect("failed to accept socks5");
+        let target = timeout(Duration::from_secs(5), socks5_handshake_and_target(&mut stream))
+            .await
+            .expect("socks handshake timed out")
+            .expect("failed socks5 handshake");
+        let _ = target_tx.send(target);
+        let mut request = Vec::new();
+        timeout(Duration::from_secs(5), read_http_message(&mut stream, &mut request))
+            .await
+            .expect("proxied request read timed out")
+            .expect("failed to read proxied request");
+        timeout(
+            Duration::from_secs(5),
+            stream.write_all(b"HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"),
+        )
+        .await
+        .expect("capture response write timed out")
+        .expect("failed to write capture response");
+    });
+    SocksServer {
+        host: addr.ip().to_string(),
+        port: addr.port(),
+        join_handle,
+        target_rx,
+    }
 }
 
 async fn read_http_message(stream: &mut TcpStream, output: &mut Vec<u8>) -> std::io::Result<()> {
@@ -222,10 +259,36 @@ async fn test_socks5_proxy_forwards_http_request() {
     let target = timeout(Duration::from_secs(5), socks.finish())
         .await
         .expect("socks finish timed out");
-    assert_eq!(target.1, backend.base_url().port().unwrap());
+    assert_eq!(target.2, backend.base_url().port().unwrap());
 
     let captured = timeout(Duration::from_secs(3), backend.finish())
         .await
         .expect("backend finish timed out");
     assert_eq!(captured.target, "/socks");
+}
+
+#[tokio_test]
+async fn test_socks5_ipv4_only_delegates_target_dns() {
+    let socks = spawn_socks5_capture_server().await;
+    let mut options = HttpClientOptions::default();
+    options.set_base_url("http://ipv4-contract.invalid:18080").unwrap();
+    options.ipv4_only = true;
+    options.proxy.enabled = true;
+    options.proxy.proxy_type = ProxyType::Socks5;
+    options.proxy.host = Some(socks.host().to_string());
+    options.proxy.port = Some(socks.port());
+    options.timeouts.request_timeout = Some(Duration::from_secs(5));
+    let client = HttpClientBuilder::new().create(options).unwrap();
+    let response = timeout(
+        Duration::from_secs(5),
+        client.execute(client.request(Method::GET, "/dns-boundary").build()),
+    )
+    .await
+    .expect("execute timed out")
+    .expect("capture response should succeed");
+    assert_eq!(response.status().as_u16(), 204);
+    let target = timeout(Duration::from_secs(5), socks.finish())
+        .await
+        .expect("socks finish timed out");
+    assert_eq!(target, (0x03, "ipv4-contract.invalid".to_owned(), 18080));
 }

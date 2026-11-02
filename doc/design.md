@@ -26,6 +26,8 @@ flowchart LR
 
 The default `SameOrigin` policy checks absolute request targets against a configured base URL and checks each redirect against the initial origin. A client without a base URL may start at an absolute URL, which then defines that request's origin. `AnyOrigin` explicitly relaxes the target and redirect restriction. Configuration readers accept `origin_policy = "same_origin"` or `"any_origin"`; unsupported values fail before client construction.
 
+Base URLs are validated at configuration and client construction, and final request URLs are validated after parsing or joining, including after request interceptors. Only HTTP and HTTPS schemes are supported; unsupported request schemes produce `InvalidUrl`. IPv4-only filtering applies to the client's local resolver and literal URL checks. SOCKS5 keeps remote DNS (`socks5h`), so a proxy-resolved target and the proxy-to-target address family are outside the local IPv4 guarantee.
+
 ## Request and retry boundary
 
 `HttpClient::execute` resolves the request's retry options. Each admitted attempt checks cancellation, applies request interceptors, resolves the URL and effective headers, logs the request, sends it, maps non-2xx status to `HttpError`, then applies response interceptors and response logging. Retry decisions see errors from this whole pre-return attempt. A returned `HttpResponse` is outside the ordinary HTTP retry boundary: later body or SSE read failures belong to the caller.

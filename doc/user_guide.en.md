@@ -242,6 +242,8 @@ config.set(
 
 Use `client.request(method, path)` to create an `HttpRequestBuilder`. `path` can be an absolute URL or a relative path. With the default `SameOrigin` policy, an explicit absolute URL is allowed when no `base_url` is configured and becomes the origin for that request; when `base_url` is configured, the URL must share its scheme, host, and effective port. Relative paths require a `base_url`. `AnyOrigin` must be selected explicitly to allow cross-origin targets, while same-origin redirects remain restricted to the initial origin.
 
+Request URLs and client/request `base_url` values must use `http` or `https`. Unsupported schemes such as `ftp`, `file`, and `data` are rejected as `InvalidUrl` at request resolution; an unsupported client `base_url` is rejected as a `base_url` configuration error. This prevents unsupported targets from being misclassified as retryable transport failures.
+
 ```rust
 let request = client
     .request(Method::POST, "/events")
@@ -778,11 +780,7 @@ options.proxy.port = Some(1080);
 
 `ProxyType::Socks5` uses scheme `socks5h`, which performs remote DNS. Setting username enables proxy Basic Auth; setting password without username fails validation.
 
-When `ipv4_only = true`:
-
-- the reqwest DNS resolver returns only IPv4 addresses;
-- URLs with IPv6 literal hosts are rejected during URL resolution;
-- proxy hosts that are IPv6 literals are rejected.
+When `ipv4_only = true`, the local resolver filters DNS results to IPv4, request URLs with IPv6 literal hosts are rejected, and IPv6 proxy literals and IPv6 redirect targets retain their existing checks. `ProxyType::Socks5` uses `socks5h`, so the target hostname is sent to the proxy for remote DNS. HTTP and HTTPS proxies also control target resolution and egress. The local resolver cannot constrain the proxy-to-target address family: IPv4-only is not an end-to-end guarantee across a proxy. Deployments that require IPv4 egress through a proxy must enforce it at the proxy, or use a verified direct connection.
 
 ## SSE Decoding
 

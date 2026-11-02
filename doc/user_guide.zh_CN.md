@@ -236,6 +236,8 @@ config.set(
 
 通过 `client.request(method, path)` 创建 `HttpRequestBuilder`。`path` 可以是绝对 URL，也可以是相对路径。默认 `SameOrigin` 策略下，未配置 `base_url` 时允许显式绝对 URL，并把它作为本次请求的初始源；配置了 `base_url` 时，目标必须与它的 scheme、host 和有效端口一致。相对路径必须有 `base_url`。若要访问跨源目标，必须显式选择 `AnyOrigin`；同源策略下的重定向仍不能跨越初始源。
 
+请求 URL 以及客户端或请求级 `base_url` 必须使用 `http` 或 `https`。`ftp`、`file`、`data` 等不支持的 scheme 会在请求解析时以 `InvalidUrl` 拒绝；客户端配置中的不支持 `base_url` 会作为 `base_url` 配置错误返回，避免被误分类为可重试的传输错误。
+
 ```rust
 let request = client
     .request(Method::POST, "/events")
@@ -758,11 +760,7 @@ options.proxy.port = Some(1080);
 
 `ProxyType::Socks5` 使用 scheme `socks5h`，即远端 DNS。设置 username 后会启用代理 Basic Auth；只设置 password 不设置 username 会校验失败。
 
-`ipv4_only = true` 时：
-
-- `reqwest` DNS resolver 只返回 IPv4 地址。
-- URL 中的 IPv6 literal host 会在解析阶段被拒绝。
-- 代理 host 如果是 IPv6 literal，也会被拒绝。
+`ipv4_only = true` 时，本地 resolver 只保留 IPv4 解析结果；请求 URL 中的 IPv6 literal host、IPv6 literal 代理地址以及现有 IPv6 重定向检查仍会被拒绝。`ProxyType::Socks5` 使用 `socks5h`，目标域名交给代理远端解析；HTTP 和 HTTPS 代理也自行控制目标解析与出口。本地 resolver 无法约束代理到目标这一段使用的地址族，因此 IPv4-only 不是跨代理链路的端到端保证。部署若要求代理出口为 IPv4，应由代理自身限制，或使用经过验证的直连配置。
 
 ## SSE 解码
 

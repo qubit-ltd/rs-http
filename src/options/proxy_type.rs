@@ -33,7 +33,8 @@ pub enum ProxyType {
     #[display("https")]
     #[from_str(regex = "(?i)https")]
     Https,
-    /// SOCKS5 proxy.
+    /// SOCKS5 proxy using remote DNS (`socks5h`). The client cannot filter
+    /// addresses resolved by the proxy for the target host.
     #[display("socks5h")]
     #[from_str(regex = "(?i)socks5h|socks5")]
     Socks5,
