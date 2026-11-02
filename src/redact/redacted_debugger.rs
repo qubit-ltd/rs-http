@@ -7,10 +7,12 @@
 // =============================================================================
 //! Safe rendering helpers for `Debug` implementations.
 
-use qubit_redact::DiagnosticRedactionHandle;
 use qubit_redact::RedactedText;
 use qubit_redact::Redactor;
 use url::Url;
+
+use crate::redact::internal::MessageEmitter;
+use crate::redact::internal::MessageSegment;
 
 /// Renders diagnostic fields with one immutable policy snapshot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,6 +52,14 @@ impl<'redactor> RedactedDebugger<'redactor> {
     }
 
     /// Redacts HTTP URLs embedded in a diagnostic message.
+    ///
+    /// URL candidates end at whitespace or at the next embedded HTTP scheme;
+    /// trailing `.`, `,`, `;`, `:`, `!`, `?`, `)`, `]`, and `}` are left in the
+    /// surrounding plain text. Plain control and directional formatting
+    /// characters are escaped. The output is limited by bytes, not characters;
+    /// if the message cannot be rendered within that budget, this returns the
+    /// complete `<redaction incomplete>` marker when it fits, or an empty
+    /// string otherwise.
     ///
     /// # Returns
     ///
@@ -109,11 +119,6 @@ impl<'redactor> RedactedDebugger<'redactor> {
     }
 }
 
-enum MessageSegment {
-    Plain(std::ops::Range<usize>),
-    Url(DiagnosticRedactionHandle),
-}
-
 /// Finds a scheme at or after `cursor`, inspecting each byte at most once.
 fn find_url_start(text: &str, cursor: usize) -> Option<(usize, usize)> {
     let bytes = text.as_bytes();
@@ -161,6 +166,8 @@ fn url_candidate_end(text: &str, start: usize, limit: usize) -> usize {
     end
 }
 
+/// Returns the full marker when it fits the byte budget, and an empty string
+/// otherwise.
 fn bounded_marker(maximum: usize) -> String {
     const MARKER: &str = "<redaction incomplete>";
     if MARKER.len() <= maximum {
@@ -168,48 +175,4 @@ fn bounded_marker(maximum: usize) -> String {
     } else {
         String::new()
     }
-}
-
-struct MessageEmitter {
-    output: String,
-    maximum: usize,
-}
-
-impl MessageEmitter {
-    fn new(maximum: usize) -> Self {
-        Self {
-            output: String::new(),
-            maximum,
-        }
-    }
-
-    fn push_safe(&mut self, value: &str) -> bool {
-        if value.len() > self.maximum.saturating_sub(self.output.len()) {
-            return false;
-        }
-        self.output.push_str(value);
-        true
-    }
-
-    fn push_plain(&mut self, value: &str) -> bool {
-        for character in value.chars() {
-            let escaped = if is_log_dangerous(character) {
-                character.escape_debug().to_string()
-            } else {
-                character.to_string()
-            };
-            if !self.push_safe(&escaped) {
-                return false;
-            }
-        }
-        true
-    }
-
-    fn finish(self) -> String {
-        self.output
-    }
-}
-
-fn is_log_dangerous(character: char) -> bool {
-    character.is_control() || matches!(character as u32, 0x061c | 0x200e..=0x200f | 0x2028..=0x202e | 0x2066..=0x2069)
 }

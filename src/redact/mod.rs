@@ -8,6 +8,7 @@
 //! Immutable HTTP log redaction policies and rendering helpers.
 
 mod body_preview;
+mod internal;
 mod redacted_debugger;
 mod redacted_logger;
 
