@@ -45,7 +45,10 @@ const DEFAULT_RETRY_JITTER_FACTOR: f64 = 0.1;
 pub struct HttpRetryOptions {
     /// Whether built-in retry is enabled.
     pub enabled: bool,
-    /// Maximum number of attempts, including the first request.
+    /// Maximum number of this crate's outer attempts, including the first.
+    ///
+    /// One attempt may include reqwest protocol recovery and redirects, which
+    /// are not counted here. Request interceptors run once per outer attempt.
     pub max_attempts: u32,
     /// Optional soft duration budget for admitting retry attempts.
     ///

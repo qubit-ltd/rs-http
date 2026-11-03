@@ -136,10 +136,14 @@ impl HttpResponseMeta {
         &self.method
     }
 
-    /// Returns parsed `Retry-After` when this response status should honor it.
+    /// Returns parsed `Retry-After` when this metadata's status should honor
+    /// it.
     ///
     /// Applicable statuses are `429` and `5xx`, and header value can be
-    /// `delta-seconds` or HTTP-date.
+    /// `delta-seconds` or HTTP-date. `HttpClient::execute` maps non-success
+    /// statuses to [`crate::HttpError`] before success response interceptors
+    /// run, so this accessor is useful for metadata constructed or handled
+    /// separately; use `HttpError::retry_after` for execute failures.
     ///
     /// # Returns
     /// The delay represented by the header when the status and value are

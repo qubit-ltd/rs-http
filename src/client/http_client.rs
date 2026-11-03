@@ -385,10 +385,17 @@ impl HttpClient {
     /// this request. Performs network I/O and may await the internal
     /// `execute_once` path
     /// multiple times with backoff between attempts when retry is enabled.
+    /// `max_attempts` and retry diagnostics count this crate's outer attempts;
+    /// one reqwest execution may perform protocol recovery and redirects.
+    /// Request interceptors run once per outer attempt, not once per
+    /// low-level send. A request keeps the URL, origin policy, default headers,
+    /// header injectors, and redaction snapshot captured when it was built,
+    /// while this client supplies the backend and execution interceptors and
+    /// retry policy. Rebuilding a client does not rebind existing requests.
     ///
     /// # Parameters
-    /// - `request`: Built request (URL resolved against `base_url` if path is
-    ///   not absolute).
+    /// - `request`: Built request (URL resolved against its captured base URL
+    ///   if path is not absolute).
     ///
     /// # Returns
     /// - `Ok(HttpResponse)` when the HTTP status is success
@@ -867,10 +874,14 @@ impl std::fmt::Debug for HttpClient {
 mod tests {
     use std::error::Error;
     use std::io;
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering;
     use std::time::Duration;
     use std::time::Instant;
 
     use http::Method;
+    use http::Response;
     use http::StatusCode;
     use qubit_redact::RedactionPolicy;
     use qubit_redact::Sensitivity;
@@ -883,12 +894,16 @@ mod tests {
     use qubit_retry::RetryErrorReason;
     use qubit_retry::RetryObserver;
     use qubit_retry::RetryPolicy;
+    use tokio::net::TcpListener;
+    use tokio::time::timeout;
     use url::Url;
 
     use super::super::internal::HttpRetryApplicationSource;
     use super::HttpClient;
+    use crate::HttpClientOptions;
     use crate::HttpError;
     use crate::HttpErrorKind;
+    use crate::HttpRequestInterceptor;
 
     /// Private mapping accepts a completed result that the public client cannot
     /// currently produce: a retry completion observer has also panicked.
@@ -969,5 +984,121 @@ mod tests {
         let source = HttpRetryApplicationSource::new("backend request failed".to_owned());
 
         assert_eq!(source.to_string(), "backend request failed");
+    }
+
+    #[tokio::test]
+    async fn test_protocol_recovery_is_inside_outer_attempt() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let mut streams = 0;
+            loop {
+                let (socket, _) = timeout(Duration::from_secs(3), listener.accept())
+                    .await
+                    .expect("reqwest did not open a recovery connection")
+                    .unwrap();
+                let mut connection = h2::server::handshake(socket).await.unwrap();
+                while let Some(Ok((request, mut response))) = connection.accept().await {
+                    assert_eq!(request.uri().path(), "/recovery");
+                    streams += 1;
+                    if streams == 1 {
+                        response.send_reset(h2::Reason::REFUSED_STREAM);
+                    } else {
+                        response
+                            .send_response(Response::builder().status(StatusCode::OK).body(()).unwrap(), true)
+                            .unwrap();
+                        let _ = timeout(Duration::from_millis(100), connection.accept()).await;
+                        return;
+                    }
+                }
+            }
+        });
+
+        let backend = reqwest::Client::builder().http2_prior_knowledge().build().unwrap();
+        let options = HttpClientOptions {
+            base_url: Some(Url::parse(&format!("http://{address}/")).unwrap()),
+            ..HttpClientOptions::default()
+        };
+        // The test backend uses h2 prior knowledge; retry remains at its
+        // default reqwest policy and qubit-http outer retry is disabled.
+        let mut client = HttpClient::new(backend, options);
+        let calls = Arc::new(AtomicUsize::new(0));
+        let calls_for_interceptor = Arc::clone(&calls);
+        client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut crate::HttpRequest| {
+            calls_for_interceptor.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        }));
+
+        let result = timeout(
+            Duration::from_secs(5),
+            client.execute(client.request(Method::GET, "/recovery").build()),
+        )
+        .await
+        .expect("HTTP/2 recovery request timed out");
+        let server_result = server.await;
+        server_result.unwrap();
+        let response = result.unwrap_or_else(|error| {
+            let mut chain = error.to_string();
+            let mut source = error.source();
+            while let Some(item) = source {
+                chain.push_str(": ");
+                chain.push_str(&item.to_string());
+                source = item.source();
+            }
+            panic!("reqwest should recover REFUSED_STREAM: {chain}");
+        });
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(calls.load(Ordering::Relaxed), 1);
+    }
+
+    #[tokio::test]
+    async fn test_protocol_recovery_terminates_after_repeated_refusals() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let mut streams = 0;
+            loop {
+                let (socket, _) = timeout(Duration::from_secs(3), listener.accept())
+                    .await
+                    .expect("reqwest did not finish protocol recovery")
+                    .unwrap();
+                let mut connection = h2::server::handshake(socket).await.unwrap();
+                while let Some(Ok((_request, mut response))) = connection.accept().await {
+                    streams += 1;
+                    response.send_reset(h2::Reason::REFUSED_STREAM);
+                    if streams >= 3 {
+                        let _ = timeout(Duration::from_millis(100), connection.accept()).await;
+                        return streams;
+                    }
+                }
+            }
+        });
+
+        let backend = reqwest::Client::builder().http2_prior_knowledge().build().unwrap();
+        let options = HttpClientOptions {
+            base_url: Some(Url::parse(&format!("http://{address}/")).unwrap()),
+            ..HttpClientOptions::default()
+        };
+        let mut client = HttpClient::new(backend, options);
+        let calls = Arc::new(AtomicUsize::new(0));
+        let calls_for_interceptor = Arc::clone(&calls);
+        client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut crate::HttpRequest| {
+            calls_for_interceptor.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        }));
+
+        let result = timeout(
+            Duration::from_secs(5),
+            client.execute(client.request(Method::GET, "/recovery-limit").build()),
+        )
+        .await
+        .expect("repeated HTTP/2 refusals must terminate");
+        let streams = timeout(Duration::from_secs(2), server)
+            .await
+            .expect("test server did not finish")
+            .unwrap();
+        assert!(result.is_err(), "persistent REFUSED_STREAM should fail");
+        assert!((1..10).contains(&streams), "recovery should remain bounded");
+        assert_eq!(calls.load(Ordering::Relaxed), 1);
     }
 }

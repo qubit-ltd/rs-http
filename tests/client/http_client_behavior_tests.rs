@@ -31,6 +31,7 @@ use qubit_http::HttpRequest;
 use qubit_http::HttpRequestInterceptor;
 use qubit_http::HttpResponseInterceptor;
 use qubit_http::HttpResponseInterceptorContext;
+use qubit_retry::BackoffPolicy;
 use qubit_retry::RetryError;
 use tokio::test as tokio_test;
 use tokio::time::timeout;
@@ -998,4 +999,174 @@ async fn test_clone_default_headers_are_independent_after_creation() {
     assert!(!captured_original.headers.contains_key("x-clone-only"));
     assert_eq!(captured_clone.headers.get("x-clone-only"), Some(&"yes".to_string()));
     assert!(!captured_clone.headers.contains_key("x-origin-only"));
+}
+
+#[tokio_test]
+async fn test_review_contract_retry_after_error_and_success_interceptor() {
+    let error_server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 429,
+        headers: vec![("Retry-After".to_string(), "2".to_string())],
+        body: b"slow down".to_vec(),
+    })
+    .await;
+    let success_server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 200,
+        headers: vec![("Retry-After".to_string(), "2".to_string())],
+        body: b"ok".to_vec(),
+    })
+    .await;
+    let error_calls = Arc::new(AtomicUsize::new(0));
+    let success_calls = Arc::new(AtomicUsize::new(0));
+
+    let mut error_options = HttpClientOptions::default();
+    error_options.base_url = Some(error_server.base_url());
+    let mut error_client = HttpClientBuilder::new().create(error_options).unwrap();
+    let error_calls_for_interceptor = Arc::clone(&error_calls);
+    error_client.add_response_interceptor(HttpResponseInterceptor::new(
+        move |_context: &mut HttpResponseInterceptorContext| {
+            error_calls_for_interceptor.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        },
+    ));
+    let error = error_client
+        .execute(error_client.request(Method::GET, "/retry-after").build())
+        .await
+        .expect_err("429 should be returned through HttpError");
+    assert_eq!(error.status, Some(StatusCode::TOO_MANY_REQUESTS));
+    assert_eq!(error.retry_after, Some(Duration::from_secs(2)));
+    assert_eq!(error_calls.load(Ordering::Relaxed), 0);
+    error_server.finish().await;
+
+    let mut success_options = HttpClientOptions::default();
+    success_options.base_url = Some(success_server.base_url());
+    let mut success_client = HttpClientBuilder::new().create(success_options).unwrap();
+    let success_calls_for_interceptor = Arc::clone(&success_calls);
+    success_client.add_response_interceptor(HttpResponseInterceptor::new(
+        move |_context: &mut HttpResponseInterceptorContext| {
+            success_calls_for_interceptor.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        },
+    ));
+    let response = success_client
+        .execute(success_client.request(Method::GET, "/retry-after").build())
+        .await
+        .expect("200 should succeed");
+    assert_eq!(response.retry_after_hint(), None);
+    assert_eq!(success_calls.load(Ordering::Relaxed), 1);
+    success_server.finish().await;
+}
+
+#[tokio_test]
+async fn test_review_contract_cross_client_snapshot() {
+    let originating_server = spawn_multi_shot_server(vec![
+        ResponsePlan::Immediate {
+            status: 503,
+            headers: vec![],
+            body: b"retry".to_vec(),
+        },
+        ResponsePlan::Immediate {
+            status: 200,
+            headers: vec![],
+            body: b"origin".to_vec(),
+        },
+    ])
+    .await;
+    let mut origin_options = HttpClientOptions::default();
+    origin_options.base_url = Some(originating_server.base_url());
+    origin_options.origin_policy = HttpOriginPolicy::AnyOrigin;
+    let mut origin = HttpClientBuilder::new().create(origin_options).unwrap();
+    origin.add_header("x-client", "origin").unwrap();
+    origin.add_header_injector(HttpHeaderInjector::new(|headers: &mut HeaderMap| {
+        headers.insert("x-injector", HeaderValue::from_static("origin"));
+        Ok(())
+    }));
+    let request = origin.request(Method::GET, "/snapshot").build();
+
+    let mut executor_options = HttpClientOptions::default();
+    executor_options.base_url = Some(url::Url::parse("http://127.0.0.1:1/").unwrap());
+    executor_options.retry.enabled = true;
+    executor_options.retry.max_attempts = 2;
+    executor_options.retry.backoff = BackoffPolicy::immediate();
+    let mut executor = HttpClientBuilder::new().create(executor_options).unwrap();
+    executor.add_header("x-client", "executor").unwrap();
+    let request_calls = Arc::new(AtomicUsize::new(0));
+    let request_calls_for_interceptor = Arc::clone(&request_calls);
+    executor.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
+        request_calls_for_interceptor.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+    }));
+    let response_calls = Arc::new(AtomicUsize::new(0));
+    let response_calls_for_interceptor = Arc::clone(&response_calls);
+    executor.add_response_interceptor(HttpResponseInterceptor::new(
+        move |_context: &mut HttpResponseInterceptorContext| {
+            response_calls_for_interceptor.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        },
+    ));
+
+    let response = executor.execute(request).await.expect("executor should send snapshot");
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(request_calls.load(Ordering::Relaxed), 2);
+    assert_eq!(response_calls.load(Ordering::Relaxed), 1);
+    let captured = originating_server.finish().await;
+    assert_eq!(captured.len(), 2);
+    assert_eq!(captured[0].target, "/snapshot");
+    assert_eq!(captured[1].target, "/snapshot");
+    assert_eq!(captured[1].headers.get("x-client").map(String::as_str), Some("origin"));
+    assert_eq!(
+        captured[1].headers.get("x-injector").map(String::as_str),
+        Some("origin")
+    );
+
+    let redirect_target = TcpListener::bind("127.0.0.1:0").unwrap();
+    redirect_target.set_nonblocking(true).unwrap();
+    let target_url = format!("http://{}/target", redirect_target.local_addr().unwrap());
+    let redirect_origin = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 302,
+        headers: vec![("Location".to_string(), target_url)],
+        body: vec![],
+    })
+    .await;
+    let redirect_request = origin
+        .request(Method::GET, &format!("{}redirect", redirect_origin.base_url()))
+        .build();
+    let redirect_error = executor
+        .execute(redirect_request)
+        .await
+        .expect_err("executor SameOrigin policy should reject cross-origin redirect");
+    assert_eq!(redirect_error.kind, HttpErrorKind::OriginPolicy);
+    redirect_origin.finish().await;
+    assert_eq!(redirect_target.accept().unwrap_err().kind(), ErrorKind::WouldBlock);
+}
+
+#[tokio_test]
+async fn test_review_contract_rebuild_does_not_rebind_old_request() {
+    let old_server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 200,
+        headers: vec![],
+        body: b"old".to_vec(),
+    })
+    .await;
+    let new_server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 200,
+        headers: vec![],
+        body: b"new".to_vec(),
+    })
+    .await;
+    let mut old_options = HttpClientOptions::default();
+    old_options.base_url = Some(old_server.base_url());
+    let old_client = HttpClientBuilder::new().create(old_options).unwrap();
+    let old_request = old_client.request(Method::GET, "/old-request").build();
+
+    let mut new_options = old_client.options().clone();
+    new_options.base_url = Some(new_server.base_url());
+    let new_client = old_client.rebuild_with_options(new_options).unwrap();
+    new_client.execute(old_request).await.unwrap();
+    assert_eq!(old_server.finish().await.target, "/old-request");
+
+    new_client
+        .execute(new_client.request(Method::GET, "/new-request").build())
+        .await
+        .unwrap();
+    assert_eq!(new_server.finish().await.target, "/new-request");
 }

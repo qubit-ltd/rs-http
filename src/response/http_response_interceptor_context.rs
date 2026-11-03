@@ -184,6 +184,10 @@ impl HttpResponseInterceptorContext {
 
     /// Returns parsed `Retry-After` when status and headers provide one.
     ///
+    /// Successful response interceptors do not receive non-success statuses;
+    /// `HttpClient::execute` exposes their parsed hint through
+    /// [`crate::HttpError::retry_after`].
+    ///
     /// # Returns
     /// `Some(Duration)` for retryable status codes with valid `Retry-After`;
     /// otherwise `None`.

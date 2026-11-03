@@ -971,6 +971,7 @@ dependencies = [
  "async-stream",
  "bytes",
  "futures-util",
+ "h2",
  "http",
  "httpdate",
  "parse-display",
