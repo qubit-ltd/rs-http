@@ -8,6 +8,7 @@
 
 use std::error::Error as StdError;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
@@ -22,6 +23,7 @@ use qubit_http::HttpClientOptions;
 use qubit_http::HttpError;
 use qubit_http::HttpErrorKind;
 use qubit_http::HttpRequest;
+use qubit_http::HttpRequestBody;
 use qubit_http::HttpRequestInterceptor;
 use qubit_http::HttpRequestRetryOverride;
 use qubit_http::HttpRetryMethodPolicy;
@@ -36,6 +38,69 @@ use crate::common::ResponseChunk;
 use crate::common::ResponsePlan;
 use crate::common::spawn_multi_shot_server;
 use crate::common::spawn_one_shot_server;
+
+#[tokio_test]
+async fn test_text_body_retry_recreates_mutable_attempt_from_snapshot() {
+    let server = spawn_multi_shot_server(vec![
+        ResponsePlan::Immediate {
+            status: 503,
+            headers: vec![],
+            body: b"service unavailable".to_vec(),
+        },
+        ResponsePlan::Immediate {
+            status: 200,
+            headers: vec![],
+            body: b"ok".to_vec(),
+        },
+    ])
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.retry.enabled = true;
+    options.retry.max_attempts = 2;
+    options.retry.backoff = BackoffPolicy::immediate();
+    let mut client = HttpClientBuilder::new()
+        .create(options)
+        .expect("client should be created");
+
+    let observed_bodies = Arc::new(Mutex::new(Vec::new()));
+    let interceptor_bodies = Arc::clone(&observed_bodies);
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |request: &mut HttpRequest| {
+        let HttpRequestBody::Text(body) = request.body() else {
+            panic!("text request body should remain observable to the interceptor");
+        };
+        interceptor_bodies
+            .lock()
+            .expect("body observations should be unlocked")
+            .push(body.clone());
+        request.set_body(HttpRequestBody::Text("attempt-local-text".to_string()));
+        Ok(())
+    }));
+
+    let request = client
+        .request(Method::POST, "/text-body-retry")
+        .text_body("original-text")
+        .retry_method_policy(HttpRetryMethodPolicy::AllMethods)
+        .force_retry()
+        .build();
+    let response = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .expect("request should succeed after retry");
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        *observed_bodies.lock().expect("body observations should be unlocked"),
+        vec!["original-text", "original-text"]
+    );
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.len(), 2);
+    assert_eq!(captured[0].body, b"attempt-local-text");
+    assert_eq!(captured[1].body, b"attempt-local-text");
+}
 
 #[tokio_test]
 async fn test_request_retry_override_force_enable_and_all_methods_for_post() {

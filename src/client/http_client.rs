@@ -609,7 +609,7 @@ impl HttpClient {
         let attempt_context = HttpAttemptExecutionContext::retry(&request);
         let request_method = request.method().clone();
         let request_url = request.resolved_url().ok();
-        let retry_request = request.clone();
+        let retry_request = request;
         let mut async_retry = TokioRetry::new(&retry_config);
         if let Some(token) = cancellation_token.as_ref() {
             async_retry = async_retry.cancellation_token(token.inner().clone());
