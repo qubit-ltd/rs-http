@@ -16,18 +16,25 @@ use http::StatusCode;
 use http::header::AUTHORIZATION;
 use http::header::CONTENT_TYPE;
 use http::header::SET_COOKIE;
+use qubit_http::HttpCancellationToken;
 use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
+use qubit_http::HttpError;
 use qubit_http::HttpErrorKind;
 use qubit_http::HttpLogger;
 use qubit_http::HttpLoggingOptions;
 use qubit_http::HttpRequest;
 use qubit_http::HttpRequestBody;
 use qubit_http::HttpRequestBodyByteStream;
+use qubit_http::HttpRequestInterceptor;
 use qubit_http::HttpResponse;
 use qubit_http::HttpResponseMeta;
+use qubit_http::sse::SseJsonMode;
+use qubit_http::sse::SseReconnectOptions;
 use qubit_redact::RedactionPolicy;
 use qubit_redact::formats::http::TextBodyPolicy;
+use qubit_retry::BackoffPolicy;
+use qubit_retry::RetryError;
 use tokio::runtime::Builder;
 use tokio::time::timeout;
 use url::Url;
@@ -35,6 +42,7 @@ use url::Url;
 use crate::common::ResponseChunk;
 use crate::common::ResponsePlan;
 use crate::common::capture_trace_logs;
+use crate::common::spawn_multi_shot_server;
 use crate::common::spawn_one_shot_server;
 
 fn logging_request(method: Method, path: &str, headers: HeaderMap, body: HttpRequestBody) -> HttpRequest {
@@ -862,4 +870,471 @@ fn test_log_response_skips_body_for_sse_content_type() {
         });
     });
     assert!(logs.contains("Response body: <skipped: body not yet consumed>"));
+}
+
+#[test]
+fn test_cross_client_redaction_success_logs_follow_request_snapshot() {
+    for (request_policy, expected_visible) in [(RedactionPolicy::strict(), false), (RedactionPolicy::default(), true)] {
+        let runtime = Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("failed to build tokio runtime");
+        let logs = capture_trace_logs(|| {
+            runtime.block_on(async {
+                let server = spawn_one_shot_server(ResponsePlan::Immediate {
+                    status: 200,
+                    headers: vec![],
+                    body: b"ok".to_vec(),
+                })
+                .await;
+
+                let mut request_options = HttpClientOptions::default();
+                request_options.base_url = Some(server.base_url());
+                request_options.log_redaction_policy = request_policy;
+                let request_client = HttpClientBuilder::new()
+                    .create(request_options)
+                    .expect("request client should be created");
+
+                let mut execute_options = HttpClientOptions::default();
+                execute_options.base_url = Some(server.base_url());
+                let execute_client = HttpClientBuilder::new()
+                    .create(execute_options)
+                    .expect("execute client should be created");
+                let request = request_client
+                    .request(Method::GET, "/cross-client-policy-sentinel")
+                    .build();
+                let _response = execute_client.execute(request).await.expect("request should succeed");
+
+                let captured = server.finish().await;
+                assert_eq!(captured.target, "/cross-client-policy-sentinel");
+            });
+        });
+
+        assert!(logs.contains("--> GET"));
+        assert!(logs.contains("<-- 200"));
+        assert_eq!(logs.contains("cross-client-policy-sentinel"), expected_visible);
+    }
+}
+
+#[test]
+fn test_cross_client_redaction_rebuilt_client_keeps_old_and_new_snapshots() {
+    let runtime = Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("failed to build tokio runtime");
+    let (old_server, new_server, rebuilt_client, old_request, new_request) = runtime.block_on(async {
+        let old_server = spawn_one_shot_server(ResponsePlan::Immediate {
+            status: 200,
+            headers: vec![],
+            body: b"old".to_vec(),
+        })
+        .await;
+        let new_server = spawn_one_shot_server(ResponsePlan::Immediate {
+            status: 200,
+            headers: vec![],
+            body: b"new".to_vec(),
+        })
+        .await;
+
+        let mut old_options = HttpClientOptions::default();
+        old_options.base_url = Some(old_server.base_url());
+        old_options.log_redaction_policy = RedactionPolicy::strict();
+        let old_client = HttpClientBuilder::new()
+            .create(old_options)
+            .expect("old client should be created");
+        let old_request = old_client.request(Method::GET, "/cross-client-policy-sentinel").build();
+
+        let mut new_options = HttpClientOptions::default();
+        new_options.base_url = Some(new_server.base_url());
+        new_options.log_redaction_policy = RedactionPolicy::default();
+        let rebuilt_client = old_client
+            .rebuild_with_options(new_options)
+            .expect("client should be rebuilt");
+        let new_request = rebuilt_client
+            .request(Method::GET, "/cross-client-policy-sentinel")
+            .build();
+
+        (old_server, new_server, rebuilt_client, old_request, new_request)
+    });
+
+    let old_logs = capture_trace_logs(|| {
+        runtime.block_on(async {
+            let _response = rebuilt_client
+                .execute(old_request)
+                .await
+                .expect("old request should succeed");
+        });
+    });
+    let new_logs = capture_trace_logs(|| {
+        runtime.block_on(async {
+            let _response = rebuilt_client
+                .execute(new_request)
+                .await
+                .expect("new request should succeed");
+        });
+    });
+
+    for logs in [&old_logs, &new_logs] {
+        assert!(logs.contains("--> GET"));
+        assert!(logs.contains("<-- 200"));
+    }
+    assert!(!old_logs.contains("cross-client-policy-sentinel"));
+    assert!(new_logs.contains("cross-client-policy-sentinel"));
+
+    let old_captured = runtime.block_on(old_server.finish());
+    let new_captured = runtime.block_on(new_server.finish());
+    assert_eq!(old_captured.target, "/cross-client-policy-sentinel");
+    assert_eq!(new_captured.target, "/cross-client-policy-sentinel");
+}
+
+#[test]
+fn test_cross_client_redaction_status_errors_follow_request_snapshot() {
+    for (request_policy, expected_visible) in [(RedactionPolicy::strict(), false), (RedactionPolicy::default(), true)] {
+        let runtime = Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("failed to build tokio runtime");
+        runtime.block_on(async {
+            let server = spawn_one_shot_server(ResponsePlan::Immediate {
+                status: 503,
+                headers: vec![],
+                body: b"retry later".to_vec(),
+            })
+            .await;
+
+            let mut request_options = HttpClientOptions::default();
+            request_options.base_url = Some(server.base_url());
+            request_options.log_redaction_policy = request_policy;
+            let request_client = HttpClientBuilder::new()
+                .create(request_options)
+                .expect("request client should be created");
+
+            let mut execute_options = HttpClientOptions::default();
+            execute_options.base_url = Some(server.base_url());
+            execute_options.retry.enabled = false;
+            let execute_client = HttpClientBuilder::new()
+                .create(execute_options)
+                .expect("execute client should be created");
+            let request = request_client
+                .request(Method::GET, "/cross-client-policy-sentinel")
+                .build();
+            let error = execute_client
+                .execute(request)
+                .await
+                .expect_err("503 status should fail");
+
+            assert_eq!(error.kind(), HttpErrorKind::Status);
+            assert_eq!(error.status(), Some(StatusCode::SERVICE_UNAVAILABLE));
+            assert_eq!(error.status_response().unwrap().body().as_ref(), b"retry later");
+            assert_eq!(
+                format!("{error:?}").contains("cross-client-policy-sentinel"),
+                expected_visible
+            );
+            let captured = server.finish().await;
+            assert_eq!(captured.target, "/cross-client-policy-sentinel");
+        });
+    }
+}
+
+#[test]
+fn test_cross_client_redaction_retry_exhaustion_preserves_error_context() {
+    for (request_policy, expected_visible) in [(RedactionPolicy::strict(), false), (RedactionPolicy::default(), true)] {
+        let runtime = Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("failed to build tokio runtime");
+        runtime.block_on(async {
+            let server = spawn_multi_shot_server(
+                (0..2)
+                    .map(|_| ResponsePlan::Immediate {
+                        status: 503,
+                        headers: vec![],
+                        body: b"retry later".to_vec(),
+                    })
+                    .collect(),
+            )
+            .await;
+
+            let mut request_options = HttpClientOptions::default();
+            request_options.base_url = Some(server.base_url());
+            request_options.log_redaction_policy = request_policy;
+            let request_client = HttpClientBuilder::new()
+                .create(request_options)
+                .expect("request client should be created");
+
+            let mut execute_options = HttpClientOptions::default();
+            execute_options.base_url = Some(server.base_url());
+            execute_options.retry.enabled = true;
+            execute_options.retry.max_attempts = 2;
+            execute_options.retry.backoff = BackoffPolicy::immediate();
+            let execute_client = HttpClientBuilder::new()
+                .create(execute_options)
+                .expect("execute client should be created");
+            let request = request_client
+                .request(Method::GET, "/cross-client-policy-sentinel")
+                .build();
+            let error = execute_client
+                .execute(request)
+                .await
+                .expect_err("503 status should exhaust retry budget");
+
+            assert_eq!(error.kind(), HttpErrorKind::Status);
+            let diagnostics = error.retry_diagnostics().expect("retry diagnostics should be retained");
+            assert_eq!(diagnostics.attempts(), 2);
+            let retry = std::error::Error::source(&error)
+                .and_then(|source| source.downcast_ref::<RetryError<HttpError>>())
+                .expect("RetryError<HttpError> source should be retained");
+            let last_error = retry.last_error().expect("last HTTP error should be retained");
+            assert_eq!(last_error.status(), Some(StatusCode::SERVICE_UNAVAILABLE));
+            assert_eq!(
+                format!("{last_error:?}").contains("cross-client-policy-sentinel"),
+                expected_visible
+            );
+            let captured = server.finish().await;
+            assert_eq!(captured.len(), 2);
+            assert!(
+                captured
+                    .iter()
+                    .all(|request| request.target == "/cross-client-policy-sentinel")
+            );
+        });
+    }
+}
+
+#[test]
+fn test_cross_client_redaction_retry_wait_cancellation_preserves_context() {
+    for (request_policy, expected_visible) in [(RedactionPolicy::strict(), false), (RedactionPolicy::default(), true)] {
+        let runtime = Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("failed to build tokio runtime");
+        runtime.block_on(async {
+            let mut request_options = HttpClientOptions::default();
+            request_options
+                .set_base_url("http://127.0.0.1:9")
+                .expect("test base URL should parse");
+            request_options.log_redaction_policy = request_policy;
+            let request_client = HttpClientBuilder::new()
+                .create(request_options)
+                .expect("request client should be created");
+
+            let mut execute_options = HttpClientOptions::default();
+            execute_options
+                .set_base_url("http://127.0.0.1:9")
+                .expect("test base URL should parse");
+            execute_options.retry.enabled = true;
+            execute_options.retry.max_attempts = 3;
+            execute_options.retry.backoff = BackoffPolicy::fixed(std::time::Duration::from_secs(5));
+            let mut execute_client = HttpClientBuilder::new()
+                .create(execute_options)
+                .expect("execute client should be created");
+            let attempt_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+            let observed_attempts = attempt_count.clone();
+            execute_client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
+                observed_attempts.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Err(HttpError::transport(
+                    "deterministic retry failure at http://127.0.0.1:9/cross-client-policy-sentinel",
+                ))
+            }));
+
+            let cancellation = HttpCancellationToken::new();
+            let request = request_client
+                .request(Method::GET, "/cross-client-policy-sentinel")
+                .cancellation_token(cancellation.clone())
+                .build();
+            let future = execute_client.execute(request);
+            tokio::pin!(future);
+            let waker = std::task::Waker::noop();
+            let mut context = std::task::Context::from_waker(waker);
+            assert!(std::future::Future::poll(future.as_mut(), &mut context).is_pending());
+            assert_eq!(attempt_count.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+            cancellation.cancel();
+            let error = timeout(std::time::Duration::from_secs(3), future)
+                .await
+                .expect("cancelled retry wait timed out")
+                .expect_err("cancellation during retry wait should fail");
+            assert_eq!(error.kind(), HttpErrorKind::Cancelled);
+            let retry = std::error::Error::source(&error)
+                .and_then(|source| source.downcast_ref::<RetryError<HttpError>>())
+                .expect("RetryError<HttpError> source should be retained");
+            let last_error = retry.last_error().expect("last HTTP error should be retained");
+            assert_eq!(last_error.kind(), HttpErrorKind::Transport);
+            assert_eq!(
+                format!("{error:?}").contains("cross-client-policy-sentinel"),
+                expected_visible
+            );
+            assert_eq!(
+                format!("{last_error:?}").contains("cross-client-policy-sentinel"),
+                expected_visible
+            );
+            assert_eq!(
+                last_error.to_string().contains("cross-client-policy-sentinel"),
+                expected_visible
+            );
+        });
+    }
+}
+
+#[test]
+fn test_cross_client_redaction_sse_handshake_errors_follow_request_snapshot() {
+    for (request_policy, expected_visible) in [(RedactionPolicy::strict(), false), (RedactionPolicy::default(), true)] {
+        let runtime = Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("failed to build tokio runtime");
+        runtime.block_on(async {
+            let server = spawn_one_shot_server(ResponsePlan::Immediate {
+                status: 200,
+                headers: vec![("Content-Type".to_string(), "text/plain".to_string())],
+                body: b"not an event stream".to_vec(),
+            })
+            .await;
+
+            let mut request_options = HttpClientOptions::default();
+            request_options.base_url = Some(server.base_url());
+            request_options.log_redaction_policy = request_policy;
+            let request_client = HttpClientBuilder::new()
+                .create(request_options)
+                .expect("request client should be created");
+
+            let mut execute_options = HttpClientOptions::default();
+            execute_options.base_url = Some(server.base_url());
+            let execute_client = HttpClientBuilder::new()
+                .create(execute_options)
+                .expect("execute client should be created");
+            let request = request_client
+                .request(Method::GET, "/cross-client-policy-sentinel")
+                .build();
+            let mut events = execute_client.execute_sse_with_reconnect(request, SseReconnectOptions::default());
+            let error = timeout(std::time::Duration::from_secs(3), events.next())
+                .await
+                .expect("SSE handshake timed out")
+                .expect("SSE stream should return an error")
+                .expect_err("non-SSE response should fail handshake");
+
+            assert_eq!(error.kind(), HttpErrorKind::SseProtocol);
+            assert_eq!(error.status(), Some(StatusCode::OK));
+            assert_eq!(
+                format!("{error:?}").contains("cross-client-policy-sentinel"),
+                expected_visible
+            );
+            let captured = server.finish().await;
+            assert_eq!(captured.target, "/cross-client-policy-sentinel");
+        });
+    }
+}
+
+#[test]
+fn test_cross_client_redaction_sse_decode_errors_follow_request_snapshot() {
+    for (request_policy, expected_visible) in [(RedactionPolicy::strict(), false), (RedactionPolicy::default(), true)] {
+        let runtime = Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("failed to build tokio runtime");
+        runtime.block_on(async {
+            let server = spawn_one_shot_server(ResponsePlan::Immediate {
+                status: 200,
+                headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+                body: b"data: not-json\n\n".to_vec(),
+            })
+            .await;
+
+            let mut request_options = HttpClientOptions::default();
+            request_options.base_url = Some(server.base_url());
+            request_options.log_redaction_policy = request_policy;
+            request_options.sse_json_mode = SseJsonMode::Strict;
+            let request_client = HttpClientBuilder::new()
+                .create(request_options)
+                .expect("request client should be created");
+
+            let mut execute_options = HttpClientOptions::default();
+            execute_options.base_url = Some(server.base_url());
+            execute_options.sse_json_mode = SseJsonMode::Strict;
+            let execute_client = HttpClientBuilder::new()
+                .create(execute_options)
+                .expect("execute client should be created");
+            let request = request_client
+                .request(Method::GET, "/cross-client-policy-sentinel")
+                .build();
+            let response = execute_client
+                .execute(request)
+                .await
+                .expect("SSE response handshake should succeed");
+            let mut chunks = response.sse_chunks::<serde_json::Value>();
+            let error = timeout(std::time::Duration::from_secs(3), chunks.next())
+                .await
+                .expect("SSE decoding timed out")
+                .expect("SSE stream should return an error")
+                .expect_err("invalid JSON event should fail decoding");
+
+            assert_eq!(error.kind(), HttpErrorKind::SseDecode);
+            assert_eq!(error.status(), Some(StatusCode::OK));
+            assert!(
+                std::error::Error::source(&error).is_some(),
+                "decode source should be retained"
+            );
+            assert_eq!(
+                format!("{error:?}").contains("cross-client-policy-sentinel"),
+                expected_visible
+            );
+            let captured = server.finish().await;
+            assert_eq!(captured.target, "/cross-client-policy-sentinel");
+        });
+    }
+}
+
+#[test]
+fn test_cross_client_redaction_read_timeout_errors_follow_request_snapshot() {
+    for (request_policy, expected_visible) in [(RedactionPolicy::strict(), false), (RedactionPolicy::default(), true)] {
+        let runtime = Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("failed to build tokio runtime");
+        runtime.block_on(async {
+            let server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
+                status: 200,
+                headers: vec![],
+                total_length: 64,
+                prefix: b"partial-body".to_vec(),
+                delay: std::time::Duration::from_millis(100),
+            })
+            .await;
+
+            let mut request_options = HttpClientOptions::default();
+            request_options.base_url = Some(server.base_url());
+            request_options.log_redaction_policy = request_policy;
+            request_options.timeouts.read_timeout = std::time::Duration::from_millis(20);
+            let request_client = HttpClientBuilder::new()
+                .create(request_options)
+                .expect("request client should be created");
+
+            let mut execute_options = HttpClientOptions::default();
+            execute_options.base_url = Some(server.base_url());
+            execute_options.timeouts.read_timeout = std::time::Duration::from_millis(20);
+            let execute_client = HttpClientBuilder::new()
+                .create(execute_options)
+                .expect("execute client should be created");
+            let request = request_client
+                .request(Method::GET, "/cross-client-policy-sentinel")
+                .build();
+            let mut response = timeout(std::time::Duration::from_secs(3), execute_client.execute(request))
+                .await
+                .expect("execute timed out")
+                .expect("response headers should arrive");
+            let error = timeout(std::time::Duration::from_secs(3), response.text())
+                .await
+                .expect("body read timed out")
+                .expect_err("partial response should hit read timeout");
+
+            assert_eq!(error.kind(), HttpErrorKind::ReadTimeout);
+            assert_eq!(
+                format!("{error:?}").contains("cross-client-policy-sentinel"),
+                expected_visible
+            );
+            let _ = timeout(std::time::Duration::from_secs(3), server.finish())
+                .await
+                .expect("server finish timed out");
+        });
+    }
 }

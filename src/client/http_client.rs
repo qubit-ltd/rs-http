@@ -391,7 +391,9 @@ impl HttpClient {
     /// low-level send. A request keeps the URL, origin policy, default headers,
     /// header injectors, and redaction snapshot captured when it was built,
     /// while this client supplies the backend and execution interceptors and
-    /// retry policy. Rebuilding a client does not rebind existing requests.
+    /// retry policy. The request's redaction snapshot also governs request,
+    /// response, and error logging across clients. Rebuilding a client does
+    /// not rebind existing requests.
     ///
     /// # Parameters
     /// - `request`: Built request (URL resolved against its captured base URL
@@ -408,13 +410,14 @@ impl HttpClient {
     /// Returns [`HttpError`] for request preparation, cancellation,
     /// interceptor, transport, response-status, logging, or retry failures.
     pub async fn execute(&self, request: HttpRequest) -> HttpResult<HttpResponse> {
+        let log_redactor = request.log_redactor().clone();
         let retry_options = self.options.retry.resolve(&request);
         let result = if retry_options.should_retry(&request) {
             self.execute_with_retry(request, retry_options).await
         } else {
             self.execute_once(request).await
         };
-        result.map_err(|error| error.with_log_redactor(self.log_redactor.clone()))
+        result.map_err(|error| error.with_log_redactor(log_redactor))
     }
 
     /// Performs one non-retrying execution: pre-send cancellation check,
@@ -475,6 +478,7 @@ impl HttpClient {
         request: HttpRequest,
         context: HttpAttemptExecutionContext,
     ) -> Result<HttpAttemptResponse, HttpAttemptFailure> {
+        let log_redactor = request.log_redactor().clone();
         let mut request = request;
         let mut retry_allowed = self.options.retry.resolve(&request).should_retry(&request);
         let mut honor_retry_after = request.retry_override().should_honor_retry_after();
@@ -496,17 +500,13 @@ impl HttpClient {
                 .await?;
             let mut response = response.into_success_or_status_error("HTTP request failed").await?;
             self.response_interceptors.apply(&mut response.meta)?;
-            let logger = HttpLogger::from_options_with_redactor(&self.options, self.log_redactor.clone());
+            let logger = HttpLogger::from_options_with_redactor(&self.options, response.log_redactor().clone());
             logger.log_response(&mut response).await?;
             Ok(HttpAttemptResponse::new(response, restore_retry_flow_token))
         }
         .await;
         result.map_err(|error| {
-            HttpAttemptFailure::new(
-                error.with_log_redactor(self.log_redactor.clone()),
-                retry_allowed,
-                honor_retry_after,
-            )
+            HttpAttemptFailure::new(error.with_log_redactor(log_redactor), retry_allowed, honor_retry_after)
         })
     }
 
@@ -540,7 +540,7 @@ impl HttpClient {
         if let Some(error) = request.cancelled_error_if_needed(cancellation_message, cancellation_token.as_ref()) {
             return Err(error);
         }
-        let logger = HttpLogger::from_options_with_redactor(&self.options, self.log_redactor.clone());
+        let logger = HttpLogger::from_options_with_redactor(&self.options, request.log_redactor().clone());
         let request_url = request.resolved_url()?;
         let backend_response = request
             .send_impl(&self.backend, &logger, cancellation_token.clone())
