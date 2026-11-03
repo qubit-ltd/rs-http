@@ -36,7 +36,7 @@ pub(crate) fn decode_records(mut lines: SseLineStream, max_frame_bytes: usize) -
         let max_frame_bytes = max_frame_bytes.max(1);
         let mut current_event: Option<String> = None;
         let mut current_id: Option<String> = None;
-        let mut current_data: Vec<String> = Vec::new();
+        let mut current_data = String::new();
         let mut has_fields = false;
         let mut has_data = false;
         let mut current_frame_bytes = 0usize;
@@ -63,13 +63,12 @@ pub(crate) fn decode_records(mut lines: SseLineStream, max_frame_bytes: usize) -
                     if has_data {
                         yield Ok(SseRecord::Dispatch(SseMessage {
                             event: current_event.take(),
-                            data: current_data.join("\n"),
+                            data: std::mem::take(&mut current_data),
                             last_event_id: last_event_id.clone(),
                         }));
                     } else {
                         current_event.take();
                     }
-                    current_data.clear();
                     has_fields = false;
                     has_data = false;
                 }
@@ -103,7 +102,10 @@ pub(crate) fn decode_records(mut lines: SseLineStream, max_frame_bytes: usize) -
                     has_fields = true;
                 }
                 "data" => {
-                    current_data.push(value.to_string());
+                    if has_data {
+                        current_data.push('\n');
+                    }
+                    current_data.push_str(value);
                     has_fields = true;
                     has_data = true;
                 }
@@ -182,6 +184,18 @@ mod tests {
         let input: HttpByteStream = Box::pin(futures_util::stream::iter(chunks));
         let lines = decode_lines(input, 64);
         decode_records(lines, max_frame_bytes)
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .collect()
+    }
+
+    async fn decode_chunks(chunks: Vec<&'static [u8]>) -> crate::HttpResult<Vec<SseRecord>> {
+        let input: HttpByteStream = Box::pin(futures_util::stream::iter(
+            chunks.into_iter().map(Bytes::from_static).map(Ok),
+        ));
+        let lines = decode_lines(input, 64);
+        decode_records(lines, 1024)
             .collect::<Vec<_>>()
             .await
             .into_iter()
@@ -278,6 +292,22 @@ mod tests {
         assert_eq!(
             decode_with_limit(vec![source], 7).await.unwrap_err().kind(),
             crate::HttpErrorKind::SseProtocol,
+        );
+    }
+
+    #[tokio::test]
+    async fn test_frame_decoder_handles_fields_split_across_real_byte_chunks() {
+        let records = decode_chunks(vec![b"data: alpha\ndata:", b"\ndata: omega\n", b"\n"])
+            .await
+            .expect("fields split between byte chunks should decode");
+
+        assert_eq!(
+            records,
+            vec![SseRecord::Dispatch(crate::sse::SseMessage {
+                event: None,
+                data: "alpha\n\nomega".to_owned(),
+                last_event_id: None,
+            })]
         );
     }
 }

@@ -65,6 +65,68 @@ async fn test_decode_frames_allows_field_without_colon_as_field_name() {
 }
 
 #[tokio_test]
+async fn test_decode_frames_preserves_empty_data_lines_and_embedded_newlines() {
+    let response = stream_response_from_chunks(vec!["data\n", "\n"]);
+    let events = collect_results(response.sse_messages()).await;
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].data, "");
+
+    let response = stream_response_from_chunks(vec!["data:\n", "data:\n", "\n"]);
+    let events = collect_results(response.sse_messages()).await;
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].data, "\n");
+
+    let response = stream_response_from_chunks(vec!["data: a\n", "data:\n", "data: b\n\n"]);
+    let events = collect_results(response.sse_messages()).await;
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].data, "a\n\nb");
+}
+
+#[tokio_test]
+async fn test_decode_frames_accepts_near_limit_short_lines_then_resets_for_next_frame() {
+    let mut body = String::new();
+    for index in 0..63 {
+        body.push_str(if index == 0 { "data: x\n" } else { "data:\n" });
+    }
+    body.push_str("\ndata: z\n\n");
+    let response = HttpResponse::new(
+        StatusCode::OK,
+        HeaderMap::new(),
+        Bytes::from(body),
+        Url::parse("https://example.com/stream").unwrap(),
+        Method::GET,
+    );
+    let frame_bytes = 7 + 62 * 5;
+    let events = collect_results(
+        response
+            .sse_max_line_bytes(128)
+            .sse_max_frame_bytes(frame_bytes)
+            .sse_messages(),
+    )
+    .await;
+
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0].data, format!("x{}", "\n".repeat(62)));
+    assert_eq!(events[1].data, "z");
+
+    let response = HttpResponse::new(
+        StatusCode::OK,
+        HeaderMap::new(),
+        Bytes::from(format!("{}data: z\n\n", "data: x\n".repeat(63))),
+        Url::parse("https://example.com/stream").unwrap(),
+        Method::GET,
+    );
+    let mut events = response
+        .sse_max_line_bytes(128)
+        .sse_max_frame_bytes(frame_bytes)
+        .sse_messages();
+    assert_eq!(
+        events.next().await.unwrap().unwrap_err().kind,
+        HttpErrorKind::SseProtocol,
+    );
+}
+
+#[tokio_test]
 async fn test_decode_frames_handles_invalid_retry_value_as_known_field() {
     let response = stream_response_from_chunks(vec!["data: hi\n", "retry: bad\n", "\n"]);
     let events = collect_results(response.sse_messages()).await;
