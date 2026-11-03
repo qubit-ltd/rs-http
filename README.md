@@ -85,6 +85,7 @@ for policy floors, snapshots, budgets, configuration, and examples.
 | Read bytes, text, JSON, streams, or SSE chunks | [User Guide](doc/user_guide.en.md) |
 | Configure logging redaction, proxy, redirects, and IPv4-only mode | [User Guide](doc/user_guide.en.md) |
 | Handle status, transport, timeout, cancellation, decode, and retry errors | [User Guide](doc/user_guide.en.md) |
+| Upgrade from `qubit-http` 0.15 to 0.16 | [Upgrade Guide](doc/user_guide.en.md#upgrade-from-015-to-016) |
 
 ## Core API At A Glance
 

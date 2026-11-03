@@ -1057,6 +1057,21 @@ while let Some(item) = events.next().await {
 解码还受单行和单帧上限约束。只有在业务允许重复执行时，才应把已缓冲的
 请求体或每次都创建新流的 `streaming_body` 工厂视为可重放。
 
+## 从 0.15 升级到 0.16
+
+本节以仓库 `v0.15.1` 标签和提交 `e93a4cb` 中的 `0.16.0` 为比较依据。crate 声明的最低 Rust 版本仍为 1.94。请将依赖要求更新为 `qubit-http = "0.16"`；`^0.15` 不包含 `0.16`。
+
+| 项目 | 已核实的变化或保留契约 | 调用方操作 |
+| --- | --- | --- |
+| 依赖 | manifest 将 `qubit-json` 从 0.10 更新到 0.12、`qubit-config` 从 0.14 更新到 0.15、`qubit-budget` 从 0.7 更新到 0.10、`qubit-redact` 从 0.9 更新到 0.10，Tokio 从 1.53 更新到 1.54。`reqwest` 仍为 0.13。 | 检查 lockfile 和直接依赖约束是否满足所选 `qubit-http` 版本。 |
+| Base URL | 配置键仍为 `base_url`，现在仅接受 HTTP 或 HTTPS URL。没有新增替代键。 | 检查是否配置了 `file:`、`ws:` 等 scheme；改用 HTTP(S) API 基址。 |
+| 配置 | 对比源码没有发现 `retry`、`timeouts` 或 `sse` 配置键改名。当前指南列出支持的键和值。 | 用 `HttpClientOptions::from_config` 或 `HttpClientBuilder::from_config` 解析实际配置；将未知键或无效值错误作为迁移项处理。 |
+| 重试归属 | `execute` 只会在返回 `HttpResponse` 前重试符合条件的失败；返回后的响应体和 SSE 读取由调用方负责，不会重新进入 HTTP 重试。上层 SDK 可以拥有单独的操作级重试。 | 如果 SDK 已重试整个操作，保留请求级 `disable_retry()`，如 OpenAI provider 的做法。验证一次应用层尝试不会意外叠加多层重试。 |
+| 客户端 hook | 两个版本的 `to_builder()` 都只复制选项；`rebuild_with_options()` 创建新 backend 并保留已注册的注入器和拦截器。 | 修改已配置客户端的选项时，若 hook 属于契约则使用 `rebuild_with_options()`；不要假定 `to_builder()` 会复制 hook。 |
+| SSE | 0.16 源码增加对空 `id:` 重置、有效 SSE `retry:` 提示持续生效，以及 `204 No Content` 在媒体类型检查前正常结束的处理。严格 JSON 与完成标记策略仍由调用方选择。 | 检查游标重置和重试时间预期。严格 JSON 流应显式使用 `SseJsonMode::Strict` 与 `SseCompletionPolicy::RequireDoneMarker`，并测试完整帧和未完成帧。 |
+
+验证下游 SDK 升级时，请检查普通 JSON 响应解码、SDK 拥有重试时单次网络请求、严格 SSE 完成条件，以及 `rebuild_with_options()` 后 hook 保留情况。可以用独立的小型 Cargo consumer 覆盖这些调用方式；该检查不能证明所有下游包都已完成升级。
+
 ## 延伸阅读
 
 - [README](../README.zh_CN.md) 和 [English README](../README.md)
