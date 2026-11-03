@@ -12,16 +12,61 @@ use http::HeaderMap;
 use http::HeaderValue;
 use http::Method;
 use http::StatusCode;
+use http::header::CONTENT_LENGTH;
 use http::header::RETRY_AFTER;
+use qubit_http::HttpClientBuilder;
+use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
 use qubit_http::HttpResponse;
 use qubit_http::constants::DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES;
 use qubit_json::decode::DiagnosticPolicy;
 use qubit_json::decode::JsonDecodeError;
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
+use tokio::net::TcpListener;
 use tokio::test as tokio_test;
+use tokio::time::timeout;
 use url::Url;
 
 use crate::common::SensitiveChoice;
+
+#[tokio_test]
+async fn test_304_content_length_is_not_body_length() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        let mut request = [0_u8; 1024];
+        let _ = timeout(std::time::Duration::from_secs(2), stream.read(&mut request))
+            .await
+            .unwrap()
+            .unwrap();
+        stream
+            .write_all(b"HTTP/1.1 304 Not Modified\r\nContent-Length: 100000\r\nConnection: close\r\n\r\n")
+            .await
+            .unwrap();
+    });
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(Url::parse(&format!("http://{address}")).unwrap());
+    options.proxy.enabled = false;
+    options.use_env_proxy = false;
+    options.retry.enabled = false;
+    let client = HttpClientBuilder::new().create(options).unwrap();
+    let request = client.request(Method::GET, "/not-modified").build();
+    let error = timeout(std::time::Duration::from_secs(3), client.execute(request))
+        .await
+        .unwrap()
+        .unwrap_err();
+    let response = error
+        .status_response()
+        .unwrap_or_else(|| panic!("status error should preserve response: {error:?}"));
+    assert_eq!(error.status(), Some(StatusCode::NOT_MODIFIED));
+    assert!(response.body().is_empty());
+    assert!(!response.is_truncated());
+    assert_eq!(response.content_length(), Some(0));
+    assert_eq!(response.headers().get(CONTENT_LENGTH).unwrap(), "100000");
+    server.await.unwrap();
+}
 
 #[tokio_test]
 async fn test_cached_stream_preserves_buffered_body() {

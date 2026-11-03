@@ -1060,7 +1060,7 @@ impl HttpResponse {
     /// Returns `Content-Length` parsed from response headers when present and
     /// valid.
     fn content_length_hint(&self) -> Option<u64> {
-        if self.meta.method() == Method::HEAD {
+        if self.meta.method() == Method::HEAD || self.meta.status() == StatusCode::NOT_MODIFIED {
             return Some(0);
         }
         self.meta

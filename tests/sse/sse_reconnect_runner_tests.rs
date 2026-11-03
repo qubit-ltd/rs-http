@@ -12,6 +12,7 @@
 use std::future::Future;
 use std::io::Error as IoError;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::task::Context;
@@ -1528,6 +1529,119 @@ async fn test_execute_sse_with_reconnect_does_not_retry_non_eof_source_error() {
     let error = events.next().await.unwrap().unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::Other);
     assert_eq!(attempts.load(Ordering::Relaxed), 1);
+}
+
+#[tokio_test]
+async fn test_retry_control_applies_after_unterminated_retry_line_at_eof() {
+    let server = spawn_multi_shot_server(vec![
+        ResponsePlan::Chunked {
+            status: 200,
+            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+            chunks: vec![ResponseChunk {
+                delay: Duration::ZERO,
+                bytes: b"retry: 100".to_vec(),
+            }],
+            finish: false,
+        },
+        ResponsePlan::Chunked {
+            status: 200,
+            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+            chunks: vec![ResponseChunk {
+                delay: Duration::ZERO,
+                bytes: b"data: recovered\n\n".to_vec(),
+            }],
+            finish: true,
+        },
+    ])
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.read_timeout = Duration::from_secs(2);
+    options.timeouts.response_header_timeout = Duration::from_secs(2);
+    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let observed = attempts.clone();
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
+        observed.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }));
+    let request = client.request(Method::GET, "/retry-control-eof-fragment").build();
+    let started = Instant::now();
+    let mut events = client.execute_sse_with_reconnect(
+        request,
+        SseReconnectOptions {
+            retry: build_retry_options(1, BackoffPolicy::fixed(Duration::from_millis(100))),
+            reconnect_on_eof: true,
+            honor_server_retry: true,
+            ..SseReconnectOptions::default()
+        },
+    );
+    let message = timeout(Duration::from_secs(3), events.next())
+        .await
+        .expect("retry reconnect timed out")
+        .expect("second response should dispatch")
+        .expect("second response should be valid");
+    assert_eq!(message.data, "recovered");
+    assert!(started.elapsed() >= Duration::from_millis(100));
+    assert_eq!(attempts.load(Ordering::SeqCst), 2);
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.len(), 2);
+}
+
+#[tokio_test]
+async fn test_retry_control_timeout_reconnect_honors_complete_retry_line() {
+    let server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
+        status: 200,
+        headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+        total_length: 1024,
+        prefix: b"retry: 1000\n".to_vec(),
+        delay: Duration::from_millis(400),
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.read_timeout = Duration::from_millis(80);
+    options.timeouts.response_header_timeout = Duration::from_secs(2);
+    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let attempts = Arc::new(Mutex::new(Vec::new()));
+    let observed = attempts.clone();
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
+        observed.lock().unwrap().push(Instant::now());
+        Ok(())
+    }));
+    let request = client.request(Method::GET, "/retry-control-read-timeout").build();
+    let mut events = client.execute_sse_with_reconnect(
+        request,
+        SseReconnectOptions {
+            retry: build_retry_options(1, BackoffPolicy::immediate()),
+            reconnect_on_eof: true,
+            honor_server_retry: true,
+            ..SseReconnectOptions::default()
+        },
+    );
+    let error = timeout(Duration::from_secs(2), events.next())
+        .await
+        .expect("read timeout and retry should terminate promptly")
+        .expect("read timeout should yield a terminal error")
+        .expect_err("failed reconnect should yield an error");
+    assert!(matches!(
+        error.kind,
+        HttpErrorKind::Transport | HttpErrorKind::ReadTimeout
+    ));
+    {
+        let attempts = attempts.lock().unwrap();
+        assert_eq!(attempts.len(), 2);
+        assert!(
+            attempts[1].duration_since(attempts[0]) >= Duration::from_millis(1_000),
+            "complete retry line should control reconnect delay after a body-read timeout"
+        );
+    }
+    let captured = timeout(Duration::from_secs(2), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.target, "/retry-control-read-timeout");
 }
 
 #[tokio_test]

@@ -36,7 +36,6 @@ pub(crate) fn decode_records(mut lines: SseLineStream, max_frame_bytes: usize) -
         let max_frame_bytes = max_frame_bytes.max(1);
         let mut current_event: Option<String> = None;
         let mut current_id: Option<String> = None;
-        let mut current_retry: Option<u64> = None;
         let mut current_data: Vec<String> = Vec::new();
         let mut has_fields = false;
         let mut has_data = false;
@@ -55,9 +54,6 @@ pub(crate) fn decode_records(mut lines: SseLineStream, max_frame_bytes: usize) -
             if line.is_empty() {
                 current_frame_bytes = 0;
                 if has_fields {
-                    if let Some(retry_ms) = current_retry.take() {
-                        yield Ok(SseRecord::Control(SseControl::ReconnectDelayMs(retry_ms)));
-                    }
                     if let Some(id) = current_id.take() {
                         last_event_id = Some(id.clone());
                         if !has_data {
@@ -120,7 +116,7 @@ pub(crate) fn decode_records(mut lines: SseLineStream, max_frame_bytes: usize) -
                 "retry" => {
                     if !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit()) {
                         if let Ok(retry) = value.parse::<u64>() {
-                            current_retry = Some(retry);
+                            yield Ok(SseRecord::Control(SseControl::ReconnectDelayMs(retry)));
                         }
                     }
                     has_fields = true;
@@ -129,11 +125,8 @@ pub(crate) fn decode_records(mut lines: SseLineStream, max_frame_bytes: usize) -
             }
         }
 
-        // Preserve complete control fields at EOF, but never dispatch an
+        // Preserve complete id control fields at EOF, but never dispatch an
         // event whose terminating blank line was missing.
-        if let Some(retry_ms) = current_retry {
-            yield Ok(SseRecord::Control(SseControl::ReconnectDelayMs(retry_ms)));
-        }
         if !has_data {
             if let Some(id) = current_id {
                 yield Ok(SseRecord::Control(SseControl::LastEventId(id)));
