@@ -54,3 +54,13 @@ reason = "Body failure and runtime state are private parts of one response lifec
 rule = "public-type-layout"
 path = "src/sse/sse_reconnect_runner.rs"
 reason = "Reconnect action and state types implement one private state machine."
+
+[[exceptions]]
+rule = "test-file-name"
+path = "tests/local_quick_start.rs"
+reason = "The plan requires the cargo test target name local_quick_start."
+
+[[exceptions]]
+rule = "test-redirect"
+path = "tests/local_quick_start.rs"
+reason = "The integration test includes the runnable example source to validate the same code path."

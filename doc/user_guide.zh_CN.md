@@ -49,33 +49,26 @@ use qubit_http::{HttpClientBuilder, HttpClientOptions};
 
 ## 快速开始
 
-假设服务需要调用一个 HTTP API、附加客户端标识，并读取响应体；如果每个
-服务都单独配置 `reqwest`，这些行为很容易逐渐分叉。本节的成功标准是：
-收到 2xx 响应后，调用方能够观察状态码和响应体。下面的完整示例使用
-`httpbin.org`，无需启动本地服务：
+假设服务需要调用 HTTP API、附加客户端标识并读取响应体。可运行示例会在
+操作系统分配的端口启动回环服务，并将其地址设为客户端的 `base_url`：
 
 ```rust
-use http::Method;
-use qubit_http::{HttpClientBuilder, HttpClientOptions};
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut options = HttpClientOptions::new();
-    options.set_base_url("https://httpbin.org")?;
-    options.add_header("x-app", "demo")?;
-
-    let client = HttpClientBuilder::new().create(options)?;
-    let request = client
-        .request(Method::GET, "/anything")
-        .query_param("from", "user-guide")
-        .build();
-
-    let mut response = client.execute(request).await?;
-    println!("status = {}", response.status());
-    println!("body = {}", response.text().await?);
-    Ok(())
-}
+let mut options = HttpClientOptions::new();
+options.set_base_url(&format!("http://{address}"))?;
+options.add_header("x-client-id", "demo")?;
+let client = HttpClientBuilder::new().create(options)?;
+let request = client
+    .request(Method::GET, "/anything")
+    .query_param("from", "local-quick-start")
+    .build();
+let mut response = client.execute(request).await?;
+println!("status = {}", response.status());
+println!("text = {}", response.text().await?);
 ```
+
+使用 `cargo run --example local_quick_start` 运行完整示例（包含本地服务）。
+它会检查响应并输出 `status = 200 OK` 和 `text = ready`；完整源码见
+[`examples/local_quick_start.rs`](../examples/local_quick_start.rs)。示例不需要外部服务或凭据。
 
 `execute` 只把 2xx 状态码视为成功。非 2xx 状态会返回 `HttpErrorKind::Status`，并在错误中携带状态码、方法、URL、截断后的响应体预览，以及可解析的 `Retry-After`。
 
@@ -92,7 +85,7 @@ let client = qubit_http::HttpClientBuilder::new().create_default()?;
 | 项目 | 默认值 |
 | --- | --- |
 | `base_url` | 无；可以直接使用显式绝对 URL，也可以设置 base URL 后使用相对路径 |
-| `origin_policy` | 默认 `SameOrigin`；设置 base URL 后，绝对目标也须同源，重定向不能越过初始源。`AnyOrigin` 允许访问跨源绝对 URL 和跨源重定向 |
+| `origin_policy` | 默认 `SameOrigin`。初始 URL 按请求快照校验；重定向按执行客户端后端策略校验。详见[跨客户端来源策略](#跨客户端来源策略)。 |
 | 连接超时 | 10 秒 |
 | 读超时 | 120 秒 |
 | 响应头／发送阶段超时 | 120 秒 |
@@ -110,6 +103,21 @@ let client = qubit_http::HttpClientBuilder::new().create_default()?;
 | SSE 完成标记策略 | `DefaultDone`，即识别 `[DONE]` |
 | SSE 单行上限 | 64 KiB |
 | SSE 单帧上限 | 1 MiB |
+
+### 跨客户端来源策略
+
+请求构建时会捕获来源客户端的 base URL 和来源策略。调用 `execute` 的
+客户端提供网络后端，其中包括重定向策略：
+
+| 阶段 | 策略归属 |
+| --- | --- |
+| 初始 URL 解析与来源校验 | 构建请求的客户端快照 |
+| 重定向来源校验 | 执行客户端的后端 |
+
+例如，客户端 A 用 `SameOrigin` 构建请求，客户端 B 用 `AnyOrigin` 执行。
+初始 URL 仍按 A 的快照校验，重定向则遵循 B 的策略。如果 B 使用
+`SameOrigin`，即使 A 使用 `AnyOrigin`，B 的重定向策略仍会限制重定向。
+重建客户端不会重绑已有请求；若两个阶段都要使用新客户端配置，请用该配置重新构建请求。
 
 ### 使用代码配置
 
@@ -185,7 +193,7 @@ let client = HttpClientBuilder::new()
 | 键 | 说明 |
 | --- | --- |
 | `base_url` | 相对请求路径的基础 URL |
-| `origin_policy` | `same_origin`（默认）限制请求和重定向处于初始源；`any_origin` 允许跨源绝对 URL 和跨源重定向 |
+| `origin_policy` | `same_origin`（默认）按请求快照校验初始 URL；重定向使用执行客户端后端策略。`any_origin` 允许对应策略阶段访问跨源 URL；详见[跨客户端来源策略](#跨客户端来源策略) |
 | `timeouts.connect_timeout` | 连接超时 |
 | `timeouts.read_timeout` | 限制每次正常响应体读取及完整的非成功状态错误体采集阶段 |
 | `timeouts.response_header_timeout` | 从异步准备到收到响应头的累计期限；同步请求拦截器在该期限开始前运行 |
@@ -234,7 +242,7 @@ config.set(
 
 ## 构建请求
 
-通过 `client.request(method, path)` 创建 `HttpRequestBuilder`。`path` 可以是绝对 URL，也可以是相对路径。默认 `SameOrigin` 策略下，未配置 `base_url` 时允许显式绝对 URL，并把它作为本次请求的初始源；配置了 `base_url` 时，目标必须与它的 scheme、host 和有效端口一致。相对路径必须有 `base_url`。若要访问跨源目标，必须显式选择 `AnyOrigin`；同源策略下的重定向仍不能跨越初始源。
+通过 `client.request(method, path)` 创建 `HttpRequestBuilder`。`path` 可以是绝对 URL，也可以是相对路径。默认 `SameOrigin` 策略下，未配置 `base_url` 时允许显式绝对 URL，并把它作为本次请求的初始源；配置了 `base_url` 时，目标必须与它的 scheme、host 和有效端口一致。相对路径必须有 `base_url`。若要访问跨源初始目标，必须显式选择 `AnyOrigin`。初始 URL 按构建请求的客户端快照校验；重定向按执行客户端的策略校验。详见[跨客户端来源策略](#跨客户端来源策略)。
 
 请求 URL 以及客户端或请求级 `base_url` 必须使用 `http` 或 `https`。`ftp`、`file`、`data` 等不支持的 scheme 会在请求解析时以 `InvalidUrl` 拒绝；客户端配置中的不支持 `base_url` 会作为 `base_url` 配置错误返回，避免被误分类为可重试的传输错误。
 
@@ -608,7 +616,7 @@ SSE 不承诺普通 HTTP 自动重试的直接 source 类型或诊断信息。
 | 现象 | 检查项 | 处理方式 |
 | --- | --- | --- |
 | 相对请求路径返回 `InvalidUrl` | 是否设置了 `base_url` | 配置 client/request 级 base URL，或改用绝对 URL。 |
-| 跨 origin 的 URL 或重定向被拒绝 | `origin_policy` 与 base URL | 默认 `SameOrigin` 用于隔离；只有服务契约确实需要跨 origin 时才显式使用 `AnyOrigin`。 |
+| 跨 origin 的 URL 或重定向被拒绝 | `origin_policy` 与 base URL | 默认 `SameOrigin` 用于隔离；只有服务契约确实需要跨 origin 时才显式使用 `AnyOrigin`。请求由一个客户端构建、另一个客户端执行时，详见[跨客户端来源策略](#跨客户端来源策略)。 |
 | 请求没有重试 | `retry.enabled`、`max_attempts`、方法策略和错误白名单 | 开启重试，并确认当前方法及错误/状态码允许且适合重放。 |
 | 流式读取后再次读取 body 失败 | 是否已移交未缓存的后端流 | 已缓存响应仍可重复读取；未缓存后端流移交后无法再取回。 |
 | 没有日志或日志出现敏感值 | `logging.enabled`、TRACE subscriber 等级和脱敏策略 | 同时开启日志条件，并在创建 client 前配置 `RedactionPolicy`。 |
@@ -639,6 +647,8 @@ SSE 不承诺普通 HTTP 自动重试的直接 source 类型或诊断信息。
 可以用 `retry.status_codes` 和 `retry.error_kinds` 配置白名单。白名单一旦设置，就只重试列出的状态码或错误类型。
 
 `retry.error_kinds` 可使用所有 `HttpErrorKind` 名称的配置形式。配置值会 trim，`read-timeout` 一类连字符形式会归一化为 `read_timeout`；请使用小写 snake_case 或等价的连字符形式。
+
+request interceptor 可以在重试流程准入后修改 method 或重试覆盖项；最终 method 和覆盖项决定该流程能否继续。拦截器不能启动此前未准入的重试流程。拦截器顺序见 [Header、注入器和拦截器](#header-注入器和拦截器)。
 
 对单个请求可以覆盖：
 
@@ -985,7 +995,7 @@ while let Some(item) = events.next().await {
 | `log_redaction.excluded_sensitive_headers` | 显式允许保持可见的精确 header 名称字符串列表 |
 | `log_redaction.excluded_sensitive_query_params` | 显式允许保持可见的精确 query 参数名称字符串列表 |
 | `log_redaction.excluded_sensitive_body_fields` | 显式允许保持可见的精确结构化 body 字段名称字符串列表 |
-| `origin_policy` | `same_origin`（默认）限制请求和重定向处于初始源；`any_origin` 允许跨源绝对 URL 和跨源重定向 |
+| `origin_policy` | `same_origin`（默认）按请求快照校验初始 URL；重定向使用执行客户端后端策略。`any_origin` 允许对应策略阶段访问跨源 URL；详见[跨客户端来源策略](#跨客户端来源策略) |
 | `default_headers` | 默认请求 header 的 JSON map 字符串；不能与 `default_headers.<name>` 同时使用；大小写无关的重复名称会被拒绝 |
 | `default_headers.<name>` | 一个默认请求 header 子键；不能与 `default_headers` JSON map 同时使用；大小写无关的重复名称会被拒绝 |
 | `json.max_depth` | JSON 最大嵌套深度；默认 `128` |

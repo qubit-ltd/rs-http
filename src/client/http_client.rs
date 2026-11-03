@@ -391,7 +391,13 @@ impl HttpClient {
     /// low-level send. A request keeps the URL, origin policy, default headers,
     /// header injectors, and redaction snapshot captured when it was built,
     /// while this client supplies the backend and execution interceptors and
-    /// retry policy. The request's redaction snapshot also governs request,
+    /// retry policy. Initial URL resolution and origin checks use the request's
+    /// captured origin policy; redirect checks use the executing client's
+    /// backend policy. For example, if client A builds a `SameOrigin` request
+    /// and client B with `AnyOrigin` executes it, the initial URL is still
+    /// checked against A's snapshot, while redirects follow B's policy. If B
+    /// uses `SameOrigin`, its redirect policy restricts redirects even when A
+    /// used `AnyOrigin`. The request's redaction snapshot also governs request,
     /// response, and error logging across clients. Rebuilding a client does
     /// not rebind existing requests.
     ///

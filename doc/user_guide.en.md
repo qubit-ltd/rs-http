@@ -51,33 +51,28 @@ use qubit_http::{HttpClientBuilder, HttpClientOptions};
 ## Quick Start
 
 Suppose a service needs to call an HTTP API, attach a client identifier, and
-inspect the response body without writing a separate `reqwest` setup for each
-service. The success criterion is a 2xx response whose status and body can be
-observed by the caller. The following complete example uses `httpbin.org`, so
-no local server is required:
+inspect the response body. The runnable example starts a loopback server on an
+OS-assigned port and uses its address as the client's `base_url`:
 
 ```rust
-use http::Method;
-use qubit_http::{HttpClientBuilder, HttpClientOptions};
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut options = HttpClientOptions::new();
-    options.set_base_url("https://httpbin.org")?;
-    options.add_header("x-app", "demo")?;
-
-    let client = HttpClientBuilder::new().create(options)?;
-    let request = client
-        .request(Method::GET, "/anything")
-        .query_param("from", "user-guide")
-        .build();
-
-    let mut response = client.execute(request).await?;
-    println!("status = {}", response.status());
-    println!("body = {}", response.text().await?);
-    Ok(())
-}
+let mut options = HttpClientOptions::new();
+options.set_base_url(&format!("http://{address}"))?;
+options.add_header("x-client-id", "demo")?;
+let client = HttpClientBuilder::new().create(options)?;
+let request = client
+    .request(Method::GET, "/anything")
+    .query_param("from", "local-quick-start")
+    .build();
+let mut response = client.execute(request).await?;
+println!("status = {}", response.status());
+println!("text = {}", response.text().await?);
 ```
+
+Run the complete example, including its local server, with
+`cargo run --example local_quick_start`. It checks the response and prints
+`status = 200 OK` and `text = ready`; see
+[`examples/local_quick_start.rs`](../examples/local_quick_start.rs) for the
+full source. The example needs no external service or credentials.
 
 `execute` treats only 2xx status codes as success. Non-2xx responses return `HttpErrorKind::Status` with status, method, URL, a bounded response-body preview, and a parsed `Retry-After` value when available.
 
@@ -94,7 +89,7 @@ Default behavior:
 | Item | Default |
 | --- | --- |
 | `base_url` | None; use an explicit absolute URL, or set a request/client base URL for relative paths |
-| `origin_policy` | `SameOrigin`; a configured base URL also restricts absolute targets, and redirects cannot cross the initial origin. `AnyOrigin` permits cross-origin absolute targets and redirects |
+| `origin_policy` | `SameOrigin` by default. Initial URL checks use the request snapshot; redirect checks use the executing client backend. See [origin policy across clients](#origin-policy-across-clients). |
 | Connect timeout | 10 seconds |
 | Read timeout | 120 seconds |
 | Response-header/send-phase timeout | 120 seconds |
@@ -112,6 +107,24 @@ Default behavior:
 | SSE done-marker policy | `DefaultDone`, recognizing `[DONE]` |
 | SSE line limit | 64 KiB |
 | SSE frame limit | 1 MiB |
+
+### Origin policy across clients
+
+A request captures the originating client's base URL and origin policy when it
+is built. The client passed to `execute` supplies the network backend, including
+its redirect policy:
+
+| Stage | Policy owner |
+| --- | --- |
+| Initial URL resolution and origin check | Request-building client snapshot |
+| Redirect origin check | Executing client's backend |
+
+For example, client A can build a `SameOrigin` request and client B with
+`AnyOrigin` can execute it. The initial URL is still checked against A's
+snapshot, while redirects follow B's policy. If B uses `SameOrigin`, its
+redirect policy restricts redirects even when A used `AnyOrigin`. Rebuilding a
+client does not rebind existing requests. Build a new request with the desired
+client configuration when both stages should use that client's policy.
 
 ### Programmatic Options
 
@@ -191,7 +204,7 @@ Common configuration keys:
 | Key | Description |
 | --- | --- |
 | `base_url` | Base URL used to resolve relative request paths |
-| `origin_policy` | `same_origin` (default) restricts requests and redirects to the initial origin; `any_origin` permits cross-origin absolute targets and redirects |
+| `origin_policy` | `same_origin` (default) checks initial URLs using the request snapshot; redirects use the executing client backend policy. `any_origin` permits cross-origin URLs at the stage controlled by that policy; see [origin policy across clients](#origin-policy-across-clients) |
 | `timeouts.connect_timeout` | Connect timeout |
 | `timeouts.read_timeout` | Bounds each normal response-body read and the complete non-success error-body capture phase |
 | `timeouts.response_header_timeout` | Cumulative asynchronous preparation and send deadline through response headers; synchronous request interceptors run before this deadline starts |
@@ -240,7 +253,7 @@ config.set(
 
 ## Building Requests
 
-Use `client.request(method, path)` to create an `HttpRequestBuilder`. `path` can be an absolute URL or a relative path. With the default `SameOrigin` policy, an explicit absolute URL is allowed when no `base_url` is configured and becomes the origin for that request; when `base_url` is configured, the URL must share its scheme, host, and effective port. Relative paths require a `base_url`. `AnyOrigin` must be selected explicitly to allow cross-origin targets, while same-origin redirects remain restricted to the initial origin.
+Use `client.request(method, path)` to create an `HttpRequestBuilder`. `path` can be an absolute URL or a relative path. With the default `SameOrigin` policy, an explicit absolute URL is allowed when no `base_url` is configured and becomes the origin for that request; when `base_url` is configured, the URL must share its scheme, host, and effective port. Relative paths require a `base_url`. `AnyOrigin` must be selected explicitly to allow cross-origin initial targets. Initial URL checks use the policy captured by the client that built the request; redirects use the policy of the client that executes it. See [origin policy across clients](#origin-policy-across-clients).
 
 Request URLs and client/request `base_url` values must use `http` or `https`. Unsupported schemes such as `ftp`, `file`, and `data` are rejected as `InvalidUrl` at request resolution; an unsupported client `base_url` is rejected as a `base_url` configuration error. This prevents unsupported targets from being misclassified as retryable transport failures.
 
@@ -614,7 +627,7 @@ following symptoms identify the most common configuration or usage mistakes:
 | Symptom | Check | Corrective action |
 | --- | --- | --- |
 | Relative request path fails with `InvalidUrl` | Whether `base_url` is set | Configure a client/request base URL or use an absolute URL. |
-| Cross-origin URL or redirect is rejected | `origin_policy` and the configured base URL | Use the default `SameOrigin` for isolation, or explicitly select `AnyOrigin` when the service contract requires it. |
+| Cross-origin URL or redirect is rejected | `origin_policy` and the configured base URL | Use the default `SameOrigin` for isolation, or explicitly select `AnyOrigin` when the service contract requires it. For requests built by one client and executed by another, see [origin policy across clients](#origin-policy-across-clients). |
 | Request never retries | `retry.enabled`, `max_attempts`, method policy, and error allowlists | Enable retry and ensure the method and error/status are safe and allowed to replay. |
 | Response body read fails after streaming | Whether an unbuffered backend stream was already taken | Buffered responses remain reusable; an unbuffered backend stream cannot be recovered after it is transferred. |
 | Logs are absent or sensitive values are visible | `logging.enabled`, TRACE subscriber level, and redaction policy | Enable both logging conditions and configure `RedactionPolicy` before constructing the client. |
@@ -645,6 +658,8 @@ Default retryability:
 You can configure `retry.status_codes` and `retry.error_kinds` allowlists. Once an allowlist is set, only listed statuses or error kinds are retried.
 
 `retry.error_kinds` accepts config names for every `HttpErrorKind`. Values are trimmed; hyphenated names such as `read-timeout` are normalized to `read_timeout`. Use lowercase snake_case or the equivalent hyphenated form.
+
+A request interceptor can change the method or retry override after retry flow has been admitted. The final method and override determine whether the flow may continue; an interceptor cannot start a retry flow that was not admitted. See [Headers, Injectors, And Interceptors](#headers-injectors-and-interceptors) for interceptor ordering.
 
 Per-request override example:
 
@@ -1004,7 +1019,7 @@ The table below lists every configuration key supported by `HttpClientOptions::f
 | `log_redaction.excluded_sensitive_headers` | String list of exact header names explicitly allowed to remain visible |
 | `log_redaction.excluded_sensitive_query_params` | String list of exact query-parameter names explicitly allowed to remain visible |
 | `log_redaction.excluded_sensitive_body_fields` | String list of exact structured-body field names explicitly allowed to remain visible |
-| `origin_policy` | `same_origin` (default) restricts requests and redirects to the initial origin; `any_origin` permits cross-origin absolute targets and redirects |
+| `origin_policy` | `same_origin` (default) checks initial URLs using the request snapshot; redirects use the executing client backend policy. `any_origin` permits cross-origin URLs at the stage controlled by that policy; see [origin policy across clients](#origin-policy-across-clients) |
 | `default_headers` | JSON map string of default request headers; cannot be combined with `default_headers.<name>`; case-insensitive duplicate names are rejected |
 | `default_headers.<name>` | One default request header subkey; cannot be combined with the `default_headers` JSON map; case-insensitive duplicate names are rejected |
 | `json.max_depth` | Maximum JSON nesting depth; defaults to `128` |

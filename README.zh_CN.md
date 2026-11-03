@@ -15,7 +15,6 @@
 
 文档：[中文用户指南](doc/user_guide.zh_CN.md) | [English User Guide](doc/user_guide.en.md) | [设计文档](doc/design.zh_CN.md) | [Design](doc/design.md) | [API 文档](https://docs.rs/qubit-http)
 
-已准入的重试流程会依据 request interceptor 修改后的最终方法和覆盖项决定是否续试。IPv4-only 客户端会将指向 IPv6 字面量的重定向作为 `InvalidUrl` 拒绝。显式代理的 host 只能填写域名或 IP 字面量，端口和凭据应放在各自配置项中。multipart `Content-Type` 只能有一个 `boundary` 参数，且须与 body 分隔符一致。普通 HTTP 自动重试失败时，请使用 `retry_diagnostics()` 和保留的 `RetryError<HttpError>` source；旧 `retry_metadata()` getter 已弃用且始终返回空值。
 
 ## 为什么使用
 
@@ -43,30 +42,27 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
 ## 快速开始
 
-这个示例使用 `httpbin.org`，不需要额外启动本地测试服务。
+运行共享的本地示例：`cargo run --example local_quick_start`。示例会在操作系统分配的端口启动回环服务，把该地址设为 `base_url`，发送带客户端标识和查询参数的 GET 请求，并检查响应：
 
 ```rust
-use http::Method;
-use qubit_http::{HttpClientBuilder, HttpClientOptions};
+let mut options = HttpClientOptions::new();
+options.set_base_url(&format!("http://{address}"))?;
+options.add_header("x-client-id", "demo")?;
+let client = HttpClientBuilder::new().create(options)?;
+let request = client
+    .request(Method::GET, "/anything")
+    .query_param("from", "local-quick-start")
+    .build();
+let mut response = client.execute(request).await?;
+println!("status = {}", response.status());
+println!("text = {}", response.text().await?);
+```
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut options = HttpClientOptions::new();
-    options.set_base_url("https://httpbin.org")?;
-    options.add_header("x-client-id", "demo")?;
+包含本地服务的完整可运行源码见 [`examples/local_quick_start.rs`](examples/local_quick_start.rs)。运行结果：
 
-    let client = HttpClientBuilder::new().create(options)?;
-
-    let request = client
-        .request(Method::GET, "/anything")
-        .query_param("from", "readme")
-        .build();
-
-    let mut response = client.execute(request).await?;
-    println!("status = {}", response.status());
-    println!("text = {}", response.text().await?);
-    Ok(())
-}
+```text
+status = 200 OK
+text = ready
 ```
 
 ## 日志脱敏
@@ -103,22 +99,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## 项目范围
 
-- `qubit-http` 基于 `reqwest` 构建，重点是提供稳定、统一的 HTTP 基础设施层，而不是暴露 `reqwest` 的全部 API。
-- 响应体始终惰性读取。TRACE 响应体日志只记录已经缓存的 body，不会为了
-  日志消费尚未读取的后端流。
-- 内置请求重试只覆盖返回 `HttpResponse` 之前的失败。返回后的流式响应体错误会交给调用方处理。
-- SSE 重连使用独立 API：`HttpClient::execute_sse_with_reconnect(...)`。
-- 已缓存的响应体可重复读取：重复调用 `bytes` / `text` / `json`，以及基于缓存创建 `stream()`，不会移交或清空缓存。
-- 标准脱敏策略会保留 URL path；若其中可能包含敏感标识符，可选择严格策略或 path 脱敏。详见[日志脱敏指南](doc/user_guide.zh_CN.md#日志脱敏)。
-- SSE 重连有独立的游标、retry 提示和 204 结束语义，详见 [SSE 自动重连](doc/user_guide.zh_CN.md#sse-自动重连)；这不代表完整实现 EventSource。
-- 错误预览与保留 raw body 使用独立限额；预览截断不会将完整 raw body 标记为不完整。`read_timeout` 限制完整的非成功错误体采集阶段；超时时，`Status` 错误仍保留 status 和标记为不完整的部分 raw body。
-- SSE data 事件只在空行处派发；EOF 会丢弃未完成帧，服务端必须用空行结束最后一个事件。流起始处的一个 BOM 会被忽略。`AllowEof` 允许完整事件流没有 done marker，但不会放宽 framing；`RequireDoneMarker` 只接受完整事件中的 marker。帧和行限额见 [SSE 解码](doc/user_guide.zh_CN.md#sse-解码)。
-- 自动 SSE 解码诊断不包含原始 event 或 cursor；Lenient 日志只记录是否存在及字节数。
-- 请求与重定向默认使用 `SameOrigin`；确需跨源时显式设为 `AnyOrigin`。配置键 `origin_policy` 接受 `same_origin` 或 `any_origin`。
-- JSON SSE 调用方可以通过 `SseCompletionPolicy::RequireDoneMarker` 要求显式完成标记，
-  详见 [SSE 指南](doc/user_guide.zh_CN.md#sse-json-chunk)。
-
-重试预算、超时阶段、重放约束、诊断和保留的 `RetryError<HttpError>` source 契约见[自动重试](doc/user_guide.zh_CN.md#自动重试)及[错误模型](doc/user_guide.zh_CN.md#错误模型)。响应头期限在同步请求拦截器运行后开始；`request_timeout` 限制 reqwest 单次网络请求和响应体读取。
+- `qubit-http` 基于 `reqwest` 提供稳定、统一的 HTTP 基础设施接口。
+- `execute` 只对 2xx 状态返回响应。响应体采用惰性读取；TRACE body 日志不会消费尚未读取的后端流。
+- 内置请求重试只覆盖返回 `HttpResponse` 之前的失败；返回后的流读取错误由调用方处理。SSE 重连使用独立 API 和生命周期。详见[自动重试](doc/user_guide.zh_CN.md#自动重试)及 [SSE 自动重连](doc/user_guide.zh_CN.md#sse-自动重连)。
+- 默认使用 `SameOrigin`。初始 URL 按请求快照校验，重定向按执行客户端的后端策略校验。详见[跨客户端来源策略](doc/user_guide.zh_CN.md#跨客户端来源策略)。
+- 标准脱敏策略保留 URL path；若其中可能包含敏感信息，请使用严格或 path 脱敏。详见[日志脱敏](doc/user_guide.zh_CN.md#日志脱敏)。
+- SSE 重连有独立的游标、retry 提示和 204 结束语义，不代表完整实现 EventSource。详见 [SSE 自动重连](doc/user_guide.zh_CN.md#sse-自动重连)。
+- 错误预览、保留 raw body 的限额和错误体完整读取期限相互独立。详见[错误模型](doc/user_guide.zh_CN.md#错误模型)。
 
 ## 测试
 

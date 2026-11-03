@@ -15,7 +15,6 @@ The retry count measures this crate's outer attempts, not wire sends; reqwest's 
 
 Documentation: [English User Guide](doc/user_guide.en.md) | [中文用户指南](doc/user_guide.zh_CN.md) | [Design](doc/design.md) | [中文设计文档](doc/design.zh_CN.md) | [API Reference](https://docs.rs/qubit-http)
 
-A request interceptor’s final method and retry override determine whether an already admitted retry flow may continue. IPv4-only clients reject IPv6-literal redirect targets as `InvalidUrl`. Explicit proxy hosts must contain only a domain or IP literal; keep the port and credentials in their separate options. Multipart `Content-Type` values may contain only one `boundary` parameter, and the body delimiter must match it. For ordinary HTTP retry failures, use `retry_diagnostics()` and the retained `RetryError<HttpError>` source; the legacy `retry_metadata()` getter is deprecated and always empty.
 
 ## Why Use It
 
@@ -43,30 +42,27 @@ Some examples in the user guide use optional helper crates such as `serde`, `ser
 
 ## Quick Start
 
-This example uses `httpbin.org`, so you can run it without starting a local test server.
+Run the shared local example with `cargo run --example local_quick_start`. It starts a loopback server on an OS-assigned port, sets that address as `base_url`, sends a GET request with a client header and query parameter, then checks the response:
 
 ```rust
-use http::Method;
-use qubit_http::{HttpClientBuilder, HttpClientOptions};
+let mut options = HttpClientOptions::new();
+options.set_base_url(&format!("http://{address}"))?;
+options.add_header("x-client-id", "demo")?;
+let client = HttpClientBuilder::new().create(options)?;
+let request = client
+    .request(Method::GET, "/anything")
+    .query_param("from", "local-quick-start")
+    .build();
+let mut response = client.execute(request).await?;
+println!("status = {}", response.status());
+println!("text = {}", response.text().await?);
+```
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut options = HttpClientOptions::new();
-    options.set_base_url("https://httpbin.org")?;
-    options.add_header("x-client-id", "demo")?;
+The complete runnable source, including the local server, is [`examples/local_quick_start.rs`](examples/local_quick_start.rs). It prints:
 
-    let client = HttpClientBuilder::new().create(options)?;
-
-    let request = client
-        .request(Method::GET, "/anything")
-        .query_param("from", "readme")
-        .build();
-
-    let mut response = client.execute(request).await?;
-    println!("status = {}", response.status());
-    println!("text = {}", response.text().await?);
-    Ok(())
-}
+```text
+status = 200 OK
+text = ready
 ```
 
 ## Logging Redaction
@@ -105,28 +101,13 @@ Use `HttpClient::rebuild_with_options` to change client options while retaining 
 
 ## Project Scope
 
-- `qubit-http` is built on top of `reqwest`; it focuses on a stable shared HTTP surface rather than exposing every `reqwest` API.
-- Response bodies are read lazily. TRACE response-body logging reports a body only
-  when it has already been buffered; it never consumes an unconsumed backend
-  stream.
-- Built-in request retry covers failures before `HttpResponse` is returned. Stream body errors after return are surfaced to the caller.
-- SSE reconnect has a dedicated API: `HttpClient::execute_sse_with_reconnect(...)`.
-- Cached response bodies remain reusable: repeated `bytes` / `text` / `json` reads and cached `stream()` calls do not consume the cache.
-- The standard redaction policy preserves URL paths; choose strict/path redaction when they may contain secrets. See the [Logging Redaction guide](doc/user_guide.en.md#logging-redaction).
-- A request keeps the redaction snapshot captured when it was built, even when another client executes it; rebuild the request to use a new policy. See the [Logging Redaction guide](doc/user_guide.en.md#logging-redaction).
-- SSE reconnect has separate cursor, retry-hint, and 204 termination behavior; see [SSE Auto-reconnect](doc/user_guide.en.md#sse-auto-reconnect). Reconnect is not a claim of full EventSource compliance.
-- Error preview and retained raw-body limits are independent; a preview cut does not mark a complete raw body truncated. `read_timeout` bounds the complete non-success error-body capture phase; on expiry, the `Status` error retains its status and partial raw body marked incomplete.
-- SSE data events dispatch only at a blank line. EOF drops an incomplete frame; servers must terminate the final event with a blank line. One leading BOM is ignored at the start of the stream. `AllowEof` permits complete streams without a done marker but does not relax framing; `RequireDoneMarker` accepts a marker only in a complete event. See [SSE Decoding](doc/user_guide.en.md#sse-decoding) for limits and framing details.
-- Automatic SSE decode diagnostics do not include raw event or cursor values; Lenient logs report only presence and byte lengths.
-- `SameOrigin` is the default request/redirect policy. Set `origin_policy` to `AnyOrigin` explicitly when cross-origin targets are required; config accepts `same_origin` or `any_origin`.
-- JSON SSE consumers can require an explicit done marker with
-  `SseCompletionPolicy::RequireDoneMarker`; see the [SSE guide](doc/user_guide.en.md#sse-json-chunks).
-
-See [Automatic Retry](doc/user_guide.en.md#automatic-retry) and [Error Model](doc/user_guide.en.md#error-model)
-for retry budgets, timeout stages, replay rules, diagnostics, and the retained
-`RetryError<HttpError>` source contract. The response-header deadline starts
-after synchronous request interceptors; `request_timeout` covers reqwest's
-single-attempt network request and response-body reads.
+- `qubit-http` provides a stable shared HTTP surface on top of `reqwest`.
+- `execute` returns a response only for 2xx status codes. Response bodies are read lazily, and TRACE body logging does not consume an unread backend stream.
+- Built-in request retry covers failures before `HttpResponse` is returned; later stream-read errors belong to the caller. SSE reconnect has a separate API and lifecycle. See [Automatic Retry](doc/user_guide.en.md#automatic-retry) and [SSE Auto-reconnect](doc/user_guide.en.md#sse-auto-reconnect).
+- `SameOrigin` is the default. Initial URL checks use the request snapshot, while redirect checks use the executing client's backend policy. See [origin policy across clients](doc/user_guide.en.md#origin-policy-across-clients).
+- The standard redaction policy preserves URL paths; choose strict or path redaction when paths may contain secrets. See [Logging Redaction](doc/user_guide.en.md#logging-redaction).
+- SSE reconnect has dedicated cursor, retry-hint, and 204 termination behavior; it does not claim full EventSource compliance. See [SSE Auto-reconnect](doc/user_guide.en.md#sse-auto-reconnect).
+- Error preview, retained raw-body limits, and complete error-body read deadlines are independent. See [Error Model](doc/user_guide.en.md#error-model).
 
 ## Testing
 
