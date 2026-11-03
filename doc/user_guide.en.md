@@ -577,7 +577,7 @@ Runtime HTTP errors use `HttpError`; the result alias is `HttpResult<T> = Result
 
 Error categories:
 
-For non-2xx errors, the redacted preview and retained raw body have independent limits. The preview can be truncated while the raw body remains complete; `HttpStatusResponse::is_truncated()` reports whether the retained raw body itself is incomplete. Error classifiers that need provider fields should parse the raw body only when it is complete.
+For non-2xx errors, the redacted preview and retained raw body have independent limits. The preview can be truncated while the raw body remains complete; `HttpStatusResponse::is_truncated()` is true if the raw-size limit omitted bytes or capture stopped early because of a read timeout or transport failure. A true value does not identify the cause or prove that more bytes were available; false means capture completed without omitting source bytes. Error classifiers that need provider fields should parse the raw body only when it is complete.
 
 | Group | Error kinds | Typical meaning |
 | --- | --- | --- |
@@ -632,7 +632,7 @@ The original request cancellation token belongs to the reconnect call: it can st
 
 Automatic retry is disabled by default. When enabled, `execute` enters the retry flow only when `retry.enabled = true`, `max_attempts > 1`, and the method policy allows the current HTTP method.
 
-`max_attempts` and retry diagnostics count this crate's outer attempts. A single reqwest execution may perform safe protocol recovery and redirects; neither creates another outer attempt. Disabling this crate's retry stops those outer retries but preserves reqwest's safe protocol recovery. Request interceptors and dynamic header injection run per outer attempt, while reqwest recovery does not rerun them. `request_timeout` bounds one reqwest execution and its response-body reads; it is not reset for each lower-level wire send. A request also snapshots its originating client's base URL, origin policy, default headers, and injectors when built. The executing client supplies the backend and execution interceptors/retry policy. Rebuilding a client does not rebind old requests; build a new request with the rebuilt client to use its captured configuration. Initial URL checks use the request snapshot, while redirect checks use the executing backend's redirect policy.
+`max_attempts` and retry diagnostics count this crate's outer attempts. A single reqwest execution may perform safe protocol recovery and redirects; neither creates another outer attempt. Disabling this crate's retry stops those outer retries but preserves reqwest's safe protocol recovery. Request interceptors and dynamic header injection run per outer attempt, while reqwest recovery does not rerun them. `request_timeout` bounds one reqwest execution and its response-body reads; it is not reset for each lower-level wire send. A request also snapshots its originating client's base URL, origin policy, default headers, injectors, and redactor when built. The executing client supplies the backend, logging options, execution interceptors, and retry policy. If client A builds a request and client B executes it, request/response logs and execution errors use A's redactor; responses and SSE diagnostics keep using that same policy after return. The policies are not merged. Rebuilding a client does not rebind old requests; build a new request with the rebuilt client to use its captured configuration. Initial URL checks use the request snapshot, while redirect checks use the executing backend's redirect policy. Independently constructed `HttpLogger` values continue to use their explicitly supplied policy.
 
 Default retryability:
 
@@ -718,6 +718,8 @@ HTTP logs use `tracing::trace!`. Both conditions must be true:
 
 1. `options.logging.enabled = true`.
 2. The active tracing subscriber enables TRACE.
+
+HTTP request execution uses the `Redactor` captured by the `HttpRequest` as the policy for request and response logs, execution errors, later response reads, and SSE diagnostics. The executing client's logging options control whether and how much it logs. A request built by client A and executed by client B retains A's policy; rebuilding B does not rebind an old request. Build a new request with the client whose policy you need. These policies are not merged. Separately constructed `HttpLogger` values use the policy passed to their constructor.
 
 Request headers, request body, response headers, and response body can be toggled separately. Body logs include only the first `logging.body_size_limit` bytes and show a truncation marker for the remainder. Binary bodies are rendered as `<binary N bytes>`. Unsupported bodies without a structured or textual `Content-Type` are rendered as `<redacted: unsupported HTTP body>`. Request-body logging previews buffered body variants (`bytes_body`, `text_body`, `json_body`, `form_body`, `multipart_body`, and `ndjson_body`); `stream_body` and `streaming_body` are logged as `<skipped: streaming request body>` because the logger does not consume upload streams.
 

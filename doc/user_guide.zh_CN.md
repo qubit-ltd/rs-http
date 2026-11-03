@@ -571,7 +571,7 @@ match client.execute(request).await {
 
 错误分类：
 
-非 2xx 错误的脱敏预览和保留原始 body 使用独立限额。预览可能已截断而 raw body 仍完整；`HttpStatusResponse::is_truncated()` 表示保留的原始 body 是否不完整。需要 provider 字段的错误分类器应只在 raw body 完整时解析。
+非 2xx 错误的脱敏预览和保留原始 body 使用独立限额。预览可能已截断而 raw body 仍完整；`HttpStatusResponse::is_truncated()` 为 true 表示大小限额省略了源字节，或读取超时、传输失败等原因使采集提前结束。true 不说明具体中断原因，也不能证明当时还有额外字节可读；false 表示采集完成且未省略源字节。需要 provider 字段的错误分类器应只在 raw body 完整时解析。
 
 | 分组 | 错误类型 | 典型含义 |
 | --- | --- | --- |
@@ -705,6 +705,8 @@ HTTP 日志使用 `tracing::trace!`。必须同时满足：
 1. `options.logging.enabled = true`。
 2. 当前 tracing subscriber 开启 TRACE 级别。
 
+一次 HTTP 请求执行统一使用 `HttpRequest` 捕获的 `Redactor` 处理请求/响应日志、执行错误、返回后的响应读取及 SSE 诊断。执行客户端控制日志开关和展示选项。客户端 A 构建的请求由客户端 B 执行时仍使用 A 的策略，客户端重建也不会重绑旧请求；需要新策略时，请用相应客户端重新构建请求。A/B 策略不会合并。独立构造的 `HttpLogger` 仍使用构造时显式传入的策略。
+
 可分别控制请求头、请求体、响应头、响应体。body 只记录前 `logging.body_size_limit` 字节，超出部分显示截断提示；二进制体显示为 `<binary N bytes>`。没有结构化或文本 `Content-Type` 的 unsupported body 会显示为 `<redacted: unsupported HTTP body>`，不会直接打印原始内容。请求体日志只预览已缓冲的 body 变体（`bytes_body`、`text_body`、`json_body`、`form_body`、`multipart_body`、`ndjson_body`）；`stream_body` 和 `streaming_body` 会记录为 `<skipped: streaming request body>`，因为 logger 不会消费上传流。
 
 日志统一经过规范的 `qubit_redact::Redactor` 和一份根 `RedactionPolicy` 脱敏。URL username、password、fragment 和敏感 query 参数会被掩码；header、query/form、body 使用同一基础规则、掩码表和静态限制上的 HTTP 上下文视图。multipart 文件 part 仍显示为 `<redacted: file part>`；格式异常、缺少 boundary 或已截断的 body 继续 fail closed。
@@ -715,8 +717,8 @@ HTTP 日志使用 `tracing::trace!`。必须同时满足：
 
 应用启动时使用 `Redactor::replace_application_default(Redactor::new(policy))` 安装默认 redactor；`RedactionPolicy::default()` 始终
 返回固定标准策略。`HttpClientOptions::new()` 会取得构造时默认 redactor 的快照，包括此前已安装的应用策略。client 创建一份
-`Redactor` 快照，并在 request、response、retry、interceptor、error 和 SSE 诊断中
-保持该快照。request builder 和 options 的前置错误使用所属对象保存的策略快照，
+`Redactor` 快照，由 request builder 捕获到请求中，并在请求执行、response、retry、interceptor、error 和 SSE 诊断中
+沿用该请求策略。客户端 A 构建的请求即使由客户端 B 执行，请求/响应日志、执行错误、返回后的响应读取和 SSE 诊断仍使用 A 的策略；执行客户端控制后端、日志开关及展示选项、拦截器和重试策略，A/B 策略不合并。客户端重建不会替换旧请求策略，需要使用新策略时应重新构建请求。独立构造的 `HttpLogger` 继续使用构造时显式传入的策略。request builder 和 options 的前置错误使用所属对象保存的策略快照，
 即使应用默认策略后来发生变化也如此。使用 `fields()`、`http()` 和 `limits()` 配置统一的
 `RedactionPolicyBuilder`；`qubit_http` 不再重导出这些脱敏类型。
 

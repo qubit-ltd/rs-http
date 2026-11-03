@@ -74,6 +74,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 标准策略会保留 URL path 便于诊断；如果 path 可能含有敏感标识符，请使用
 `RedactionPolicy::strict()` 或 `UrlPathPolicy::Redact`。`HttpError` 的 `Debug` 与
 `Display` 使用同一套脱敏策略。策略 floor、快照、预算、配置及示例见[日志脱敏指南](doc/user_guide.zh_CN.md#日志脱敏)。
+请求会保留构造时捕获的脱敏策略，即使由另一个客户端执行也是如此；需要新策略时请重新构建请求。详见[日志脱敏指南](doc/user_guide.zh_CN.md#日志脱敏)。
 
 ## 后续阅读
 

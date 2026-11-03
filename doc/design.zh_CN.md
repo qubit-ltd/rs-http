@@ -20,7 +20,7 @@ flowchart LR
     Reconnect --> SSE
 ```
 
-`HttpClientBuilder` 校验 `HttpClientOptions`，再构造底层 `reqwest::Client`。客户端持有连接池、默认策略、注入器、拦截器和脱敏策略快照。`HttpRequestBuilder` 将 base URL、origin policy、默认请求头、注入器和脱敏上下文捕获到 `HttpRequest`；发送请求时无需借用可变的客户端配置。执行客户端提供后端、请求/响应拦截器和外层重试策略。客户端重建不会重绑旧请求；需要使用新配置的调用方应通过新客户端重新构建请求。初始 URL 解析和来源检查使用请求快照；重定向检查使用执行客户端的 reqwest 重定向策略和原始请求源。
+`HttpClientBuilder` 校验 `HttpClientOptions`，再构造底层 `reqwest::Client`。客户端持有连接池、默认策略、注入器、拦截器和脱敏策略快照。`HttpRequestBuilder` 将 base URL、origin policy、默认请求头、注入器和脱敏上下文捕获到 `HttpRequest`；发送请求时无需借用可变的客户端配置。执行客户端提供后端、日志选项、请求/响应拦截器和外层重试策略；请求捕获的 redactor 则统一用于请求/响应日志、执行错误、返回后的响应读取和 SSE 诊断。客户端 A 构建的请求由客户端 B 执行时，不合并或替换 A 的脱敏快照。客户端重建不会重绑旧请求；需要新脱敏策略的调用方应通过新客户端重新构建请求。独立构造的 `HttpLogger` 仍使用调用方显式指定的策略。初始 URL 解析和来源检查使用请求快照；重定向检查使用执行客户端的 reqwest 重定向策略和原始请求源。
 
 `HttpClient::rebuild_with_options` 构造新的后端和脱敏策略快照，同时复制原客户端注册的请求头注入器、请求拦截器和响应拦截器。包括校验失败在内，原客户端始终不变；`to_builder` 则只复制选项。调用方若依赖运行时注册项，应选择保留它们的重建 API。
 
@@ -30,7 +30,7 @@ base URL 在配置解析和客户端构造时校验；最终请求 URL 在解析
 
 ## 请求与重试边界
 
-`HttpClient::execute` 先解析请求的重试选项。每次获准的尝试都会检查取消状态、运行请求拦截器、解析 URL 和最终请求头、记录请求日志、发送请求、将非 2xx 状态映射为 `HttpError`，最后运行响应拦截器并记录响应日志。响应返回前这一整段路径产生的错误可参与重试；`HttpResponse` 返回后的 body 或 SSE 读取错误由调用方处理，不进入普通 HTTP 重试。
+`HttpClient::execute` 先解析请求的重试选项。每次获准的尝试都会检查取消状态、运行请求拦截器、解析 URL 和最终请求头、记录请求日志、发送请求、将非 2xx 状态映射为 `HttpError`，最后运行响应拦截器并记录响应日志。此处日志与错误均使用请求捕获的 redactor；是否记录及 body 展示限额仍由执行客户端控制。响应返回前这一整段路径产生的错误可参与重试；`HttpResponse` 返回后的 body 或 SSE 读取错误由调用方处理，不进入普通 HTTP 重试，但仍保留相同请求策略。
 
 `max_attempts` 和重试诊断统计本库的外层尝试次数。一次 reqwest 执行可能包含协议恢复和重定向，但不会增加外层计数；请求拦截器和动态请求头注入按外层尝试运行，不会针对底层发送重复运行。关闭本库重试仍保留 reqwest 安全的协议 NACK 恢复。`request_timeout` 限制一次 reqwest 执行及其响应体读取，不会为每次底层网络发送分别计时。非成功状态会在成功响应拦截器前映射为错误，因此 429/5xx 的 `Retry-After` 从 `HttpError` 读取；response/meta 提示方法仍可用于单独处理的 metadata。
 
@@ -52,7 +52,7 @@ base URL 在配置解析和客户端构造时校验；最终请求 URL 在解析
 
 未缓冲 body 的聚合读取 future 首次被轮询时会接管后端响应。若外层 timeout 或 `select!` 落败分支在缓存完成前丢弃它，后端响应和部分已读字节都会丢失，后续 reader 返回 `ResponseBodyAlreadyConsumed`。丢弃尚未轮询的 future 不会接管 body；成功缓存仍可复用。这个外部 drop 与库内读取器返回的取消或读取超时不同，后者会保留原有错误分类。
 
-非 2xx 响应会在返回调用方前转换为错误。完整错误体采集若超过 `read_timeout`，`Status` 错误仍保留 status 和标记为不完整的部分 raw body；调用方可检查 `is_truncated()`，并在需要保留慢错误体时提高 `read_timeout`。错误 body 的脱敏预览和保留的原始内容分别受独立限额约束，完整原始 body 不会仅因预览截断而标记为不完整。TRACE 日志只记录已经缓存的 body，不会为了日志消费尚未读取的后端流。请求、响应及错误诊断均使用客户端捕获的脱敏策略快照。
+非 2xx 响应会在返回调用方前转换为错误。完整错误体采集若超过 `read_timeout`，`Status` 错误仍保留 status 和标记为不完整的部分 raw body；调用方可检查 `is_truncated()`，并在需要保留慢错误体时提高 `read_timeout`。传输失败也会令该值为 true；它不区分中断原因，也不表示当时一定还有额外字节可读。false 表示采集完成且未省略源字节。错误 body 的脱敏预览和保留的原始内容分别受独立限额约束，完整原始 body 不会仅因预览截断而标记为不完整。TRACE 日志只记录已经缓存的 body，不会为了日志消费尚未读取的后端流。请求、响应及错误诊断均使用请求捕获的脱敏策略快照。
 
 ## SSE 解码与自动重连
 

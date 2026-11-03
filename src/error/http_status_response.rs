@@ -13,8 +13,8 @@ use http::HeaderMap;
 ///
 /// The response snapshot is attached to an [`HttpError`](crate::HttpError)
 /// when the response body is captured. Its body contains only the retained
-/// prefix; [`is_truncated`](Self::is_truncated) indicates whether more data was
-/// available.
+/// prefix. [`is_truncated`](Self::is_truncated) is true when source bytes were
+/// omitted or capture ended before completeness could be established.
 ///
 /// # Examples
 ///
@@ -32,7 +32,8 @@ pub struct HttpStatusResponse {
     headers: HeaderMap,
     /// Retained prefix of the response body.
     body: Bytes,
-    /// Whether the retained body omits trailing response data.
+    /// Whether source bytes were omitted or capture ended before completeness
+    /// could be established.
     truncated: bool,
     /// Complete body length advertised by the server, if known.
     content_length: Option<u64>,
@@ -44,7 +45,8 @@ impl HttpStatusResponse {
     /// # Parameters
     /// - `headers`: Headers received with the response.
     /// - `body`: Retained prefix of the response body.
-    /// - `truncated`: Whether the retained body omits trailing response data.
+    /// - `truncated`: Whether source bytes were omitted or capture ended before
+    ///   completeness could be established.
     /// - `content_length`: Complete body length advertised by the server, if
     ///   known.
     ///
@@ -80,10 +82,15 @@ impl HttpStatusResponse {
     pub fn body(&self) -> &Bytes {
         &self.body
     }
-    /// Reports whether the retained body omits trailing response data.
+    /// Reports whether the body capture is incomplete or known to omit bytes.
+    ///
+    /// This flag does not identify the cause or prove that additional bytes
+    /// were available.
     ///
     /// # Returns
-    /// `true` when the body prefix is incomplete, otherwise `false`.
+    /// `true` when the size limit omitted bytes, or when a read timeout or
+    /// transport failure prevented complete capture. `false` means capture
+    /// completed without omitting source bytes.
     #[must_use]
     #[inline]
     pub fn is_truncated(&self) -> bool {
