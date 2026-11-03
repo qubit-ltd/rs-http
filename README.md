@@ -11,6 +11,8 @@
 
 It builds on `reqwest` and provides the common pieces most API clients need: request construction, timeouts, retries, cancellation, streaming responses, SSE, logging, and unified errors.
 
+The retry count measures this crate's outer attempts, not wire sends; reqwest's safe protocol recovery remains enabled.
+
 Documentation: [English User Guide](doc/user_guide.en.md) | [中文用户指南](doc/user_guide.zh_CN.md) | [Design](doc/design.md) | [中文设计文档](doc/design.zh_CN.md) | [API Reference](https://docs.rs/qubit-http)
 
 A request interceptor’s final method and retry override determine whether an already admitted retry flow may continue. IPv4-only clients reject IPv6-literal redirect targets as `InvalidUrl`. Explicit proxy hosts must contain only a domain or IP literal; keep the port and credentials in their separate options. Multipart `Content-Type` values may contain only one `boundary` parameter, and the body delimiter must match it. For ordinary HTTP retry failures, use `retry_diagnostics()` and the retained `RetryError<HttpError>` source; the legacy `retry_metadata()` getter is deprecated and always empty.

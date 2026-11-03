@@ -541,7 +541,22 @@ After a successful `bytes`, `text`, or `json` read, the cache supports repeated 
 | Call `stream()` after `bytes()`; the cached response remains available for later reads or streams | Call `sse_messages()` or `sse_chunks()` and then try to use the moved response value |
 | Chain `sse_*` option setters with the SSE consumer on the same expression | Design multiple body-consumption paths for one `HttpResponse` |
 
-`retry_after_hint()` returns a delay when the response status is 429 or 5xx and the response has a valid `Retry-After` header. It supports both `delta-seconds` and HTTP-date formats; HTTP dates in the past resolve to 0 seconds. `HttpResponseMeta` and `HttpResponseInterceptorContext` expose the same method, so response interceptors can read the hint from metadata.
+`retry_after_hint()` returns a delay for metadata with status 429 or 5xx and a valid `Retry-After` header. It supports `delta-seconds` and HTTP-date formats; past dates resolve to 0 seconds. `execute` maps non-success statuses to `HttpError` before success response interceptors run, so obtain a 429/5xx hint from the error:
+
+```rust,ignore
+match client.execute(request).await {
+    Ok(response) => handle_response(response).await?,
+    Err(error) => {
+        if let Some(delay) = error.retry_after {
+            schedule_retry(delay);
+        } else {
+            return Err(error.into());
+        }
+    }
+}
+```
+
+`HttpResponseMeta` and `HttpResponseInterceptorContext` retain `retry_after_hint()` for metadata inspected outside the success-only interceptor path and for manually constructed metadata.
 
 ## Error Model
 
@@ -616,6 +631,8 @@ The original request cancellation token belongs to the reconnect call: it can st
 ## Automatic Retry
 
 Automatic retry is disabled by default. When enabled, `execute` enters the retry flow only when `retry.enabled = true`, `max_attempts > 1`, and the method policy allows the current HTTP method.
+
+`max_attempts` and retry diagnostics count this crate's outer attempts. A single reqwest execution may perform safe protocol recovery and redirects; neither creates another outer attempt. Disabling this crate's retry stops those outer retries but preserves reqwest's safe protocol recovery. Request interceptors and dynamic header injection run per outer attempt, while reqwest recovery does not rerun them. `request_timeout` bounds one reqwest execution and its response-body reads; it is not reset for each lower-level wire send. A request also snapshots its originating client's base URL, origin policy, default headers, and injectors when built. The executing client supplies the backend and execution interceptors/retry policy. Rebuilding a client does not rebind old requests; build a new request with the rebuilt client to use its captured configuration. Initial URL checks use the request snapshot, while redirect checks use the executing backend's redirect policy.
 
 Default retryability:
 

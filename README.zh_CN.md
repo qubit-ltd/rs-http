@@ -11,6 +11,8 @@
 
 它基于 `reqwest` 构建，封装了 API 客户端最常见的基础能力：请求构建、超时、重试、取消、流式响应、SSE、日志和统一错误处理。
 
+重试计数表示本库的外层尝试次数，不等于线上发送次数；`reqwest` 的安全协议恢复仍保持启用。
+
 文档：[中文用户指南](doc/user_guide.zh_CN.md) | [English User Guide](doc/user_guide.en.md) | [设计文档](doc/design.zh_CN.md) | [Design](doc/design.md) | [API 文档](https://docs.rs/qubit-http)
 
 已准入的重试流程会依据 request interceptor 修改后的最终方法和覆盖项决定是否续试。IPv4-only 客户端会将指向 IPv6 字面量的重定向作为 `InvalidUrl` 拒绝。显式代理的 host 只能填写域名或 IP 字面量，端口和凭据应放在各自配置项中。multipart `Content-Type` 只能有一个 `boundary` 参数，且须与 body 分隔符一致。普通 HTTP 自动重试失败时，请使用 `retry_diagnostics()` 和保留的 `RetryError<HttpError>` source；旧 `retry_metadata()` getter 已弃用且始终返回空值。

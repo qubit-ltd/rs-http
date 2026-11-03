@@ -535,7 +535,22 @@ async fn read_sse_examples(client: &qubit_http::HttpClient) -> qubit_http::HttpR
 | `bytes()` 后调用 `stream()`；缓存仍可供后续读取或再次创建流 | 调用 `sse_messages()` 或 `sse_chunks()` 后继续使用已移动的响应值 |
 | 在同一条表达式中链式设置 `sse_*` 选项并消费 SSE | 对同一个 `HttpResponse` 同时设计多条消费路径 |
 
-`retry_after_hint()` 会在响应状态为 429 或 5xx 且存在合法 `Retry-After` header 时返回延迟。它支持 `delta-seconds` 和 HTTP-date 两种格式；HTTP-date 早于当前时间时返回 0 秒。`HttpResponseMeta` 和 `HttpResponseInterceptorContext` 上也有同名方法，响应拦截器可以在只拿到 metadata 时读取这个提示。
+metadata 的状态为 429 或 5xx 且带有合法 `Retry-After` header 时，`retry_after_hint()` 会返回延迟。它支持 `delta-seconds` 和 HTTP-date 两种格式；过去的日期返回 0 秒。`execute` 会在成功响应拦截器运行前将非成功状态映射为 `HttpError`，因此应从错误读取 429/5xx 提示：
+
+```rust,ignore
+match client.execute(request).await {
+    Ok(response) => handle_response(response).await?,
+    Err(error) => {
+        if let Some(delay) = error.retry_after {
+            schedule_retry(delay);
+        } else {
+            return Err(error.into());
+        }
+    }
+}
+```
+
+`HttpResponseMeta` 和 `HttpResponseInterceptorContext` 仍保留 `retry_after_hint()`，供成功拦截器之外检查 metadata 或读取手动构造的 metadata。
 
 ## 错误模型
 
@@ -610,6 +625,8 @@ SSE 不承诺普通 HTTP 自动重试的直接 source 类型或诊断信息。
 ## 自动重试
 
 自动重试默认关闭。开启后，只有当 `retry.enabled = true`、`max_attempts > 1`，并且方法策略允许当前 HTTP 方法时，`execute` 才会进入重试流程。
+
+`max_attempts` 和重试诊断统计本库的外层尝试次数。一次 reqwest 执行可能包含安全协议恢复和重定向；两者都不会创建新的外层尝试。关闭本库重试只会停止这些外层重试，仍保留 reqwest 的安全协议恢复。请求拦截器和动态请求头注入按外层尝试运行，reqwest 内部恢复不会重新运行它们。`request_timeout` 限制一次 reqwest 执行及其响应体读取，不会为每次底层网络发送重置。请求构建时还会捕获来源客户端的 base URL、origin policy、默认请求头和注入器；执行客户端提供后端、执行拦截器和重试策略。客户端重建不会重绑旧请求；若要使用新配置，应通过重建后的客户端创建新请求。初始 URL 按请求快照检查，重定向按执行后端的重定向策略检查。
 
 默认重试条件：
 
