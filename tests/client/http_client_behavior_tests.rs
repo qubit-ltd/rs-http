@@ -598,6 +598,137 @@ async fn test_execute_applies_response_interceptor_for_unconsumed_body() {
 }
 
 #[tokio_test]
+async fn test_original_content_length_header_increase_does_not_reject_small_body() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 200,
+        headers: vec![("Content-Length".to_string(), "2".to_string())],
+        body: b"ok".to_vec(),
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.response_body_size_limit = 4;
+    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    client.add_response_interceptor(HttpResponseInterceptor::new(
+        |context: &mut HttpResponseInterceptorContext| {
+            context.headers_mut().insert(
+                HeaderName::from_static("content-length"),
+                HeaderValue::from_static("999"),
+            );
+            Ok(())
+        },
+    ));
+
+    let mut response = client
+        .execute(client.request(Method::GET, "/original-content-length-increase").build())
+        .await
+        .unwrap();
+    assert_eq!(response.headers().get("content-length").unwrap(), "999");
+    assert_eq!(response.bytes().await.unwrap().as_ref(), b"ok");
+    server.finish().await;
+}
+
+#[tokio_test]
+async fn test_original_content_length_still_rejects_when_header_is_reduced() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 200,
+        headers: vec![("Content-Length".to_string(), "9".to_string())],
+        body: b"12345".to_vec(),
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.response_body_size_limit = 4;
+    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    client.add_response_interceptor(HttpResponseInterceptor::new(
+        |context: &mut HttpResponseInterceptorContext| {
+            context
+                .headers_mut()
+                .insert(HeaderName::from_static("content-length"), HeaderValue::from_static("1"));
+            Ok(())
+        },
+    ));
+
+    let mut response = client
+        .execute(client.request(Method::GET, "/original-content-length-reduced").build())
+        .await
+        .unwrap();
+    let first_error = response.bytes().await.unwrap_err();
+    assert_eq!(first_error.kind, HttpErrorKind::ResponseBodyTooLarge);
+    assert!(first_error.message.contains("observed 9 bytes"));
+    let repeated_error = response.bytes().await.unwrap_err();
+    assert_eq!(repeated_error.kind, first_error.kind);
+    server.finish().await;
+}
+
+#[tokio_test]
+async fn test_original_content_length_still_rejects_when_header_is_removed() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 200,
+        headers: vec![("Content-Length".to_string(), "9".to_string())],
+        body: b"12345".to_vec(),
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.response_body_size_limit = 4;
+    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    client.add_response_interceptor(HttpResponseInterceptor::new(
+        |context: &mut HttpResponseInterceptorContext| {
+            context.headers_mut().remove("content-length");
+            Ok(())
+        },
+    ));
+
+    let mut response = client
+        .execute(client.request(Method::GET, "/original-content-length-removed").build())
+        .await
+        .unwrap();
+    let first_error = response.bytes().await.unwrap_err();
+    assert_eq!(first_error.kind, HttpErrorKind::ResponseBodyTooLarge);
+    assert!(first_error.message.contains("observed 9 bytes"));
+    let repeated_error = response.bytes().await.unwrap_err();
+    assert_eq!(repeated_error.kind, first_error.kind);
+    server.finish().await;
+}
+
+#[tokio_test]
+async fn test_original_content_length_chunked_without_length_still_enforces_limit() {
+    let server = spawn_one_shot_server(ResponsePlan::Chunked {
+        status: 200,
+        headers: vec![],
+        chunks: vec![crate::common::ResponseChunk {
+            delay: Duration::ZERO,
+            bytes: b"oversized".to_vec(),
+        }],
+        finish: true,
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.response_body_size_limit = 4;
+    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    client.add_response_interceptor(HttpResponseInterceptor::new(
+        |context: &mut HttpResponseInterceptorContext| {
+            context
+                .headers_mut()
+                .insert(HeaderName::from_static("content-length"), HeaderValue::from_static("1"));
+            Ok(())
+        },
+    ));
+
+    let mut response = client
+        .execute(client.request(Method::GET, "/original-content-length-chunked").build())
+        .await
+        .unwrap();
+    let first_error = response.bytes().await.unwrap_err();
+    assert_eq!(first_error.kind, HttpErrorKind::ResponseBodyTooLarge);
+    let repeated_error = response.bytes().await.unwrap_err();
+    assert_eq!(repeated_error.kind, first_error.kind);
+    server.finish().await;
+}
+
+#[tokio_test]
 async fn test_request_url_can_differ_from_response_meta_url() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,

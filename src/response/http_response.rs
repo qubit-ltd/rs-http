@@ -83,6 +83,17 @@ fn map_response_read_error(
         .with_log_redactor(log_redactor.clone())
 }
 
+/// Parses the original response body length hint from backend metadata.
+fn parse_content_length_hint(method: &Method, status: StatusCode, headers: &HeaderMap) -> Option<u64> {
+    if method == Method::HEAD || status == StatusCode::NOT_MODIFIED {
+        return Some(0);
+    }
+    headers
+        .get(CONTENT_LENGTH)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<u64>().ok())
+}
+
 /// Unified HTTP response with lazily consumed body.
 ///
 /// # Examples
@@ -117,6 +128,8 @@ pub struct HttpResponse {
     runtime: HttpResponseRuntime,
     /// Decode and error-preview options inherited from client options.
     options: HttpResponseOptions,
+    /// Content length captured before response interceptors can edit headers.
+    original_content_length: Option<u64>,
 }
 
 /// Adds missing response context to an SSE decoder error while preserving
@@ -203,11 +216,13 @@ impl HttpResponse {
     /// # Returns
     /// A response whose body is immediately available for reading.
     pub fn new(status: StatusCode, headers: HeaderMap, body: Bytes, url: Url, method: Method) -> Self {
+        let original_content_length = parse_content_length_hint(&method, status, &headers);
         Self {
             meta: HttpResponseMeta::new(status, headers, url.clone(), method),
             body: HttpResponseBodyState::Buffered(body),
             runtime: HttpResponseRuntime::new(Duration::from_secs(30), None, url),
             options: HttpResponseOptions::default(),
+            original_content_length,
         }
     }
 
@@ -232,11 +247,13 @@ impl HttpResponse {
         request_url: Url,
         options: HttpResponseOptions,
     ) -> Self {
+        let original_content_length = parse_content_length_hint(meta.method(), meta.status(), meta.headers());
         Self {
             meta,
             body: HttpResponseBodyState::Backend(backend),
             runtime: HttpResponseRuntime::new(read_timeout, cancellation_token, request_url),
             options,
+            original_content_length,
         }
     }
 
@@ -1060,14 +1077,7 @@ impl HttpResponse {
     /// Returns `Content-Length` parsed from response headers when present and
     /// valid.
     fn content_length_hint(&self) -> Option<u64> {
-        if self.meta.method() == Method::HEAD || self.meta.status() == StatusCode::NOT_MODIFIED {
-            return Some(0);
-        }
-        self.meta
-            .headers()
-            .get(CONTENT_LENGTH)
-            .and_then(|value| value.to_str().ok())
-            .and_then(|value| value.parse::<u64>().ok())
+        self.original_content_length
     }
 
     /// Returns a response-body aggregation limit error with request context.
