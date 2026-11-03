@@ -992,6 +992,16 @@ while let Some(item) = events.next().await {
 }
 ```
 
+The `RetryPolicy` admission budgets cover these phases:
+
+| Phase | Operation time | Total time |
+| --- | --- | --- |
+| Connection opening and response validation | Counts time spent in completed attempts | Counts elapsed time |
+| SSE record consumption, including when the consumer pauses polling | Excluded | Counts elapsed time |
+| Reconnect wait | Excluded | Counts elapsed time |
+
+Operation time accumulates time spent in completed connection-opening attempts, not SSE consumption or reconnect waits. Total time includes elapsed consumption and waits; admission limits do not interrupt an active stream. These budgets control whether another connection may start. They are not a hard deadline for a stream already being read. Request and read timeouts and cancellation remain independent controls.
+
 The default reconnect settings are `retry.max_attempts = 4` (that is, at most 3 reconnects), exponential `BackoffPolicy` with `initial=1s`, `max=30s`, `multiplier=2.0`, no jitter, reconnect on EOF, and honor server `retry:`. The latest valid `retry:` delay persists until replaced; use `honor_server_retry = false` to ignore server hints. Server `retry:` delays are capped by `server_retry_max_delay`; when it is `None`, the cap is derived from the backoff policy's maximum delay, or falls back to 30 seconds when no maximum exists. This cap applies only to the SSE `retry:` field. For a reconnectable 429/5xx handshake, the final request's `honor_retry_after` preference controls whether the parsed HTTP hint is passed to the backoff policy; this remains a single-attempt HTTP hint governed by its own policy cap and the reconnect budget. `apply_jitter_to_server_retry` is enabled by default, but server-provided delays remain unchanged unless the supplied `RetryPolicy` uses jitter. Reconnects reuse the original request and disable inner HTTP retry. After a non-empty SSE `id:` field updates the reconnect cursor, including in a control-only record, the next request includes `Last-Event-ID`; an empty ID reset makes the next request omit that header. A 204 response ends the reconnect stream normally without requiring `Content-Type`. These are deliberate behavior changes; callers should handle 204 as normal end-of-stream and servers should send a new valid `retry:` to change the delay. The API does not claim full EventSource compliance. `execute_sse_with_reconnect` requires response `Content-Type` to be `text/event-stream` for other successful statuses. SSE decoder errors include the response method, original request URL, and status while preserving more specific context and the existing error source. Cancellation does not reconnect. SSE protocol errors do not reconnect by default. Retryable timeout, transport, 429/5xx, and unexpected-EOF-like errors may reconnect.
 
 Once the server supplies an event ID, the reconnect runner owns the final `Last-Event-ID` header. Its non-empty cursor wins after default headers, injectors, and request interceptors have been merged; an empty ID removes the header. Before any server ID is received, ordinary header precedence continues to apply. Applications that intentionally control every reconnect cursor should manage individual requests through `execute` instead.

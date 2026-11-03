@@ -62,6 +62,16 @@ Direct `HttpResponse::sse_messages` and `sse_chunks` are body decoders. An SSE d
 
 The reconnect runner opens a response with ordinary HTTP retry disabled, decodes SSE records, tracks the last event ID and server `retry:` delay, and reopens according to `SseReconnectOptions`. Messages without a new ID inherit the latest reconnect cursor, including control-only ID updates and explicit empty-ID resets. Once a server ID exists, the runner's non-empty cursor overrides merged defaults, injectors, interceptors, and request-local headers; an empty ID removes the final header. Before any server ID, ordinary header precedence remains. A valid `retry:` field is emitted as a control record as soon as its line is decoded, without waiting for a blank-line event boundary. When server retry hints are honored, an applied delay remains in effect even if a subsequent body read fails, and persists until another valid `retry:` replaces it. `honor_server_retry = false` ignores server hints. A 204 response ends the reconnect stream normally without a media-type check, body read, or another attempt. These are deliberate behavior changes, not a claim of full EventSource compliance. The original request token controls reconnect waiting and later admission; an interceptor replacement controls only that attempt’s I/O, and removing it does not remove the flow token. Cancellation and protocol errors do not reconnect by default. Reconnect budgets include attempts and waits; a configured final delay cap and the SSE one-millisecond minimum are applied by the reconnect policy.
 
+The time budgets in `SseReconnectOptions.retry` are admission limits, not hard stream deadlines:
+
+| Phase | Operation time | Total time |
+| --- | --- | --- |
+| Connection opening and response validation | Counts time spent in completed attempts | Counts elapsed time |
+| SSE record consumption, including paused consumer polling | Excluded | Counts elapsed time |
+| Reconnect wait | Excluded | Counts elapsed time |
+
+Operation time accumulates time spent in completed connection-opening attempts, not SSE consumption or reconnect waits. Total time includes elapsed consumption and waits; admission limits do not interrupt an active stream. Request timeout, read timeout, and cancellation remain independent controls.
+
 The frame limit counts cumulative UTF-8 bytes of non-empty, non-comment logical lines between blank-line boundaries; see [SSE Decoding](user_guide.en.md#sse-decoding) for the full contract.
 
 For reconnectable 429/5xx handshake failures, the final request's `honor_retry_after` preference controls whether the parsed HTTP hint enters that attempt's reconnect backoff. HTTP `Retry-After` remains a single-attempt hint governed by the configured backoff policy and reconnect budget; `server_retry_max_delay` caps only SSE `retry:` delays. SSE decoder errors inherit missing method, original request URL, and status from the response while retaining existing specific context, redaction, and source.

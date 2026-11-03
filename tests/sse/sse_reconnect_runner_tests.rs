@@ -41,9 +41,15 @@ use qubit_http::HttpResponseInterceptorContext;
 use qubit_http::sse::SseReconnectOptions;
 use qubit_retry::BackoffPolicy;
 use qubit_retry::RetryPolicy;
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
+use tokio::net::TcpListener;
 use tokio::pin;
+use tokio::sync::oneshot;
+use tokio::task::JoinHandle;
 use tokio::test as tokio_test;
 use tokio::time::timeout;
+use url::Url;
 
 use crate::common::ResponseChunk;
 use crate::common::ResponsePlan;
@@ -952,6 +958,214 @@ async fn test_execute_sse_with_reconnect_checks_max_elapsed_before_eof_reconnect
         .await
         .expect("server finish timed out");
     assert_eq!(captured.target, "/sse-max-elapsed-before-eof-reconnect");
+}
+
+#[tokio_test]
+async fn test_sse_operation_budget_excludes_stream_consumption_for_eof_and_body_error() {
+    for body_failure in [false, true] {
+        let server = spawn_budget_lifecycle_server(body_failure).await;
+        let mut options = HttpClientOptions::default();
+        options.base_url = Some(server.base_url.clone());
+        options.timeouts.read_timeout = Duration::from_secs(4);
+        options.timeouts.request_timeout = Some(Duration::from_secs(4));
+        options.timeouts.response_header_timeout = Duration::from_secs(4);
+        let client = HttpClientBuilder::new().create(options).unwrap();
+        let request = client.request(Method::GET, "/operation-budget-lifecycle").build();
+        let retry = RetryPolicy::builder()
+            .max_attempts(2)
+            .operation_time_budget(Duration::from_millis(250))
+            .backoff(BackoffPolicy::immediate())
+            .build()
+            .unwrap();
+        let mut events = client.execute_sse_with_reconnect(
+            request,
+            SseReconnectOptions {
+                retry,
+                reconnect_on_eof: true,
+                honor_server_retry: false,
+                ..SseReconnectOptions::default()
+            },
+        );
+
+        let first = timeout(Duration::from_secs(3), events.next())
+            .await
+            .expect("first event timed out")
+            .expect("first connection should emit an event")
+            .expect("first event should decode");
+        assert_eq!(first.data, "first");
+        server
+            .first_body_sent_rx
+            .await
+            .expect("server should signal after sending the first event");
+        tokio::time::sleep(Duration::from_millis(420)).await;
+        let _ = server.release_first_tx.send(());
+
+        let still_alive = timeout(Duration::from_secs(3), events.next())
+            .await
+            .expect("second event from the active connection timed out")
+            .expect("active connection should emit after operation time expires")
+            .expect("active connection event should decode");
+        assert_eq!(still_alive.data, "still-alive");
+
+        let second = timeout(Duration::from_secs(3), events.next())
+            .await
+            .expect("second event timed out")
+            .expect("operation-only budget should admit a second connection")
+            .expect("second event should decode");
+        assert_eq!(second.data, "second");
+        assert!(
+            timeout(Duration::from_secs(3), events.next())
+                .await
+                .expect("reconnect stream completion timed out")
+                .is_none()
+        );
+        assert_eq!(server.accepted.load(Ordering::SeqCst), 2);
+        server.join_handle.abort();
+    }
+}
+
+#[tokio_test]
+async fn test_sse_total_budget_counts_live_stream_and_paused_consumer_without_interrupting() {
+    let server = spawn_budget_lifecycle_server(false).await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url.clone());
+    options.timeouts.read_timeout = Duration::from_secs(4);
+    options.timeouts.request_timeout = Some(Duration::from_secs(4));
+    options.timeouts.response_header_timeout = Duration::from_secs(4);
+    let client = HttpClientBuilder::new().create(options).unwrap();
+    let request = client.request(Method::GET, "/total-budget-lifecycle").build();
+    let retry = RetryPolicy::builder()
+        .max_attempts(2)
+        .total_time_budget(Duration::from_millis(180))
+        .backoff(BackoffPolicy::immediate())
+        .build()
+        .unwrap();
+    let mut events = client.execute_sse_with_reconnect(
+        request,
+        SseReconnectOptions {
+            retry,
+            reconnect_on_eof: true,
+            honor_server_retry: false,
+            ..SseReconnectOptions::default()
+        },
+    );
+
+    let first = timeout(Duration::from_secs(3), events.next())
+        .await
+        .expect("first event timed out")
+        .expect("first connection should emit an event")
+        .expect("first event should decode");
+    assert_eq!(first.data, "first");
+    server
+        .first_body_sent_rx
+        .await
+        .expect("server should signal after sending the first event");
+    // Pausing polling keeps the stream active. Total elapsed passes, but the
+    // admission budget must not cancel the currently open response.
+    tokio::time::sleep(Duration::from_millis(420)).await;
+    assert!(timeout(Duration::from_millis(80), events.next()).await.is_err());
+    assert_eq!(server.accepted.load(Ordering::SeqCst), 1);
+    let _ = server.release_first_tx.send(());
+
+    let still_alive = timeout(Duration::from_secs(3), events.next())
+        .await
+        .expect("active stream event timed out after total time expired")
+        .expect("active stream should emit after total time expires")
+        .expect("active stream event should decode");
+    assert_eq!(still_alive.data, "still-alive");
+
+    let error = timeout(Duration::from_secs(3), events.next())
+        .await
+        .expect("budget error timed out")
+        .expect("total budget exhaustion should yield an error")
+        .expect_err("total budget should reject the reconnect after EOF");
+    assert_eq!(error.kind, HttpErrorKind::RetryBudgetExceeded);
+    assert!(error.message.contains("SSE reconnect max duration exceeded"));
+    assert_eq!(server.accepted.load(Ordering::SeqCst), 1);
+    server.join_handle.abort();
+}
+
+struct BudgetLifecycleServer {
+    base_url: Url,
+    first_body_sent_rx: oneshot::Receiver<()>,
+    release_first_tx: oneshot::Sender<()>,
+    accepted: Arc<AtomicUsize>,
+    join_handle: JoinHandle<()>,
+}
+
+async fn spawn_budget_lifecycle_server(body_failure: bool) -> BudgetLifecycleServer {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let base_url = Url::parse(&format!("http://{addr}/")).unwrap();
+    let (first_body_sent_tx, first_body_sent_rx) = oneshot::channel();
+    let (release_first_tx, release_first_rx) = oneshot::channel();
+    let accepted = Arc::new(AtomicUsize::new(0));
+    let accepted_in_task = accepted.clone();
+    let join_handle = tokio::spawn(async move {
+        let mut first_body_sent_tx = Some(first_body_sent_tx);
+        let mut release_first_rx = Some(release_first_rx);
+        for attempt in 0..2 {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            accepted_in_task.fetch_add(1, Ordering::SeqCst);
+            let mut request = Vec::new();
+            let mut byte = [0_u8; 1];
+            while !request.ends_with(b"\r\n\r\n") {
+                if stream.read_exact(&mut byte).await.is_err() {
+                    return;
+                }
+                request.push(byte[0]);
+            }
+            let is_first = attempt == 0;
+            let failure = is_first && body_failure;
+            let headers = if failure {
+                b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: 1000\r\nConnection: close\r\n\r\n".as_slice()
+            } else {
+                b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n".as_slice()
+            };
+            stream.write_all(headers).await.unwrap();
+            let first_event = if is_first {
+                b"data: first\n\n".as_slice()
+            } else {
+                b"data: second\n\n".as_slice()
+            };
+            if failure {
+                stream.write_all(first_event).await.unwrap();
+            } else {
+                let frame = format!("{:X}\r\n", first_event.len());
+                stream.write_all(frame.as_bytes()).await.unwrap();
+                stream.write_all(first_event).await.unwrap();
+                stream.write_all(b"\r\n").await.unwrap();
+            }
+            stream.flush().await.unwrap();
+            if is_first {
+                let _ = first_body_sent_tx.take().expect("first notification sender").send(());
+                let _ = release_first_rx.take().expect("first release receiver").await;
+                let alive_event = b"data: still-alive\n\n";
+                if failure {
+                    stream.write_all(alive_event).await.unwrap();
+                } else {
+                    let frame = format!("{:X}\r\n", alive_event.len());
+                    stream.write_all(frame.as_bytes()).await.unwrap();
+                    stream.write_all(alive_event).await.unwrap();
+                    stream.write_all(b"\r\n").await.unwrap();
+                }
+                stream.flush().await.unwrap();
+            }
+            if failure {
+                let _ = stream.shutdown().await;
+            } else {
+                stream.write_all(b"0\r\n\r\n").await.unwrap();
+                let _ = stream.shutdown().await;
+            }
+        }
+    });
+    BudgetLifecycleServer {
+        base_url,
+        first_body_sent_rx,
+        release_first_tx,
+        accepted,
+        join_handle,
+    }
 }
 
 #[tokio_test]

@@ -54,10 +54,23 @@ fn default_sse_retry_options() -> RetryPolicy {
 /// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct SseReconnectOptions {
-    /// Retry options used by SSE reconnect delay calculation.
+    /// Retry options used by SSE reconnect delay calculation and admission.
     ///
     /// `max_attempts` includes the initial stream-open attempt, so if callers
     /// want at most `N` reconnects they should pass `max_attempts = N + 1`.
+    /// Operation time accumulates time spent in completed connection-opening
+    /// attempts, including response validation, but excludes SSE consumption
+    /// and reconnect waits.
+    /// Total time includes elapsed SSE consumption (also while the consumer is
+    /// not polling) and reconnect waits. These time limits control admission
+    /// of later connections; they do not interrupt an active stream. Request
+    /// and read timeouts and cancellation continue to apply independently.
+    ///
+    /// | Phase | Operation time | Total time |
+    /// | --- | --- | --- |
+    /// | Connection opening and response validation | Counts time spent in completed attempts | Counts elapsed time |
+    /// | SSE record consumption, including paused polling | Excluded | Counts elapsed time |
+    /// | Reconnect wait | Excluded | Counts elapsed time |
     pub retry: RetryPolicy,
     /// Whether to reconnect when the SSE stream ends without an explicit
     /// error.

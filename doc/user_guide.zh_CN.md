@@ -968,6 +968,16 @@ while let Some(item) = events.next().await {
 }
 ```
 
+`RetryPolicy` 的准入预算覆盖以下阶段：
+
+| 阶段 | operation 时间 | total 时间 |
+| --- | --- | --- |
+| 建立连接及校验响应 | 累计已完成尝试所耗费的时间 | 累计实际经过时间 |
+| 读取 SSE record，包括消费者暂停轮询 | 不计入 | 累计实际经过时间 |
+| 重连等待 | 不计入 | 累计实际经过时间 |
+
+Operation 时间累计已完成连接建立及响应校验尝试所耗费的时间，不包括 SSE 消费或重连等待。Total 时间包括经过的消费和等待时间；准入限额不会中断正在读取的流。这些预算控制是否允许开始后续连接，并非正在读取流的硬截止时间。请求超时、读取超时和取消仍按各自规则独立生效。
+
 默认重连配置为 `retry.max_attempts = 4`（即最多重连 3 次），使用 `initial=1s`、`max=30s`、`multiplier=2.0` 且无 jitter 的指数 `BackoffPolicy`，并在 EOF 后重连、尊重服务端 `retry:`。最新有效的 `retry:` 会持续生效，直到新有效值替换；可用 `honor_server_retry = false` 忽略服务端提示。服务端 `retry:` 会被限制到 `server_retry_max_delay`；若该字段为 `None`，则从 backoff policy 的最大值推导，无法推导时使用 30 秒。这个上限只作用于 SSE `retry:` 字段。可重连的 429/5xx 握手错误是否采用解析出的 HTTP 提示，由最终请求的 `honor_retry_after` 偏好决定；HTTP `Retry-After` 仍是只影响单次尝试的提示，遵循独立退避策略上限和重连预算。`apply_jitter_to_server_retry` 默认开启；只有传入的 `RetryPolicy` 配置了 jitter 时，服务端给出的延迟才会被扰动。重连时会复用原始请求，并禁用内层 HTTP 自动重试；收到非空 SSE `id:` 字段后（包括 control-only 控制记录中的 ID），下一次请求会带上 `Last-Event-ID` header；空 ID 重置后下一次请求会省略该头。204 响应会正常结束重连流，不要求 `Content-Type`。这些是有意的行为变化：调用方应将 204 的流结束视为正常停流，服务端若要更改延迟应发送新的有效 `retry:`。本 API 不宣称完整实现 EventSource。其他成功状态仍要求 `Content-Type` 为 `text/event-stream`。SSE 解码错误会补充响应 method、原始请求 URL 和 status，同时保留更具体的原有上下文与 source。取消错误不会触发重连；SSE 协议错误默认也不会重连；超时、transport、429/5xx 等 retryable 错误，以及包含 unexpected EOF 语义的错误可触发重连。
 
 服务端一旦提供事件 ID，最终的 `Last-Event-ID` 就由重连执行器管理。它会在默认 header、注入器和请求拦截器合并完成后写入非空游标；空 ID 则删除该 header。在服务端尚未提供 ID 前，仍按普通 header 优先级处理。若应用需要自行控制每次重连游标，应通过 `execute` 分别管理各次请求。
