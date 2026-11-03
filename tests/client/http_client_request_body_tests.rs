@@ -201,7 +201,7 @@ async fn test_execute_with_stream_body_uses_chunked_transfer_encoding() {
 }
 
 #[tokio_test]
-async fn test_execute_with_stream_body_uses_chunked_transfer_encoding_without_eager_read() {
+async fn test_execute_with_stream_body_preserves_ordered_chunks() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
         headers: vec![],
@@ -263,10 +263,13 @@ async fn test_execute_with_streaming_body_factory_supports_retry_rebuild() {
         .expect("client should be created");
 
     let stream_factory_calls = Arc::new(AtomicUsize::new(0));
+    let stream_factory_entries = Arc::new(AtomicUsize::new(0));
     let stream_factory_calls_for_builder = Arc::clone(&stream_factory_calls);
+    let stream_factory_entries_for_builder = Arc::clone(&stream_factory_entries);
     let request = client
         .request(Method::POST, "/streaming-body-factory")
         .streaming_body(move || {
+            stream_factory_entries_for_builder.fetch_add(1, Ordering::Relaxed);
             let stream_factory_calls_for_future = Arc::clone(&stream_factory_calls_for_builder);
             Box::pin(async move {
                 stream_factory_calls_for_future.fetch_add(1, Ordering::Relaxed);
@@ -283,11 +286,15 @@ async fn test_execute_with_streaming_body_factory_supports_retry_rebuild() {
             })
         })
         .build();
+    assert_eq!(stream_factory_entries.load(Ordering::Relaxed), 0);
+    assert_eq!(stream_factory_calls.load(Ordering::Relaxed), 0);
+
     let response = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")
         .expect("request should succeed after retry");
     assert_eq!(response.status().as_u16(), 200);
+    assert_eq!(stream_factory_entries.load(Ordering::Relaxed), 2);
     assert_eq!(stream_factory_calls.load(Ordering::Relaxed), 2);
 
     let captured = timeout(Duration::from_secs(3), server.finish())
