@@ -1101,10 +1101,23 @@ This section compares the repository's `v0.15.1` tag with `0.16.0` at commit `e9
 | --- | --- | --- |
 | Dependencies | The manifest updates `qubit-json` 0.10 to 0.12, `qubit-config` 0.14 to 0.15, `qubit-budget` 0.7 to 0.10, `qubit-redact` 0.9 to 0.10, and Tokio 1.53 to 1.54. `reqwest` remains on 0.13. | Review your lockfile and direct dependency constraints for the versions required by your chosen `qubit-http` release. |
 | Base URL | `base_url` remains the configuration key, and validation now accepts only HTTP or HTTPS URLs. No replacement key was introduced. | Check configured base URLs for schemes such as `file:` or `ws:`; provide an HTTP(S) API base URL. |
-| Configuration | The compared source does not identify a renamed `retry`, `timeouts`, or `sse` configuration key. Current guides list the supported keys and accepted values. | Parse your actual configuration with `HttpClientOptions::from_config` or `HttpClientBuilder::from_config`; treat unknown-key or invalid-value errors as actionable migration findings. |
+| Configuration | The compared source does not identify a renamed `retry`, `timeouts`, or `sse` configuration key. Current guides list the supported keys and accepted values. | Parse your actual configuration with `HttpClientOptions::from_config` or `HttpClientBuilder::new().create_from_config(...)`; treat unknown-key or invalid-value errors as actionable migration findings. |
 | Retry ownership | `execute` retries eligible failures before returning `HttpResponse`; later response-body and SSE reads are caller-owned and do not re-enter HTTP retry. An outer SDK may own a separate operation-level retry. | Keep request-level retry disabled when an SDK already retries the whole operation, as the OpenAI provider does with `disable_retry()`. Test that one application attempt does not multiply retries unexpectedly. |
 | Client hooks | In both versions, `to_builder()` copies options only; `rebuild_with_options()` creates a new backend and preserves registered injectors and interceptors. | When replacing options on a configured client, use `rebuild_with_options()` if hooks are part of the contract; do not assume `to_builder()` carries them. |
 | SSE | The 0.16 source adds explicit handling for empty `id:` resets, persistent valid SSE `retry:` hints, and normal termination on `204 No Content` before media-type validation. Strict JSON and done-marker policies remain caller-selected. | Check cursor reset and retry timing expectations. For strict JSON streams, explicitly use `SseJsonMode::Strict` and `SseCompletionPolicy::RequireDoneMarker`, then test complete and incomplete frames. |
+
+To build a client from configuration, use this complete example. It only constructs the client; it does not send a network request. For the supported keys and configuration behavior, see [Loading From qubit-config](#loading-from-qubit-config).
+
+```rust
+use qubit_config::Config;
+use qubit_http::HttpClientBuilder;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = Config::new();
+    let _client = HttpClientBuilder::new().create_from_config(&config)?;
+    Ok(())
+}
+```
 
 To verify a downstream SDK upgrade, check ordinary JSON response decoding, one network attempt when the SDK owns retries, strict SSE completion, and hook retention after `rebuild_with_options()`. A small Cargo consumer can exercise these call patterns; that check does not establish that every downstream package has been upgraded.
 
