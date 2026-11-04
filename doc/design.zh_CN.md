@@ -54,7 +54,7 @@ base URL 在配置解析和客户端构造时校验；最终请求 URL 在解析
 
 未缓冲 body 的聚合读取 future 首次被轮询时会接管后端响应。若外层 timeout 或 `select!` 落败分支在缓存完成前丢弃它，后端响应和部分已读字节都会丢失，后续 reader 返回 `ResponseBodyAlreadyConsumed`。丢弃尚未轮询的 future 不会接管 body；成功缓存仍可复用。这个外部 drop 与库内读取器返回的取消或读取超时不同，后者会保留原有错误分类。
 
-非 2xx 响应会在返回调用方前转换为错误。完整错误体采集若超过 `read_timeout`，`Status` 错误仍保留 status 和标记为不完整的部分 raw body；调用方可检查 `is_truncated()`，并在需要保留慢错误体时提高 `read_timeout`。传输失败也会令该值为 true；它不区分中断原因，也不表示当时一定还有额外字节可读。false 表示采集完成且未省略源字节。错误 body 的脱敏预览和保留的原始内容分别受独立限额约束，完整原始 body 不会仅因预览截断而标记为不完整。TRACE 日志只记录已经缓存的 body，不会为了日志消费尚未读取的后端流。请求、响应及错误诊断均使用请求捕获的脱敏策略快照。
+非 2xx 响应会在返回调用方前转换为错误。受限采集结果包含脱敏预览、保留的 raw 前缀、最终结束原因和可选 backend 错误。`HttpBodyCaptureEnd` 区分 `Complete`、`SizeLimit`、`ReadTimeout`、`ReadFailure` 和 `BodyUnavailable`；若 raw 已遗漏字节后又发生读取失败或超时，最终记录后发生的读取结果，但 `is_truncated()` 仍为 true。preview 截断与 raw 完整性相互独立，不会令完整 raw body 变为不完整。`capture_error()` 为 `ReadFailure` 保留移除 URL 后的 backend 错误及 source 链；调用方通过 `status_response()` 查询，与顶层 `HttpError::source()` 重试链相互独立，并能经过快照克隆和重试投影保留。显式错误 getter 可能暴露 backend 详情，记录前必须脱敏。`is_truncated()` 保持不区分原因的兼容布尔语义。TRACE 日志只记录已经缓存的 body，不会为了日志消费尚未读取的后端流。请求、响应及错误诊断均使用请求捕获的脱敏策略快照。
 
 ## SSE 解码与自动重连
 

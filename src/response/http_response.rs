@@ -6,7 +6,9 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Unified HTTP response type and helpers.
+use std::error::Error;
 use std::fmt;
+use std::sync::Arc;
 use std::time::Duration;
 
 use async_stream::stream;
@@ -32,6 +34,7 @@ use url::Url;
 use super::HttpResponseMeta;
 use super::HttpResponseOptions;
 use super::internal::HttpResponseBodyState;
+use super::internal::http_error_body_capture::HttpErrorBodyCapture;
 use super::internal::http_response_runtime::HttpResponseRuntime;
 use super::internal::http_response_runtime::previous_body_read_error;
 use super::internal::http_response_runtime::remember_body_read_failure_state;
@@ -354,7 +357,7 @@ impl HttpResponse {
         let error_body_content_length = self.content_length_hint();
         let error_body_limit = self.options.error_response_body_limit;
         let log_redactor = self.log_redactor().clone();
-        let (body_preview, raw_body, raw_truncated) = self
+        let capture = self
             .into_error_body_capture(error_preview_limit, error_body_limit)
             .await?;
         let redacted_url = log_redactor
@@ -362,20 +365,21 @@ impl HttpResponse {
             .into_text_or_marker("<redaction incomplete>");
         let message = format!(
             "{} with status {} for {} {}; response body preview: {}",
-            message_prefix, status, method, redacted_url, body_preview
+            message_prefix, status, method, redacted_url, capture.preview
         );
         let mut mapped = HttpError::from_status(status, message)
             .with_method(&method)
             .with_url(&url)
-            .with_response_body_preview(body_preview)
+            .with_response_body_preview(capture.preview.clone())
             .with_log_redactor(log_redactor.clone());
         if let Some(retry_after) = retry_after {
             mapped = mapped.with_retry_after(retry_after);
         }
         mapped = mapped.with_status_response(crate::error::HttpStatusResponse::new(
             error_body_headers,
-            raw_body,
-            raw_truncated,
+            capture.raw_body,
+            capture.end,
+            capture.error,
             error_body_content_length,
         ));
         Err(mapped)
@@ -390,11 +394,11 @@ impl HttpResponse {
     /// Returns [`HttpErrorKind::Cancelled`](crate::HttpErrorKind::Cancelled)
     /// when the request cancellation token fires while preview bytes are being
     /// read.
-    pub(crate) async fn into_error_body_capture(
+    async fn into_error_body_capture(
         mut self,
         preview_limit: usize,
         raw_limit: usize,
-    ) -> HttpResult<(String, Bytes, bool)> {
+    ) -> HttpResult<HttpErrorBodyCapture> {
         let limit = preview_limit.max(1);
         let state = std::mem::replace(&mut self.body, HttpResponseBodyState::StreamingTaken);
         let content_type = Self::content_type_header(self.meta.headers());
@@ -402,7 +406,11 @@ impl HttpResponse {
             HttpResponseBodyState::Backend(backend) => backend,
             HttpResponseBodyState::Buffered(body) => {
                 let raw_limit = raw_limit.max(1);
-                let raw_truncated = body.len() > raw_limit;
+                let end = if body.len() > raw_limit {
+                    crate::error::HttpBodyCaptureEnd::SizeLimit
+                } else {
+                    crate::error::HttpBodyCaptureEnd::Complete
+                };
                 let preview_truncated = body.len() > limit;
                 let raw = body.slice(..body.len().min(raw_limit));
                 let preview = Self::render_error_body_preview(
@@ -412,9 +420,21 @@ impl HttpResponse {
                     content_type.as_ref(),
                     &self.options.log_redactor,
                 );
-                return Ok((preview, raw, raw_truncated));
+                return Ok(HttpErrorBodyCapture {
+                    preview,
+                    raw_body: raw,
+                    end,
+                    error: None,
+                });
             }
-            HttpResponseBodyState::StreamingTaken => return Ok(("<empty>".to_string(), Bytes::new(), true)),
+            HttpResponseBodyState::StreamingTaken => {
+                return Ok(HttpErrorBodyCapture {
+                    preview: "<empty>".to_string(),
+                    raw_body: Bytes::new(),
+                    end: crate::error::HttpBodyCaptureEnd::BodyUnavailable,
+                    error: None,
+                });
+            }
         };
         self.read_error_body_preview(backend, limit, raw_limit, content_type)
             .await
@@ -931,7 +951,7 @@ impl HttpResponse {
         max_bytes: usize,
         raw_limit: usize,
         content_type: Option<HeaderValue>,
-    ) -> HttpResult<(String, Bytes, bool)> {
+    ) -> HttpResult<HttpErrorBodyCapture> {
         let limit = max_bytes.max(1);
         let read_timeout = self.runtime.read_timeout;
         let cancellation_token = self.runtime.cancellation_token.clone();
@@ -945,6 +965,7 @@ impl HttpResponse {
         let mut raw = Vec::new();
         let mut preview_truncated = false;
         let mut raw_truncated = false;
+        let mut end = crate::error::HttpBodyCaptureEnd::Complete;
         let capture_limit = limit.max(raw_limit.max(1)).saturating_add(1);
         let mut capture_budget = ResourceBudget::new("status error response body preview", capture_limit);
         let capture_started_at = Instant::now();
@@ -964,11 +985,12 @@ impl HttpResponse {
             }
             let remaining = read_timeout.saturating_sub(capture_started_at.elapsed());
             if remaining.is_zero() {
-                return Ok((
-                    format!("<error body unavailable: read timeout after {:?}>", read_timeout),
-                    Bytes::from(raw),
-                    true,
-                ));
+                return Ok(HttpErrorBodyCapture {
+                    preview: format!("<error body unavailable: read timeout after {:?}>", read_timeout),
+                    raw_body: Bytes::from(raw),
+                    end: crate::error::HttpBodyCaptureEnd::ReadTimeout,
+                    error: None,
+                });
             }
             let next = if let Some(token) = cancellation_token.as_ref() {
                 tokio::select! {
@@ -1013,18 +1035,23 @@ impl HttpResponse {
                 Ok(Ok(None)) => break,
                 Ok(Err(error)) => {
                     let error = error.without_url();
-                    return Ok((
-                        format!("<error body unavailable: failed to read response body: {}>", error),
-                        Bytes::from(raw),
-                        true,
-                    ));
+                    let preview = "<error body unavailable: failed to read response body>".to_string();
+                    let capture_error: Arc<dyn Error + Send + Sync + 'static> = Arc::new(error);
+                    end = crate::error::HttpBodyCaptureEnd::ReadFailure;
+                    return Ok(HttpErrorBodyCapture {
+                        preview,
+                        raw_body: Bytes::from(raw),
+                        end,
+                        error: Some(capture_error),
+                    });
                 }
                 Err(_) => {
-                    return Ok((
-                        format!("<error body unavailable: read timeout after {:?}>", read_timeout),
-                        Bytes::from(raw),
-                        true,
-                    ));
+                    return Ok(HttpErrorBodyCapture {
+                        preview: format!("<error body unavailable: read timeout after {:?}>", read_timeout),
+                        raw_body: Bytes::from(raw),
+                        end: crate::error::HttpBodyCaptureEnd::ReadTimeout,
+                        error: None,
+                    });
                 }
             }
         }
@@ -1034,17 +1061,21 @@ impl HttpResponse {
         }
         preview_truncated |= source_len.is_some_and(|length| length > limit);
         raw_truncated |= source_len.is_some_and(|length| length > raw_limit);
-        Ok((
-            Self::render_error_body_preview(
+        if raw_truncated {
+            end = crate::error::HttpBodyCaptureEnd::SizeLimit;
+        }
+        Ok(HttpErrorBodyCapture {
+            preview: Self::render_error_body_preview(
                 &preview,
                 source_len,
                 preview_truncated,
                 content_type.as_ref(),
                 &self.options.log_redactor,
             ),
-            Bytes::from(raw),
-            raw_truncated,
-        ))
+            raw_body: Bytes::from(raw),
+            end,
+            error: None,
+        })
     }
 
     /// Returns a cancellation error with response read context when cancelled.
@@ -1160,6 +1191,7 @@ mod tests {
     use super::attach_sse_error_context;
     use crate::HttpError;
     use crate::HttpErrorKind;
+    use crate::response::internal::HttpResponseBodyState;
 
     #[test]
     fn test_attach_sse_error_context_preserves_existing_error_fields() {
@@ -1321,5 +1353,30 @@ mod tests {
         assert!(captured.is_truncated());
         let _ = release_tx.send(());
         server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_status_capture_reports_unavailable_taken_body() {
+        let (backend, url) = make_backend(Method::GET, 404).await;
+        let meta = HttpResponseMeta::new(
+            backend.status(),
+            backend.headers().clone(),
+            backend.url().clone(),
+            Method::GET,
+        );
+        let mut response = HttpResponse::from_backend(
+            meta,
+            backend,
+            Duration::from_secs(1),
+            None,
+            url,
+            HttpResponseOptions::default(),
+        );
+        response.body = HttpResponseBodyState::StreamingTaken;
+        let error = response.into_success_or_status_error("failed").await.unwrap_err();
+        let capture = error.status_response().unwrap();
+        assert_eq!(capture.capture_end(), crate::HttpBodyCaptureEnd::BodyUnavailable);
+        assert!(capture.is_truncated());
+        assert!(capture.capture_error().is_none());
     }
 }

@@ -37,6 +37,7 @@ pub mod sse;
 pub use client::HttpClient;
 pub use client::HttpClientBuilder;
 pub use client::http_logger::HttpLogger;
+pub use error::HttpBodyCaptureEnd;
 pub use error::HttpError;
 pub use error::HttpErrorKind;
 pub use error::HttpResult;

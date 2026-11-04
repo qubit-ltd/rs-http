@@ -162,8 +162,9 @@ impl HttpClient {
     /// Returns a builder initialized with this client's options.
     ///
     /// Runtime header injectors and request/response interceptors are not
-    /// copied into the builder. Use [`Self::rebuild_with_options`] when those
-    /// registrations must survive a backend rebuild.
+    /// copied into the builder. Call [`HttpClientBuilder::build`] to create a
+    /// client from the copied options. Use [`Self::rebuild_with_options`] when
+    /// runtime registrations must survive a backend rebuild.
     ///
     /// # Returns
     /// A builder containing a clone of this client's options.
@@ -982,6 +983,40 @@ mod tests {
             assert_eq!(mapped.response_body_preview.as_deref(), Some("retry later"));
             assert_eq!(mapped.retry_after, Some(Duration::from_secs(2)));
             assert!(!format!("{mapped:?}").contains("conversion-secret"));
+        }
+    }
+
+    #[test]
+    fn test_http_status_capture_source_survives_clone_and_projection() {
+        let capture_error: Arc<dyn Error + Send + Sync> = Arc::new(io::Error::other("capture source marker"));
+        let response = crate::HttpStatusResponse::new(
+            http::HeaderMap::new(),
+            bytes::Bytes::from_static(b"partial"),
+            crate::HttpBodyCaptureEnd::ReadFailure,
+            Some(capture_error),
+            None,
+        );
+        let original = HttpError::other("status failure").with_status_response(response);
+        assert!(!original.to_string().contains("capture source marker"));
+        assert!(!format!("{original:?}").contains("capture source marker"));
+        let cloned = original.status_response_cloned().expect("cloned status response");
+        let projected = HttpClient::project_http_error(&original);
+
+        for response in [
+            original.status_response().unwrap(),
+            &cloned,
+            projected.status_response().unwrap(),
+        ] {
+            assert_eq!(response.capture_end(), crate::HttpBodyCaptureEnd::ReadFailure);
+            assert!(response.is_truncated());
+            assert_eq!(
+                response
+                    .capture_error()
+                    .and_then(|error| error.downcast_ref::<io::Error>())
+                    .unwrap()
+                    .to_string(),
+                "capture source marker"
+            );
         }
     }
 

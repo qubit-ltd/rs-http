@@ -13,6 +13,7 @@ use std::time::Duration;
 use http::Method;
 use http::StatusCode;
 use httpdate::fmt_http_date;
+use qubit_http::HttpBodyCaptureEnd;
 use qubit_http::HttpCancellationToken;
 use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
@@ -257,8 +258,20 @@ async fn test_execute_status_error_preview_reports_body_read_failure() {
     assert_eq!(error.kind, HttpErrorKind::Status);
     let preview = error
         .response_body_preview
+        .as_ref()
         .expect("response body preview should be recorded");
     assert!(preview.contains("failed to read response body"));
+    let capture = error.status_response().expect("status snapshot should be retained");
+    assert_eq!(capture.capture_end(), HttpBodyCaptureEnd::ReadFailure);
+    assert!(capture.is_truncated());
+    assert!(capture.capture_error().is_some());
+    let source_detail = capture.capture_error().unwrap().to_string();
+    assert!(!error.to_string().contains(&source_detail));
+    assert!(!format!("{error:?}").contains(&source_detail));
+    let formatted = format!("{capture:?}");
+    assert!(formatted.contains("ReadFailure"));
+    assert!(formatted.contains("capture_error_present: true"));
+    assert!(!formatted.contains("status-preview-read-error"));
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
@@ -361,6 +374,15 @@ async fn test_status_body_raw_limit_is_independent_and_exact_eof_is_complete() {
         let raw = error.status_response().unwrap();
         assert_eq!(raw.body().as_ref(), expected_body);
         assert_eq!(raw.is_truncated(), expected_truncated);
+        assert_eq!(
+            raw.capture_end(),
+            if expected_truncated {
+                HttpBodyCaptureEnd::SizeLimit
+            } else {
+                HttpBodyCaptureEnd::Complete
+            }
+        );
+        assert!(raw.capture_error().is_none());
         timeout(Duration::from_secs(3), server.finish()).await.unwrap();
     }
 }
@@ -388,7 +410,72 @@ async fn test_status_body_read_timeout_keeps_partial_raw_truncated() {
     .unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::Status);
     assert!(error.response_body_preview.as_ref().unwrap().contains("read timeout"));
-    assert!(error.status_response().unwrap().is_truncated());
+    let capture = error.status_response().unwrap();
+    assert!(capture.is_truncated());
+    assert_eq!(capture.capture_end(), HttpBodyCaptureEnd::ReadTimeout);
+    assert!(capture.capture_error().is_none());
+    timeout(Duration::from_secs(3), server.finish()).await.unwrap();
+}
+
+#[tokio_test]
+async fn test_status_capture_read_failure_takes_precedence_after_raw_limit() {
+    let server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
+        status: 429,
+        headers: vec![],
+        total_length: 64,
+        prefix: b"abcdefgh".to_vec(),
+        delay: Duration::from_millis(5),
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.error_response_body_limit = 4;
+    options.timeouts.read_timeout = Duration::from_secs(1);
+    let client = HttpClientBuilder::new().create(options).unwrap();
+    let error = client
+        .execute(client.request(Method::GET, "/size-then-failure").build())
+        .await
+        .unwrap_err();
+    let capture = error.status_response().unwrap();
+    assert_eq!(capture.body().as_ref(), b"abcd");
+    assert_eq!(capture.capture_end(), HttpBodyCaptureEnd::ReadFailure);
+    assert!(capture.is_truncated());
+    assert!(capture.capture_error().is_some());
+    timeout(Duration::from_secs(3), server.finish()).await.unwrap();
+}
+
+#[tokio_test]
+async fn test_status_capture_backend_request_timeout_is_read_failure() {
+    let server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
+        status: 429,
+        headers: vec![],
+        total_length: 64,
+        prefix: b"partial".to_vec(),
+        delay: Duration::from_millis(200),
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.request_timeout = Some(Duration::from_millis(30));
+    options.timeouts.read_timeout = Duration::from_secs(1);
+    let client = HttpClientBuilder::new().create(options).unwrap();
+    let error = timeout(
+        Duration::from_secs(3),
+        client.execute(client.request(Method::GET, "/backend-timeout").build()),
+    )
+    .await
+    .unwrap()
+    .unwrap_err();
+    let capture = error.status_response().unwrap();
+    assert_eq!(capture.capture_end(), HttpBodyCaptureEnd::ReadFailure);
+    assert!(
+        capture
+            .capture_error()
+            .unwrap()
+            .downcast_ref::<reqwest::Error>()
+            .unwrap()
+            .is_timeout()
+    );
     timeout(Duration::from_secs(3), server.finish()).await.unwrap();
 }
 

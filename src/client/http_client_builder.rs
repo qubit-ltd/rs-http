@@ -23,7 +23,11 @@ use crate::HttpConfigError;
 use crate::HttpError;
 use crate::HttpResult;
 
-/// Public factory used to build reqwest-backed [`HttpClient`] instances.
+/// Builder and factory for reqwest-backed [`HttpClient`] instances.
+///
+/// Options installed with [`HttpClientBuilder::options`] are consumed only by
+/// [`HttpClientBuilder::build`]. The `create*` factory methods use their own
+/// options argument or defaults and ignore options stored on this builder.
 ///
 /// # Examples
 ///
@@ -32,10 +36,12 @@ use crate::HttpResult;
 /// use qubit_http::HttpClientOptions;
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let client = HttpClientBuilder::new()
-///     .options(HttpClientOptions::new())
-///     .build()?;
-/// assert!(!client.options().retry.enabled);
+/// let options = HttpClientOptions {
+///     user_agent: Some("capture-example/1.0".to_owned()),
+///     ..HttpClientOptions::default()
+/// };
+/// let client = HttpClientBuilder::new().options(options).build()?;
+/// assert_eq!(client.options().user_agent.as_deref(), Some("capture-example/1.0"));
 /// # Ok(())
 /// # }
 /// ```
@@ -46,7 +52,7 @@ pub struct HttpClientBuilder {
 }
 
 impl HttpClientBuilder {
-    /// Returns a stateless factory instance.
+    /// Returns a builder with no stored options.
     ///
     /// # Returns
     /// New [`HttpClientBuilder`].
@@ -56,7 +62,8 @@ impl HttpClientBuilder {
         Self { options: None }
     }
 
-    /// Builds a client from the configured options or defaults.
+    /// Builds a client from options stored with [`Self::options`], or defaults
+    /// when no options were stored.
     ///
     /// # Returns
     /// A client using the configured options, or the default options when none
@@ -72,6 +79,8 @@ impl HttpClientBuilder {
 
     /// Creates a new [`HttpClient`] with default [`HttpClientOptions`].
     ///
+    /// Stored builder options are ignored; this factory uses defaults.
+    ///
     /// # Returns
     /// [`HttpClient`] or [`HttpError`] (proxy/build failures).
     ///
@@ -85,6 +94,8 @@ impl HttpClientBuilder {
 
     /// Applies `options` to a new [`reqwest::Client::builder`], then wraps the
     /// built client.
+    ///
+    /// Stored builder options are ignored; this factory uses `options`.
     ///
     /// # Parameters
     /// - `options`: Full client configuration.
@@ -168,6 +179,9 @@ impl HttpClientBuilder {
     /// Loads [`HttpClientOptions`] from `config`, validates them, then calls
     /// [`HttpClientBuilder::create`].
     ///
+    /// Stored builder options are ignored; this factory uses options loaded
+    /// from `config`.
+    ///
     /// # Parameters
     /// - `config`: Any [`ConfigReader`] (root [`qubit_config::Config`] or a
     ///   [`qubit_config::ConfigSection`] from [`ConfigReader::section`]).
@@ -194,7 +208,9 @@ impl HttpClientBuilder {
         })
     }
 
-    /// Installs the complete client options value.
+    /// Installs the complete client options value for [`Self::build`].
+    ///
+    /// The stored options are ignored by the `create*` factory methods.
     ///
     /// # Parameters
     /// - `options`: Complete options to use when building the client.

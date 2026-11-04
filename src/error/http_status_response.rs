@@ -6,8 +6,13 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
+use std::error::Error;
+use std::sync::Arc;
+
 use bytes::Bytes;
 use http::HeaderMap;
+
+use super::HttpBodyCaptureEnd;
 
 /// Bounded raw response data retained for a non-success HTTP status.
 ///
@@ -22,9 +27,16 @@ use http::HeaderMap;
 /// use qubit_http::HttpError;
 /// use qubit_http::HttpStatusResponse;
 ///
-/// let error = HttpError::transport("connection closed");
-/// let response: Option<&HttpStatusResponse> = error.status_response();
-/// assert!(response.is_none());
+/// fn inspect(error: &HttpError) {
+///     if let Some(response) = error.status_response() {
+///         let _reason = response.capture_end();
+///         if let Some(source) = response.capture_error() {
+///             // Redact source details before logging.
+///             let _source_to_redact = source;
+///         }
+///     }
+/// }
+/// let _inspect: fn(&HttpError) = inspect;
 /// ```
 #[derive(Clone)]
 pub struct HttpStatusResponse {
@@ -32,9 +44,10 @@ pub struct HttpStatusResponse {
     headers: HeaderMap,
     /// Retained prefix of the response body.
     body: Bytes,
-    /// Whether source bytes were omitted or capture ended before completeness
-    /// could be established.
-    truncated: bool,
+    /// Final reason status-body capture ended.
+    capture_end: HttpBodyCaptureEnd,
+    /// Backend body-read failure, retained for explicit diagnostics.
+    capture_error: Option<Arc<dyn Error + Send + Sync + 'static>>,
     /// Complete body length advertised by the server, if known.
     content_length: Option<u64>,
 }
@@ -45,18 +58,26 @@ impl HttpStatusResponse {
     /// # Parameters
     /// - `headers`: Headers received with the response.
     /// - `body`: Retained prefix of the response body.
-    /// - `truncated`: Whether source bytes were omitted or capture ended before
-    ///   completeness could be established.
+    /// - `capture_end`: Final reason status-body capture ended.
+    /// - `capture_error`: Backend body-read error, if capture failed.
     /// - `content_length`: Complete body length advertised by the server, if
     ///   known.
     ///
     /// # Returns
     /// A response snapshot containing the supplied headers and body metadata.
-    pub(crate) fn new(headers: HeaderMap, body: Bytes, truncated: bool, content_length: Option<u64>) -> Self {
+    pub(crate) fn new(
+        headers: HeaderMap,
+        body: Bytes,
+        capture_end: HttpBodyCaptureEnd,
+        capture_error: Option<Arc<dyn Error + Send + Sync + 'static>>,
+        content_length: Option<u64>,
+    ) -> Self {
+        debug_assert!(capture_error.is_none() || capture_end == HttpBodyCaptureEnd::ReadFailure);
         Self {
             headers,
             body,
-            truncated,
+            capture_end,
+            capture_error,
             content_length,
         }
     }
@@ -94,7 +115,23 @@ impl HttpStatusResponse {
     #[must_use]
     #[inline]
     pub fn is_truncated(&self) -> bool {
-        self.truncated
+        self.capture_end != HttpBodyCaptureEnd::Complete
+    }
+    /// Returns the reason response-body capture ended.
+    #[must_use]
+    #[inline]
+    pub fn capture_end(&self) -> HttpBodyCaptureEnd {
+        self.capture_end
+    }
+
+    /// Returns the backend read error for [`HttpBodyCaptureEnd::ReadFailure`].
+    ///
+    /// This exposes the original error and its source chain only for
+    /// [`HttpBodyCaptureEnd::ReadFailure`]. Callers must redact sensitive
+    /// details before logging it.
+    #[must_use]
+    pub fn capture_error(&self) -> Option<&(dyn Error + Send + Sync + 'static)> {
+        self.capture_error.as_deref()
     }
     /// Returns the complete body length advertised by the server, if known.
     ///
@@ -114,7 +151,8 @@ impl std::fmt::Debug for HttpStatusResponse {
         formatter
             .debug_struct("HttpStatusResponse")
             .field("body_len", &self.body.len())
-            .field("truncated", &self.truncated)
+            .field("capture_end", &self.capture_end)
+            .field("capture_error_present", &self.capture_error.is_some())
             .field("content_length", &self.content_length)
             .finish()
     }

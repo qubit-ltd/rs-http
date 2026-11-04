@@ -7,6 +7,7 @@
 // =============================================================================
 //! Private response implementation state.
 
+pub(super) mod http_error_body_capture;
 mod http_response_body_state;
 
 // Retains cloneable context for repeatable response body-read diagnostics.

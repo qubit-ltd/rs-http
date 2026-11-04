@@ -44,7 +44,7 @@ futures-util = "0.3"
 
 ```rust
 use http::Method;
-use qubit_http::{HttpClientBuilder, HttpClientOptions};
+use qubit_http::{HttpClient, HttpClientOptions};
 ```
 
 ## 快速开始
@@ -56,7 +56,7 @@ use qubit_http::{HttpClientBuilder, HttpClientOptions};
 let mut options = HttpClientOptions::new();
 options.set_base_url(&format!("http://{address}"))?;
 options.add_header("x-client-id", "demo")?;
-let client = HttpClientBuilder::new().create(options)?;
+let client = HttpClient::builder().options(options).build()?;
 let request = client
     .request(Method::GET, "/anything")
     .query_param("from", "local-quick-start")
@@ -123,7 +123,7 @@ let client = qubit_http::HttpClientBuilder::new().create_default()?;
 
 ```rust
 use std::time::Duration;
-use qubit_http::{HttpClientBuilder, HttpClientOptions, HttpRetryMethodPolicy};
+use qubit_http::{HttpClient, HttpClientOptions, HttpRetryMethodPolicy};
 use qubit_retry::BackoffPolicy;
 
 let mut options = HttpClientOptions::new();
@@ -141,7 +141,7 @@ options.retry.backoff = BackoffPolicy::exponential(
 )?;
 options.retry.method_policy = HttpRetryMethodPolicy::IdempotentOnly;
 
-let client = HttpClientBuilder::new().create(options)?;
+let client = HttpClient::builder().options(options).build()?;
 ```
 
 `create` 会先执行校验。常见校验包括：超时必须大于 0；`response_header_timeout` 还必须能表示为当前平台 `Instant` 的截止时间；启用代理时必须有非空 host 和非 0 port；只有设置 username 时才能设置 password；日志记录请求体或响应体时 `body_size_limit` 必须大于 0；`retry.max_attempts` 必须大于 0；`error_response_preview_limit` 必须大于 0；`user_agent` 不能为空并且必须是合法 header value；SSE 行/帧上限必须大于 0。backoff 与 jitter 在构造 `BackoffPolicy` 时完成校验。
@@ -154,7 +154,11 @@ updated.timeouts.request_timeout = Some(std::time::Duration::from_secs(20));
 let rebuilt = client.rebuild_with_options(updated)?;
 ```
 
-`rebuild_with_options` 会创建新的后端连接池，按原顺序保留四类运行时注册项；构建失败时原客户端不变。`client.to_builder()` 只复制选项，用它构造的新客户端不会继承这些注册项。
+`rebuild_with_options` 会创建新的后端连接池，按原顺序保留四类运行时注册项；构建失败时原客户端不变。`client.to_builder()` 只复制选项，之后调用 `.build()` 使用复制的选项；运行时注册项不会被复制。
+
+```rust
+let rebuilt_from_copied_options = client.to_builder().build()?;
+```
 
 ### 从 qubit-config 读取
 
@@ -175,6 +179,9 @@ config.set("http.retry.fixed_delay", Duration::from_millis(250))?;
 let client = HttpClientBuilder::new()
     .create_from_config(&config.section("http")?)?;
 ```
+
+`create_from_config` 是兼容 factory 入口：它使用从 `config` 加载的选项，忽略 builder
+之前保存的选项。
 
 `from_config` 会拒绝所选组件范围内的未知字段。例如
 `http.timeouts.connect_timout` 会报错，而不会悄悄使用默认超时。独立的
@@ -579,7 +586,7 @@ match client.execute(request).await {
 
 错误分类：
 
-非 2xx 错误的脱敏预览和保留原始 body 使用独立限额。预览可能已截断而 raw body 仍完整；`HttpStatusResponse::is_truncated()` 为 true 表示大小限额省略了源字节，或读取超时、传输失败等原因使采集提前结束。true 不说明具体中断原因，也不能证明当时还有额外字节可读；false 表示采集完成且未省略源字节。需要 provider 字段的错误分类器应只在 raw body 完整时解析。
+非 2xx 错误的脱敏预览和保留原始 body 使用独立限额。预览可能已截断而 raw body 仍完整。`HttpStatusResponse::is_truncated()` 保持兼容语义：raw 字节有遗漏或采集未能确认完整时为 true，但它不说明具体原因。使用 `capture_end()` 区分 `Complete`、`SizeLimit`、`ReadTimeout`、`ReadFailure` 和 `BodyUnavailable`；该枚举为 non-exhaustive，匹配时需提供兜底分支。仅 `ReadFailure` 的 `capture_error()` 会返回 backend 错误及其 source 链；记录前须脱敏。该查询独立于顶层 `HttpError::source()` 重试错误链，并会随状态快照经过重试投影保留。只有 `capture_end()` 为 `Complete` 时才解析 provider 字段；仅 preview 截断不表示 raw body 不完整。
 
 | 分组 | 错误类型 | 典型含义 |
 | --- | --- | --- |
@@ -625,6 +632,9 @@ SSE 不承诺普通 HTTP 自动重试的直接 source 类型或诊断信息。
 配置失败时，向 `from_config` 传入作用域化的 `config.section("http")`，
 可保留根路径上下文。重试失败时，检查 `retry_diagnostics()`，并沿
 `Error::source()` 找到保留的 `RetryError<HttpError>`。
+非 2xx body 不完整时，可检查 `status_response().capture_end()`，区分大小限额、采集超时、
+backend 读取失败和流不可用。backend 读取失败时可用 `capture_error()` 查询来源；记录前须
+脱敏。只有结束原因是 `Complete` 时才将保留 body 解析为 provider JSON。
 
 ### SSE 重连取消归属
 

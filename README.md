@@ -48,7 +48,7 @@ Run the shared local example with `cargo run --example local_quick_start`. It st
 let mut options = HttpClientOptions::new();
 options.set_base_url(&format!("http://{address}"))?;
 options.add_header("x-client-id", "demo")?;
-let client = HttpClientBuilder::new().create(options)?;
+let client = HttpClient::builder().options(options).build()?;
 let request = client
     .request(Method::GET, "/anything")
     .query_param("from", "local-quick-start")

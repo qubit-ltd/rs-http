@@ -45,7 +45,7 @@ futures-util = "0.3"
 
 ```rust
 use http::Method;
-use qubit_http::{HttpClientBuilder, HttpClientOptions};
+use qubit_http::{HttpClient, HttpClientOptions};
 ```
 
 ## Quick Start
@@ -58,7 +58,7 @@ OS-assigned port and uses its address as the client's `base_url`:
 let mut options = HttpClientOptions::new();
 options.set_base_url(&format!("http://{address}"))?;
 options.add_header("x-client-id", "demo")?;
-let client = HttpClientBuilder::new().create(options)?;
+let client = HttpClient::builder().options(options).build()?;
 let request = client
     .request(Method::GET, "/anything")
     .query_param("from", "local-quick-start")
@@ -130,7 +130,7 @@ client configuration when both stages should use that client's policy.
 
 ```rust
 use std::time::Duration;
-use qubit_http::{HttpClientBuilder, HttpClientOptions, HttpRetryMethodPolicy};
+use qubit_http::{HttpClient, HttpClientOptions, HttpRetryMethodPolicy};
 use qubit_retry::BackoffPolicy;
 
 let mut options = HttpClientOptions::new();
@@ -148,7 +148,7 @@ options.retry.backoff = BackoffPolicy::exponential(
 )?;
 options.retry.method_policy = HttpRetryMethodPolicy::IdempotentOnly;
 
-let client = HttpClientBuilder::new().create(options)?;
+let client = HttpClient::builder().options(options).build()?;
 ```
 
 `create` validates options before building the client. Validation includes: all timeout values must be greater than zero; `response_header_timeout` must also fit in the platform's `Instant` deadline range; enabled proxies require a non-empty host and non-zero port; a proxy password requires a username; `logging.body_size_limit` must be greater than zero when request or response body logging is enabled; `retry.max_attempts` must be greater than zero; `error_response_preview_limit` must be greater than zero; `user_agent` must be non-empty and a valid header value; SSE line and frame limits must be greater than zero. Backoff and jitter values are validated when constructing `BackoffPolicy`.
@@ -161,7 +161,11 @@ updated.timeouts.request_timeout = Some(std::time::Duration::from_secs(20));
 let rebuilt = client.rebuild_with_options(updated)?;
 ```
 
-`rebuild_with_options` creates a new backend connection pool and retains all four kinds of hook registration in their original order; the existing client remains unchanged if building fails. `client.to_builder()` copies only options, so building from it does not retain those registrations.
+`rebuild_with_options` creates a new backend connection pool and retains all four kinds of hook registration in their original order; the existing client remains unchanged if building fails. `client.to_builder()` copies only options. Finish that flow with `.build()` to use the copied options; runtime hooks are not copied.
+
+```rust
+let rebuilt_from_copied_options = client.to_builder().build()?;
+```
 
 ### Loading From qubit-config
 
@@ -182,6 +186,9 @@ config.set("http.retry.fixed_delay", Duration::from_millis(250))?;
 let client = HttpClientBuilder::new()
     .create_from_config(&config.section("http")?)?;
 ```
+
+`create_from_config` is a compatibility factory entry: it uses the options
+loaded from `config` and ignores options previously stored on the builder.
 
 `from_config` rejects unknown fields in the selected component scope. For
 example, `http.timeouts.connect_timout` fails instead of silently using the
@@ -590,7 +597,7 @@ Runtime HTTP errors use `HttpError`; the result alias is `HttpResult<T> = Result
 
 Error categories:
 
-For non-2xx errors, the redacted preview and retained raw body have independent limits. The preview can be truncated while the raw body remains complete; `HttpStatusResponse::is_truncated()` is true if the raw-size limit omitted bytes or capture stopped early because of a read timeout or transport failure. A true value does not identify the cause or prove that more bytes were available; false means capture completed without omitting source bytes. Error classifiers that need provider fields should parse the raw body only when it is complete.
+For non-2xx errors, the redacted preview and retained raw body have independent limits. The preview can be truncated while the raw body remains complete. `HttpStatusResponse::is_truncated()` retains its compatibility meaning: it is true if raw bytes were omitted or capture ended before completeness was established, and it does not identify the cause. Use `capture_end()` to distinguish `Complete`, `SizeLimit`, `ReadTimeout`, `ReadFailure`, and `BodyUnavailable`; the non-exhaustive enum requires a fallback match arm. `capture_error()` returns the backend error and source chain only for `ReadFailure`; redact it before logging. This is independent of the top-level `HttpError::source()` retry chain, and the snapshot retains it through retry projection. Parse provider fields only when `capture_end()` is `Complete`; preview truncation alone does not make the raw body incomplete.
 
 | Group | Error kinds | Typical meaning |
 | --- | --- | --- |
@@ -636,6 +643,11 @@ following symptoms identify the most common configuration or usage mistakes:
 For configuration failures, pass a scoped `config.section("http")` to retain
 root-relative error paths. For retry failures, inspect `retry_diagnostics()`
 and follow `Error::source()` to the retained `RetryError<HttpError>`.
+For an incomplete non-2xx body, inspect `status_response().capture_end()` to
+distinguish a size bound, capture timeout, backend read failure, and unavailable
+stream. `capture_error()` is available for backend read failures; redact its
+details before logging. Only parse the retained body as provider JSON when the
+capture end is `Complete`.
 
 ### SSE reconnect cancellation ownership
 

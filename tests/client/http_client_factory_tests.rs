@@ -15,6 +15,61 @@ use qubit_http::HttpConfigErrorKind;
 use qubit_http::HttpErrorKind;
 use qubit_http::ProxyType;
 
+fn options_with_user_agent(user_agent: &str) -> HttpClientOptions {
+    HttpClientOptions {
+        user_agent: Some(user_agent.to_owned()),
+        ..HttpClientOptions::default()
+    }
+}
+
+#[test]
+fn test_builder_build_uses_stored_options() {
+    let client = HttpClientBuilder::new()
+        .options(options_with_user_agent("saved-options/1.0"))
+        .build()
+        .expect("stored options should build client");
+    assert_eq!(client.options().user_agent.as_deref(), Some("saved-options/1.0"));
+}
+
+#[test]
+fn test_builder_build_without_stored_options_uses_defaults() {
+    let client = HttpClientBuilder::new()
+        .build()
+        .expect("default options should build client");
+    assert_eq!(client.options().user_agent, HttpClientOptions::default().user_agent);
+}
+
+#[test]
+fn test_factory_create_default_ignores_stored_options() {
+    let client = HttpClientBuilder::new()
+        .options(options_with_user_agent("saved-options/1.0"))
+        .create_default()
+        .expect("default options should build client");
+    assert_eq!(client.options().user_agent, HttpClientOptions::default().user_agent);
+}
+
+#[test]
+fn test_factory_create_uses_explicit_options_instead_of_stored_options() {
+    let client = HttpClientBuilder::new()
+        .options(options_with_user_agent("saved-options/1.0"))
+        .create(options_with_user_agent("explicit-options/1.0"))
+        .expect("explicit options should build client");
+    assert_eq!(client.options().user_agent.as_deref(), Some("explicit-options/1.0"));
+}
+
+#[test]
+fn test_factory_create_from_config_uses_config_instead_of_stored_options() {
+    let mut config = Config::new();
+    config
+        .set("user_agent", "configured-options/1.0".to_string())
+        .expect("test config should set user_agent");
+    let client = HttpClientBuilder::new()
+        .options(options_with_user_agent("saved-options/1.0"))
+        .create_from_config(&config)
+        .expect("configured options should build client");
+    assert_eq!(client.options().user_agent.as_deref(), Some("configured-options/1.0"));
+}
+
 #[test]
 fn test_factory_create_uses_default_options() {
     let factory = HttpClientBuilder::new();
