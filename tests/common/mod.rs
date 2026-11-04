@@ -16,6 +16,8 @@ mod tracing_capture;
 
 pub use one_shot_server::ResponseChunk;
 pub use one_shot_server::ResponsePlan;
+pub use one_shot_server::CapturedRequest;
+pub use one_shot_server::read_request;
 pub use one_shot_server::spawn_blocked_one_shot_server;
 pub use one_shot_server::spawn_multi_shot_server;
 pub use one_shot_server::spawn_one_shot_server;

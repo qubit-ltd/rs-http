@@ -295,7 +295,8 @@ pub async fn spawn_multi_shot_server(plans: Vec<ResponsePlan>) -> MultiShotServe
     }
 }
 
-async fn read_request(stream: &mut TcpStream) -> std::io::Result<CapturedRequest> {
+/// Reads one complete HTTP request, including a chunked request body.
+pub async fn read_request(stream: &mut TcpStream) -> std::io::Result<CapturedRequest> {
     let read_timeout = Duration::from_secs(3);
     let mut buffer = Vec::new();
     let header_end_index = loop {

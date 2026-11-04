@@ -23,6 +23,12 @@ type HttpRequestBodyStreamFactoryFn = dyn Fn() -> HttpRequestBodyStreamFactoryFu
 ///
 /// Each send attempt obtains a fresh byte stream from the stored async factory,
 /// so retries can rebuild the outbound body stream deterministically.
+/// The factory is called once per outer send attempt; it does not create a new
+/// body for an internal HTTP redirect. In particular, reqwest cannot replay
+/// this streaming body through a `307` or `308` redirect, so the response is
+/// returned as a status error unless an outer retry policy retries it. Prefer
+/// the final upload URL, or use a buffered body when the payload fits the
+/// application's memory budget.
 ///
 /// # Examples
 ///

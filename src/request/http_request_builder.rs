@@ -260,6 +260,12 @@ impl HttpRequestBuilder {
     /// The iterator is eagerly collected into memory during this call and must
     /// be finite. Memory usage grows with the total payload. Use
     /// [`Self::streaming_body`] for a deferred per-attempt stream factory.
+    /// Although the chunks are collected in memory, this request is represented
+    /// as a streaming body by reqwest. The body is not replayed across an
+    /// internal `307` or `308` redirect; the redirect status is returned unless
+    /// an outer retry policy retries it. Prefer the final upload URL, or use
+    /// [`Self::bytes_body`] when the payload fits the application's memory
+    /// budget.
     ///
     /// # Returns
     /// `self` for chaining.
@@ -276,7 +282,12 @@ impl HttpRequestBuilder {
     /// Sets a deferred streaming upload body factory.
     ///
     /// The factory runs once per send attempt and returns a fresh async byte
-    /// stream, which allows retries to rebuild the outbound stream body.
+    /// stream, which allows outer retries to rebuild the outbound stream body.
+    /// It is not called again for an internal redirect: streaming bodies are
+    /// not replayed through `307` or `308`, which are returned as status errors
+    /// unless an outer retry policy retries them. Prefer the final upload URL,
+    /// or use [`Self::bytes_body`] for payloads that fit the application's
+    /// memory budget.
     ///
     /// # Parameters
     /// - `factory`: Async stream factory for per-attempt body generation.

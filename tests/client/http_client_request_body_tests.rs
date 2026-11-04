@@ -23,10 +23,117 @@ use qubit_retry::BackoffPolicy;
 use tokio::test as tokio_test;
 use tokio::time::sleep;
 use tokio::time::timeout;
+use tokio::io::AsyncWriteExt;
+use tokio::net::TcpListener;
+use tokio::task::JoinHandle;
 
 use crate::common::ResponsePlan;
+use crate::common::CapturedRequest;
+use crate::common::read_request;
 use crate::common::spawn_multi_shot_server;
 use crate::common::spawn_one_shot_server;
+
+#[tokio_test]
+async fn test_upload_redirect_307_bytes_body_follows_and_preserves_post() {
+    run_upload_redirect(307, UploadBodyKind::Bytes).await;
+}
+
+#[tokio_test]
+async fn test_upload_redirect_308_bytes_body_follows_and_preserves_post() {
+    run_upload_redirect(308, UploadBodyKind::Bytes).await;
+}
+
+#[tokio_test]
+async fn test_upload_redirect_307_stream_body_returns_status_without_following() {
+    run_upload_redirect(307, UploadBodyKind::Stream).await;
+}
+
+#[tokio_test]
+async fn test_upload_redirect_308_stream_body_returns_status_without_following() {
+    run_upload_redirect(308, UploadBodyKind::Stream).await;
+}
+
+#[tokio_test]
+async fn test_upload_redirect_307_streaming_body_returns_status_without_following() {
+    run_upload_redirect(307, UploadBodyKind::Factory).await;
+}
+
+#[tokio_test]
+async fn test_upload_redirect_308_streaming_body_returns_status_without_following() {
+    run_upload_redirect(308, UploadBodyKind::Factory).await;
+}
+
+#[derive(Clone, Copy)]
+enum UploadBodyKind { Bytes, Stream, Factory }
+
+async fn run_upload_redirect(status: u16, body_kind: UploadBodyKind) {
+    let expected_count = usize::from(matches!(body_kind, UploadBodyKind::Bytes)) + 1;
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("listener should bind");
+    let addr = listener.local_addr().expect("listener address should exist");
+    let base_url = format!("http://{addr}/");
+    let server: JoinHandle<Vec<CapturedRequest>> = tokio::spawn(async move {
+        let mut requests = Vec::with_capacity(expected_count);
+        for index in 0..expected_count {
+            let (mut socket, _) = timeout(Duration::from_secs(3), listener.accept())
+                .await.expect("server accept timed out").expect("server accept failed");
+            let request = timeout(Duration::from_secs(3), read_request(&mut socket))
+                .await.expect("request read timed out").expect("request read failed");
+            let response = if index == 0 {
+                format!("HTTP/1.1 {status} Redirect\r\nLocation: /final\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+            } else {
+                "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_owned()
+            };
+            socket.write_all(response.as_bytes()).await.expect("response write failed");
+            requests.push(request);
+        }
+        requests
+    });
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(url::Url::parse(&base_url).expect("base URL should parse"));
+    options.max_redirects = Some(5);
+    options.retry.enabled = false;
+    let client = HttpClientBuilder::new().create(options).expect("client should be created");
+    let factory_calls = Arc::new(AtomicUsize::new(0));
+    let mut builder = client.request(Method::POST, "/upload");
+    builder = match body_kind {
+        UploadBodyKind::Bytes => builder.bytes_body(Bytes::from_static(b"payload")),
+        UploadBodyKind::Stream => builder.stream_body([Bytes::from_static(b"payload")]),
+        UploadBodyKind::Factory => {
+            let calls = Arc::clone(&factory_calls);
+            builder.streaming_body(move || {
+                calls.fetch_add(1, Ordering::Relaxed);
+                Box::pin(async {
+                    Box::pin(stream::iter(vec![Ok(Bytes::from_static(b"payload"))])) as HttpRequestBodyByteStream
+                })
+            })
+        }
+    };
+    let request = builder.disable_retry().build();
+    let result = timeout(Duration::from_secs(3), client.execute(request)).await
+        .expect("upload request timed out");
+    match body_kind {
+        UploadBodyKind::Bytes => assert_eq!(result.expect("buffered redirect should succeed").status().as_u16(), 200),
+        UploadBodyKind::Stream | UploadBodyKind::Factory => {
+            let error = result.expect_err("streaming redirect should not replay its body");
+            assert_eq!(error.kind(), HttpErrorKind::Status);
+            assert_eq!(error.status().expect("status should be present").as_u16(), status);
+        }
+    }
+    let captured = timeout(Duration::from_secs(3), server).await
+        .expect("server task timed out").expect("server task failed");
+    assert_eq!(captured.len(), expected_count);
+    assert_eq!(captured[0].method, "POST");
+    assert_eq!(captured[0].target, "/upload");
+    assert_eq!(captured[0].body, b"payload");
+    if expected_count == 2 {
+        assert_eq!(captured[1].method, "POST");
+        assert_eq!(captured[1].target, "/final");
+        assert_eq!(captured[1].body, b"payload");
+    }
+    if matches!(body_kind, UploadBodyKind::Factory) {
+        assert_eq!(factory_calls.load(Ordering::Relaxed), 1);
+    }
+}
 
 #[tokio_test]
 async fn test_execute_with_form_body_and_query_headers_timeout() {
