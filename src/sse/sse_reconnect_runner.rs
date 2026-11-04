@@ -326,12 +326,15 @@ fn apply_last_event_id_header(
 /// - `error`: Stream or transport error from SSE execution.
 ///
 /// # Returns
-/// `true` for retryable transport-like errors except explicit cancellation.
+/// `true` for retryable errors except explicit cancellation. The EOF text
+/// compatibility check applies only to [`HttpErrorKind::Other`], so diagnostic
+/// text cannot override an explicit non-retryable error category.
 fn should_reconnect_sse_error(error: &HttpError) -> bool {
     if error.kind == HttpErrorKind::Cancelled {
         return false;
     }
-    matches!(error.retry_hint(), RetryHint::Retryable) || is_unexpected_eof_error(error)
+    matches!(error.retry_hint(), RetryHint::Retryable)
+        || (error.kind == HttpErrorKind::Other && is_unexpected_eof_error(error))
 }
 
 /// Sleeps before reconnect, while honoring cancellation token when provided.

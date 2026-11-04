@@ -1564,6 +1564,90 @@ async fn test_execute_sse_with_reconnect_does_not_retry_non_retryable_protocol_e
 }
 
 #[tokio_test]
+async fn test_execute_sse_with_reconnect_does_not_retry_nonretryable_eof_errors() {
+    let mut cases = vec![
+        (HttpErrorKind::SseProtocol, None),
+        (HttpErrorKind::SseDecode, None),
+        (HttpErrorKind::Decode, None),
+        (HttpErrorKind::Cancelled, None),
+    ];
+    cases.extend(
+        [
+            StatusCode::BAD_REQUEST,
+            StatusCode::UNAUTHORIZED,
+            StatusCode::FORBIDDEN,
+            StatusCode::NOT_FOUND,
+        ]
+        .into_iter()
+        .map(|status| (HttpErrorKind::Status, Some(status))),
+    );
+    cases.push((HttpErrorKind::Status, None));
+
+    for (kind, expected_status) in cases {
+        for source_mode in 0..3 {
+            let mut options = HttpClientOptions::default();
+            options
+                .set_base_url("http://127.0.0.1:18080")
+                .expect("base URL should parse");
+            let mut client = HttpClientBuilder::new().create(options).unwrap();
+            let attempts = Arc::new(AtomicUsize::new(0));
+            let attempts_for_interceptor = Arc::clone(&attempts);
+            client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
+                attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
+                let mut error = match source_mode {
+                    0 => HttpError::new(kind, "unexpected eof in application protocol"),
+                    1 => HttpError::new(kind, "application protocol failure")
+                        .with_source(IoError::other("unexpected eof from source")),
+                    2 => HttpError::new(kind, "application protocol failure")
+                        .with_source(IoError::new(std::io::ErrorKind::UnexpectedEof, "stream ended")),
+                    _ => unreachable!("test matrix only defines three source modes"),
+                };
+                if let Some(status) = expected_status {
+                    error = error.with_status(status);
+                }
+                Err(error)
+            }));
+
+            let request = client.request(Method::GET, "/sse-nonretryable-eof").build();
+            let mut events = client.execute_sse_with_reconnect(
+                request,
+                SseReconnectOptions {
+                    retry: build_retry_options(1, BackoffPolicy::fixed(Duration::from_millis(1))),
+                    reconnect_on_eof: false,
+                    honor_server_retry: false,
+                    ..SseReconnectOptions::default()
+                },
+            );
+            let error = timeout(Duration::from_secs(3), events.next())
+                .await
+                .expect("stream should return promptly")
+                .expect("one error item")
+                .expect_err("nonretryable error must be returned");
+            assert_eq!(error.kind, kind);
+            assert_eq!(error.status, expected_status);
+            match source_mode {
+                0 => assert!(error.source.is_none()),
+                1 => assert_eq!(
+                    error.source.as_ref().map(ToString::to_string).as_deref(),
+                    Some("unexpected eof from source"),
+                ),
+                2 => assert_eq!(
+                    error.source.as_ref().map(ToString::to_string).as_deref(),
+                    Some("stream ended")
+                ),
+                _ => unreachable!("test matrix only defines three source modes"),
+            }
+            assert_eq!(
+                attempts.load(Ordering::Relaxed),
+                1,
+                "kind={kind:?}, source_mode={source_mode}"
+            );
+            assert!(events.next().await.is_none());
+        }
+    }
+}
+
+#[tokio_test]
 async fn test_execute_sse_with_reconnect_reports_invalid_last_event_id_header_value() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,
