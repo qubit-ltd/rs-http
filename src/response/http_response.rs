@@ -385,10 +385,13 @@ impl HttpResponse {
         Err(mapped)
     }
 
-    /// Consumes this response and returns a bounded body preview and raw body
-    /// capture for status errors. Preview truncation controls diagnostic
-    /// rendering; the returned boolean reports only whether the raw capture
-    /// omitted source bytes.
+    /// Consumes this response and captures a bounded diagnostic preview and raw
+    /// body prefix for a status error. Preview truncation is independent of raw
+    /// capture completeness.
+    ///
+    /// # Returns
+    /// A capture containing the rendered preview, raw body prefix, capture end
+    /// reason, and an optional backend read error.
     ///
     /// # Errors
     /// Returns [`HttpErrorKind::Cancelled`](crate::HttpErrorKind::Cancelled)
@@ -686,7 +689,7 @@ impl HttpResponse {
             HttpError::decode(format!("Failed to decode response body as UTF-8: {}", error))
                 .with_status(self.meta.status())
                 .with_method(self.meta.method())
-                .with_url(self.meta.url())
+                .with_url(self.request_url())
                 .with_log_redactor(self.log_redactor().clone())
         })
     }
@@ -721,7 +724,7 @@ impl HttpResponse {
             HttpError::decode("Failed to decode response JSON")
                 .with_status(self.meta.status())
                 .with_method(self.meta.method())
-                .with_url(self.meta.url())
+                .with_url(self.request_url())
                 .with_source(error)
                 .with_log_redactor(self.log_redactor().clone())
         })
@@ -1197,6 +1200,41 @@ mod tests {
     use crate::HttpError;
     use crate::HttpErrorKind;
     use crate::response::internal::HttpResponseBodyState;
+
+    #[tokio::test]
+    async fn test_decode_errors_use_original_request_url() {
+        let original = url::Url::parse("https://example.com/original").unwrap();
+        let displayed = url::Url::parse("https://example.com/rewritten").unwrap();
+        for is_json in [false, true] {
+            let body = if is_json {
+                bytes::Bytes::from_static(b"not-json")
+            } else {
+                bytes::Bytes::from_static(b"\xff")
+            };
+            let mut response = HttpResponse::new(
+                StatusCode::OK,
+                http::HeaderMap::new(),
+                body,
+                original.clone(),
+                Method::POST,
+            );
+            response.meta.set_url(displayed.clone());
+            let error = if is_json {
+                response.json::<serde_json::Value>().await.unwrap_err()
+            } else {
+                response.text().await.unwrap_err()
+            };
+            assert_eq!(error.kind, HttpErrorKind::Decode);
+            assert_eq!(error.method, Some(Method::POST));
+            assert_eq!(error.status, Some(StatusCode::OK));
+            assert_eq!(error.url.as_ref(), Some(&original));
+            assert_eq!(response.url(), &displayed);
+            assert_eq!(response.request_url(), &original);
+            if is_json {
+                assert!(std::error::Error::source(&error).is_some());
+            }
+        }
+    }
 
     #[test]
     fn test_attach_sse_error_context_preserves_existing_error_fields() {
