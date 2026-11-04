@@ -78,10 +78,52 @@ def validate_dependencies(guides: dict[str, str], fixture_toml: str) -> None:
     fixture_dependencies = fixture.get("dependencies")
     if not isinstance(fixture_dependencies, dict):
         raise ValueError("fixture: TOML must contain a dependencies table")
+    guide_names = set(english)
+    fixture_names = set(fixture_dependencies)
+    guide_only = sorted(guide_names - fixture_names)
+    fixture_only = sorted(fixture_names - guide_names)
+    if guide_only:
+        raise ValueError(f"en: dependencies missing from fixture: {guide_only}")
+    if fixture_only:
+        raise ValueError(f"fixture: dependencies missing from guide: {fixture_only}")
+
+    fixture_dir = ROOT / "tests/fixtures/guide_examples"
+    local_paths = {
+        "qubit-http": ROOT.resolve(),
+        "qubit-config": (ROOT.parent / "rs-config").resolve(),
+        "qubit-redact": (ROOT.parent / "rs-redact").resolve(),
+    }
     for language, dependencies in parsed_guides.items():
-        missing = sorted(fixture_dependencies.keys() - dependencies.keys())
-        if missing:
-            raise ValueError(f"{language}: missing fixture dependencies: {missing}")
+        for name, guide_value in dependencies.items():
+            guide_dependency = normalize_dependency(guide_value)
+            if "path" in guide_dependency:
+                raise ValueError(f"{language}: dependency {name} field path is not allowed")
+            fixture_dependency = normalize_dependency(fixture_dependencies[name])
+            fixture_path = fixture_dependency.pop("path", None)
+            if fixture_path is not None:
+                expected_path = local_paths.get(name)
+                if expected_path is None:
+                    raise ValueError(f"fixture: dependency {name} field path is not allowed")
+                resolved_path = (fixture_dir / fixture_path).resolve()
+                if resolved_path != expected_path:
+                    raise ValueError(f"fixture: dependency {name} field path is incorrect")
+            differing_fields = sorted(
+                field
+                for field in guide_dependency.keys() | fixture_dependency.keys()
+                if guide_dependency.get(field) != fixture_dependency.get(field)
+            )
+            if differing_fields:
+                raise ValueError(
+                    f"{language}: dependency {name} differs in fields {differing_fields}"
+                )
+
+
+def normalize_dependency(value: str | dict) -> dict:
+    """Normalize equivalent Cargo dependency syntax for declaration checks."""
+    result = {"version": value} if isinstance(value, str) else dict(value)
+    result.setdefault("default-features", True)
+    result["features"] = sorted(set(result.get("features", [])))
+    return result
 
 
 def extract(markdown: str, scenario: str) -> str:
@@ -158,11 +200,11 @@ class DependencyTests(unittest.TestCase):
 
     def test_bytes_missing_from_both_guides_even_when_fixture_has_it(self):
         guides = {"en": guide(""), "zh_CN": guide("")}
-        with self.assertRaisesRegex(ValueError, "en: missing fixture dependencies.*bytes"):
+        with self.assertRaisesRegex(ValueError, "fixture: dependencies missing from guide.*bytes"):
             validate_dependencies(guides, self.fixture)
 
     def test_fixture_phantom_dependency_is_rejected(self):
-        with self.assertRaisesRegex(ValueError, "en: missing fixture dependencies.*phantom"):
+        with self.assertRaisesRegex(ValueError, "fixture: dependencies missing from guide.*phantom"):
             validate_dependencies(self.valid_guides, self.fixture + 'phantom = "0.1"\n')
 
     def test_bilingual_version_difference(self):
@@ -176,14 +218,83 @@ class DependencyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "version/feature differences.*bytes"):
             validate_dependencies(guides, self.fixture)
 
-    def test_fixture_compatible_subsets_and_path_differences(self):
-        guide_dependencies = 'qubit-http = { path = "../../..", version = "0.16" }\nextra = "1"'
-        guides = {"en": guide(guide_dependencies), "zh_CN": guide(guide_dependencies)}
-        fixture = '[dependencies]\nqubit-http = { path = "../../../.." }\n'
+    def test_fixture_version_drift(self):
+        guides = {lang: guide('tokio = "0.1"') for lang in ("en", "zh_CN")}
+        with self.assertRaisesRegex(ValueError, "tokio.*version"):
+            validate_dependencies(guides, '[dependencies]\ntokio = "1.54"\n')
+
+    def test_fixture_enables_extra_feature(self):
+        guides = {lang: guide('tokio = { version = "1", features = ["macros"] }')
+                  for lang in ("en", "zh_CN")}
+        with self.assertRaisesRegex(ValueError, "tokio.*features"):
+            validate_dependencies(guides,
+                '[dependencies]\ntokio = { version = "1", features = ["macros", "full"] }')
+
+    def test_fixture_removes_feature(self):
+        guides = {lang: guide('tokio = { version = "1", features = ["macros", "sync"] }')
+                  for lang in ("en", "zh_CN")}
+        with self.assertRaisesRegex(ValueError, "tokio.*features"):
+            validate_dependencies(guides,
+                '[dependencies]\ntokio = { version = "1", features = ["macros"] }')
+
+    def test_fixture_changes_default_features(self):
+        guides = {lang: guide('tokio = { version = "1", default-features = false }')
+                  for lang in ("en", "zh_CN")}
+        with self.assertRaisesRegex(ValueError, "tokio.*default-features"):
+            validate_dependencies(guides, '[dependencies]\ntokio = "1"\n')
+
+    def test_fixture_extra_cargo_field_is_rejected(self):
+        guides = {lang: guide('bytes = "1.11"') for lang in ("en", "zh_CN")}
+        with self.assertRaisesRegex(ValueError, "bytes.*optional"):
+            validate_dependencies(guides,
+                '[dependencies]\nbytes = { version = "1.11", optional = true }')
+
+    def test_guide_only_dependency_is_rejected(self):
+        guides = {lang: guide('bytes = "1.11"\nextra = "1"') for lang in ("en", "zh_CN")}
+        with self.assertRaisesRegex(ValueError, "en.*extra"):
+            validate_dependencies(guides, self.fixture)
+
+    def test_fixture_only_dependency_is_rejected(self):
+        guides = self.valid_guides
+        with self.assertRaisesRegex(ValueError, "fixture.*phantom"):
+            validate_dependencies(guides, self.fixture + 'phantom = "0.1"\n')
+
+    def test_guide_path_is_rejected(self):
+        guides = {lang: guide('bytes = { path = "../bytes", version = "1.11" }')
+                  for lang in ("en", "zh_CN")}
+        with self.assertRaisesRegex(ValueError, "en.*bytes.*path"):
+            validate_dependencies(guides, self.fixture)
+
+    def test_unapproved_fixture_path_is_rejected(self):
+        guides = {lang: guide('bytes = "1.11"') for lang in ("en", "zh_CN")}
+        with self.assertRaisesRegex(ValueError, "fixture.*bytes.*path"):
+            validate_dependencies(guides,
+                '[dependencies]\nbytes = { path = "../bytes", version = "1.11" }')
+
+    def test_known_local_dependency_path_must_resolve_to_expected_directory(self):
+        guides = {lang: guide('qubit-http = "0.16.0"') for lang in ("en", "zh_CN")}
+        with self.assertRaisesRegex(ValueError, "fixture.*qubit-http.*path"):
+            validate_dependencies(guides,
+                '[dependencies]\nqubit-http = { path = "../wrong", version = "0.16.0" }')
+
+    def test_equivalent_forms_features_and_known_local_paths(self):
+        guides = {lang: guide('''qubit-http = "0.16.0"
+qubit-config = { version = "0.15", default-features = false }
+qubit-redact = "0.10"
+tokio = { version = "1", features = ["sync", "macros", "sync"] }
+bytes = { version = "1.11", default-features = true, features = [] }''')
+                  for lang in ("en", "zh_CN")}
+        fixture = f'''[dependencies]
+qubit-http = {{ path = "../../../", version = "0.16.0" }}
+qubit-config = {{ path = "../../../../rs-config", version = "0.15", default-features = false }}
+qubit-redact = {{ path = "../../../../rs-redact", version = "0.10" }}
+tokio = {{ version = "1", features = ["macros", "sync"] }}
+bytes = "1.11"
+'''
         validate_dependencies(guides, fixture)
 
     def test_fixture_missing_dependency(self):
-        with self.assertRaisesRegex(ValueError, "en: missing fixture dependencies.*http"):
+        with self.assertRaisesRegex(ValueError, "fixture: dependencies missing from guide.*http"):
             validate_dependencies(self.valid_guides, '[dependencies]\nbytes = "1.11"\nhttp = "1"\n')
 
     def test_missing_marker(self):

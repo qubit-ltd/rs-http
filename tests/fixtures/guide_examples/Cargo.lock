@@ -943,10 +943,12 @@ dependencies = [
  "bytes",
  "futures-util",
  "http",
+ "qubit-budget",
  "qubit-config",
  "qubit-http",
  "qubit-redact",
  "qubit-retry",
+ "serde",
  "serde_json",
  "tokio",
 ]
