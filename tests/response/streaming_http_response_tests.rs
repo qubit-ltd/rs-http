@@ -17,12 +17,45 @@ use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
 use qubit_http::HttpResponse;
+use qubit_redact::RedactionPolicy;
+use qubit_redact::Sensitivity;
 use tokio::test as tokio_test;
 use tokio::time::timeout;
 use url::Url;
 
 use crate::common::ResponsePlan;
 use crate::common::spawn_one_shot_server;
+
+const CONSUMED_CONTEXT_SECRET: &str = "consumed-context-secret";
+
+fn assert_consumed_error_context(
+    error: &qubit_http::HttpError,
+    expected_method: &Method,
+    expected_url: &Url,
+    expected_status: StatusCode,
+) {
+    assert_eq!(error.kind, HttpErrorKind::ResponseBodyAlreadyConsumed);
+    assert_eq!(error.method.as_ref(), Some(expected_method));
+    assert_eq!(error.url.as_ref(), Some(expected_url));
+    assert_eq!(error.status, Some(expected_status));
+    assert_eq!(
+        error.url.as_ref().unwrap().query(),
+        Some("tenant_marker=consumed-context-secret")
+    );
+    assert!(!format!("{error:?}").contains(CONSUMED_CONTEXT_SECRET));
+    assert!(!error.to_string().contains(CONSUMED_CONTEXT_SECRET));
+}
+
+fn consumed_context_policy() -> RedactionPolicy {
+    RedactionPolicy::default()
+        .to_builder()
+        .http(|http| {
+            let _ = http.query().raise("tenant_marker", Sensitivity::High);
+        })
+        .expect("redaction policy should be valid")
+        .build()
+        .expect("redaction policy should be valid")
+}
 
 async fn response_with_gated_body() -> (
     HttpResponse,
@@ -51,8 +84,15 @@ async fn response_with_gated_body() -> (
             let _ = release_rx.await;
             let _ = socket.write_all(b"{}").await;
         });
-    let client = HttpClientBuilder::new().create_default().unwrap();
-    let request = client.request(Method::GET, &format!("http://{address}/gated")).build();
+    let mut options = HttpClientOptions::default();
+    options.log_redaction_policy = consumed_context_policy();
+    let client = HttpClientBuilder::new().create(options).unwrap();
+    let request = client
+        .request(
+            Method::GET,
+            &format!("http://{address}/gated?tenant_marker={CONSUMED_CONTEXT_SECRET}"),
+        )
+        .build();
     let response = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .unwrap()
@@ -64,6 +104,9 @@ async fn response_with_gated_body() -> (
 async fn test_dropped_pending_aggregate_read_consumes_backend() {
     for reader in 0..3 {
         let (mut response, release, server) = response_with_gated_body().await;
+        let expected_method = response.meta().method().clone();
+        let expected_url = response.request_url().clone();
+        let expected_status = response.status();
         let mut future: std::pin::Pin<Box<dyn std::future::Future<Output = qubit_http::HttpResult<()>> + '_>> =
             match reader {
                 0 => Box::pin(async { response.bytes().await.map(|_| ()) }),
@@ -72,15 +115,13 @@ async fn test_dropped_pending_aggregate_read_consumes_backend() {
             };
         assert!(matches!(futures_util::poll!(future.as_mut()), std::task::Poll::Pending));
         drop(future);
-        assert_eq!(
-            response.bytes().await.unwrap_err().kind(),
-            HttpErrorKind::ResponseBodyAlreadyConsumed,
-        );
+        let bytes_error = response.bytes().await.unwrap_err();
+        assert_consumed_error_context(&bytes_error, &expected_method, &expected_url, expected_status);
         let stream_error = match response.stream() {
             Err(error) => error,
             Ok(_) => panic!("dropped aggregation must not restore the backend"),
         };
-        assert_eq!(stream_error.kind(), HttpErrorKind::ResponseBodyAlreadyConsumed);
+        assert_consumed_error_context(&stream_error, &expected_method, &expected_url, expected_status);
         drop(response);
         let _ = release.send(());
         timeout(Duration::from_secs(3), server).await.unwrap().unwrap();
@@ -150,12 +191,21 @@ async fn test_http_stream_response_backend_taken_then_repeated_reads_fail() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.logging.log_response_body = false;
+    options.log_redaction_policy = consumed_context_policy();
     let client = HttpClientBuilder::new()
         .create(options)
         .expect("client should be created");
 
-    let request = client.request(Method::GET, "/stream-take-backend").build();
+    let request = client
+        .request(
+            Method::GET,
+            &format!("/stream-take-backend?tenant_marker={CONSUMED_CONTEXT_SECRET}"),
+        )
+        .build();
     let mut response = client.execute(request).await.expect("request should succeed");
+    let expected_method = response.meta().method().clone();
+    let expected_url = response.request_url().clone();
+    let expected_status = response.status();
 
     let mut first_stream = response.stream().expect("first stream should take backend response");
     let mut collected = Vec::new();
@@ -168,15 +218,18 @@ async fn test_http_stream_response_backend_taken_then_repeated_reads_fail() {
         Err(error) => error,
         Ok(_) => panic!("second stream must report consumed body"),
     };
-    assert_eq!(second_error.kind, HttpErrorKind::ResponseBodyAlreadyConsumed);
+    assert_consumed_error_context(&second_error, &expected_method, &expected_url, expected_status);
     let bytes_error = response
         .bytes()
         .await
         .expect_err("bytes after stream must report consumed body");
-    assert_eq!(bytes_error.kind, HttpErrorKind::ResponseBodyAlreadyConsumed);
+    assert_consumed_error_context(&bytes_error, &expected_method, &expected_url, expected_status);
 
     let captured = server.finish().await;
-    assert_eq!(captured.target, "/stream-take-backend");
+    assert_eq!(
+        captured.target,
+        format!("/stream-take-backend?tenant_marker={CONSUMED_CONTEXT_SECRET}")
+    );
 }
 
 #[tokio_test]

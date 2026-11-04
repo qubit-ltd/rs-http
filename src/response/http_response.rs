@@ -324,6 +324,27 @@ impl HttpResponse {
         previous_body_read_error(&self.runtime.body_read_failure)
     }
 
+    /// Creates the diagnostic error returned when a body stream was already
+    /// taken.
+    ///
+    /// The request method, original request URL, response status, and response
+    /// redaction policy are copied from this response so the error retains the
+    /// same diagnostic context as other body-read failures.
+    ///
+    /// # Returns
+    /// An error classified as [`HttpErrorKind::ResponseBodyAlreadyConsumed`]
+    /// with this response's diagnostic context.
+    fn response_body_already_consumed_error(&self) -> HttpError {
+        HttpError::new(
+            HttpErrorKind::ResponseBodyAlreadyConsumed,
+            "Response body stream has already been consumed",
+        )
+        .with_method(self.meta.method())
+        .with_url(self.request_url())
+        .with_status(self.meta.status())
+        .with_log_redactor(self.log_redactor().clone())
+    }
+
     /// Stores the first body read failure for later read attempts.
     ///
     /// # Parameters
@@ -487,10 +508,7 @@ impl HttpResponse {
             }
             HttpResponseBodyState::Backend(backend) => backend,
             HttpResponseBodyState::StreamingTaken => {
-                return Err(HttpError::new(
-                    HttpErrorKind::ResponseBodyAlreadyConsumed,
-                    "Response body stream has already been consumed",
-                ));
+                return Err(self.response_body_already_consumed_error());
             }
         };
 
@@ -602,10 +620,7 @@ impl HttpResponse {
             HttpResponseBodyState::Buffered(_) => unreachable!("buffered body returned above"),
             HttpResponseBodyState::Backend(backend) => backend,
             HttpResponseBodyState::StreamingTaken => {
-                return Err(HttpError::new(
-                    HttpErrorKind::ResponseBodyAlreadyConsumed,
-                    "Response body stream has already been consumed",
-                ));
+                return Err(self.response_body_already_consumed_error());
             }
         };
 
