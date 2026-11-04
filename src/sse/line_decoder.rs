@@ -209,11 +209,73 @@ fn is_line_terminator(byte: u8) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::ops::Range;
+
     use bytes::Bytes;
     use futures_util::StreamExt;
 
     use super::decode_lines;
     use crate::HttpByteStream;
+
+    type LineCase<'a> = (&'a str, &'a [u8], usize, &'a [&'a str], Option<crate::HttpErrorKind>);
+
+    /// Builds deterministic contiguous chunk layouts for a byte sequence.
+    /// Short inputs enumerate every partition; long inputs include whole-input,
+    /// bytewise, every single split, and 64 reproducible wrapping-arithmetic
+    /// layouts.
+    fn chunk_layouts(input: &[u8]) -> Vec<Vec<Range<usize>>> {
+        let len = input.len();
+        let mut layouts = Vec::new();
+        if len <= 12 {
+            let partitions = if len <= 1 { 1 } else { 1usize << (len - 1) };
+            for mask in 0..partitions {
+                let mut cuts = vec![0];
+                for offset in 1..len {
+                    if mask & (1 << (offset - 1)) != 0 {
+                        cuts.push(offset);
+                    }
+                }
+                cuts.push(len);
+                layouts.push(cuts.windows(2).map(|pair| pair[0]..pair[1]).collect());
+            }
+            return layouts;
+        }
+
+        layouts.push(std::iter::once(0..len).collect());
+        layouts.push((0..len).map(|offset| offset..offset + 1).collect());
+        for split in 0..=len {
+            layouts.push(vec![0..split, split..len]);
+        }
+        let fixed_layout_count = layouts.len();
+        let mut state = 0x9e37_79b9_7f4a_7c15u64;
+        while layouts.len() < fixed_layout_count + 64 {
+            let mut cuts = vec![0];
+            for offset in 1..len {
+                state = state
+                    .wrapping_mul(6_364_136_223_846_793_005)
+                    .wrapping_add(1_442_695_040_888_963_407);
+                if state.is_multiple_of(5) {
+                    cuts.push(offset);
+                }
+            }
+            cuts.push(len);
+            layouts.push(cuts.windows(2).map(|pair| pair[0]..pair[1]).collect());
+        }
+        layouts
+    }
+
+    fn stream_for_layout(input: &[u8], layout: &[Range<usize>]) -> HttpByteStream {
+        let mut chunks = Vec::with_capacity(layout.len() * 2 + 2);
+        chunks.push(Ok(Bytes::new()));
+        for (index, range) in layout.iter().enumerate() {
+            chunks.push(Ok(Bytes::copy_from_slice(&input[range.clone()])));
+            if index % 2 == 0 {
+                chunks.push(Ok(Bytes::new()));
+            }
+        }
+        chunks.push(Ok(Bytes::new()));
+        Box::pin(futures_util::stream::iter(chunks))
+    }
 
     async fn decode(chunks: Vec<&'static [u8]>, limit: usize) -> crate::HttpResult<Vec<String>> {
         let chunks = chunks.into_iter().map(Bytes::from_static).map(Ok);
@@ -344,5 +406,76 @@ mod tests {
             decode(vec![b"\xff"], 4).await.unwrap_err().kind,
             crate::HttpErrorKind::SseProtocol
         );
+    }
+
+    #[tokio::test]
+    async fn test_decode_lines_multichunk_corpus_is_partition_invariant() {
+        let cases: &[LineCase<'_>] = &[
+            ("short-all-cuts", b"x\r\ny\n", 8, &["x", "y"], None),
+            (
+                "bom-mixed-newlines-utf8",
+                "\u{feff}café\r\n\rnext\nlast".as_bytes(),
+                16,
+                &["café", "", "next", "last"],
+                None,
+            ),
+            ("line-at-limit", b"abcd\n", 4, &["abcd"], None),
+            (
+                "line-over-limit",
+                b"ok\nabcdE\n",
+                4,
+                &["ok"],
+                Some(crate::HttpErrorKind::SseProtocol),
+            ),
+            (
+                "invalid-utf8",
+                b"valid\n\xff\n",
+                16,
+                &["valid"],
+                Some(crate::HttpErrorKind::SseProtocol),
+            ),
+            (
+                "eof-fragment",
+                b"tail without newline",
+                32,
+                &["tail without newline"],
+                None,
+            ),
+        ];
+
+        for (name, source, limit, expected_lines, expected_error) in cases {
+            for (layout_index, layout) in chunk_layouts(source).iter().enumerate() {
+                let actual = decode_lines(stream_for_layout(source, layout), *limit)
+                    .collect::<Vec<_>>()
+                    .await;
+                let context = format!("corpus={name}, limit={limit}, layout={layout_index}, chunks={layout:?}");
+                assert_eq!(
+                    actual.len(),
+                    expected_lines.len() + usize::from(expected_error.is_some()),
+                    "{context}"
+                );
+                for (item, expected) in actual.iter().zip(*expected_lines) {
+                    assert_eq!(item.as_ref().expect("expected successful line"), expected, "{context}");
+                }
+                match expected_error {
+                    Some(kind) => {
+                        assert_eq!(
+                            actual
+                                .get(expected_lines.len())
+                                .and_then(|item| item.as_ref().err())
+                                .map(|error| error.kind),
+                            Some(*kind),
+                            "{context}"
+                        );
+                        assert_eq!(
+                            actual.len(),
+                            expected_lines.len() + 1,
+                            "the first error must terminate the stream: {context}"
+                        );
+                    }
+                    None => assert_eq!(actual.len(), expected_lines.len(), "{context}"),
+                }
+            }
+        }
     }
 }
