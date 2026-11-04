@@ -363,8 +363,9 @@ impl HttpResponse {
     /// This response when its status is successful.
     ///
     /// # Errors
-    /// Returns a status error for an unsuccessful response, or a body read
-    /// error if capturing its preview fails.
+    /// Returns a `Status` error for unsuccessful responses. Body capture
+    /// failures and timeouts are retained in the capture diagnostics;
+    /// cancellation returns `Cancelled`.
     pub(crate) async fn into_success_or_status_error(self, message_prefix: &str) -> HttpResult<Self> {
         let status = self.status();
         if status.is_success() {

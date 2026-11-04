@@ -30,13 +30,13 @@ pub type HttpRequestInterceptor = ArcMutatingFunction<HttpRequest, HttpResult<()
 ///
 /// ```
 /// use http::Method;
-/// use qubit_http::HttpClientBuilder;
+/// use qubit_http::HttpClient;
 /// use qubit_http::HttpRequest;
 /// use qubit_http::HttpRequestInterceptor;
 /// use qubit_http::HttpRequestInterceptors;
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let client = HttpClientBuilder::new().create_default()?;
+/// let client = HttpClient::builder().build()?;
 /// let mut request = client.request(Method::GET, "https://example.com/").build();
 /// let mut interceptors = HttpRequestInterceptors::new();
 /// interceptors.push(HttpRequestInterceptor::new(|request: &mut HttpRequest| {

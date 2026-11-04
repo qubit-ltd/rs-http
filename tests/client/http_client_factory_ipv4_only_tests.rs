@@ -26,7 +26,7 @@ use crate::common::spawn_one_shot_server;
 fn test_ipv4_only_option_is_preserved_in_client_options() {
     let mut options = HttpClientOptions::default();
     options.ipv4_only = true;
-    let client = HttpClientBuilder::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
     assert!(client.options().ipv4_only);
 }
 
@@ -50,7 +50,7 @@ async fn test_ipv4_only_with_localhost_request_is_accessible() {
     options.timeouts.response_header_timeout = Duration::from_secs(2);
     options.timeouts.read_timeout = Duration::from_secs(2);
 
-    let client = HttpClientBuilder::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
     let request = client.request(Method::GET, "/ipv4-check").build();
     let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -67,7 +67,7 @@ async fn test_ipv4_only_rejects_ipv6_literal_request_url() {
     options.timeouts.response_header_timeout = Duration::from_secs(1);
     options.timeouts.read_timeout = Duration::from_secs(1);
 
-    let client = HttpClientBuilder::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
     let request = client.request(Method::GET, "http://[::1]:18080/ipv6").build();
     let error = client.execute(request).await.unwrap_err();
 
@@ -84,7 +84,7 @@ fn test_ipv4_only_rejects_ipv6_literal_proxy_host() {
         options.proxy.host = Some(host.to_string());
         options.proxy.port = Some(8080);
 
-        let error = HttpClientBuilder::new().create(options).unwrap_err();
+        let error = HttpClientBuilder::new().options(options).build().unwrap_err();
 
         assert_eq!(error.kind, HttpErrorKind::ProxyConfig);
         assert!(error.message.contains("not allowed when ipv4_only=true"));
@@ -104,7 +104,7 @@ async fn test_ipv4_only_rejects_ipv6_redirect_target_as_invalid_url() {
     options.ipv4_only = true;
     options.retry.enabled = false;
     options.base_url = Some(server.base_url());
-    let client = HttpClientBuilder::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
     let error = client
         .execute(client.request(Method::GET, "/redirect").build())
         .await
@@ -139,7 +139,7 @@ async fn test_ipv4_only_rejects_ipv4_mapped_ipv6_redirect() {
     options.ipv4_only = true;
     options.retry.enabled = false;
     options.base_url = Some(source.base_url());
-    let client = HttpClientBuilder::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
     let error = client
         .execute(client.request(Method::GET, "/redirect-mapped").build())
         .await
@@ -185,7 +185,7 @@ async fn test_ipv4_only_redirect_never_connects_to_ipv6_target() {
     options.ipv4_only = true;
     options.retry.enabled = false;
     options.base_url = Some(source.base_url());
-    let client = HttpClientBuilder::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
     let error = client
         .execute(client.request(Method::GET, "/redirect-ipv6").build())
         .await
@@ -228,7 +228,7 @@ async fn test_ipv4_only_disabled_allows_ipv6_redirect_policy() {
     options.retry.enabled = false;
     options.use_env_proxy = false;
     options.base_url = Some(source.base_url());
-    let client = HttpClientBuilder::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
     let result = timeout(
         Duration::from_secs(3),
         client.execute(client.request(Method::GET, "/redirect-ipv6-disabled").build()),
@@ -268,7 +268,7 @@ async fn test_ipv4_only_allows_ipv4_to_ipv4_redirect() {
     options.origin_policy = HttpOriginPolicy::AnyOrigin;
     options.ipv4_only = true;
     options.base_url = Some(server.base_url());
-    let client = HttpClientBuilder::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
     let response = client
         .execute(client.request(Method::GET, "/start").build())
         .await

@@ -52,7 +52,7 @@ use crate::content_type;
 /// use qubit_http::HttpClient;
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let client = HttpClient::builder().create_default()?;
+/// let client = HttpClient::builder().build()?;
 /// let request = client
 ///     .request(Method::GET, "https://example.com/items")
 ///     .query_param("page", "2")

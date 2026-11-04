@@ -87,6 +87,12 @@ text = ready
 
 ## 核心 API 概览
 
+默认配置使用 `HttpClient::builder().build()`，显式选项使用
+`HttpClient::builder().options(options).build()`，配置读取使用
+`HttpClient::from_config(config)`。旧的 `HttpClientBuilder::create*` 方法仍保留，
+但已弃用。特别是，`.options(saved).create_default()` 会忽略 `saved`；若要应用这些
+选项，请使用 `.options(saved).build()`。
+
 | 类型 | 用途 |
 | --- | --- |
 | `HttpClientBuilder` | 通过默认配置、显式配置或配置中心创建客户端。 |

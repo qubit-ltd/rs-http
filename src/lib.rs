@@ -15,8 +15,8 @@
 //!
 //! This crate provides:
 //! - Unified HTTP client options and factory abstractions
-//! - Loading those options from [`qubit_config::ConfigReader`] (`from_config` /
-//!   factory `create_from_config`)
+//! - Loading those options from [`qubit_config::ConfigReader`] with
+//!   [`HttpClient::from_config`]
 //! - Consistent request/response/stream APIs
 //! - Secure and configurable logging with URL, header, and body redaction
 //! - Built-in SSE decoding utilities in [`sse`]

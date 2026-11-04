@@ -75,12 +75,14 @@ println!("text = {}", response.text().await?);
 
 `execute` 只把 2xx 状态码视为成功。非 2xx 状态会返回 `HttpErrorKind::Status`，并在错误中携带状态码、方法、URL、截断后的响应体预览，以及可解析的 `Retry-After`。
 
+默认选项使用 `HttpClient::builder().build()`，显式选项使用 `HttpClient::builder().options(options).build()`，配置读取使用 `HttpClient::from_config(config)`。旧的 `HttpClientBuilder::create`、`create_default` 和 `create_from_config` 仍保留，但已弃用。特别是，`.options(saved).create_default()` 会忽略 `saved`：若要应用这些选项，改用 `.options(saved).build()`；若要使用默认值，则新建 `HttpClient::builder().build()`。
+
 ## 创建客户端
 
 ### 默认客户端
 
 ```rust
-let client = qubit_http::HttpClientBuilder::new().create_default()?;
+let client = qubit_http::HttpClient::builder().build()?;
 ```
 
 默认行为：
@@ -165,13 +167,13 @@ let rebuilt_from_copied_options = client.to_builder().build()?;
 
 ### 从 qubit-config 读取
 
-`HttpClientOptions::from_config` 和 `HttpClientBuilder::create_from_config` 接收任意 `qubit_config::ConfigReader`。如果传入 `config.section("http")`，下面表格中的键都按相对路径读取。
+`HttpClientOptions::from_config` 和 `HttpClient::from_config` 接收任意 `qubit_config::ConfigReader`。如果传入 `config.section("http")`，下面表格中的键都按相对路径读取。
 
 <!-- guide-check:configuration:start -->
 ```rust
 use std::time::Duration;
 use qubit_config::Config;
-use qubit_http::HttpClientBuilder;
+use qubit_http::HttpClient;
 
 let mut config = Config::new();
 config.set("http.base_url", "https://api.example.com".to_string())?;
@@ -180,13 +182,11 @@ config.set("http.retry.enabled", true)?;
 config.set("http.retry.delay_strategy", "FIXED".to_string())?;
 config.set("http.retry.fixed_delay", Duration::from_millis(250))?;
 
-let client = HttpClientBuilder::new()
-    .create_from_config(&config.section("http")?)?;
+let client = HttpClient::from_config(&config.section("http")?)?;
 ```
 <!-- guide-check:configuration:end -->
 
-`create_from_config` 是兼容 factory 入口：它使用从 `config` 加载的选项，忽略 builder
-之前保存的选项。
+`HttpClient::from_config` 是推荐的配置入口。已弃用的 `create_from_config` 仍为兼容性保留，并忽略 builder 之前保存的选项。
 
 `from_config` 会拒绝所选组件范围内的未知字段。例如
 `http.timeouts.connect_timout` 会报错，而不会悄悄使用默认超时。独立的
@@ -314,7 +314,7 @@ assert_eq!(
 | `retry_method_policy` | 覆盖本次请求的可重试 HTTP 方法策略 |
 | `honor_retry_after` | 本次请求在 429/5xx 且可重试时尊重 `Retry-After` |
 
-`request_timeout` 不限制异步 header 注入或流式 body 工厂准备；同步请求拦截器运行后，`response_header_timeout` 才开始计时，并覆盖异步准备直到收到响应头。`read_timeout` 限制每次正常响应体读取，也限制完整采集非成功响应的错误体；超时时，返回的 `Status` 错误仍保留 status 和标记为不完整的部分 raw body。若必须保留慢错误体，请检查 `is_truncated()` 并提高 `read_timeout`。请求级 timeout 覆盖会拒绝零时长，并返回 `HttpError`。
+`request_timeout` 不限制异步 header 注入或流式 body 工厂准备。请求初始值会从创建它的客户端快照读取；值为 `None` 时使用执行客户端后端的默认值，调用 `clear_request_timeout()` 也会恢复此行为。同步请求拦截器运行后，`response_header_timeout` 才开始计时，并覆盖异步准备直到收到响应头。`read_timeout` 限制每次正常响应体读取，也限制完整采集非成功响应的错误体；超时时，返回的 `Status` 错误仍保留 status 和标记为不完整的部分 raw body。若必须保留慢错误体，请检查 `is_truncated()` 并提高 `read_timeout`。请求级 timeout 覆盖会拒绝零时长，并返回 `HttpError`。
 
 ## Header、注入器和拦截器
 
@@ -768,7 +768,7 @@ HTTP 日志使用 `tracing::trace!`。必须同时满足：
 ```rust
 use http::Method;
 use qubit_http::{
-    HttpClientBuilder,
+    HttpClient,
     HttpClientOptions,
 };
 use qubit_redact::{RedactionPolicy, Sensitivity};
@@ -785,7 +785,7 @@ let builder = RedactionPolicy::default().to_builder().http(|http| {
 })?;
 options.log_redaction_policy = builder.build()?;
 
-let client = HttpClientBuilder::new().create(options)?;
+let client = HttpClient::builder().options(options).build()?;
 let request = client
     .request(Method::POST, "https://api.example.com/login")
     .query_param("access_token", "secret-token")
@@ -1111,7 +1111,7 @@ SSE 重连使用独立的 `SseReconnectOptions.retry` 策略。普通 HTTP 重�
 | --- | --- | --- |
 | 依赖 | manifest 将 `qubit-json` 从 0.10 更新到 0.12、`qubit-config` 从 0.14 更新到 0.15、`qubit-budget` 从 0.7 更新到 0.10、`qubit-redact` 从 0.9 更新到 0.10，Tokio 从 1.53 更新到 1.54。`reqwest` 仍为 0.13。 | 检查 lockfile 和直接依赖约束是否满足所选 `qubit-http` 版本。 |
 | Base URL | 配置键仍为 `base_url`，现在仅接受 HTTP 或 HTTPS URL。没有新增替代键。 | 检查是否配置了 `file:`、`ws:` 等 scheme；改用 HTTP(S) API 基址。 |
-| 配置 | 对比源码没有发现 `retry`、`timeouts` 或 `sse` 配置键改名。当前指南列出支持的键和值。 | 用 `HttpClientOptions::from_config` 或 `HttpClientBuilder::new().create_from_config(...)` 解析实际配置；将未知键或无效值错误作为迁移项处理。 |
+| 配置 | 对比源码没有发现 `retry`、`timeouts` 或 `sse` 配置键改名。当前指南列出支持的键和值。 | 用 `HttpClientOptions::from_config` 或 `HttpClient::from_config(...)` 解析实际配置；将未知键或无效值错误作为迁移项处理。 |
 | 重试归属 | `execute` 只会在返回 `HttpResponse` 前重试符合条件的失败；返回后的响应体和 SSE 读取由调用方负责，不会重新进入 HTTP 重试。上层 SDK 可以拥有单独的操作级重试。 | 如果 SDK 已重试整个操作，保留请求级 `disable_retry()`，如 OpenAI provider 的做法。验证一次应用层尝试不会意外叠加多层重试。 |
 | 客户端 hook | 两个版本的 `to_builder()` 都只复制选项；`rebuild_with_options()` 创建新 backend 并保留已注册的注入器和拦截器。 | 修改已配置客户端的选项时，若 hook 属于契约则使用 `rebuild_with_options()`；不要假定 `to_builder()` 会复制 hook。 |
 | SSE | 0.16 源码增加对空 `id:` 重置、有效 SSE `retry:` 提示持续生效，以及 `204 No Content` 在媒体类型检查前正常结束的处理。严格 JSON 与完成标记策略仍由调用方选择。 | 检查游标重置和重试时间预期。严格 JSON 流应显式使用 `SseJsonMode::Strict` 与 `SseCompletionPolicy::RequireDoneMarker`，并测试完整帧和未完成帧。 |
@@ -1120,11 +1120,11 @@ SSE 重连使用独立的 `SseReconnectOptions.retry` 策略。普通 HTTP 重�
 
 ```rust
 use qubit_config::Config;
-use qubit_http::HttpClientBuilder;
+use qubit_http::HttpClient;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::new();
-    let _client = HttpClientBuilder::new().create_from_config(&config)?;
+    let _client = HttpClient::from_config(&config)?;
     Ok(())
 }
 ```

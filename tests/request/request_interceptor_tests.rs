@@ -18,7 +18,7 @@ use url::Url;
 #[test]
 fn test_request_interceptors_apply_uses_parsed_path_when_resolved_url_cache_missing() {
     let client = HttpClientBuilder::new()
-        .create_default()
+        .build()
         .expect("default options should create client");
     let mut request = client.request(Method::GET, "http://[::1]/resource").build();
     request.set_ipv4_only(true);
@@ -40,7 +40,7 @@ fn test_request_interceptors_apply_uses_parsed_path_when_resolved_url_cache_miss
 #[test]
 fn test_request_interceptors_apply_keeps_url_empty_when_path_is_not_absolute() {
     let client = HttpClientBuilder::new()
-        .create_default()
+        .build()
         .expect("default options should create client");
     let mut request = client.request(Method::GET, "/relative-only").build();
     assert!(request.resolved_url().is_err());
@@ -61,7 +61,7 @@ fn test_request_interceptors_apply_keeps_url_empty_when_path_is_not_absolute() {
 #[test]
 fn test_request_interceptors_apply_preserves_existing_error_url() {
     let client = HttpClientBuilder::new()
-        .create_default()
+        .build()
         .expect("default options should create client");
     let mut request = client.request(Method::GET, "/relative-only").build();
     let expected_url = Url::parse("https://upstream.example/interceptor-failed").expect("URL should parse");

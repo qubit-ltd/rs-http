@@ -31,7 +31,8 @@ fn test_http_proxy_rejects_path_in_host_before_building_client() {
     options.proxy.host = Some("127.0.0.1/".to_string());
     options.proxy.port = Some(1234);
     let error = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect_err("proxy host containing a path must be rejected before any request");
     assert_eq!(error.kind, HttpErrorKind::ProxyConfig);
     assert!(error.message.contains("proxy.host"));
@@ -59,7 +60,7 @@ async fn test_http_proxy_forwards_request_and_sends_proxy_auth() {
     options.timeouts.response_header_timeout = Duration::from_secs(2);
     options.timeouts.read_timeout = Duration::from_secs(2);
 
-    let client = HttpClientBuilder::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
     let request = client.request(Method::GET, "/via-proxy").build();
     let response = timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -191,7 +192,8 @@ async fn test_env_proxy_worker() {
     options.use_env_proxy = scenario == "proxy";
     options.timeouts.response_header_timeout = Duration::from_secs(3);
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
     let response = client
         .execute(client.request(Method::GET, "/env-proxy").build())
@@ -217,7 +219,7 @@ async fn test_https_via_http_proxy_uses_connect_tunnel() {
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.request_timeout = Some(Duration::from_secs(2));
 
-    let client = HttpClientBuilder::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
     let request = client.request(Method::GET, "https://example.com/through-proxy").build();
     let error = client.execute(request).await.unwrap_err();
     assert!(

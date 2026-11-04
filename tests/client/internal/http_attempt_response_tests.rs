@@ -41,7 +41,7 @@ async fn test_retry_success_hands_flow_token_to_response() {
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();
-    let client = HttpClientBuilder::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
     let token = HttpCancellationToken::new();
     let request = client
         .request(Method::GET, "/response-token-handoff")

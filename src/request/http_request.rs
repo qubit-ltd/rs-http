@@ -58,7 +58,7 @@ use crate::error::backend_error_mapper::map_reqwest_error;
 /// use qubit_http::HttpClient;
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let client = HttpClient::builder().create_default()?;
+/// let client = HttpClient::builder().build()?;
 /// let mut request = client.request(Method::GET, "https://example.com/old").build();
 /// request.set_path("https://example.com/new");
 /// assert_eq!(request.resolved_url()?.path(), "/new");
@@ -389,8 +389,9 @@ impl HttpRequest {
     /// response-body deadline.
     ///
     /// # Returns
-    /// `Some(duration)` when a request-specific timeout overrides the client
-    /// default; otherwise `None`.
+    /// The timeout stored on this request, initially copied from the creating
+    /// client's options. `None` leaves the executing backend's default timeout
+    /// in effect.
     #[inline]
     pub fn request_timeout(&self) -> Option<Duration> {
         self.execution_options.request_timeout
@@ -419,7 +420,8 @@ impl HttpRequest {
         Ok(self)
     }
 
-    /// Drops the per-request timeout so the client-wide default applies again.
+    /// Drops the per-request timeout so the executing client's backend default
+    /// applies again.
     ///
     /// # Returns
     /// `self` for method chaining.
@@ -1228,9 +1230,7 @@ mod tests {
 
         use super::super::http_request_body::HttpRequestBody;
 
-        let client = HttpClientBuilder::new()
-            .create_default()
-            .expect("client should be created");
+        let client = HttpClientBuilder::new().build().expect("client should be created");
         let mut request = client
             .request(Method::POST, "https://example.test/")
             .text_body("retry body")
@@ -1281,7 +1281,8 @@ mod tests {
             ..HttpClientOptions::default()
         };
         let client = HttpClientBuilder::new()
-            .create(options.clone())
+            .options(options.clone())
+            .build()
             .expect("client should be created");
         let mut request = client
             .request(

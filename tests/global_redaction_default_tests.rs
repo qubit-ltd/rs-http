@@ -43,7 +43,8 @@ fn test_http_defaults_use_installed_global_policy() {
 
     let options = HttpClientOptions::default();
     let client = HttpClientBuilder::new()
-        .create(options.clone())
+        .options(options.clone())
+        .build()
         .expect("client should use the options snapshot");
     let error = HttpError::new(HttpErrorKind::Transport, "request failed").with_url(&url);
     let metadata = HttpResponseMeta::new(StatusCode::OK, HeaderMap::new(), url, Method::GET);

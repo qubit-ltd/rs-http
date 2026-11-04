@@ -89,6 +89,13 @@ for policy floors, snapshots, budgets, configuration, and examples.
 
 ## Core API At A Glance
 
+Build clients with `HttpClient::builder().build()` for defaults,
+`HttpClient::builder().options(options).build()` for explicit options, or
+`HttpClient::from_config(config)` for configuration. The older
+`HttpClientBuilder::create*` methods remain available but are deprecated.
+In particular, `.options(saved).create_default()` ignores `saved`; use
+`.options(saved).build()` when those options should apply.
+
 | Type | Purpose |
 | --- | --- |
 | `HttpClientBuilder` | Creates clients from defaults, explicit options, or config. |

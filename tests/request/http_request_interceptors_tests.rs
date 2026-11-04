@@ -15,7 +15,7 @@ use qubit_http::HttpRequestInterceptors;
 #[test]
 fn test_http_request_interceptors_apply_in_insertion_order() {
     let client = HttpClientBuilder::new()
-        .create_default()
+        .build()
         .expect("default client should be created");
     let mut request = client.request(Method::GET, "https://example.com/").build();
     let mut interceptors = HttpRequestInterceptors::new();

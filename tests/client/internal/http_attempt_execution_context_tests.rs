@@ -47,7 +47,7 @@ async fn test_same_source_interceptor_clone_remains_retry_owned() {
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();
-    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     let flow_token = HttpCancellationToken::new();
     client.add_request_interceptor(HttpRequestInterceptor::new({
         let flow_token = flow_token.clone();

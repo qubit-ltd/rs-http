@@ -13,7 +13,7 @@ use qubit_http::HttpErrorKind;
 #[test]
 fn test_header_parser_rejects_invalid_builder_header_name() {
     let client = HttpClientBuilder::new()
-        .create_default()
+        .build()
         .expect("default client should be created");
 
     let error = client

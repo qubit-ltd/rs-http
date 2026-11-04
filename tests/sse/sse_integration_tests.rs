@@ -162,7 +162,7 @@ async fn test_execute_stream_with_decode_events_end_to_end() {
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.response_header_timeout = Duration::from_secs(2);
-    let client = HttpClientBuilder::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
 
     let request = client.request(Method::GET, "/sse").build();
     let stream_response = timeout(Duration::from_secs(3), client.execute(request))
@@ -209,7 +209,7 @@ async fn test_execute_stream_decode_events_reports_read_timeout_when_interrupted
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_millis(80);
     options.timeouts.response_header_timeout = Duration::from_secs(1);
-    let client = HttpClientBuilder::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
 
     let request = client.request(Method::GET, "/sse-timeout").build();
     let stream_response = client.execute(request).await.unwrap();
@@ -258,7 +258,7 @@ async fn test_execute_stream_decode_json_chunks_uses_client_default_strict_mode(
     options.log_redaction_policy = expected_policy.clone();
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.response_header_timeout = Duration::from_secs(2);
-    let client = HttpClientBuilder::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
 
     let request = client.request(Method::GET, "/sse-strict").build();
     let stream_response = client.execute(request).await.unwrap();
@@ -299,7 +299,7 @@ async fn test_execute_stream_decode_events_uses_client_default_sse_limits() {
     options.sse_max_frame_bytes = 16;
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.response_header_timeout = Duration::from_secs(2);
-    let client = HttpClientBuilder::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
 
     let request = client.request(Method::GET, "/sse-limits").build();
     let stream_response = client.execute(request).await.unwrap();
@@ -331,7 +331,8 @@ async fn test_sse_chunks_apply_client_json_value_limits() {
     options.sse_json_mode = SseJsonMode::Strict;
     options.json_value_limits = JsonValueLimits::builder().max_nodes(1).build();
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
     let request = client.request(Method::GET, "/sse-json-value-limit").build();
     let response = client.execute(request).await.expect("request succeeds");
@@ -374,7 +375,8 @@ async fn test_sse_decode_error_preserves_client_redactor_policy() {
     options.base_url = Some(server.base_url());
     options.log_redaction_policy = expected_policy.clone();
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("the client should be created");
 
     let request = client.request(Method::GET, "/sse-invalid-utf8").build();

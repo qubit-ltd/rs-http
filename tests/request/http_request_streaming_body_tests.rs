@@ -24,7 +24,7 @@ fn test_http_request_streaming_body_sets_request_body_to_empty_placeholder() {
     assert!(format!("{streaming_body:?}").contains("HttpRequestStreamingBody"));
 
     let client = HttpClientBuilder::new()
-        .create_default()
+        .build()
         .expect("default client should be created");
     let request = client
         .request(Method::POST, "https://example.com/upload")

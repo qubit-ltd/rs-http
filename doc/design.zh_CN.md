@@ -24,6 +24,8 @@ flowchart LR
 
 `HttpClient::rebuild_with_options` 构造新的后端和脱敏策略快照，同时复制原客户端注册的请求头注入器、请求拦截器和响应拦截器。包括校验失败在内，原客户端始终不变；`to_builder` 则只复制选项。调用方若依赖运行时注册项，应选择保留它们的重建 API。
 
+默认配置使用 `HttpClient::builder().build()`，显式选项使用 `.options(options).build()`，配置读取使用 `HttpClient::from_config(config)`。旧的 `HttpClientBuilder::create`、`create_default` 和 `create_from_config` 仍保留以保持兼容；旧 factory 方法会忽略 builder 中保存的选项。请求 timeout 初始值从创建它的客户端选项复制；值为 `None` 时，使用执行后端的默认 timeout。
+
 默认的 `SameOrigin` 策略会以配置的 base URL 校验绝对请求目标，并以初始源校验每次重定向。未配置 base URL 时，可由绝对请求 URL 确定本次请求的初始源。只有显式选择 `AnyOrigin` 才允许跨源目标及重定向。配置读取器接受 `origin_policy = "same_origin"` 或 `"any_origin"`，不支持的值会在构造客户端前报错。
 
 base URL 在配置解析和客户端构造时校验；最终请求 URL 在解析或 join 后校验，拦截器修改后的目标也会检查。仅支持 HTTP 和 HTTPS；不支持的请求 scheme 返回 `InvalidUrl`。IPv4-only 过滤仅作用于客户端本地 resolver 和 URL literal 检查。SOCKS5 保留远端 DNS（`socks5h`），因此代理解析的目标及代理到目标这一段的地址族不受本地 IPv4 保证约束。

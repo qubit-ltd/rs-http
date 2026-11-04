@@ -86,7 +86,7 @@ async fn response_with_gated_body() -> (
         });
     let mut options = HttpClientOptions::default();
     options.log_redaction_policy = consumed_context_policy();
-    let client = HttpClientBuilder::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
     let request = client
         .request(
             Method::GET,
@@ -193,7 +193,8 @@ async fn test_http_stream_response_backend_taken_then_repeated_reads_fail() {
     options.logging.log_response_body = false;
     options.log_redaction_policy = consumed_context_policy();
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
 
     let request = client
@@ -247,7 +248,8 @@ async fn test_http_response_bytes_remembers_read_failure() {
     options.base_url = Some(server.base_url());
     options.logging.log_response_body = false;
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
 
     let request = client.request(Method::GET, "/bytes-read-failure").build();
@@ -291,7 +293,8 @@ async fn test_http_response_stream_remembers_read_failure() {
     options.base_url = Some(server.base_url());
     options.logging.log_response_body = false;
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
 
     let request = client.request(Method::GET, "/stream-read-failure").build();
@@ -345,7 +348,8 @@ async fn test_http_response_stream_reports_prior_bytes_read_failure() {
     options.base_url = Some(server.base_url());
     options.logging.log_response_body = false;
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
 
     let request = client.request(Method::GET, "/stream-after-bytes-failure").build();

@@ -43,7 +43,7 @@ fn test_http_logger_logs_request_body_preview_with_truncation() {
     options.log_redaction_policy = policy_builder.build().expect("log redaction policy should be valid");
     let logger = HttpLogger::new(&options);
     let client = HttpClientBuilder::new()
-        .create_default()
+        .build()
         .expect("default client should be created");
     let request = client
         .request(Method::POST, "https://example.com/upload")
@@ -88,7 +88,7 @@ fn test_http_logger_redacts_request_url_query_and_json_body() {
     let options = HttpClientOptions::default();
     let logger = HttpLogger::new(&options);
     let client = HttpClientBuilder::new()
-        .create_default()
+        .build()
         .expect("default client should be created");
     let request = client
         .request(Method::POST, "https://example.com/login?access_token=raw-token")
@@ -112,7 +112,7 @@ fn test_http_logger_does_not_leak_multipart_body_sensitive_values() {
     let options = HttpClientOptions::default();
     let logger = HttpLogger::new(&options);
     let client = HttpClientBuilder::new()
-        .create_default()
+        .build()
         .expect("default client should be created");
     let body = Bytes::from_static(
         b"--boundary\r\nContent-Disposition: form-data; name=\"password\"\r\n\r\nsecret-password\r\n--boundary--",
@@ -135,7 +135,7 @@ fn test_http_logger_does_not_leak_multipart_mixed_body_sensitive_values() {
     let options = HttpClientOptions::default();
     let logger = HttpLogger::new(&options);
     let client = HttpClientBuilder::new()
-        .create_default()
+        .build()
         .expect("default client should be created");
     let body = Bytes::from_static(
         b"--boundary\r\nContent-Disposition: form-data; name=\"password\"\r\n\r\nsecret-password\r\n--boundary--",

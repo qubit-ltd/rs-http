@@ -46,7 +46,7 @@ impl Serialize for FailingSerialize {
 
 fn new_builder(method: Method, path: &str) -> HttpRequestBuilder {
     let client = HttpClientBuilder::new()
-        .create_default()
+        .build()
         .expect("default options should create client");
     client.request(method, path)
 }
@@ -75,7 +75,8 @@ fn test_request_builder_debug_masks_sensitive_values() {
     );
     options.default_headers = default_headers;
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
 
     let relative = client
@@ -115,7 +116,8 @@ fn test_request_builder_preflight_errors_use_client_redaction_snapshot() {
     let mut options = HttpClientOptions::new();
     options.log_redaction_policy = policy.clone();
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
 
     let invalid_header = client
@@ -159,7 +161,8 @@ fn test_request_builder_copies_base_url_and_ipv4_only_defaults() {
     options.ipv4_only = true;
 
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
     let request = client.request(Method::GET, "users").build();
     assert_eq!(
@@ -175,7 +178,8 @@ fn test_request_builder_copies_response_header_timeout_default_from_client_optio
     options.timeouts.response_header_timeout = Duration::from_millis(321);
 
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
     let request = client.request(Method::GET, "/v1/default-write-timeout").build();
 
@@ -188,7 +192,8 @@ fn test_request_builder_response_header_timeout_overrides_default_from_options()
     options.timeouts.response_header_timeout = Duration::from_secs(2);
 
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
     let request = client
         .request(Method::GET, "/v1/override-write-timeout")
@@ -226,7 +231,8 @@ fn test_request_builder_copies_read_timeout_default_from_client_options() {
     options.timeouts.read_timeout = Duration::from_millis(432);
 
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
     let request = client.request(Method::GET, "/v1/default-read-timeout").build();
 
@@ -239,7 +245,8 @@ fn test_request_builder_read_timeout_overrides_default_from_options() {
     options.timeouts.read_timeout = Duration::from_secs(2);
 
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
     let request = client
         .request(Method::GET, "/v1/override-read-timeout")
@@ -268,7 +275,8 @@ fn test_request_builder_base_url_method_overrides_default_from_options() {
 
     let override_base = url::Url::parse("https://override.example.com/root/").unwrap();
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
     let request = client
         .request(Method::GET, "users")
@@ -284,7 +292,8 @@ fn test_request_builder_ipv4_only_method_overrides_default_from_options() {
     options.ipv4_only = true;
 
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
     let request = client.request(Method::GET, "users").ipv4_only(false).build();
 
@@ -297,7 +306,8 @@ fn test_request_builder_clear_base_url_method_overrides_default_from_options() {
     options.set_base_url("https://api.example.com/v1/").unwrap();
 
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
     let request = client.request(Method::GET, "users").clear_base_url().build();
 
@@ -396,7 +406,8 @@ fn test_request_builder_json_body_uses_client_encode_limits() {
     let mut options = HttpClientOptions::new();
     options.json_encode_limits = JsonEncodeLimits::builder().max_output_bytes(3).build();
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("options should create client");
 
     let error = client
@@ -1086,7 +1097,8 @@ fn test_request_builder_ndjson_body_allows_unlimited_output() {
     let mut options = HttpClientOptions::default();
     options.json_encode_limits = JsonEncodeLimits::new();
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
     let request = client
         .request(Method::POST, "/v1/ndjson")

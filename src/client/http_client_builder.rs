@@ -74,7 +74,7 @@ impl HttpClientBuilder {
     /// be built.
     pub fn build(self) -> HttpResult<HttpClient> {
         let options = self.options.unwrap_or_default();
-        Self::new().create(options)
+        Self::build_backend(options)
     }
 
     /// Creates a new [`HttpClient`] with default [`HttpClientOptions`].
@@ -88,8 +88,9 @@ impl HttpClientBuilder {
     /// Returns an error if default options are invalid or the reqwest client
     /// cannot be built.
     #[inline]
+    #[deprecated(note = "use HttpClient::builder().build() instead")]
     pub fn create_default(&self) -> HttpResult<HttpClient> {
-        self.create(HttpClientOptions::default())
+        Self::build_backend(HttpClientOptions::default())
     }
 
     /// Applies `options` to a new [`reqwest::Client::builder`], then wraps the
@@ -106,7 +107,12 @@ impl HttpClientBuilder {
     /// # Errors
     /// Returns an error if `options` are invalid or reqwest cannot build the
     /// configured client.
+    #[deprecated(note = "use HttpClient::builder().options(options).build() instead")]
     pub fn create(&self, options: HttpClientOptions) -> HttpResult<HttpClient> {
+        Self::build_backend(options)
+    }
+
+    fn build_backend(options: HttpClientOptions) -> HttpResult<HttpClient> {
         options.validate().map_err(map_validation_error)?;
 
         let mut builder = Client::builder();
@@ -176,8 +182,7 @@ impl HttpClientBuilder {
         Ok(HttpClient::new(backend, options))
     }
 
-    /// Loads [`HttpClientOptions`] from `config`, validates them, then calls
-    /// [`HttpClientBuilder::create`].
+    /// Loads [`HttpClientOptions`] from `config` and builds a client.
     ///
     /// Stored builder options are ignored; this factory uses options loaded
     /// from `config`.
@@ -194,18 +199,12 @@ impl HttpClientBuilder {
     /// # Errors
     /// Returns an error when reading or validating `config` fails, or when the
     /// configured reqwest client cannot be built.
+    #[deprecated(note = "use HttpClient::from_config(config) instead")]
     pub fn create_from_config<R>(&self, config: &R) -> Result<HttpClient, HttpConfigError>
     where
         R: ConfigReader + ?Sized,
     {
-        let options = HttpClientOptions::from_config(config)?;
-        self.create(options).map_err(|e| {
-            HttpConfigError::new(
-                crate::HttpConfigErrorKind::InvalidValue,
-                config.scope_path(),
-                e.to_string(),
-            )
-        })
+        HttpClient::from_config(config)
     }
 
     /// Installs the complete client options value for [`Self::build`].

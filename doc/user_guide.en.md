@@ -79,12 +79,14 @@ full source. The example needs no external service or credentials.
 
 `execute` treats only 2xx status codes as success. Non-2xx responses return `HttpErrorKind::Status` with status, method, URL, a bounded response-body preview, and a parsed `Retry-After` value when available.
 
+Use `HttpClient::builder().build()` for defaults, `HttpClient::builder().options(options).build()` for explicit options, and `HttpClient::from_config(config)` for configuration. The older `HttpClientBuilder::create`, `create_default`, and `create_from_config` methods remain available but are deprecated. In particular, `.options(saved).create_default()` ignores `saved`: use `.options(saved).build()` when those options should apply, or a fresh `HttpClient::builder().build()` when defaults are intended.
+
 ## Creating A Client
 
 ### Default Client
 
 ```rust
-let client = qubit_http::HttpClientBuilder::new().create_default()?;
+let client = qubit_http::HttpClient::builder().build()?;
 ```
 
 Default behavior:
@@ -172,13 +174,13 @@ let rebuilt_from_copied_options = client.to_builder().build()?;
 
 ### Loading From qubit-config
 
-`HttpClientOptions::from_config` and `HttpClientBuilder::create_from_config` accept any `qubit_config::ConfigReader`. If you pass `config.section("http")`, all keys below are read relative to that prefix.
+`HttpClientOptions::from_config` and `HttpClient::from_config` accept any `qubit_config::ConfigReader`. If you pass `config.section("http")`, all keys below are read relative to that prefix.
 
 <!-- guide-check:configuration:start -->
 ```rust
 use std::time::Duration;
 use qubit_config::Config;
-use qubit_http::HttpClientBuilder;
+use qubit_http::HttpClient;
 
 let mut config = Config::new();
 config.set("http.base_url", "https://api.example.com".to_string())?;
@@ -187,13 +189,11 @@ config.set("http.retry.enabled", true)?;
 config.set("http.retry.delay_strategy", "FIXED".to_string())?;
 config.set("http.retry.fixed_delay", Duration::from_millis(250))?;
 
-let client = HttpClientBuilder::new()
-    .create_from_config(&config.section("http")?)?;
+let client = HttpClient::from_config(&config.section("http")?)?;
 ```
 <!-- guide-check:configuration:end -->
 
-`create_from_config` is a compatibility factory entry: it uses the options
-loaded from `config` and ignores options previously stored on the builder.
+`HttpClient::from_config` is the recommended configuration entry point. The deprecated `create_from_config` remains available for compatibility and ignores options previously stored on its builder.
 
 `from_config` rejects unknown fields in the selected component scope. For
 example, `http.timeouts.connect_timout` fails instead of silently using the
@@ -325,7 +325,7 @@ Per-request overrides:
 | `retry_method_policy` | Overrides retryable HTTP method policy for this request |
 | `honor_retry_after` | Honors `Retry-After` for retryable 429/5xx responses on this request |
 
-`request_timeout` does not cover async header injection or streaming-body factory preparation. `response_header_timeout` starts after synchronous request interceptors and covers asynchronous preparation through response headers. `read_timeout` bounds each normal response-body read and the complete capture of a non-success error body; on expiry, the returned `Status` error retains its status and partial raw body marked incomplete. Inspect `is_truncated()` and increase `read_timeout` when slow error bodies must be retained. Per-request timeout overrides reject zero durations and return `HttpError`.
+`request_timeout` does not cover async header injection or streaming-body factory preparation. A request initially snapshots this value from its creating client; `None` uses the executing client's backend default, and `clear_request_timeout()` restores that behavior. `response_header_timeout` starts after synchronous request interceptors and covers asynchronous preparation through response headers. `read_timeout` bounds each normal response-body read and the complete capture of a non-success error body; on expiry, the returned `Status` error retains its status and partial raw body marked incomplete. Inspect `is_truncated()` and increase `read_timeout` when slow error bodies must be retained. Per-request timeout overrides reject zero durations and return `HttpError`.
 
 ## Headers, Injectors, And Interceptors
 
@@ -797,7 +797,7 @@ Example:
 ```rust
 use http::Method;
 use qubit_http::{
-    HttpClientBuilder,
+    HttpClient,
     HttpClientOptions,
 };
 use qubit_redact::{RedactionPolicy, Sensitivity};
@@ -814,7 +814,7 @@ let builder = RedactionPolicy::default().to_builder().http(|http| {
 })?;
 options.log_redaction_policy = builder.build()?;
 
-let client = HttpClientBuilder::new().create(options)?;
+let client = HttpClient::builder().options(options).build()?;
 let request = client
     .request(Method::POST, "https://api.example.com/login")
     .query_param("access_token", "secret-token")
@@ -1132,7 +1132,7 @@ The table below lists every configuration key supported by `HttpClientOptions::f
 - Set a realistic `read_timeout` for long-lived streams/SSE; too short a value turns a slow but healthy stream into `ReadTimeout`.
 - TRACE response-body logging reports only bodies already buffered by the caller; it never consumes an unconsumed backend stream, including known-size non-SSE responses.
 - Keep `proxy.enabled = false` and `use_env_proxy = false` when you want proxying fully disabled; explicitly enable `use_env_proxy` when environment proxy inheritance is desired.
-- Prefer passing a scoped `section("http")` to `from_config`/`create_from_config`, so error paths preserve useful context.
+- Prefer passing a scoped `section("http")` to `HttpClient::from_config`, so error paths preserve useful context.
 
 The crate deliberately does not expose every `reqwest` API, does not retry
 stream-read failures after `HttpResponse` has been returned, and does not
@@ -1150,7 +1150,7 @@ This section compares the repository's `v0.15.1` tag with `0.16.0` at commit `e9
 | --- | --- | --- |
 | Dependencies | The manifest updates `qubit-json` 0.10 to 0.12, `qubit-config` 0.14 to 0.15, `qubit-budget` 0.7 to 0.10, `qubit-redact` 0.9 to 0.10, and Tokio 1.53 to 1.54. `reqwest` remains on 0.13. | Review your lockfile and direct dependency constraints for the versions required by your chosen `qubit-http` release. |
 | Base URL | `base_url` remains the configuration key, and validation now accepts only HTTP or HTTPS URLs. No replacement key was introduced. | Check configured base URLs for schemes such as `file:` or `ws:`; provide an HTTP(S) API base URL. |
-| Configuration | The compared source does not identify a renamed `retry`, `timeouts`, or `sse` configuration key. Current guides list the supported keys and accepted values. | Parse your actual configuration with `HttpClientOptions::from_config` or `HttpClientBuilder::new().create_from_config(...)`; treat unknown-key or invalid-value errors as actionable migration findings. |
+| Configuration | The compared source does not identify a renamed `retry`, `timeouts`, or `sse` configuration key. Current guides list the supported keys and accepted values. | Parse your actual configuration with `HttpClientOptions::from_config` or `HttpClient::from_config(...)`; treat unknown-key or invalid-value errors as actionable migration findings. |
 | Retry ownership | `execute` retries eligible failures before returning `HttpResponse`; later response-body and SSE reads are caller-owned and do not re-enter HTTP retry. An outer SDK may own a separate operation-level retry. | Keep request-level retry disabled when an SDK already retries the whole operation, as the OpenAI provider does with `disable_retry()`. Test that one application attempt does not multiply retries unexpectedly. |
 | Client hooks | In both versions, `to_builder()` copies options only; `rebuild_with_options()` creates a new backend and preserves registered injectors and interceptors. | When replacing options on a configured client, use `rebuild_with_options()` if hooks are part of the contract; do not assume `to_builder()` carries them. |
 | SSE | The 0.16 source adds explicit handling for empty `id:` resets, persistent valid SSE `retry:` hints, and normal termination on `204 No Content` before media-type validation. Strict JSON and done-marker policies remain caller-selected. | Check cursor reset and retry timing expectations. For strict JSON streams, explicitly use `SseJsonMode::Strict` and `SseCompletionPolicy::RequireDoneMarker`, then test complete and incomplete frames. |
@@ -1159,11 +1159,11 @@ To build a client from configuration, use this complete example. It only constru
 
 ```rust
 use qubit_config::Config;
-use qubit_http::HttpClientBuilder;
+use qubit_http::HttpClient;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::new();
-    let _client = HttpClientBuilder::new().create_from_config(&config)?;
+    let _client = HttpClient::from_config(&config)?;
     Ok(())
 }
 ```

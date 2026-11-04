@@ -247,7 +247,7 @@ async fn test_socks5_proxy_forwards_http_request() {
     options.timeouts.read_timeout = Duration::from_secs(3);
     options.timeouts.request_timeout = Some(Duration::from_secs(3));
 
-    let client = HttpClientBuilder::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
     let request = client.request(Method::GET, "/socks").build();
     let mut response = timeout(Duration::from_secs(5), client.execute(request))
         .await
@@ -278,7 +278,7 @@ async fn test_socks5_ipv4_only_delegates_target_dns() {
     options.proxy.host = Some(socks.host().to_string());
     options.proxy.port = Some(socks.port());
     options.timeouts.request_timeout = Some(Duration::from_secs(5));
-    let client = HttpClientBuilder::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
     let response = timeout(
         Duration::from_secs(5),
         client.execute(client.request(Method::GET, "/dns-boundary").build()),

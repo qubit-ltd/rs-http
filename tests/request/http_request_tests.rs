@@ -32,7 +32,7 @@ use url::Url;
 
 fn new_request(method: Method, path: &str) -> HttpRequest {
     let client = HttpClientBuilder::new()
-        .create_default()
+        .build()
         .expect("default options should create client");
     client.request(method, path).build()
 }
@@ -58,7 +58,7 @@ fn test_http_request_rejects_non_http_schemes() {
     }
     let mut options = HttpClientOptions::new();
     options.set_base_url("https://example.invalid/api/").unwrap();
-    let client = HttpClientBuilder::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
     assert_eq!(
         client
             .request(Method::GET, "items")
@@ -109,7 +109,7 @@ fn test_http_request_setters_update_method_path_query_and_body() {
 #[test]
 fn test_http_request_debug_masks_sensitive_values() {
     let client = HttpClientBuilder::new()
-        .create_default()
+        .build()
         .expect("default options should create client");
     let request = client
         .request(
@@ -129,7 +129,8 @@ fn test_http_request_debug_masks_sensitive_values() {
         .set_base_url("https://debug-user:debug-url-secret@example.com/root/?accessToken=debug-base-query-secret")
         .expect("base URL should be valid");
     let relative_client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
     let relative_request = relative_client
         .request(Method::GET, "items")
@@ -151,7 +152,7 @@ fn test_http_request_debug_masks_sensitive_values() {
 
 #[tokio::test]
 async fn test_relative_url_error_does_not_expose_query_or_fragment() {
-    let client = HttpClientBuilder::new().create_default().unwrap();
+    let client = HttpClientBuilder::new().build().unwrap();
     let request = client
         .request(Method::GET, "/v1?access_token=PRIVATE_QUERY#PRIVATE_FRAGMENT")
         .build();
@@ -172,7 +173,7 @@ fn test_failed_base_url_join_keeps_safe_summary_and_parse_source() {
     let mut options = HttpClientOptions::default();
     options.set_base_url("https://example.test/api/").unwrap();
     options.log_redaction_policy = RedactionPolicy::strict();
-    let client = HttpClientBuilder::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
     let error = client
         .request(Method::GET, "//[invalid]?access_token=PRIVATE_QUERY")
         .build()
@@ -189,7 +190,7 @@ fn test_failed_base_url_join_keeps_safe_summary_and_parse_source() {
 #[test]
 fn test_http_request_debug_masks_native_sensitive_header_value() {
     let client = HttpClientBuilder::new()
-        .create_default()
+        .build()
         .expect("default options should create client");
     let mut headers = HeaderMap::new();
     let mut value = HeaderValue::from_static("native-debug-header-secret");
@@ -219,7 +220,8 @@ fn test_http_request_debug_shares_one_redaction_budget() {
         .build()
         .expect("policy should build");
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
     let request = client
         .request(
@@ -248,7 +250,8 @@ fn test_http_request_debug_honors_url_path_redaction_policy() {
         .expect("test policy should be valid");
     options.log_redaction_policy = policy_builder.build().expect("log redaction policy should be valid");
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
     let request = client
         .request(
@@ -278,7 +281,8 @@ fn test_http_request_debug_honors_explicit_default_field_exclusion() {
         .expect("the test policy input should be valid");
     options.log_redaction_policy = builder.build().expect("log redaction policy should be valid");
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
     let request = client
         .request(Method::GET, "https://example.com/callback?sig=known-false-positive")
@@ -300,7 +304,8 @@ fn test_http_request_debug_suffix_allow_wins_over_sensitive_suffix() {
         .expect("the test policy input should be valid");
     options.log_redaction_policy = builder.build().expect("log redaction policy should be valid");
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
     let request = client
         .request(
@@ -326,7 +331,8 @@ fn test_http_request_debug_allow_rule_wins_independent_of_builder_order() {
         .expect("the test policy input should be valid");
     options.log_redaction_policy = builder.build().expect("log redaction policy should be valid");
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
     let request = client
         .request(Method::GET, "https://example.com/callback?sig=must-be-redacted")
@@ -344,7 +350,8 @@ fn test_http_request_resolved_url_is_public() {
         .set_base_url("https://api.example.com/root/")
         .expect("base URL should be valid");
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
     let request = client
         .request(Method::GET, "items?existing=1")
@@ -482,7 +489,8 @@ fn test_http_request_setters_update_resolved_url_for_base_url_and_ipv4_only() {
         .expect("base URL should parse");
 
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
     let mut request = client.request(Method::GET, "users").build();
 

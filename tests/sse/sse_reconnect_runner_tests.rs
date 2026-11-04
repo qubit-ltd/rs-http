@@ -76,7 +76,8 @@ async fn test_sse_reconnect_replays_post_after_eof_with_http_retry_disabled() {
     options.base_url = Some(server.base_url());
     options.retry.enabled = false;
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
     let request = client
         .request(Method::POST, "/events")
@@ -131,7 +132,8 @@ async fn test_sse_reconnect_replays_post_after_status_with_http_retry_disabled()
     options.base_url = Some(server.base_url());
     options.retry.enabled = false;
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
     let request = client
         .request(Method::POST, "/events")
@@ -190,7 +192,7 @@ async fn test_sse_content_type_error_omits_sensitive_header_value() {
                 .build()
                 .unwrap();
         }
-        let mut client = HttpClientBuilder::new().create(options).unwrap();
+        let mut client = HttpClientBuilder::new().options(options).build().unwrap();
         if native_sensitive {
             client.add_response_interceptor(HttpResponseInterceptor::new(
                 |context: &mut HttpResponseInterceptorContext| {
@@ -246,7 +248,7 @@ async fn test_sse_nonempty_cursor_wins_after_request_interceptors() {
         let mut options = HttpClientOptions::default();
         options.base_url = Some(server.base_url());
         options.add_header("last-event-id", "default-old").unwrap();
-        let mut client = HttpClientBuilder::new().create(options).unwrap();
+        let mut client = HttpClientBuilder::new().options(options).build().unwrap();
         client.add_header_injector(HttpHeaderInjector::new(|headers: &mut http::HeaderMap| {
             headers.insert("last-event-id", "sync-old".parse().unwrap());
             Ok(())
@@ -362,7 +364,7 @@ async fn run_retry_after_sse_reconnect(
     .await;
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     client.add_request_interceptor(HttpRequestInterceptor::new(move |request: &mut HttpRequest| {
         request.set_retry_override(
             HttpRequestRetryOverride::default().with_honor_retry_after(interceptor_honor_retry_after),
@@ -407,7 +409,7 @@ async fn run_sse_reset_header_layers(first_body: &'static [u8], reset: bool) {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.add_header("last-event-id", "default-old").unwrap();
-    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     client.add_header_injector(HttpHeaderInjector::new(|headers: &mut http::HeaderMap| {
         headers.insert("last-event-id", "sync-old".parse().unwrap());
         Ok(())
@@ -494,7 +496,7 @@ async fn test_execute_sse_with_reconnect_stops_normally_on_204() {
         .await;
         let mut options = HttpClientOptions::default();
         options.base_url = Some(server.base_url());
-        let mut client = HttpClientBuilder::new().create(options).unwrap();
+        let mut client = HttpClientBuilder::new().options(options).build().unwrap();
         let attempts = Arc::new(AtomicUsize::new(0));
         let observed = attempts.clone();
         client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
@@ -528,7 +530,7 @@ async fn test_execute_sse_with_reconnect_stops_on_204_after_reconnect() {
     .await;
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     let attempts = Arc::new(AtomicUsize::new(0));
     let observed = attempts.clone();
     client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
@@ -599,7 +601,7 @@ async fn test_execute_sse_with_reconnect_propagates_and_resets_last_event_id() {
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.response_header_timeout = Duration::from_secs(2);
-    let client = HttpClientBuilder::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
     let request = client.request(Method::GET, "/sse-reconnect").build();
     let mut events = client.execute_sse_with_reconnect(
         request,
@@ -678,7 +680,7 @@ async fn test_execute_sse_with_reconnect_honors_server_retry_delay() {
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.response_header_timeout = Duration::from_secs(2);
-    let client = HttpClientBuilder::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
 
     let request = client.request(Method::GET, "/sse-retry-delay").build();
     let mut events = client.execute_sse_with_reconnect(
@@ -754,7 +756,7 @@ async fn test_execute_sse_with_reconnect_preserves_server_retry_across_reconnect
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.response_header_timeout = Duration::from_secs(2);
-    let client = HttpClientBuilder::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
 
     let request = client
         .request(Method::GET, "/sse-server-retry-once-then-backoff")
@@ -814,7 +816,7 @@ async fn test_execute_sse_with_reconnect_caps_server_retry_delay() {
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.response_header_timeout = Duration::from_secs(2);
-    let client = HttpClientBuilder::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
 
     let request = client.request(Method::GET, "/sse-server-retry-cap").build();
     let mut events = client.execute_sse_with_reconnect(
@@ -866,7 +868,7 @@ async fn test_execute_sse_with_reconnect_derives_server_retry_cap_from_delay_str
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.response_header_timeout = Duration::from_secs(2);
-    let client = HttpClientBuilder::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
 
     let request = client.request(Method::GET, "/sse-server-retry-derived-cap").build();
     let mut events = client.execute_sse_with_reconnect(
@@ -924,7 +926,7 @@ async fn test_execute_sse_with_reconnect_can_disable_server_retry_jitter() {
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.response_header_timeout = Duration::from_secs(2);
-    let client = HttpClientBuilder::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
 
     let request = client.request(Method::GET, "/sse-disable-server-retry-jitter").build();
     let mut events = client.execute_sse_with_reconnect(
@@ -978,7 +980,7 @@ async fn test_execute_sse_with_reconnect_respects_retry_max_elapsed() {
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.response_header_timeout = Duration::from_secs(2);
-    let client = HttpClientBuilder::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
 
     let request = client.request(Method::GET, "/sse-max-elapsed").build();
     // The proposed delay alone exhausts the budget, regardless of request latency.
@@ -1035,7 +1037,7 @@ async fn test_execute_sse_with_reconnect_checks_max_elapsed_before_eof_reconnect
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.response_header_timeout = Duration::from_secs(2);
-    let client = HttpClientBuilder::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
 
     let request = client
         .request(Method::GET, "/sse-max-elapsed-before-eof-reconnect")
@@ -1081,7 +1083,7 @@ async fn test_sse_operation_budget_excludes_stream_consumption_for_eof_and_body_
         options.timeouts.read_timeout = Duration::from_secs(4);
         options.timeouts.request_timeout = Some(Duration::from_secs(4));
         options.timeouts.response_header_timeout = Duration::from_secs(4);
-        let client = HttpClientBuilder::new().create(options).unwrap();
+        let client = HttpClientBuilder::new().options(options).build().unwrap();
         let request = client.request(Method::GET, "/operation-budget-lifecycle").build();
         let retry = RetryPolicy::builder()
             .max_attempts(2)
@@ -1144,7 +1146,7 @@ async fn test_sse_total_budget_counts_live_stream_and_paused_consumer_without_in
     options.timeouts.read_timeout = Duration::from_secs(4);
     options.timeouts.request_timeout = Some(Duration::from_secs(4));
     options.timeouts.response_header_timeout = Duration::from_secs(4);
-    let client = HttpClientBuilder::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
     let request = client.request(Method::GET, "/total-budget-lifecycle").build();
     let retry = RetryPolicy::builder()
         .max_attempts(2)
@@ -1297,7 +1299,7 @@ async fn test_execute_sse_with_reconnect_sleep_can_be_cancelled() {
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.response_header_timeout = Duration::from_secs(2);
-    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     let attempts = Arc::new(AtomicUsize::new(0));
     let observed = attempts.clone();
     client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
@@ -1369,7 +1371,7 @@ async fn test_execute_sse_with_reconnect_disables_inner_http_retry() {
     options.retry.enabled = true;
     options.retry.max_attempts = 3;
     options.retry.backoff = BackoffPolicy::immediate();
-    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
 
     let attempts = Arc::new(AtomicUsize::new(0));
     let attempts_for_interceptor = Arc::clone(&attempts);
@@ -1415,7 +1417,7 @@ async fn test_execute_sse_with_reconnect_fails_fast_on_non_sse_content_type() {
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.response_header_timeout = Duration::from_secs(2);
-    let client = HttpClientBuilder::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
 
     let request = client.request(Method::GET, "/sse-content-type-check").build();
     let mut events = client.execute_sse_with_reconnect(
@@ -1455,7 +1457,7 @@ async fn test_execute_sse_with_reconnect_fails_fast_on_missing_content_type() {
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.response_header_timeout = Duration::from_secs(2);
-    let client = HttpClientBuilder::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
 
     let request = client.request(Method::GET, "/sse-missing-content-type").build();
     let mut events = client.execute_sse_with_reconnect(
@@ -1495,7 +1497,7 @@ async fn test_execute_sse_with_reconnect_fails_fast_on_non_utf8_content_type() {
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.response_header_timeout = Duration::from_secs(2);
-    let client = HttpClientBuilder::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
 
     let request = client.request(Method::GET, "/sse-non-utf8-content-type").build();
     let mut events = client.execute_sse_with_reconnect(
@@ -1545,7 +1547,7 @@ async fn test_execute_sse_with_reconnect_rejects_content_type_prefix_collision()
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.response_header_timeout = Duration::from_secs(2);
-    let client = HttpClientBuilder::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
 
     let request = client
         .request(Method::GET, "/sse-content-type-prefix-collision")
@@ -1605,7 +1607,7 @@ async fn test_execute_sse_with_reconnect_uses_custom_backoff_parameters() {
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.response_header_timeout = Duration::from_secs(2);
-    let client = HttpClientBuilder::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
 
     let request = client.request(Method::GET, "/sse-custom-backoff").build();
     let mut events = client.execute_sse_with_reconnect(
@@ -1646,7 +1648,7 @@ async fn test_execute_sse_with_reconnect_does_not_retry_non_retryable_protocol_e
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.response_header_timeout = Duration::from_secs(2);
-    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     let attempts = Arc::new(AtomicUsize::new(0));
     let attempts_for_interceptor = Arc::clone(&attempts);
     client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
@@ -1701,7 +1703,7 @@ async fn test_execute_sse_with_reconnect_does_not_retry_nonretryable_eof_errors(
             options
                 .set_base_url("http://127.0.0.1:18080")
                 .expect("base URL should parse");
-            let mut client = HttpClientBuilder::new().create(options).unwrap();
+            let mut client = HttpClientBuilder::new().options(options).build().unwrap();
             let attempts = Arc::new(AtomicUsize::new(0));
             let attempts_for_interceptor = Arc::clone(&attempts);
             client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
@@ -1776,7 +1778,7 @@ async fn test_execute_sse_with_reconnect_reports_invalid_last_event_id_header_va
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.response_header_timeout = Duration::from_secs(2);
-    let client = HttpClientBuilder::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
 
     let request = client.request(Method::GET, "/sse-invalid-last-event-id").build();
     let mut events = client.execute_sse_with_reconnect(
@@ -1820,7 +1822,7 @@ async fn test_execute_sse_with_reconnect_retries_on_unexpected_eof_message() {
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.response_header_timeout = Duration::from_secs(2);
-    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
 
     let attempts = Arc::new(AtomicUsize::new(0));
     let attempts_for_interceptor = Arc::clone(&attempts);
@@ -1872,7 +1874,7 @@ async fn test_execute_sse_with_reconnect_retries_on_unexpected_eof_source_messag
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.response_header_timeout = Duration::from_secs(2);
-    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
 
     let attempts = Arc::new(AtomicUsize::new(0));
     let attempts_for_interceptor = Arc::clone(&attempts);
@@ -1916,7 +1918,7 @@ async fn test_execute_sse_with_reconnect_does_not_retry_non_eof_source_error() {
         .expect("base URL should parse");
     options.timeouts.read_timeout = Duration::from_secs(1);
     options.timeouts.response_header_timeout = Duration::from_secs(1);
-    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
 
     let attempts = Arc::new(AtomicUsize::new(0));
     let attempts_for_interceptor = Arc::clone(&attempts);
@@ -1968,7 +1970,7 @@ async fn test_retry_control_applies_after_unterminated_retry_line_at_eof() {
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.response_header_timeout = Duration::from_secs(2);
-    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     let attempts = Arc::new(AtomicUsize::new(0));
     let observed = attempts.clone();
     client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
@@ -2014,7 +2016,7 @@ async fn test_retry_control_timeout_reconnect_honors_complete_retry_line() {
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_millis(80);
     options.timeouts.response_header_timeout = Duration::from_secs(2);
-    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     let attempts = Arc::new(Mutex::new(Vec::new()));
     let observed = attempts.clone();
     client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
@@ -2062,7 +2064,7 @@ async fn test_execute_sse_with_reconnect_does_not_retry_cancelled_error() {
         .expect("base URL should parse");
     options.timeouts.read_timeout = Duration::from_secs(1);
     options.timeouts.response_header_timeout = Duration::from_secs(1);
-    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
 
     let attempts = Arc::new(AtomicUsize::new(0));
     let attempts_for_interceptor = Arc::clone(&attempts);
@@ -2104,7 +2106,7 @@ async fn test_execute_sse_with_reconnect_reports_cancelled_stream_before_reading
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_secs(1);
     options.timeouts.response_header_timeout = Duration::from_secs(1);
-    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     let attempts = Arc::new(AtomicUsize::new(0));
     let observed = attempts.clone();
     client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
@@ -2178,7 +2180,7 @@ async fn test_sse_reconnect_replacement_token_cancels_current_body_read() {
     .await;
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     let token_a = HttpCancellationToken::new();
     let token_b = HttpCancellationToken::new();
     let attempts = Arc::new(AtomicUsize::new(0));
@@ -2232,7 +2234,7 @@ async fn test_sse_reconnect_replacement_keeps_original_token_for_reconnect_wait(
     .await;
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     let token_a = HttpCancellationToken::new();
     let token_b = HttpCancellationToken::new();
     let attempts = Arc::new(AtomicUsize::new(0));
@@ -2291,7 +2293,7 @@ async fn test_sse_reconnect_removing_attempt_token_preserves_flow_cancellation()
     .await;
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     let token_a = HttpCancellationToken::new();
     let attempts = Arc::new(AtomicUsize::new(0));
     let observed = attempts.clone();
@@ -2339,7 +2341,7 @@ async fn test_sse_reconnect_removing_attempt_token_preserves_flow_cancellation()
 async fn test_sse_reconnect_original_token_cancels_after_interceptor_before_send() {
     let mut options = HttpClientOptions::default();
     options.set_base_url("http://127.0.0.1:9").unwrap();
-    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     let token_a = HttpCancellationToken::new();
     let cancel = token_a.clone();
     let attempts = Arc::new(AtomicUsize::new(0));

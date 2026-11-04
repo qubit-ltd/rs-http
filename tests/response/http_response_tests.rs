@@ -46,7 +46,8 @@ async fn cached_response(body: &'static [u8], content_type: &'static str) -> (Ht
     options.use_env_proxy = false;
     options.retry.enabled = false;
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
     let token = HttpCancellationToken::new();
     let request = client
@@ -115,7 +116,7 @@ async fn test_304_content_length_is_not_body_length() {
     options.proxy.enabled = false;
     options.use_env_proxy = false;
     options.retry.enabled = false;
-    let client = HttpClientBuilder::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
     let request = client.request(Method::GET, "/not-modified").build();
     let error = timeout(std::time::Duration::from_secs(3), client.execute(request))
         .await

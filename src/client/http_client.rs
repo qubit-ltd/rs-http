@@ -76,7 +76,7 @@ use crate::sse::SseReconnectRunner;
 /// use qubit_http::HttpClient;
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let client = HttpClient::builder().create_default()?;
+/// let client = HttpClient::builder().build()?;
 /// let request = client.request(Method::GET, "https://example.com").build();
 /// assert_eq!(request.method(), &Method::GET);
 /// # Ok(())
@@ -156,7 +156,14 @@ impl HttpClient {
     /// Returns [`crate::HttpConfigError`] when configuration parsing,
     /// validation, or backend construction fails.
     pub fn from_config<R: ConfigReader + ?Sized>(config: &R) -> Result<Self, crate::HttpConfigError> {
-        HttpClientBuilder::new().create_from_config(config)
+        let options = HttpClientOptions::from_config(config)?;
+        HttpClientBuilder::new().options(options).build().map_err(|error| {
+            crate::HttpConfigError::new(
+                crate::HttpConfigErrorKind::InvalidValue,
+                config.scope_path(),
+                error.to_string(),
+            )
+        })
     }
 
     /// Returns a builder initialized with this client's options.
@@ -190,7 +197,7 @@ impl HttpClient {
     /// Returns [`HttpError`] if option validation or backend construction
     /// fails.
     pub fn rebuild_with_options(&self, options: HttpClientOptions) -> HttpResult<Self> {
-        let mut rebuilt = HttpClientBuilder::new().create(options)?;
+        let mut rebuilt = HttpClientBuilder::new().options(options).build()?;
         rebuilt.injectors = self.injectors.clone();
         rebuilt.async_injectors = self.async_injectors.clone();
         rebuilt.request_interceptors = self.request_interceptors.clone();

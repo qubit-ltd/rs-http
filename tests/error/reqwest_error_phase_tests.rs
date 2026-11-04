@@ -32,7 +32,8 @@ async fn test_reqwest_error_phase_response_header_timeout_maps_to_response_heade
     options.base_url = Some(server.base_url());
     options.timeouts.response_header_timeout = Duration::from_millis(25);
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
 
     let error = client

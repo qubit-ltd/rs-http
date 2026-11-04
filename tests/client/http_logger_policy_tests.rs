@@ -47,7 +47,7 @@ use crate::common::spawn_one_shot_server;
 
 fn logging_request(method: Method, path: &str, headers: HeaderMap, body: HttpRequestBody) -> HttpRequest {
     let client = HttpClientBuilder::new()
-        .create_default()
+        .build()
         .expect("default options should create client");
     let base = client.request(method, path).headers(headers);
     match body {
@@ -246,7 +246,7 @@ fn test_log_stream_response_headers_respects_toggle() {
 #[test]
 fn test_log_request_includes_builder_query_params() {
     let client = HttpClientBuilder::new()
-        .create_default()
+        .build()
         .expect("default options should create client");
     let logger_options = HttpClientOptions::default();
     let logger = HttpLogger::new(&logger_options);
@@ -428,7 +428,7 @@ fn test_log_request_streaming_body_logged_as_skipped() {
     client_options.logging = options;
     let logger = HttpLogger::new(&client_options);
     let client = HttpClientBuilder::new()
-        .create_default()
+        .build()
         .expect("default options should create client");
 
     let request = client
@@ -488,7 +488,8 @@ fn test_execute_returns_body_read_error_from_response_logging() {
             options.base_url = Some(server.base_url());
             options.timeouts.read_timeout = std::time::Duration::from_secs(1);
             let client = HttpClientBuilder::new()
-                .create(options)
+                .options(options)
+                .build()
                 .expect("client should be created");
 
             let request = client.request(Method::GET, "/trace-body-read-error").build();
@@ -536,7 +537,8 @@ fn test_execute_skips_trace_response_body_for_streaming_or_unknown_size_body() {
             options.base_url = Some(server.base_url());
             options.timeouts.read_timeout = std::time::Duration::from_millis(80);
             let client = HttpClientBuilder::new()
-                .create(options)
+                .options(options)
+                .build()
                 .expect("client should be created");
 
             let request = client.request(Method::GET, "/trace-streaming").build();
@@ -592,7 +594,8 @@ fn test_execute_logs_response_body_when_content_type_only_has_sse_prefix() {
                 .expect("test policy should be valid");
             options.log_redaction_policy = policy_builder.build().expect("log redaction policy should be valid");
             let client = HttpClientBuilder::new()
-                .create(options)
+                .options(options)
+                .build()
                 .expect("client should be created");
 
             let request = client.request(Method::GET, "/trace-not-sse-prefix").build();
@@ -688,7 +691,7 @@ fn test_log_request_logs_json_form_multipart_ndjson_and_empty_bodies() {
     client_options.logging = HttpLoggingOptions::default();
     let logger = HttpLogger::new(&client_options);
     let client = HttpClientBuilder::new()
-        .create_default()
+        .build()
         .expect("default options should create client");
 
     let json_request = client
@@ -784,7 +787,8 @@ fn test_execute_logs_response_body_from_backend_when_trace_enabled() {
             let mut options = HttpClientOptions::default();
             options.base_url = Some(server.base_url());
             let client = HttpClientBuilder::new()
-                .create(options)
+                .options(options)
+                .build()
                 .expect("client should be created");
             let request = client.request(Method::GET, "/logger-backend-path").build();
             let mut response = client.execute(request).await.expect("request should succeed");
@@ -804,7 +808,7 @@ fn test_log_request_bytes_body_variant_is_logged() {
     client_options.logging = HttpLoggingOptions::default();
     let logger = HttpLogger::new(&client_options);
     let client = HttpClientBuilder::new()
-        .create_default()
+        .build()
         .expect("default options should create client");
 
     let bytes_request = client
@@ -837,7 +841,8 @@ fn test_log_response_skips_body_when_backend_already_consumed() {
             options.base_url = Some(server.base_url());
             options.logging.enabled = false;
             let client = HttpClientBuilder::new()
-                .create(options)
+                .options(options)
+                .build()
                 .expect("client should be created");
             let request = client.request(Method::GET, "/consumed-backend").build();
             let mut response = client.execute(request).await.expect("request should succeed");
@@ -889,7 +894,8 @@ fn test_log_response_skips_body_for_sse_content_type() {
             options.base_url = Some(server.base_url());
             options.logging.enabled = false;
             let client = HttpClientBuilder::new()
-                .create(options)
+                .options(options)
+                .build()
                 .expect("client should be created");
             let request = client.request(Method::GET, "/sse-log-skip").build();
             let mut response = client.execute(request).await.expect("request should succeed");
@@ -929,13 +935,15 @@ fn test_cross_client_redaction_success_logs_follow_request_snapshot() {
                 request_options.base_url = Some(server.base_url());
                 request_options.log_redaction_policy = request_policy;
                 let request_client = HttpClientBuilder::new()
-                    .create(request_options)
+                    .options(request_options)
+                    .build()
                     .expect("request client should be created");
 
                 let mut execute_options = HttpClientOptions::default();
                 execute_options.base_url = Some(server.base_url());
                 let execute_client = HttpClientBuilder::new()
-                    .create(execute_options)
+                    .options(execute_options)
+                    .build()
                     .expect("execute client should be created");
                 let request = request_client
                     .request(Method::GET, "/cross-client-policy-sentinel")
@@ -977,7 +985,8 @@ fn test_cross_client_redaction_rebuilt_client_keeps_old_and_new_snapshots() {
         old_options.base_url = Some(old_server.base_url());
         old_options.log_redaction_policy = RedactionPolicy::strict();
         let old_client = HttpClientBuilder::new()
-            .create(old_options)
+            .options(old_options)
+            .build()
             .expect("old client should be created");
         let old_request = old_client.request(Method::GET, "/cross-client-policy-sentinel").build();
 
@@ -1043,14 +1052,16 @@ fn test_cross_client_redaction_status_errors_follow_request_snapshot() {
             request_options.base_url = Some(server.base_url());
             request_options.log_redaction_policy = request_policy;
             let request_client = HttpClientBuilder::new()
-                .create(request_options)
+                .options(request_options)
+                .build()
                 .expect("request client should be created");
 
             let mut execute_options = HttpClientOptions::default();
             execute_options.base_url = Some(server.base_url());
             execute_options.retry.enabled = false;
             let execute_client = HttpClientBuilder::new()
-                .create(execute_options)
+                .options(execute_options)
+                .build()
                 .expect("execute client should be created");
             let request = request_client
                 .request(Method::GET, "/cross-client-policy-sentinel")
@@ -1096,7 +1107,8 @@ fn test_cross_client_redaction_retry_exhaustion_preserves_error_context() {
             request_options.base_url = Some(server.base_url());
             request_options.log_redaction_policy = request_policy;
             let request_client = HttpClientBuilder::new()
-                .create(request_options)
+                .options(request_options)
+                .build()
                 .expect("request client should be created");
 
             let mut execute_options = HttpClientOptions::default();
@@ -1105,7 +1117,8 @@ fn test_cross_client_redaction_retry_exhaustion_preserves_error_context() {
             execute_options.retry.max_attempts = 2;
             execute_options.retry.backoff = BackoffPolicy::immediate();
             let execute_client = HttpClientBuilder::new()
-                .create(execute_options)
+                .options(execute_options)
+                .build()
                 .expect("execute client should be created");
             let request = request_client
                 .request(Method::GET, "/cross-client-policy-sentinel")
@@ -1152,7 +1165,8 @@ fn test_cross_client_redaction_retry_wait_cancellation_preserves_context() {
                 .expect("test base URL should parse");
             request_options.log_redaction_policy = request_policy;
             let request_client = HttpClientBuilder::new()
-                .create(request_options)
+                .options(request_options)
+                .build()
                 .expect("request client should be created");
 
             let mut execute_options = HttpClientOptions::default();
@@ -1163,7 +1177,8 @@ fn test_cross_client_redaction_retry_wait_cancellation_preserves_context() {
             execute_options.retry.max_attempts = 3;
             execute_options.retry.backoff = BackoffPolicy::fixed(std::time::Duration::from_secs(5));
             let mut execute_client = HttpClientBuilder::new()
-                .create(execute_options)
+                .options(execute_options)
+                .build()
                 .expect("execute client should be created");
             let attempt_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
             let observed_attempts = attempt_count.clone();
@@ -1232,13 +1247,15 @@ fn test_cross_client_redaction_sse_handshake_errors_follow_request_snapshot() {
             request_options.base_url = Some(server.base_url());
             request_options.log_redaction_policy = request_policy;
             let request_client = HttpClientBuilder::new()
-                .create(request_options)
+                .options(request_options)
+                .build()
                 .expect("request client should be created");
 
             let mut execute_options = HttpClientOptions::default();
             execute_options.base_url = Some(server.base_url());
             let execute_client = HttpClientBuilder::new()
-                .create(execute_options)
+                .options(execute_options)
+                .build()
                 .expect("execute client should be created");
             let request = request_client
                 .request(Method::GET, "/cross-client-policy-sentinel")
@@ -1282,14 +1299,16 @@ fn test_cross_client_redaction_sse_decode_errors_follow_request_snapshot() {
             request_options.log_redaction_policy = request_policy;
             request_options.sse_json_mode = SseJsonMode::Strict;
             let request_client = HttpClientBuilder::new()
-                .create(request_options)
+                .options(request_options)
+                .build()
                 .expect("request client should be created");
 
             let mut execute_options = HttpClientOptions::default();
             execute_options.base_url = Some(server.base_url());
             execute_options.sse_json_mode = SseJsonMode::Strict;
             let execute_client = HttpClientBuilder::new()
-                .create(execute_options)
+                .options(execute_options)
+                .build()
                 .expect("execute client should be created");
             let request = request_client
                 .request(Method::GET, "/cross-client-policy-sentinel")
@@ -1343,14 +1362,16 @@ fn test_cross_client_redaction_read_timeout_errors_follow_request_snapshot() {
             request_options.log_redaction_policy = request_policy;
             request_options.timeouts.read_timeout = std::time::Duration::from_millis(20);
             let request_client = HttpClientBuilder::new()
-                .create(request_options)
+                .options(request_options)
+                .build()
                 .expect("request client should be created");
 
             let mut execute_options = HttpClientOptions::default();
             execute_options.base_url = Some(server.base_url());
             execute_options.timeouts.read_timeout = std::time::Duration::from_millis(20);
             let execute_client = HttpClientBuilder::new()
-                .create(execute_options)
+                .options(execute_options)
+                .build()
                 .expect("execute client should be created");
             let request = request_client
                 .request(Method::GET, "/cross-client-policy-sentinel")

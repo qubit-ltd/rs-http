@@ -106,7 +106,8 @@ async fn run_upload_redirect(status: u16, body_kind: UploadBodyKind) {
     options.max_redirects = Some(5);
     options.retry.enabled = false;
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
     let factory_calls = Arc::new(AtomicUsize::new(0));
     let mut builder = client.request(Method::POST, "/upload");
@@ -165,7 +166,8 @@ async fn test_execute_with_form_body_and_query_headers_timeout() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
 
     let request = client
@@ -207,7 +209,8 @@ async fn test_execute_with_multipart_body_and_query_headers_timeout() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
 
     let payload =
@@ -256,7 +259,8 @@ async fn test_execute_with_ndjson_body_and_query_headers_timeout() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
 
     let request = client
@@ -298,7 +302,8 @@ async fn test_execute_with_stream_body_uses_chunked_transfer_encoding() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
 
     let large_chunk = vec![b'x'; 2048];
@@ -337,7 +342,8 @@ async fn test_execute_with_stream_body_preserves_ordered_chunks() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
 
     let request = client
@@ -384,7 +390,8 @@ async fn test_execute_with_streaming_body_factory_supports_retry_rebuild() {
     options.retry.backoff = BackoffPolicy::immediate();
     options.retry.method_policy = HttpRetryMethodPolicy::AllMethods;
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
 
     let stream_factory_calls = Arc::new(AtomicUsize::new(0));
@@ -447,7 +454,8 @@ async fn test_streaming_body_factory_preparation_respects_response_header_timeou
     options.base_url = Some(server.base_url());
     options.timeouts.response_header_timeout = Duration::from_millis(50);
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
 
     let request = client

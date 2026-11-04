@@ -40,6 +40,7 @@ fn test_builder_build_without_stored_options_uses_defaults() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn test_factory_create_default_ignores_stored_options() {
     let client = HttpClientBuilder::new()
         .options(options_with_user_agent("saved-options/1.0"))
@@ -49,6 +50,7 @@ fn test_factory_create_default_ignores_stored_options() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn test_factory_create_uses_explicit_options_instead_of_stored_options() {
     let client = HttpClientBuilder::new()
         .options(options_with_user_agent("saved-options/1.0"))
@@ -58,6 +60,7 @@ fn test_factory_create_uses_explicit_options_instead_of_stored_options() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn test_factory_create_from_config_uses_config_instead_of_stored_options() {
     let mut config = Config::new();
     config
@@ -71,6 +74,37 @@ fn test_factory_create_from_config_uses_config_instead_of_stored_options() {
 }
 
 #[test]
+#[allow(deprecated)]
+fn test_from_config_matches_deprecated_factory_and_preserves_error_path() {
+    let mut config = Config::new();
+    config
+        .set("user_agent", "configured-options/1.0".to_string())
+        .expect("test config should set user_agent");
+
+    let recommended = qubit_http::HttpClient::from_config(&config).expect("valid config should build a client");
+    let deprecated = HttpClientBuilder::new()
+        .create_from_config(&config)
+        .expect("deprecated entry point should preserve behavior");
+    assert_eq!(recommended.options().user_agent, deprecated.options().user_agent);
+    assert_eq!(
+        recommended.options().timeouts.connect_timeout,
+        deprecated.options().timeouts.connect_timeout
+    );
+    assert_eq!(recommended.options().retry, deprecated.options().retry);
+
+    let mut invalid = Config::new();
+    invalid
+        .set("timeouts.connect_timeout", true)
+        .expect("test config should accept invalid typed value");
+    let recommended_error = qubit_http::HttpClient::from_config(&invalid).unwrap_err();
+    let deprecated_error = HttpClientBuilder::new().create_from_config(&invalid).unwrap_err();
+    assert_eq!(recommended_error.kind, deprecated_error.kind);
+    assert_eq!(recommended_error.path, deprecated_error.path);
+    assert_eq!(recommended_error.path, "timeouts.connect_timeout");
+}
+
+#[test]
+#[allow(deprecated)]
 fn test_factory_create_uses_default_options() {
     let factory = HttpClientBuilder::new();
     let client = factory.create_default().expect("default options should create client");
@@ -85,6 +119,7 @@ fn test_factory_create_uses_default_options() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn test_factory_create_preserves_options() {
     let factory = HttpClientBuilder::new();
     let mut options = HttpClientOptions::default();
@@ -104,6 +139,7 @@ fn test_factory_create_preserves_options() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn test_factory_proxy_enabled_without_host_returns_error() {
     let factory = HttpClientBuilder::new();
     let mut options = HttpClientOptions::default();
@@ -116,6 +152,7 @@ fn test_factory_proxy_enabled_without_host_returns_error() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn test_factory_proxy_enabled_without_port_returns_error() {
     let factory = HttpClientBuilder::new();
     let mut options = HttpClientOptions::default();
@@ -128,6 +165,7 @@ fn test_factory_proxy_enabled_without_port_returns_error() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn test_factory_proxy_password_without_username_returns_error() {
     let factory = HttpClientBuilder::new();
     let mut options = HttpClientOptions::default();
@@ -143,6 +181,7 @@ fn test_factory_proxy_password_without_username_returns_error() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn test_factory_proxy_with_auth_is_valid() {
     let factory = HttpClientBuilder::new();
     let mut options = HttpClientOptions::default();
@@ -160,6 +199,7 @@ fn test_factory_proxy_with_auth_is_valid() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn test_factory_create_from_config_minimal() {
     let config = Config::new();
     let http = config.section("http").unwrap();
@@ -171,6 +211,7 @@ fn test_factory_create_from_config_minimal() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn test_factory_create_from_config_with_base_url() {
     let mut config = Config::new();
     config
@@ -186,6 +227,7 @@ fn test_factory_create_from_config_with_base_url() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn test_factory_create_from_config_scoped_reader() {
     let mut config = Config::new();
     config
@@ -201,6 +243,7 @@ fn test_factory_create_from_config_scoped_reader() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn test_factory_create_from_config_root_reader_keeps_error_path() {
     let mut config = Config::new();
     config
@@ -219,6 +262,7 @@ fn test_factory_create_from_config_root_reader_keeps_error_path() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn test_factory_create_from_config_proxy_validation_error() {
     let mut config = Config::new();
     config
@@ -233,6 +277,7 @@ fn test_factory_create_from_config_proxy_validation_error() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn test_factory_create_from_config_root_reader_is_unchanged_when_type_error() {
     let mut config = Config::new();
     config
@@ -248,6 +293,7 @@ fn test_factory_create_from_config_root_reader_is_unchanged_when_type_error() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn test_factory_create_from_config_full() {
     let mut config = Config::new();
     config
@@ -296,6 +342,7 @@ fn test_factory_create_from_config_full() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn test_factory_create_rejects_zero_proxy_port() {
     let mut options = HttpClientOptions::default();
     options.proxy.enabled = true;
@@ -312,6 +359,7 @@ fn test_factory_create_rejects_zero_proxy_port() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn test_factory_create_rejects_blank_proxy_host() {
     let mut options = HttpClientOptions::default();
     options.proxy.enabled = true;
@@ -328,6 +376,7 @@ fn test_factory_create_rejects_blank_proxy_host() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn test_factory_create_rejects_zero_connect_timeout() {
     let mut options = HttpClientOptions::default();
     options.timeouts.connect_timeout = Duration::ZERO;
@@ -341,6 +390,7 @@ fn test_factory_create_rejects_zero_connect_timeout() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn test_factory_create_accepts_proxy_without_auth_and_request_timeout() {
     let mut options = HttpClientOptions::default();
     options.timeouts.request_timeout = Some(Duration::from_secs(2));
@@ -357,6 +407,7 @@ fn test_factory_create_accepts_proxy_without_auth_and_request_timeout() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn test_factory_create_rejects_invalid_proxy_url() {
     let mut options = HttpClientOptions::default();
     options.proxy.enabled = true;
@@ -373,6 +424,7 @@ fn test_factory_create_rejects_invalid_proxy_url() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn test_factory_create_rejects_invalid_logging_options() {
     let mut options = HttpClientOptions::default();
     options.logging.body_size_limit = 0;
@@ -386,6 +438,7 @@ fn test_factory_create_rejects_invalid_logging_options() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn test_factory_create_rejects_invalid_retry_options() {
     let mut options = HttpClientOptions::default();
     options.retry.max_attempts = 0;
@@ -399,6 +452,7 @@ fn test_factory_create_rejects_invalid_retry_options() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn test_factory_create_rejects_blank_user_agent() {
     let mut options = HttpClientOptions::default();
     options.user_agent = Some("   ".to_string());
@@ -412,6 +466,7 @@ fn test_factory_create_rejects_blank_user_agent() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn test_factory_create_from_config_type_error_is_prefixed() {
     let mut config = Config::new();
     config
@@ -427,6 +482,7 @@ fn test_factory_create_from_config_type_error_is_prefixed() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn test_factory_create_from_config_maps_proxy_validation_error_to_invalid_value() {
     let mut config = Config::new();
     config

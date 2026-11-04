@@ -52,7 +52,7 @@ fn retry_abort_inner_http(error: &HttpError) -> &HttpError {
 #[test]
 fn test_http_client_debug_includes_options_and_injectors() {
     let mut client = HttpClientBuilder::new()
-        .create_default()
+        .build()
         .expect("default options should create client");
     client.add_header_injector(HttpHeaderInjector::new(|_headers: &mut HeaderMap| Ok(())));
 
@@ -72,7 +72,7 @@ async fn test_rebuild_with_options_preserves_registered_hooks() {
     })
     .await;
     let mut client = HttpClientBuilder::new()
-        .create_default()
+        .build()
         .expect("default client should be created");
     client.add_header_injector(HttpHeaderInjector::new(|headers: &mut HeaderMap| {
         headers.insert(HeaderName::from_static("x-sync"), HeaderValue::from_static("yes"));
@@ -125,7 +125,7 @@ async fn test_rebuild_with_options_preserves_registered_hooks() {
 #[test]
 fn test_rebuild_with_options_rejects_invalid_options_without_changing_client() {
     let client = HttpClientBuilder::new()
-        .create_default()
+        .build()
         .expect("default client should be created");
     let mut invalid = client.options().clone();
     invalid.timeouts.connect_timeout = Duration::ZERO;
@@ -150,7 +150,7 @@ async fn test_absolute_url_request_bypasses_base_url_join() {
     // this.
     options.base_url = Some(url::Url::parse("http://127.0.0.1:1/").unwrap());
     options.origin_policy = HttpOriginPolicy::AnyOrigin;
-    let client = HttpClientBuilder::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
 
     let path = format!("{}absolute", target_server.base_url());
     let request = client.request(Method::GET, path.as_str()).build();
@@ -174,7 +174,7 @@ async fn test_default_client_executes_absolute_url_without_base_url() {
         body: b"ok".to_vec(),
     })
     .await;
-    let client = HttpClientBuilder::new().create_default().unwrap();
+    let client = HttpClientBuilder::new().build().unwrap();
     let request = client
         .request(Method::GET, &format!("{}absolute-default", server.base_url()))
         .build();
@@ -188,7 +188,7 @@ async fn test_default_client_executes_absolute_url_without_base_url() {
 
 #[tokio_test]
 async fn test_default_client_rejects_relative_path_without_base_url() {
-    let client = HttpClientBuilder::new().create_default().unwrap();
+    let client = HttpClientBuilder::new().build().unwrap();
     let error = client
         .execute(client.request(Method::GET, "/relative").build())
         .await
@@ -200,7 +200,7 @@ async fn test_default_client_rejects_relative_path_without_base_url() {
 async fn test_same_origin_rejects_absolute_url_different_from_configured_base() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(url::Url::parse("http://127.0.0.1:1/").unwrap());
-    let client = HttpClientBuilder::new().create(options).unwrap();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
     let error = client
         .execute(client.request(Method::GET, "http://127.0.0.1:2/cross-origin").build())
         .await
@@ -229,7 +229,8 @@ async fn test_same_origin_redirect_reaches_same_origin_target() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
 
     let response = timeout(
@@ -271,7 +272,8 @@ async fn test_same_origin_redirect_rejects_cross_origin_before_sending_credentia
         .add_header("authorization", "Bearer sensitive-value")
         .expect("authorization header should be valid");
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
 
     let error = timeout(
@@ -319,7 +321,8 @@ async fn test_same_origin_redirect_honors_max_redirects() {
     options.base_url = Some(server.base_url());
     options.max_redirects = Some(1);
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
 
     let result = timeout(
@@ -342,7 +345,8 @@ async fn test_execute_returns_invalid_url_for_bad_relative_path() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(url::Url::parse("https://example.com/api/").expect("static base_url in test should parse"));
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("valid options should create client");
     let request = client.request(Method::GET, "http://[::1").build();
 
@@ -369,7 +373,7 @@ async fn test_header_injector_order_is_stable_and_clear_works() {
     .await;
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server1.base_url());
-    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     client.add_header_injector(HttpHeaderInjector::new(|headers: &mut HeaderMap| {
         headers.insert(HeaderName::from_static("x-seq"), HeaderValue::from_static("A"));
         Ok(())
@@ -392,7 +396,7 @@ async fn test_header_injector_order_is_stable_and_clear_works() {
     .await;
     let mut options2 = HttpClientOptions::default();
     options2.base_url = Some(server2.base_url());
-    let mut client2 = HttpClientBuilder::new().create(options2).unwrap();
+    let mut client2 = HttpClientBuilder::new().options(options2).build().unwrap();
     client2.add_header_injector(HttpHeaderInjector::new(|headers: &mut HeaderMap| {
         headers.insert(HeaderName::from_static("x-seq"), HeaderValue::from_static("A"));
         Ok(())
@@ -414,7 +418,7 @@ async fn test_failing_header_injector_short_circuits_request() {
     .await;
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     client.add_header_injector(HttpHeaderInjector::new(|_headers: &mut HeaderMap| {
         Err(HttpError::other("inject failed"))
     }));
@@ -435,7 +439,7 @@ async fn test_request_interceptor_order_is_stable_and_clear_works() {
     .await;
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server1.base_url());
-    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     client.add_request_interceptor(HttpRequestInterceptor::new(|request: &mut HttpRequest| {
         request.set_typed_header(HeaderName::from_static("x-request-seq"), HeaderValue::from_static("A"));
         request.add_query_param("request_interceptor", "first");
@@ -466,7 +470,7 @@ async fn test_request_interceptor_order_is_stable_and_clear_works() {
     .await;
     let mut options2 = HttpClientOptions::default();
     options2.base_url = Some(server2.base_url());
-    let mut client2 = HttpClientBuilder::new().create(options2).unwrap();
+    let mut client2 = HttpClientBuilder::new().options(options2).build().unwrap();
     client2.add_request_interceptor(HttpRequestInterceptor::new(|request: &mut HttpRequest| {
         request.set_typed_header(
             HeaderName::from_static("x-request-cleared"),
@@ -485,7 +489,7 @@ async fn test_request_interceptor_order_is_stable_and_clear_works() {
 #[tokio_test]
 async fn test_failing_request_interceptor_short_circuits_before_url_resolution() {
     let mut client = HttpClientBuilder::new()
-        .create_default()
+        .build()
         .expect("default options should create client");
     client.add_request_interceptor(HttpRequestInterceptor::new(|_request: &mut HttpRequest| {
         Err(HttpError::other("request blocked by interceptor"))
@@ -512,7 +516,7 @@ async fn test_response_interceptor_order_is_stable_and_short_circuits() {
     .await;
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
 
     let events = Arc::new(Mutex::new(Vec::new()));
     let first_events = Arc::clone(&events);
@@ -559,7 +563,7 @@ async fn test_clear_response_interceptors_restores_success_path() {
     .await;
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     client.add_response_interceptor(HttpResponseInterceptor::new(
         |_meta: &mut HttpResponseInterceptorContext| Err(HttpError::other("should be cleared")),
     ));
@@ -581,7 +585,7 @@ async fn test_execute_applies_response_interceptor_for_unconsumed_body() {
     .await;
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     let called = Arc::new(AtomicUsize::new(0));
     let called_for_interceptor = Arc::clone(&called);
     client.add_response_interceptor(HttpResponseInterceptor::new(
@@ -608,7 +612,7 @@ async fn test_original_content_length_header_increase_does_not_reject_small_body
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.response_body_size_limit = 4;
-    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     client.add_response_interceptor(HttpResponseInterceptor::new(
         |context: &mut HttpResponseInterceptorContext| {
             context.headers_mut().insert(
@@ -639,7 +643,7 @@ async fn test_original_content_length_still_rejects_when_header_is_reduced() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.response_body_size_limit = 4;
-    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     client.add_response_interceptor(HttpResponseInterceptor::new(
         |context: &mut HttpResponseInterceptorContext| {
             context
@@ -672,7 +676,7 @@ async fn test_original_content_length_still_rejects_when_header_is_removed() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.response_body_size_limit = 4;
-    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     client.add_response_interceptor(HttpResponseInterceptor::new(
         |context: &mut HttpResponseInterceptorContext| {
             context.headers_mut().remove("content-length");
@@ -707,7 +711,7 @@ async fn test_original_content_length_chunked_without_length_still_enforces_limi
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.response_body_size_limit = 4;
-    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     client.add_response_interceptor(HttpResponseInterceptor::new(
         |context: &mut HttpResponseInterceptorContext| {
             context
@@ -739,7 +743,8 @@ async fn test_request_url_can_differ_from_response_meta_url() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     let mut client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("valid options should create client");
     let rewritten_url =
         url::Url::parse("https://interceptor.example/rewritten").expect("static interceptor URL should parse");
@@ -777,7 +782,8 @@ async fn test_request_url_includes_builder_query_params() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("valid options should create client");
 
     let request = client
@@ -808,7 +814,8 @@ async fn test_status_error_url_includes_builder_query_params() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("valid options should create client");
 
     let request = client
@@ -853,7 +860,8 @@ async fn test_request_url_is_used_in_buffered_read_error() {
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_millis(50);
     let mut client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("valid options should create client");
     let interceptor_url = url::Url::parse("https://interceptor.example/context-url-rewritten")
         .expect("static interceptor URL should parse");
@@ -893,7 +901,7 @@ async fn test_retry_status_code_allowlist_can_disable_retry_for_503() {
     options.retry.enabled = true;
     options.retry.max_attempts = 3;
     options.retry.retry_status_codes = Some(vec![StatusCode::TOO_MANY_REQUESTS]);
-    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     let attempts = Arc::new(AtomicUsize::new(0));
     let attempts_for_interceptor = Arc::clone(&attempts);
     client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
@@ -925,7 +933,7 @@ async fn test_retry_status_code_allowlist_can_enable_retry_for_503() {
     options.retry.max_attempts = 3;
     options.retry.retry_status_codes = Some(vec![StatusCode::SERVICE_UNAVAILABLE]);
     options.retry.retry_error_kinds = Some(vec![HttpErrorKind::Status]);
-    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     let attempts = Arc::new(AtomicUsize::new(0));
     let attempts_for_interceptor = Arc::clone(&attempts);
     client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
@@ -949,7 +957,7 @@ async fn test_retry_error_kind_allowlist_can_disable_transport_retry() {
     options.retry.enabled = true;
     options.retry.max_attempts = 3;
     options.retry.retry_error_kinds = Some(vec![HttpErrorKind::ReadTimeout]);
-    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     let attempts = Arc::new(AtomicUsize::new(0));
     let attempts_for_interceptor = Arc::clone(&attempts);
     client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
@@ -980,7 +988,7 @@ async fn test_add_header_applies_client_default_header() {
     .await;
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     client.add_header("x-client", "default").unwrap();
 
     let request = client.request(Method::GET, "/default-header").build();
@@ -999,7 +1007,7 @@ async fn test_add_headers_is_atomic_and_request_header_still_overrides() {
     .await;
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     client
         .add_headers(&[
             ("x-batch-a", "value-a"),
@@ -1030,7 +1038,7 @@ async fn test_add_headers_invalid_batch_does_not_partially_apply() {
     .await;
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
 
     let error = client
         .add_headers(&[("x-valid", "kept-out"), ("bad header", "boom")])
@@ -1054,7 +1062,7 @@ async fn test_add_header_invalid_value_does_not_apply() {
     .await;
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
 
     let error = client.add_header("x-bad", "line1\nline2").unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::Other);
@@ -1076,7 +1084,7 @@ async fn test_add_header_injector_still_overrides_client_default_header() {
     .await;
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     client.add_header("x-order", "client").unwrap();
     client.add_header_injector(HttpHeaderInjector::new(|headers: &mut HeaderMap| {
         headers.insert(HeaderName::from_static("x-order"), HeaderValue::from_static("injector"));
@@ -1106,7 +1114,7 @@ async fn test_clone_default_headers_are_independent_after_creation() {
 
     let mut client_options = HttpClientOptions::default();
     client_options.origin_policy = HttpOriginPolicy::AnyOrigin;
-    let mut client = HttpClientBuilder::new().create(client_options).unwrap();
+    let mut client = HttpClientBuilder::new().options(client_options).build().unwrap();
     client.add_header("x-shared", "base").unwrap();
 
     let mut cloned = client.clone();
@@ -1151,7 +1159,7 @@ async fn test_review_contract_retry_after_error_and_success_interceptor() {
 
     let mut error_options = HttpClientOptions::default();
     error_options.base_url = Some(error_server.base_url());
-    let mut error_client = HttpClientBuilder::new().create(error_options).unwrap();
+    let mut error_client = HttpClientBuilder::new().options(error_options).build().unwrap();
     let error_calls_for_interceptor = Arc::clone(&error_calls);
     error_client.add_response_interceptor(HttpResponseInterceptor::new(
         move |_context: &mut HttpResponseInterceptorContext| {
@@ -1170,7 +1178,7 @@ async fn test_review_contract_retry_after_error_and_success_interceptor() {
 
     let mut success_options = HttpClientOptions::default();
     success_options.base_url = Some(success_server.base_url());
-    let mut success_client = HttpClientBuilder::new().create(success_options).unwrap();
+    let mut success_client = HttpClientBuilder::new().options(success_options).build().unwrap();
     let success_calls_for_interceptor = Arc::clone(&success_calls);
     success_client.add_response_interceptor(HttpResponseInterceptor::new(
         move |_context: &mut HttpResponseInterceptorContext| {
@@ -1205,7 +1213,7 @@ async fn test_review_contract_cross_client_snapshot() {
     let mut origin_options = HttpClientOptions::default();
     origin_options.base_url = Some(originating_server.base_url());
     origin_options.origin_policy = HttpOriginPolicy::AnyOrigin;
-    let mut origin = HttpClientBuilder::new().create(origin_options).unwrap();
+    let mut origin = HttpClientBuilder::new().options(origin_options).build().unwrap();
     origin.add_header("x-client", "origin").unwrap();
     origin.add_header_injector(HttpHeaderInjector::new(|headers: &mut HeaderMap| {
         headers.insert("x-injector", HeaderValue::from_static("origin"));
@@ -1218,7 +1226,7 @@ async fn test_review_contract_cross_client_snapshot() {
     executor_options.retry.enabled = true;
     executor_options.retry.max_attempts = 2;
     executor_options.retry.backoff = BackoffPolicy::immediate();
-    let mut executor = HttpClientBuilder::new().create(executor_options).unwrap();
+    let mut executor = HttpClientBuilder::new().options(executor_options).build().unwrap();
     executor.add_header("x-client", "executor").unwrap();
     let request_calls = Arc::new(AtomicUsize::new(0));
     let request_calls_for_interceptor = Arc::clone(&request_calls);
@@ -1286,7 +1294,7 @@ async fn test_review_contract_rebuild_does_not_rebind_old_request() {
     .await;
     let mut old_options = HttpClientOptions::default();
     old_options.base_url = Some(old_server.base_url());
-    let old_client = HttpClientBuilder::new().create(old_options).unwrap();
+    let old_client = HttpClientBuilder::new().options(old_options).build().unwrap();
     let old_request = old_client.request(Method::GET, "/old-request").build();
 
     let mut new_options = old_client.options().clone();

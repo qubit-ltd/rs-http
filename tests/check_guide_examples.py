@@ -150,9 +150,9 @@ def generate() -> list[pathlib.Path]:
             source = destination / f"{scenario}-{language}.rs"
             context = "#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n"
             if scenario in ("async-upload", "sse-reconnect"):
-                context = "use qubit_http::HttpClientBuilder;\n\n" + context
+                context = "use qubit_http::HttpClient;\n\n" + context
                 mutable = "mut " if scenario == "async-upload" else ""
-                context += f"    let {mutable}client = HttpClientBuilder::new().create_default()?;\n"
+                context += f"    let {mutable}client = HttpClient::builder().build()?;\n"
             context += "\n".join(f"    {line}" if line else "" for line in code.splitlines())
             if scenario == "configuration":
                 context += "\n    let _ = client;"

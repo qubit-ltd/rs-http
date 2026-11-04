@@ -52,7 +52,8 @@ async fn test_backend_error_mapper_classifies_tls_handshake_timeout_as_connect_t
     options.retry.max_attempts = 2;
     options.retry.retry_error_kinds = Some(vec![HttpErrorKind::ConnectTimeout]);
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
 
     let error = timeout(
@@ -82,7 +83,8 @@ async fn test_backend_error_mapper_keeps_connection_refusal_as_transport() {
     let mut options = HttpClientOptions::default();
     options.use_env_proxy = false;
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
     let url = format!("http://{address}/refused");
     let error = client
@@ -108,7 +110,8 @@ async fn test_backend_error_mapper_classifies_request_timeout_separately() {
     options.timeouts.request_timeout = Some(Duration::from_millis(25));
     options.timeouts.response_header_timeout = Duration::from_secs(2);
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
     let error = client
         .execute(client.request(Method::GET, "/request-timeout").build())
@@ -136,7 +139,8 @@ async fn test_backend_error_mapper_classifies_body_read_timeout() {
     options.base_url = Some(server.base_url());
     options.timeouts.read_timeout = Duration::from_millis(25);
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
     let mut response = client
         .execute(client.request(Method::GET, "/read-timeout").build())

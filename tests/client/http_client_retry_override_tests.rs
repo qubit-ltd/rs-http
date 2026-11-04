@@ -61,7 +61,8 @@ async fn test_text_body_retry_without_interceptors_sends_identical_bytes() {
         options.retry.max_attempts = 2;
         options.retry.backoff = BackoffPolicy::immediate();
         let client = HttpClientBuilder::new()
-            .create(options)
+            .options(options)
+            .build()
             .expect("client should be created");
         let mut builder = client
             .request(Method::POST, "/text-retry")
@@ -123,7 +124,8 @@ async fn test_text_body_retry_recreates_mutable_attempt_from_snapshot() {
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();
     let mut client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
 
     let observed_bodies = Arc::new(Mutex::new(Vec::new()));
@@ -186,7 +188,8 @@ async fn test_request_retry_override_force_enable_and_all_methods_for_post() {
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
 
     let request = client
@@ -223,7 +226,8 @@ async fn test_request_retry_override_disable_retry_skips_client_retry_policy() {
     options.retry.max_attempts = 3;
     options.retry.backoff = BackoffPolicy::immediate();
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
 
     let request = client.request(Method::GET, "/disable-retry").disable_retry().build();
@@ -263,7 +267,8 @@ async fn test_request_retry_override_method_policy_allows_post_without_global_ov
     options.retry.backoff = BackoffPolicy::immediate();
     options.retry.method_policy = HttpRetryMethodPolicy::IdempotentOnly;
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
 
     let request = client
@@ -304,7 +309,8 @@ async fn test_request_retry_override_honor_retry_after_waits_before_retrying() {
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
 
     let request = client
@@ -351,7 +357,8 @@ async fn test_request_retry_override_honor_retry_after_waits_before_retrying_on_
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
 
     let request = client
@@ -402,7 +409,8 @@ async fn test_request_retry_override_honor_retry_after_waits_before_body_stream_
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
 
     let request = client
@@ -457,7 +465,8 @@ async fn test_request_retry_override_honor_retry_after_without_header_does_not_a
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
 
     let request = client
@@ -504,7 +513,8 @@ async fn test_request_retry_override_honor_retry_after_does_not_block_runtime_th
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();
     let client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
 
     let tick_count = Arc::new(AtomicUsize::new(0));
@@ -558,7 +568,8 @@ async fn test_retry_eligibility_uses_intercepted_method() {
     options.retry.max_attempts = 3;
     options.retry.backoff = BackoffPolicy::immediate();
     let mut client = HttpClientBuilder::new()
-        .create(options)
+        .options(options)
+        .build()
         .expect("client should be created");
     let calls = Arc::new(AtomicUsize::new(0));
     let observed = calls.clone();
@@ -597,7 +608,7 @@ async fn test_intercepted_post_retries_when_final_override_allows_it() {
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
     options.retry.backoff = BackoffPolicy::immediate();
-    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     let calls = Arc::new(AtomicUsize::new(0));
     let observed = calls.clone();
     client.add_request_interceptor(HttpRequestInterceptor::new(move |request: &mut HttpRequest| {
@@ -632,7 +643,7 @@ async fn test_original_post_is_not_admitted_after_interceptor_changes_to_get() {
     options.retry.enabled = true;
     options.retry.max_attempts = 3;
     options.retry.backoff = BackoffPolicy::immediate();
-    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     let attempts = Arc::new(AtomicUsize::new(0));
     let observed = attempts.clone();
     client.add_request_interceptor(HttpRequestInterceptor::new(move |request: &mut HttpRequest| {
@@ -655,7 +666,7 @@ async fn test_interceptor_transport_failure_uses_final_method_and_preserves_retr
     options.retry.enabled = true;
     options.retry.max_attempts = 3;
     options.retry.backoff = BackoffPolicy::immediate();
-    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     let attempts = Arc::new(AtomicUsize::new(0));
     let observed = attempts.clone();
     client.add_request_interceptor(HttpRequestInterceptor::new(move |request: &mut HttpRequest| {
@@ -690,7 +701,7 @@ async fn test_interceptor_force_disable_stops_an_admitted_retry_flow() {
     options.retry.enabled = true;
     options.retry.max_attempts = 3;
     options.retry.backoff = BackoffPolicy::immediate();
-    let mut client = HttpClientBuilder::new().create(options).unwrap();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     let attempts = Arc::new(AtomicUsize::new(0));
     let observed = attempts.clone();
     client.add_request_interceptor(HttpRequestInterceptor::new(move |request: &mut HttpRequest| {
