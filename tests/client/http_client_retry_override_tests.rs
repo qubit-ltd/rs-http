@@ -40,6 +40,68 @@ use crate::common::spawn_multi_shot_server;
 use crate::common::spawn_one_shot_server;
 
 #[tokio_test]
+async fn test_text_body_retry_without_interceptors_sends_identical_bytes() {
+    for explicit_content_type in [false, true] {
+        let server = spawn_multi_shot_server(vec![
+            ResponsePlan::Immediate {
+                status: 503,
+                headers: vec![],
+                body: b"retry".to_vec(),
+            },
+            ResponsePlan::Immediate {
+                status: 200,
+                headers: vec![],
+                body: b"ok".to_vec(),
+            },
+        ])
+        .await;
+        let mut options = HttpClientOptions::default();
+        options.base_url = Some(server.base_url());
+        options.retry.enabled = true;
+        options.retry.max_attempts = 2;
+        options.retry.backoff = BackoffPolicy::immediate();
+        let client = HttpClientBuilder::new()
+            .create(options)
+            .expect("client should be created");
+        let mut builder = client
+            .request(Method::POST, "/text-retry")
+            .text_body("shared-retry-payload")
+            .retry_method_policy(HttpRetryMethodPolicy::AllMethods)
+            .force_retry();
+        if explicit_content_type {
+            builder = builder
+                .header("Content-Type", "application/custom")
+                .expect("header should parse");
+        }
+        let request = builder.build();
+        let response = timeout(Duration::from_secs(3), client.execute(request))
+            .await
+            .expect("execute timed out")
+            .expect("retry should succeed");
+        assert_eq!(response.status(), StatusCode::OK);
+        let captured = timeout(Duration::from_secs(3), server.finish())
+            .await
+            .expect("server timed out");
+        assert_eq!(captured.len(), 2);
+        assert_eq!(captured[0].body, b"shared-retry-payload");
+        assert_eq!(captured[1].body, b"shared-retry-payload");
+        let expected = if explicit_content_type {
+            "application/custom"
+        } else {
+            "text/plain; charset=utf-8"
+        };
+        assert_eq!(
+            captured[0].headers.get("content-type").map(String::as_str),
+            Some(expected)
+        );
+        assert_eq!(
+            captured[1].headers.get("content-type").map(String::as_str),
+            Some(expected)
+        );
+    }
+}
+
+#[tokio_test]
 async fn test_text_body_retry_recreates_mutable_attempt_from_snapshot() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Immediate {

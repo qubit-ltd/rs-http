@@ -55,6 +55,14 @@ pub struct HttpRequestInterceptors {
 }
 
 impl HttpRequestInterceptors {
+    /// Returns whether this list contains no request interceptors.
+    ///
+    /// # Returns
+    /// `true` when applying the list would not mutate the request.
+    pub(crate) fn is_empty(&self) -> bool {
+        self.interceptors.is_empty()
+    }
+
     /// Creates an empty request interceptor list.
     #[must_use]
     pub fn new() -> Self {

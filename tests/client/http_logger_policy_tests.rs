@@ -291,6 +291,43 @@ fn test_log_request_text_body() {
 }
 
 #[test]
+fn test_log_request_text_and_retry_bytes_share_content_type_and_redacted_preview() {
+    let logger_options = HttpClientOptions::default();
+    let logger = HttpLogger::new(&logger_options);
+    let text_request = logging_request(
+        Method::POST,
+        "https://example.com/text-retry",
+        HeaderMap::new(),
+        HttpRequestBody::Text("trace-shared-text-secret".to_string()),
+    );
+    let mut bytes_headers = HeaderMap::new();
+    bytes_headers.insert(CONTENT_TYPE, HeaderValue::from_static("text/plain; charset=utf-8"));
+    let bytes_request = logging_request(
+        Method::POST,
+        "https://example.com/text-retry",
+        bytes_headers,
+        HttpRequestBody::Bytes(Bytes::from_static(b"trace-shared-text-secret")),
+    );
+
+    assert_eq!(
+        text_request.headers().get(CONTENT_TYPE),
+        bytes_request.headers().get(CONTENT_TYPE)
+    );
+    let text_logs = capture_trace_logs(|| logger.log_request(&text_request));
+    let bytes_logs = capture_trace_logs(|| logger.log_request(&bytes_request));
+    let body_preview = |logs: &str| {
+        logs.lines()
+            .find(|line| line.contains("Request body:"))
+            .expect("request body preview should be logged")
+            .to_owned()
+    };
+    assert_eq!(body_preview(&text_logs), body_preview(&bytes_logs));
+    assert!(text_logs.contains("<redacted: text body>"));
+    assert!(!text_logs.contains("trace-shared-text-secret"));
+    assert!(!bytes_logs.contains("trace-shared-text-secret"));
+}
+
+#[test]
 fn test_log_request_text_body_redacts_by_default() {
     let mut headers = HeaderMap::new();
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("text/plain"));

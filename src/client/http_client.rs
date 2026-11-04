@@ -595,6 +595,10 @@ impl HttpClient {
     /// # Side effects
     /// Multiple async HTTP attempts and optional sleeps.
     async fn execute_with_retry(&self, request: HttpRequest, options: HttpRetryOptions) -> HttpResult<HttpResponse> {
+        let mut request = request;
+        if self.request_interceptors.is_empty() {
+            request.share_text_body_for_retry();
+        }
         let retry_policy = options.to_executor_policy();
         let started_at = Instant::now();
 

@@ -333,6 +333,20 @@ impl HttpRequest {
         &self.body
     }
 
+    /// Shares a text payload's allocation through `Bytes` for retry snapshots.
+    ///
+    /// Non-text bodies and deferred streaming factories are left unchanged.
+    pub(crate) fn share_text_body_for_retry(&mut self) {
+        if !matches!(&self.body, HttpRequestBody::Text(_)) {
+            return;
+        }
+        let body = std::mem::take(&mut self.body);
+        self.body = match body {
+            HttpRequestBody::Text(text) => HttpRequestBody::Bytes(Bytes::from(text)),
+            other => other,
+        };
+    }
+
     /// Returns whether this request has a deferred streaming upload body.
     ///
     /// # Returns
@@ -1206,6 +1220,51 @@ mod tests {
     use crate::HttpClientBuilder;
     use crate::HttpClientOptions;
     use crate::HttpLogger;
+
+    #[test]
+    fn share_text_body_for_retry_normalizes_only_text_and_preserves_headers() {
+        use http::HeaderValue;
+        use http::header::CONTENT_TYPE;
+
+        use super::super::http_request_body::HttpRequestBody;
+
+        let client = HttpClientBuilder::new()
+            .create_default()
+            .expect("client should be created");
+        let mut request = client
+            .request(Method::POST, "https://example.test/")
+            .text_body("retry body")
+            .build();
+        request
+            .headers
+            .insert(CONTENT_TYPE, HeaderValue::from_static("text/custom"));
+        request.share_text_body_for_retry();
+        let HttpRequestBody::Bytes(bytes) = request.body() else {
+            panic!("text should normalize to bytes");
+        };
+        let cloned = request.clone();
+        let HttpRequestBody::Bytes(cloned_bytes) = cloned.body() else {
+            panic!("clone should retain bytes");
+        };
+        assert_eq!(bytes.as_ref(), b"retry body");
+        assert_eq!(bytes.as_ptr(), cloned_bytes.as_ptr());
+        assert_eq!(request.headers.get(CONTENT_TYPE).unwrap(), "text/custom");
+
+        let mut request = client.request(Method::POST, "https://example.test/").build();
+        request.set_body(HttpRequestBody::Json(bytes::Bytes::from_static(b"{}")));
+        request.share_text_body_for_retry();
+        assert!(matches!(request.body(), HttpRequestBody::Json(_)));
+
+        let mut request = client
+            .request(Method::POST, "https://example.test/")
+            .streaming_body(|| {
+                Box::pin(async { Box::pin(futures_util::stream::empty()) as crate::HttpRequestBodyByteStream })
+            })
+            .build();
+        let before = request.has_streaming_body();
+        request.share_text_body_for_retry();
+        assert_eq!(request.has_streaming_body(), before);
+    }
 
     #[tokio::test]
     async fn test_send_impl_rejects_unrepresentable_response_header_deadline() {
