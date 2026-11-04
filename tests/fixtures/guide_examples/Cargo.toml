@@ -1,0 +1,43 @@
+[package]
+name = "qubit-http-guide-examples"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[[bin]]
+name = "configuration-en"
+path = "target/guide_examples/src/bin/configuration-en.rs"
+[[bin]]
+name = "configuration-zh_CN"
+path = "target/guide_examples/src/bin/configuration-zh_CN.rs"
+[[bin]]
+name = "async-upload-en"
+path = "target/guide_examples/src/bin/async-upload-en.rs"
+[[bin]]
+name = "async-upload-zh_CN"
+path = "target/guide_examples/src/bin/async-upload-zh_CN.rs"
+[[bin]]
+name = "redaction-en"
+path = "target/guide_examples/src/bin/redaction-en.rs"
+[[bin]]
+name = "redaction-zh_CN"
+path = "target/guide_examples/src/bin/redaction-zh_CN.rs"
+[[bin]]
+name = "sse-reconnect-en"
+path = "target/guide_examples/src/bin/sse-reconnect-en.rs"
+[[bin]]
+name = "sse-reconnect-zh_CN"
+path = "target/guide_examples/src/bin/sse-reconnect-zh_CN.rs"
+
+[dependencies]
+qubit-http = { path = "../../.." }
+qubit-config = { path = "../../../../rs-config", version = "0.15", default-features = false }
+qubit-redact = { path = "../../../../rs-redact", version = "0.10", default-features = false, features = ["http"] }
+qubit-retry = { version = "0.26", features = ["tokio"] }
+http = "1.5"
+serde_json = "1"
+tokio = { version = "1.54", features = ["macros", "rt-multi-thread", "sync"] }
+futures-util = "0.3"
+bytes = "1.11"

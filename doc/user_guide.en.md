@@ -171,6 +171,7 @@ let rebuilt_from_copied_options = client.to_builder().build()?;
 
 `HttpClientOptions::from_config` and `HttpClientBuilder::create_from_config` accept any `qubit_config::ConfigReader`. If you pass `config.section("http")`, all keys below are read relative to that prefix.
 
+<!-- guide-check:configuration:start -->
 ```rust
 use std::time::Duration;
 use qubit_config::Config;
@@ -186,6 +187,7 @@ config.set("http.retry.fixed_delay", Duration::from_millis(250))?;
 let client = HttpClientBuilder::new()
     .create_from_config(&config.section("http")?)?;
 ```
+<!-- guide-check:configuration:end -->
 
 `create_from_config` is a compatibility factory entry: it uses the options
 loaded from `config` and ignores options previously stored on the builder.
@@ -331,6 +333,7 @@ Final request headers are merged in this order; later steps override duplicate n
 3. Asynchronous `AsyncHttpHeaderInjector`s in registration order.
 4. Request-local headers.
 
+<!-- guide-check:async-upload:start -->
 ```rust
 use http::{HeaderMap, HeaderName, HeaderValue};
 use qubit_http::{AsyncHttpHeaderInjector, HttpHeaderInjector};
@@ -354,7 +357,19 @@ client.add_async_header_injector(AsyncHttpHeaderInjector::new(|headers| {
         Ok(())
     })
 }));
+
+let upload = client
+    .request(http::Method::POST, "https://api.example.com/upload")
+    .streaming_body(|| {
+        Box::pin(async move {
+            Box::pin(futures_util::stream::iter(vec![Ok(bytes::Bytes::from_static(b"chunk"))]))
+                as qubit_http::HttpRequestBodyByteStream
+        })
+    })
+    .build();
+let _ = upload;
 ```
+<!-- guide-check:async-upload:end -->
 
 Async injectors are useful for headers that must be resolved right before send time, such as authentication tokens. In the example below, `TokenProvider` reuses a cached token while it is still fresh, refreshes it asynchronously when needed, and writes the latest value to `Authorization`. When automatic retry is enabled, async injectors run before each send attempt, so retried requests can pick up a refreshed token too.
 
@@ -770,6 +785,7 @@ application default changes later. For migration, configure one
 
 Example:
 
+<!-- guide-check:redaction:start -->
 ```rust
 use http::Method;
 use qubit_http::{
@@ -803,6 +819,7 @@ let request = client
 
 client.execute(request).await?;
 ```
+<!-- guide-check:redaction:end -->
 
 Important: if TRACE logging is active and `log_response_body = true`, response-body logging reports the body only when it is already buffered. An unconsumed backend stream is always left for the caller, including responses with a known `Content-Length`; those responses are logged as skipped until the caller reads them.
 
@@ -973,6 +990,7 @@ while let Some(item) = chunks.next().await {
 
 ### SSE Auto-reconnect
 
+<!-- guide-check:sse-reconnect:start -->
 ```rust
 use futures_util::StreamExt;
 use http::Method;
@@ -1003,6 +1021,7 @@ while let Some(item) = events.next().await {
     println!("{}", event.data);
 }
 ```
+<!-- guide-check:sse-reconnect:end -->
 
 The `RetryPolicy` admission budgets cover these phases:
 

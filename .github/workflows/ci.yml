@@ -25,3 +25,5 @@ jobs:
       pages: write
       id-token: write
     uses: qubit-ltd/rs-infra-ci/.github/workflows/github-ci.yml@main
+    with:
+      verify-extra-script: python3 tests/check_guide_examples.py

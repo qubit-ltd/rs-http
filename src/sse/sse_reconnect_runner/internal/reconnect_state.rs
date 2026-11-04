@@ -66,6 +66,9 @@ impl ReconnectState {
     ///
     /// # Parameters
     /// - `error`: Last retryable HTTP/SSE error.
+    /// - `honor_retry_after`: Whether an applicable HTTP `Retry-After` hint may
+    ///   influence this reconnect delay. The hint is used only for status
+    ///   errors with status `429` or a server-error status.
     /// - `budget`: Shared retry budget for this stream invocation.
     /// - `runtime`: Shared reconnect policy and diagnostic context.
     ///
@@ -186,9 +189,16 @@ impl ReconnectState {
     ///
     /// # Parameters
     /// - `runtime`: Shared reconnect policy context.
+    /// - `http_retry_after`: Optional applicable HTTP `Retry-After` delay. When
+    ///   present, it takes precedence over a stored SSE `retry:` delay and the
+    ///   local backoff policy for this wait. The configured backoff policy
+    ///   still processes the hint, and the resulting delay remains subject to
+    ///   retry-budget admission. The SSE-specific maximum delay applies only to
+    ///   SSE hints.
     ///
     /// # Returns
-    /// Jittered or server-provided reconnect delay.
+    /// Effective reconnect delay after backoff-policy processing. This method
+    /// does not clear a stored SSE retry delay when an HTTP hint is supplied.
     pub(in crate::sse) fn sleep_delay(
         &mut self,
         runtime: &ReconnectRuntime<'_>,
@@ -246,6 +256,22 @@ impl ReconnectState {
     }
 }
 
+/// Returns an applicable HTTP `Retry-After` delay for an SSE reconnect.
+///
+/// The header is considered only when the caller honors retry hints and the
+/// error is a status error with status `429 Too Many Requests` or a 5xx server
+/// error. Other errors and statuses do not provide an HTTP delay.
+///
+/// # Parameters
+/// - `error`: HTTP error whose status and parsed retry delay are inspected.
+/// - `honor_retry_after`: Whether HTTP retry hints are enabled for this request
+///   attempt.
+///
+/// # Returns
+/// The parsed HTTP retry delay when all conditions apply; otherwise `None`.
+/// The caller passes a returned delay through the configured backoff policy
+/// and retry-budget checks before scheduling a reconnect. This function does
+/// not modify a persistent SSE `retry:` delay.
 fn http_retry_after(error: &HttpError, honor_retry_after: bool) -> Option<Duration> {
     if honor_retry_after
         && error.kind() == crate::HttpErrorKind::Status

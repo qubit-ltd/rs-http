@@ -164,6 +164,7 @@ let rebuilt_from_copied_options = client.to_builder().build()?;
 
 `HttpClientOptions::from_config` 和 `HttpClientBuilder::create_from_config` 接收任意 `qubit_config::ConfigReader`。如果传入 `config.section("http")`，下面表格中的键都按相对路径读取。
 
+<!-- guide-check:configuration:start -->
 ```rust
 use std::time::Duration;
 use qubit_config::Config;
@@ -179,6 +180,7 @@ config.set("http.retry.fixed_delay", Duration::from_millis(250))?;
 let client = HttpClientBuilder::new()
     .create_from_config(&config.section("http")?)?;
 ```
+<!-- guide-check:configuration:end -->
 
 `create_from_config` 是兼容 factory 入口：它使用从 `config` 加载的选项，忽略 builder
 之前保存的选项。
@@ -320,6 +322,7 @@ assert_eq!(
 3. 异步 `AsyncHttpHeaderInjector`，按注册顺序执行。
 4. 请求本身设置的 header。
 
+<!-- guide-check:async-upload:start -->
 ```rust
 use http::{HeaderMap, HeaderName, HeaderValue};
 use qubit_http::{AsyncHttpHeaderInjector, HttpHeaderInjector};
@@ -343,7 +346,19 @@ client.add_async_header_injector(AsyncHttpHeaderInjector::new(|headers| {
         Ok(())
     })
 }));
+
+let upload = client
+    .request(http::Method::POST, "https://api.example.com/upload")
+    .streaming_body(|| {
+        Box::pin(async move {
+            Box::pin(futures_util::stream::iter(vec![Ok(bytes::Bytes::from_static(b"chunk"))]))
+                as qubit_http::HttpRequestBodyByteStream
+        })
+    })
+    .build();
+let _ = upload;
 ```
+<!-- guide-check:async-upload:end -->
 
 异步注入器适合在发送前动态获取会变化的请求头，例如认证 token。下面示例中，`TokenProvider` 会复用未过期 token；过期时异步刷新，并把最新值写入 `Authorization`。如果启用了自动重试，异步注入器会在每次发送尝试前重新执行，因此重试请求也能拿到新的 token。
 
@@ -744,6 +759,7 @@ HTTP 日志使用 `tracing::trace!`。必须同时满足：
 
 示例：
 
+<!-- guide-check:redaction:start -->
 ```rust
 use http::Method;
 use qubit_http::{
@@ -777,6 +793,7 @@ let request = client
 
 client.execute(request).await?;
 ```
+<!-- guide-check:redaction:end -->
 
 注意：如果 TRACE 日志开启且 `log_response_body = true`，响应体日志只记录已经缓存的 body。尚未读取的后端流始终留给调用方，包括带有已知 `Content-Length` 的响应；调用方读取前，这些响应会记录为跳过。
 
@@ -947,6 +964,7 @@ while let Some(item) = chunks.next().await {
 
 ### SSE 自动重连
 
+<!-- guide-check:sse-reconnect:start -->
 ```rust
 use futures_util::StreamExt;
 use http::Method;
@@ -977,6 +995,7 @@ while let Some(item) = events.next().await {
     println!("{}", event.data);
 }
 ```
+<!-- guide-check:sse-reconnect:end -->
 
 `RetryPolicy` 的准入预算覆盖以下阶段：
 
