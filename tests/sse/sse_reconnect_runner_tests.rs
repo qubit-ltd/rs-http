@@ -51,9 +51,9 @@ use tokio::test as tokio_test;
 use tokio::time::timeout;
 use url::Url;
 
+use crate::common::CapturedRequest;
 use crate::common::ResponseChunk;
 use crate::common::ResponsePlan;
-use crate::common::CapturedRequest;
 use crate::common::spawn_multi_shot_server;
 use crate::common::spawn_one_shot_server;
 
@@ -65,27 +65,49 @@ async fn test_sse_reconnect_replays_post_after_eof_with_http_retry_disabled() {
             headers: vec![("Content-Type".to_owned(), "text/event-stream".to_owned())],
             body: b"data: first\n\n".to_vec(),
         },
-        ResponsePlan::Immediate { status: 204, headers: vec![], body: Vec::new() },
-    ]).await;
+        ResponsePlan::Immediate {
+            status: 204,
+            headers: vec![],
+            body: Vec::new(),
+        },
+    ])
+    .await;
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.retry.enabled = false;
-    let client = HttpClientBuilder::new().create(options).expect("client should be created");
-    let request = client.request(Method::POST, "/events")
+    let client = HttpClientBuilder::new()
+        .create(options)
+        .expect("client should be created");
+    let request = client
+        .request(Method::POST, "/events")
         .bytes_body(b"subscription".as_slice())
         .disable_retry()
         .build();
     let reconnect = SseReconnectOptions {
         reconnect_on_eof: true,
-        retry: RetryPolicy::builder().max_attempts(2).backoff(BackoffPolicy::immediate()).build().expect("retry policy should be valid"),
+        retry: RetryPolicy::builder()
+            .max_attempts(2)
+            .backoff(BackoffPolicy::immediate())
+            .build()
+            .expect("retry policy should be valid"),
         ..SseReconnectOptions::default()
     };
     let mut events = client.execute_sse_with_reconnect(request, reconnect);
-    let first = timeout(Duration::from_secs(3), events.next()).await
-        .expect("first SSE event timed out").expect("expected event").expect("event should parse");
+    let first = timeout(Duration::from_secs(3), events.next())
+        .await
+        .expect("first SSE event timed out")
+        .expect("expected event")
+        .expect("event should parse");
     assert_eq!(first.data, "first");
-    assert!(timeout(Duration::from_secs(3), events.next()).await.expect("SSE completion timed out").is_none());
-    let captured = timeout(Duration::from_secs(3), server.finish()).await.expect("server finish timed out");
+    assert!(
+        timeout(Duration::from_secs(3), events.next())
+            .await
+            .expect("SSE completion timed out")
+            .is_none()
+    );
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
     assert_eq!(captured.len(), 2);
     assert_post_replay_requests(&captured);
 }
@@ -93,24 +115,47 @@ async fn test_sse_reconnect_replays_post_after_eof_with_http_retry_disabled() {
 #[tokio_test]
 async fn test_sse_reconnect_replays_post_after_status_with_http_retry_disabled() {
     let server = spawn_multi_shot_server(vec![
-        ResponsePlan::Immediate { status: 503, headers: vec![], body: b"unavailable".to_vec() },
-        ResponsePlan::Immediate { status: 204, headers: vec![], body: Vec::new() },
-    ]).await;
+        ResponsePlan::Immediate {
+            status: 503,
+            headers: vec![],
+            body: b"unavailable".to_vec(),
+        },
+        ResponsePlan::Immediate {
+            status: 204,
+            headers: vec![],
+            body: Vec::new(),
+        },
+    ])
+    .await;
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.retry.enabled = false;
-    let client = HttpClientBuilder::new().create(options).expect("client should be created");
-    let request = client.request(Method::POST, "/events")
+    let client = HttpClientBuilder::new()
+        .create(options)
+        .expect("client should be created");
+    let request = client
+        .request(Method::POST, "/events")
         .bytes_body(b"subscription".as_slice())
         .disable_retry()
         .build();
     let reconnect = SseReconnectOptions {
-        retry: RetryPolicy::builder().max_attempts(2).backoff(BackoffPolicy::immediate()).build().expect("retry policy should be valid"),
+        retry: RetryPolicy::builder()
+            .max_attempts(2)
+            .backoff(BackoffPolicy::immediate())
+            .build()
+            .expect("retry policy should be valid"),
         ..SseReconnectOptions::default()
     };
     let mut events = client.execute_sse_with_reconnect(request, reconnect);
-    assert!(timeout(Duration::from_secs(3), events.next()).await.expect("SSE completion timed out").is_none());
-    let captured = timeout(Duration::from_secs(3), server.finish()).await.expect("server finish timed out");
+    assert!(
+        timeout(Duration::from_secs(3), events.next())
+            .await
+            .expect("SSE completion timed out")
+            .is_none()
+    );
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
     assert_eq!(captured.len(), 2);
     assert_post_replay_requests(&captured);
 }

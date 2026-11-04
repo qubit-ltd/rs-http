@@ -20,15 +20,15 @@ use qubit_http::HttpErrorKind;
 use qubit_http::HttpRequestBodyByteStream;
 use qubit_http::HttpRetryMethodPolicy;
 use qubit_retry::BackoffPolicy;
-use tokio::test as tokio_test;
-use tokio::time::sleep;
-use tokio::time::timeout;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
+use tokio::test as tokio_test;
+use tokio::time::sleep;
+use tokio::time::timeout;
 
-use crate::common::ResponsePlan;
 use crate::common::CapturedRequest;
+use crate::common::ResponsePlan;
 use crate::common::read_request;
 use crate::common::spawn_multi_shot_server;
 use crate::common::spawn_one_shot_server;
@@ -64,7 +64,11 @@ async fn test_upload_redirect_308_streaming_body_returns_status_without_followin
 }
 
 #[derive(Clone, Copy)]
-enum UploadBodyKind { Bytes, Stream, Factory }
+enum UploadBodyKind {
+    Bytes,
+    Stream,
+    Factory,
+}
 
 async fn run_upload_redirect(status: u16, body_kind: UploadBodyKind) {
     let expected_count = usize::from(matches!(body_kind, UploadBodyKind::Bytes)) + 1;
@@ -75,15 +79,24 @@ async fn run_upload_redirect(status: u16, body_kind: UploadBodyKind) {
         let mut requests = Vec::with_capacity(expected_count);
         for index in 0..expected_count {
             let (mut socket, _) = timeout(Duration::from_secs(3), listener.accept())
-                .await.expect("server accept timed out").expect("server accept failed");
+                .await
+                .expect("server accept timed out")
+                .expect("server accept failed");
             let request = timeout(Duration::from_secs(3), read_request(&mut socket))
-                .await.expect("request read timed out").expect("request read failed");
+                .await
+                .expect("request read timed out")
+                .expect("request read failed");
             let response = if index == 0 {
-                format!("HTTP/1.1 {status} Redirect\r\nLocation: /final\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                format!(
+                    "HTTP/1.1 {status} Redirect\r\nLocation: /final\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                )
             } else {
                 "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_owned()
             };
-            socket.write_all(response.as_bytes()).await.expect("response write failed");
+            socket
+                .write_all(response.as_bytes())
+                .await
+                .expect("response write failed");
             requests.push(request);
         }
         requests
@@ -92,7 +105,9 @@ async fn run_upload_redirect(status: u16, body_kind: UploadBodyKind) {
     options.base_url = Some(url::Url::parse(&base_url).expect("base URL should parse"));
     options.max_redirects = Some(5);
     options.retry.enabled = false;
-    let client = HttpClientBuilder::new().create(options).expect("client should be created");
+    let client = HttpClientBuilder::new()
+        .create(options)
+        .expect("client should be created");
     let factory_calls = Arc::new(AtomicUsize::new(0));
     let mut builder = client.request(Method::POST, "/upload");
     builder = match body_kind {
@@ -109,7 +124,8 @@ async fn run_upload_redirect(status: u16, body_kind: UploadBodyKind) {
         }
     };
     let request = builder.disable_retry().build();
-    let result = timeout(Duration::from_secs(3), client.execute(request)).await
+    let result = timeout(Duration::from_secs(3), client.execute(request))
+        .await
         .expect("upload request timed out");
     match body_kind {
         UploadBodyKind::Bytes => assert_eq!(result.expect("buffered redirect should succeed").status().as_u16(), 200),
@@ -119,8 +135,10 @@ async fn run_upload_redirect(status: u16, body_kind: UploadBodyKind) {
             assert_eq!(error.status().expect("status should be present").as_u16(), status);
         }
     }
-    let captured = timeout(Duration::from_secs(3), server).await
-        .expect("server task timed out").expect("server task failed");
+    let captured = timeout(Duration::from_secs(3), server)
+        .await
+        .expect("server task timed out")
+        .expect("server task failed");
     assert_eq!(captured.len(), expected_count);
     assert_eq!(captured[0].method, "POST");
     assert_eq!(captured[0].target, "/upload");

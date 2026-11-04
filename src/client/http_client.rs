@@ -853,15 +853,16 @@ impl HttpClient {
     /// Performs repeated HTTP requests and reads on reconnect; may sleep
     /// between attempts according to reconnect options.
     ///
-    /// SSE reconnects use the independent [`SseReconnectOptions::retry`] policy.
-    /// The ordinary HTTP retry setting, its method policy, and a request's
-    /// [`HttpRequestBuilder::disable_retry`] override do not disable these
-    /// outer reconnects. The request template may therefore be sent repeatedly,
-    /// including for `POST` or `PATCH`. Ensure the method, operation, and body
-    /// are safe to replay; prefer `GET`, and use a server-side idempotency
-    /// guarantee for side-effecting operations. A body factory that can create
-    /// a fresh stream provides technical replayability, not business
-    /// idempotency. Use [`HttpClient::execute`] and manage connections yourself
+    /// SSE reconnects use the independent [`SseReconnectOptions::retry`]
+    /// policy. The ordinary HTTP retry setting, its method policy, and a
+    /// request's [`HttpRequestBuilder::disable_retry`] override do not
+    /// disable these outer reconnects. The request template may therefore
+    /// be sent repeatedly, including for `POST` or `PATCH`. Ensure the
+    /// method, operation, and body are safe to replay; prefer `GET`, and
+    /// use a server-side idempotency guarantee for side-effecting
+    /// operations. A body factory that can create a fresh stream provides
+    /// technical replayability, not business idempotency. Use
+    /// [`HttpClient::execute`] and manage connections yourself
     /// when you need complete control over replay.
     #[must_use]
     pub fn execute_sse_with_reconnect(&self, request: HttpRequest, options: SseReconnectOptions) -> SseMessageStream {
