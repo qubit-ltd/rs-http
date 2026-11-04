@@ -290,6 +290,20 @@ impl ProxyOptions {
     }
 }
 
+/// Parses a pure proxy domain name or IP address without trimming the input.
+///
+/// # Parameters
+/// - `value`: Host text without a scheme, credentials, path, query, fragment,
+///   or port. A valid IPv6 address may be bracketed or unbracketed.
+///
+/// # Returns
+/// The parsed [`Host<String>`] domain, IPv4 address, or IPv6 address. This
+/// function does not check DNS reachability.
+///
+/// # Errors
+/// Returns `()` for empty or whitespace-containing input, forbidden authority
+/// separators, invalid brackets, a port, or a host rejected by the URL host
+/// parser.
 fn parse_proxy_host(value: &str) -> Result<Host<String>, ()> {
     if value.is_empty()
         || value.trim() != value

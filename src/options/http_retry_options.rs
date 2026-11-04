@@ -333,6 +333,22 @@ impl Default for HttpRetryOptions {
     }
 }
 
+/// Builds a retry backoff policy from optional raw configuration values.
+///
+/// # Parameters
+/// - `raw`: Optional retry settings. A missing strategy selects exponential
+///   backoff, and omitted policy parameters use their existing defaults.
+///   Strategy names are trimmed, lowercased, and have hyphens changed to
+///   underscores.
+///
+/// # Returns
+/// The selected `none`, `fixed`, `random`, `exponential`, or
+/// `exponential_backoff` policy with bounded jitter applied.
+///
+/// # Errors
+/// Returns a field-specific [`HttpConfigError`] for an unsupported strategy,
+/// inconsistent random bounds, invalid exponential parameters, or invalid
+/// jitter.
 fn parse_retry_backoff(raw: &HttpRetryConfigInput) -> Result<BackoffPolicy, HttpConfigError> {
     let value = raw.delay_strategy.as_deref().unwrap_or("exponential");
     let normalized = value.trim().to_ascii_lowercase().replace('-', "_");
