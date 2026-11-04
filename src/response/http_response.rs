@@ -462,6 +462,7 @@ impl HttpResponse {
     /// retained-failure behavior instead. Configure the request's read timeout
     /// or cancellation token before sending when the reader should return a
     /// classified failure.
+    /// Cancellation after buffering does not prevent reads of cached bytes.
     ///
     /// # Errors
     /// Returns the backend read, timeout, cancellation, or body-size error.
@@ -574,22 +575,24 @@ impl HttpResponse {
     /// obtained once; a buffered body can be streamed from its cached bytes.
     ///
     /// # Returns
-    /// A stream of body chunks.
+    /// A stream of body chunks. A successfully buffered body remains readable
+    /// after request cancellation; cancellation stops reads that still require
+    /// backend I/O.
     ///
     /// # Errors
     /// Returns an error if the body was already consumed, an earlier read
-    /// failed, or the response was cancelled before streaming starts.
+    /// failed, or an unbuffered response was cancelled before streaming starts.
     pub fn stream(&mut self) -> HttpResult<HttpByteStream> {
         if let Some(error) = self.previous_body_read_error() {
-            return Err(error);
-        }
-        if let Some(error) = self.cancelled_error_if_needed("Streaming response cancelled before reading response body")
-        {
             return Err(error);
         }
         if let HttpResponseBodyState::Buffered(body) = &self.body {
             let body = body.clone();
             return Ok(Box::pin(futures_stream::once(async move { Ok(body) })));
+        }
+        if let Some(error) = self.cancelled_error_if_needed("Streaming response cancelled before reading response body")
+        {
+            return Err(error);
         }
         let state = std::mem::replace(&mut self.body, HttpResponseBodyState::StreamingTaken);
         let backend = match state {
@@ -829,6 +832,8 @@ impl HttpResponse {
     /// This is a body decoder and does not validate the response's
     /// `Content-Type`. Check for `text/event-stream` before calling it when the
     /// upstream media type is part of your protocol contract.
+    /// A successfully buffered body remains decodable after cancellation
+    /// because it no longer requires backend I/O.
     ///
     /// # Returns
     /// A stream of decoded SSE messages or decoding errors.

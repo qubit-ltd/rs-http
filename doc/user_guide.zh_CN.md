@@ -441,7 +441,7 @@ body 可用方式：
 | `bytes()` | 懒读取完整 body（首次 `await` 时读入并缓存），后续可重复调用 |
 | `text()` | 基于 `bytes()`，用 UTF-8 解码完整 body |
 | `json<T>()` | 基于 `bytes()`，用 serde JSON 反序列化完整 body |
-| `stream()` | 返回 `HttpByteStream`；若 body 已缓存则为单块内存流。未缓存时调用本身**不会**立刻读完整 body，而是把底层响应交给返回的流，**在轮询该流时**按需读取字节块 |
+| `stream()` | 返回 `HttpByteStream`；若 body 已缓存则为单块内存流，即使请求已取消也可读取。未缓存时调用本身**不会**立刻读完整 body，而是把底层响应交给返回的流，**在轮询该流时**按需读取字节块 |
 | `sse_messages()` | 消费 `self`，按当前 SSE 行/帧上限等选项将 body 解码为 SSE 消息流（详见下文「SSE 解码」） |
 | `sse_chunks::<T>()` | 消费 `self`，将 SSE `data:` JSON chunk 解码为 `SseChunk<T>` 流（JSON 模式、完成标记等见下文「SSE JSON chunk」） |
 
@@ -485,7 +485,7 @@ async fn read_whole_body_examples(
 }
 ```
 
-**流式字节（`stream`）**：对未缓存的 body，`stream()` 会把后端 body 移交给返回的流，之后无法再取回以进行整包读取；`?` 在拿到流时展开，例如请求上的取消 token 已在开始读取 body 前触发时会在这里返回错误。取消或已有的 body 读取错误仍会返回错误，不能通过其他读取方式绕过。以下独立请求示例展示未缓冲的网络流式读取，不是缓存内存示例。
+**流式字节（`stream`）**：对未缓存的 body，`stream()` 会把后端 body 移交给返回的流，之后无法再取回以进行整包读取；`?` 在拿到流时展开，例如请求上的取消 token 已在开始读取 body 前触发时会在这里返回错误。取消或已有的 body 读取错误仍会返回错误，不能通过其他读取方式绕过。整包读取成功后，即使请求随后取消，也可以读取缓存或解码缓存的 SSE；仍需后端 I/O 的读取会被取消阻止。如果应用要求 token 取消后立即停止业务处理，应在应用处理边界检查 token。以下独立请求示例展示未缓冲的网络流式读取，不是缓存内存示例。
 
 ```rust
 use futures_util::StreamExt;
@@ -540,7 +540,7 @@ async fn read_sse_examples(client: &qubit_http::HttpClient) -> qubit_http::HttpR
 }
 ```
 
-成功调用 `bytes`、`text` 或 `json` 后，缓存可供整包读取和新的单块 `stream()` 复用。未缓存的后端 body 会移交给流，之后无法再取回以进行整包读取；取消或已有的 body 读取错误仍会返回错误。`sse_messages` / `sse_chunks` 也基于流读取，并按值消费 `HttpResponse`。
+成功调用 `bytes`、`text` 或 `json` 后，缓存可供整包读取和新的单块 `stream()` 复用，即使请求之后取消也一样。未缓存的后端 body 会移交给流，之后无法再取回以进行整包读取；取消或已有的 body 读取错误仍会返回错误。`sse_messages` / `sse_chunks` 也基于流读取，并按值消费 `HttpResponse`；已缓存的 SSE body 在取消后仍可解码。
 
 未缓冲响应调用 `bytes`、`text` 或 `json` 时，聚合读取 future 首次被轮询后会接管后端 body。若外层 `timeout` 或 `select!` 落败分支随后丢弃该 future，而缓存尚未完成，后端响应和已读字节都会丢失；后续读取返回 `ResponseBodyAlreadyConsumed`。尚未轮询的 future 被丢弃不会接管 body，已成功缓存的数据仍可复用。这与库内读取器返回的取消或读取超时错误不同，后者会保留原有失败分类。需要得到分类明确的读取失败时，应在发送请求前配置 read timeout 或取消令牌；外部取消未缓冲读取后，应将该响应视为不可再读。
 

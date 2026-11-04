@@ -14,6 +14,7 @@ use http::Method;
 use http::StatusCode;
 use http::header::CONTENT_LENGTH;
 use http::header::RETRY_AFTER;
+use qubit_http::HttpCancellationToken;
 use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
@@ -28,7 +29,70 @@ use tokio::test as tokio_test;
 use tokio::time::timeout;
 use url::Url;
 
+use crate::common::ResponsePlan;
 use crate::common::SensitiveChoice;
+use crate::common::spawn_one_shot_server;
+
+async fn cached_response(body: &'static [u8], content_type: &'static str) -> (HttpResponse, HttpCancellationToken) {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 200,
+        headers: vec![("Content-Type".to_string(), content_type.to_string())],
+        body: body.to_vec(),
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.proxy.enabled = false;
+    options.use_env_proxy = false;
+    options.retry.enabled = false;
+    let client = HttpClientBuilder::new()
+        .create(options)
+        .expect("client should be created");
+    let token = HttpCancellationToken::new();
+    let request = client
+        .request(Method::GET, "/cached-after-cancel")
+        .cancellation_token(token.clone())
+        .build();
+    let mut response = timeout(std::time::Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("request timed out")
+        .expect("request should succeed");
+    assert_eq!(
+        response.bytes().await.expect("body should cache"),
+        Bytes::from_static(body)
+    );
+    timeout(std::time::Duration::from_secs(3), server.finish())
+        .await
+        .expect("test server did not finish");
+    (response, token)
+}
+
+#[tokio_test]
+async fn test_cached_body_remains_readable_after_cancellation() {
+    let (mut response, token) = cached_response(b"cached", "text/plain").await;
+    token.cancel();
+    assert_eq!(response.bytes().await.unwrap(), Bytes::from_static(b"cached"));
+
+    let (mut response, token) = cached_response(b"cached", "text/plain").await;
+    token.cancel();
+    assert_eq!(response.text().await.unwrap(), "cached");
+
+    let (mut response, token) = cached_response(b"{\"ok\":true}", "application/json").await;
+    token.cancel();
+    assert_eq!(response.json::<serde_json::Value>().await.unwrap()["ok"], true);
+
+    let (mut response, token) = cached_response(b"cached", "text/plain").await;
+    token.cancel();
+    let mut stream = response.stream().expect("cached stream should remain readable");
+    assert_eq!(stream.next().await.unwrap().unwrap(), Bytes::from_static(b"cached"));
+    assert!(stream.next().await.is_none());
+
+    let (response, token) = cached_response(b"data: value\n\n", "text/event-stream").await;
+    token.cancel();
+    let mut events = response.sse_messages();
+    assert_eq!(events.next().await.unwrap().unwrap().data, "value");
+    assert!(events.next().await.is_none());
+}
 
 #[tokio_test]
 async fn test_304_content_length_is_not_body_length() {

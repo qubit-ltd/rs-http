@@ -452,7 +452,7 @@ Body APIs:
 | `bytes()` | Lazily reads the full body on the first `await`, caches it, then reuses the cache |
 | `text()` | Full-body UTF-8 decode via `bytes()` |
 | `json<T>()` | Full-body JSON via `bytes()` |
-| `stream()` | Returns `HttpByteStream`; if the body is cached, yields a one-chunk in-memory stream. Otherwise the call does **not** eagerly read the entire body: it hands the backend response to the returned stream, and bytes are read **while that stream is polled** |
+| `stream()` | Returns `HttpByteStream`; if the body is cached, yields a one-chunk in-memory stream even after request cancellation. Otherwise the call does **not** eagerly read the entire body: it hands the backend response to the returned stream, and bytes are read **while that stream is polled** |
 | `sse_messages()` | Consumes `self` and decodes the body stream into an SSE message stream using the configured line/frame limits (see “SSE Decoding” below) |
 | `sse_chunks::<T>()` | Consumes `self` and decodes SSE JSON `data:` chunks into a `SseChunk<T>` stream (JSON mode, done-marker policy, etc.—see “SSE JSON Chunks” below) |
 
@@ -496,7 +496,7 @@ async fn read_whole_body_examples(
 }
 ```
 
-**Streaming bytes (`stream`)**: for an unbuffered body, `stream()` transfers the backend body to the returned stream; it cannot be recovered for later whole-body reads. `?` applies when obtaining the stream, for example if a request cancellation token has already fired before body reading starts. A cancellation or body-read failure is retained and cannot be bypassed by another reader. This separate request example shows unbuffered network streaming, rather than cached in-memory bytes.
+**Streaming bytes (`stream`)**: for an unbuffered body, `stream()` transfers the backend body to the returned stream; it cannot be recovered for later whole-body reads. `?` applies when obtaining the stream, for example if a request cancellation token has already fired before body reading starts. A cancellation or body-read failure is retained and cannot be bypassed by another reader. Once a whole-body read succeeds, later cancellation does not block reading the cache or decoding cached SSE; cancellation still stops reads that need backend I/O. Callers that must stop business processing immediately when a token is cancelled should check that token at the application processing boundary. This separate request example shows unbuffered network streaming, rather than cached in-memory bytes.
 
 For `bytes`, `text`, and `json`, an unbuffered backend body is also transferred when the aggregate-read future is first polled. If an outer `timeout` or a losing `select!` branch then drops that future before buffering succeeds, the backend and any partial bytes are lost; later readers return `ResponseBodyAlreadyConsumed`. Dropping an unpolled future does not take the body, and a successfully cached body remains reusable. This external drop differs from cancellation or read-timeout errors returned by the built-in reader, which retain their existing failure category. Configure the request read timeout or cancellation token before sending when a classified read failure is needed; treat an externally cancelled unbuffered response as unreadable afterward.
 
@@ -553,7 +553,7 @@ async fn read_sse_examples(client: &qubit_http::HttpClient) -> qubit_http::HttpR
 }
 ```
 
-After a successful `bytes`, `text`, or `json` read, the cache supports repeated reads and new one-chunk `stream()` calls. An unbuffered backend body transfers to its stream and cannot be recovered for whole-body reads; cancellation or an existing body-read failure remains an error. `sse_messages` / `sse_chunks` also use the stream path and **consume** the `HttpResponse` by value.
+After a successful `bytes`, `text`, or `json` read, the cache supports repeated reads and new one-chunk `stream()` calls, including after request cancellation. An unbuffered backend body transfers to its stream and cannot be recovered for whole-body reads; cancellation or an existing body-read failure remains an error. `sse_messages` / `sse_chunks` also use the stream path and **consume** the `HttpResponse` by value; cached SSE bodies remain decodable after cancellation.
 
 | Safe | Avoid |
 | --- | --- |
