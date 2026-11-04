@@ -60,7 +60,21 @@ pub(crate) fn is_sse(content_type: &str) -> bool {
 /// `true` for any `multipart/*` media type.
 #[must_use]
 pub(crate) fn is_multipart(content_type: &str) -> bool {
-    media_type(content_type).to_ascii_lowercase().starts_with("multipart/")
+    let Some((kind, subtype)) = media_type(content_type).split_once('/') else {
+        return false;
+    };
+    kind.eq_ignore_ascii_case("multipart") && !subtype.is_empty() && subtype.bytes().all(is_media_type_token_byte)
+}
+
+/// Returns whether one byte is allowed in an HTTP media type token.
+///
+/// # Parameters
+/// - `byte`: ASCII byte to validate.
+///
+/// # Returns
+/// `true` for ASCII alphanumeric bytes and the permitted token punctuation.
+fn is_media_type_token_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&byte)
 }
 
 /// Returns whether `boundary` is safe for unquoted multipart Content-Type use.
@@ -182,4 +196,31 @@ fn decode_header_parameter(value: &str) -> Option<String> {
         result.push(value);
     }
     Some(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_multipart;
+
+    #[test]
+    fn multipart_requires_a_nonempty_token_subtype() {
+        for content_type in [
+            "multipart/form-data",
+            "multipart/mixed",
+            "Multipart/FoRm-DaTa; boundary=abc",
+            "multipart/foo!#$%&'*+-.^_`|~bar",
+        ] {
+            assert!(is_multipart(content_type), "rejected {content_type}");
+        }
+
+        for content_type in [
+            "multipart/",
+            "multipart/foo/bar",
+            "multipart/foo bar",
+            "multipart/foo@bar",
+            "multipart/föo",
+        ] {
+            assert!(!is_multipart(content_type), "accepted {content_type}");
+        }
+    }
 }

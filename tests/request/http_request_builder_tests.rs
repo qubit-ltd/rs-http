@@ -649,6 +649,22 @@ fn test_request_builder_multipart_body_sets_content_type_with_boundary() {
 }
 
 #[test]
+fn test_multipart_rejects_invalid_media_type() {
+    for value in [
+        "multipart/; boundary=abc",
+        "multipart/foo/bar; boundary=abc",
+        "multipart/foo bar; boundary=abc",
+        "multipart/foo@bar; boundary=abc",
+    ] {
+        let result = new_builder(Method::POST, "/upload")
+            .header("content-type", value)
+            .unwrap()
+            .multipart_body("--abc--", "abc");
+        assert!(result.is_err(), "accepted {value}");
+    }
+}
+
+#[test]
 fn test_multipart_rejects_duplicate_boundary_parameters() {
     for value in [
         "multipart/form-data; boundary=abc; boundary=other",
