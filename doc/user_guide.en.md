@@ -29,6 +29,7 @@ An `HttpClient` owns shared execution policy. An `HttpRequest` combines a method
 
 ## Installation And Imports
 
+<!-- guide-dependencies:start -->
 ```toml
 [dependencies]
 qubit-http = "0.16.0"
@@ -41,7 +42,9 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
 futures-util = "0.3"
+bytes = "1.11"
 ```
+<!-- guide-dependencies:end -->
 
 ```rust
 use http::Method;
