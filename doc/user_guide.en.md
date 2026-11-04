@@ -300,8 +300,8 @@ Request body builders:
 | Method | Behavior |
 | --- | --- |
 | `bytes_body` | Raw bytes; does not set `Content-Type` |
-| `stream_body` | Eagerly collects a finite iterator into memory during this call, then sends the ordered chunks through reqwest streaming body support; memory grows with the total payload |
-| `streaming_body` | Installs an async factory that creates a fresh byte stream for each send attempt; useful for true streaming uploads and retryable upload streams |
+| `stream_body` | Eagerly collects a finite iterator into memory during this call, then sends the ordered chunks through reqwest streaming body support; memory grows with the total payload. Despite the collection, reqwest treats it as streaming and cannot replay it across an internal 307/308 redirect |
+| `streaming_body` | Installs an async factory that creates a fresh byte stream for each outer send attempt; it is not called again for an internal 307/308 redirect, which is not followed for streaming bodies |
 | `text_body` | Text body; sets `text/plain; charset=utf-8` when `Content-Type` is absent |
 | `json_body` | Serializes JSON; sets `application/json` when `Content-Type` is absent |
 | `json_body_with_limits` | Serializes JSON with per-request value and output-byte limits |
@@ -713,12 +713,17 @@ result. Ordinary HTTP retry does not set `qubit-retry`'s `attempt_timeout` or
 request that took 2s. `request_timeout` bounds reqwest network execution and response-body reads for one attempt; it excludes asynchronous header injection, streaming-body factory preparation, retry waits, and other attempts. Use `response_header_timeout` for asynchronous preparation through response headers. `read_timeout` also bounds complete non-success error-body capture; if a slow error body times out, inspect `is_truncated()` and raise `read_timeout` if needed. Bodies returned lazily remain outside the built-in retry boundary.
 
 Retryable requests must be safe to replay. Buffered bodies can be sent again;
-`streaming_body` factories must create a fresh stream for each attempt, and header
-injectors/interceptors may run again. With the default HTTP backoff policy,
+`streaming_body` factories must create a fresh stream for each outer attempt, and
+header injectors/interceptors may run again. Neither streaming body form is
+replayed through reqwest's internal 307/308 redirect handling. When a streaming
+upload receives one of those redirects and no outer retry retries that status,
+`execute` returns the corresponding `Status` error. Prefer the final upload URL,
+or use `bytes_body` when the payload fits the application's memory budget. With
+the default HTTP backoff policy,
 `honor_retry_after` uses the hint as a minimum; an excessive hint can exhaust the
 continuation budget instead of starting another request. Custom hint policies or
-final delay caps can change the selected delay. SSE reconnect continues to
-disable inner HTTP retries.
+final delay caps can change the selected delay. For its independent replay
+policy, see [SSE Auto-reconnect](#sse-auto-reconnect).
 
 This release uses `qubit-retry` 0.26. Update any direct dependency and its lockfile
 entry when sharing `RetryPolicy` or `BackoffPolicy` with HTTP/SSE. When consuming
@@ -1037,6 +1042,16 @@ The `RetryPolicy` admission budgets cover these phases:
 Operation time accumulates time spent in completed connection-opening attempts, not SSE consumption or reconnect waits. Total time includes elapsed consumption and waits; admission limits do not interrupt an active stream. These budgets control whether another connection may start. They are not a hard deadline for a stream already being read. Request and read timeouts and cancellation remain independent controls.
 
 The default reconnect settings are `retry.max_attempts = 4` (that is, at most 3 reconnects), exponential `BackoffPolicy` with `initial=1s`, `max=30s`, `multiplier=2.0`, no jitter, reconnect on EOF, and honor server `retry:`. The latest valid `retry:` delay persists until replaced; use `honor_server_retry = false` to ignore server hints. Server `retry:` delays are capped by `server_retry_max_delay`; when it is `None`, the cap is derived from the backoff policy's maximum delay, or falls back to 30 seconds when no maximum exists. This cap applies only to the SSE `retry:` field. For a reconnectable 429/5xx handshake, the final request's `honor_retry_after` preference controls whether the parsed HTTP hint is passed to the backoff policy; this remains a single-attempt HTTP hint governed by its own policy cap and the reconnect budget. `apply_jitter_to_server_retry` is enabled by default, but server-provided delays remain unchanged unless the supplied `RetryPolicy` uses jitter. Reconnects reuse the original request and disable inner HTTP retry. After a non-empty SSE `id:` field updates the reconnect cursor, including in a control-only record, the next request includes `Last-Event-ID`; an empty ID reset makes the next request omit that header. A 204 response ends the reconnect stream normally without requiring `Content-Type`. These are deliberate behavior changes; callers should handle 204 as normal end-of-stream and servers should send a new valid `retry:` to change the delay. The API does not claim full EventSource compliance. `execute_sse_with_reconnect` requires response `Content-Type` to be `text/event-stream` for other successful statuses. SSE decoder errors include the response method, original request URL, and status while preserving more specific context and the existing error source. Cancellation does not reconnect. SSE protocol errors do not reconnect by default. Retryable timeout, transport, 429/5xx, and unexpected-EOF-like errors may reconnect.
+
+SSE reconnects use the independent `SseReconnectOptions.retry` policy. Ordinary
+HTTP retry settings, including `retry.method_policy`, and request-level
+`disable_retry()` do not disable outer SSE reconnects. The original request may
+therefore be sent repeatedly, including with `POST` or `PATCH`. Prefer `GET`;
+for side-effecting operations, confirm that the operation and body are safe to
+repeat under a business-level idempotency guarantee. A factory that creates a
+fresh body stream provides technical replayability, not business idempotency.
+Use `execute` and manage each connection yourself when you need complete control
+over replay.
 
 Once the server supplies an event ID, the reconnect runner owns the final `Last-Event-ID` header. Its non-empty cursor wins after default headers, injectors, and request interceptors have been merged; an empty ID removes the header. Before any server ID is received, ordinary header precedence continues to apply. Applications that intentionally control every reconnect cursor should manage individual requests through `execute` instead.
 

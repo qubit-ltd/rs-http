@@ -34,7 +34,7 @@ base URL 在配置解析和客户端构造时校验；最终请求 URL 在解析
 
 `max_attempts` 和重试诊断统计本库的外层尝试次数。一次 reqwest 执行可能包含协议恢复和重定向，但不会增加外层计数；请求拦截器和动态请求头注入按外层尝试运行，不会针对底层发送重复运行。关闭本库重试仍保留 reqwest 安全的协议 NACK 恢复。`request_timeout` 限制一次 reqwest 执行及其响应体读取，不会为每次底层网络发送分别计时。非成功状态会在成功响应拦截器前映射为错误，因此 429/5xx 的 `Retry-After` 从 `HttpError` 读取；response/meta 提示方法仍可用于单独处理的 metadata。
 
-每次重试都会克隆请求。缓冲请求体可以重放；延迟生成的流式请求体由工厂为每次尝试重新创建。原始请求决定是否准入重试流程；流程内则依据拦截器修改后的每次请求重新计算续试资格和 `Retry-After` 偏好。外层尝试次数和时长预算保持固定。`max_duration` 控制是否继续尝试，并非已经开始的请求的硬截止时间；response-header 超时从异步请求准备开始，累计至收到响应头；同步 request interceptor 在期限开始前执行。连接、响应头、读取和 `request_timeout` 仍分别配置。`request_timeout` 是 reqwest 单次网络请求及响应体读取期限，不包含异步 header 注入、流式 body 工厂准备、重试等待及其他尝试；`response_header_timeout` 覆盖异步准备直到收到响应头；`read_timeout` 限制每次正常 body 读取及完整的非成功错误体采集。最终 `HttpError` 保留重试诊断信息和完整的 `RetryError<HttpError>` 错误来源链。
+每次重试都会克隆请求。缓冲请求体可以重放；延迟生成的流式请求体由工厂为每次外层尝试重新创建。`stream_body`（即使已提前收集到内存）和 `streaming_body` 都会表示为 reqwest 流式 body，无法通过内部 307/308 重定向重放；此类重定向也不会再次调用工厂。优先使用最终上传 URL；载荷符合应用内存预算时可改用 `bytes_body`。原始请求决定是否准入重试流程；流程内则依据拦截器修改后的每次请求重新计算续试资格和 `Retry-After` 偏好。外层尝试次数和时长预算保持固定。`max_duration` 控制是否继续尝试，并非已经开始的请求的硬截止时间；response-header 超时从异步请求准备开始，累计至收到响应头；同步 request interceptor 在期限开始前执行。连接、响应头、读取和 `request_timeout` 仍分别配置。`request_timeout` 是 reqwest 单次网络请求及响应体读取期限，不包含异步 header 注入、流式 body 工厂准备、重试等待及其他尝试；`response_header_timeout` 覆盖异步准备直到收到响应头；`read_timeout` 限制每次正常 body 读取及完整的非成功错误体采集。最终 `HttpError` 保留重试诊断信息和完整的 `RetryError<HttpError>` 错误来源链。
 
 | 超时 | 限制范围 |
 | --- | --- |
@@ -60,7 +60,7 @@ base URL 在配置解析和客户端构造时校验；最终请求 URL 在解析
 
 `HttpResponse::sse_messages` 和 `sse_chunks` 是响应体解码器：只有空行才会派发 SSE data 事件，EOF 不派发未完成的数据事件；完整的 retry 与 control-only id 控制记录仍按既有规则处理。仅首行开头的一个 UTF-8 BOM 会被移除。默认 `AllowEof` 允许完整事件流在没有 done marker 时结束，但不派发未完成帧；`RequireDoneMarker` 只接受完整事件中的 marker。解码器执行行/帧限制，以及 JSON chunk 的 JSON 和完成条件限制，但不检查 `Content-Type`。如果上游协议要求 SSE，直接调用者须先校验 `text/event-stream`；`HttpClient::execute_sse_with_reconnect` 会自行校验媒体类型。
 
-重连执行器禁用内层普通 HTTP 重试，打开响应、解码 SSE record、保存最近的事件 ID 和服务端 `retry:` 延迟，然后依照 `SseReconnectOptions` 再次建立连接。消息未提供新 ID 时继承最近游标，control-only ID 更新和显式空 ID 重置同样生效。服务端提供 ID 后，重连执行器的非空游标会在默认 header、注入器、拦截器和 request-local header 合并后覆盖最终值；空 ID 会删除最终 header。首个服务端 ID 到达前仍遵循普通 header 优先级。有效的 `retry:` 字段在其所在行解码后即产出控制记录，无需等待事件终结空行。启用服务端 retry 提示时，已经应用的延迟不会因后续 body 读取失败而撤销，并持续生效，直到新的有效 `retry:` 将其替换；`honor_server_retry = false` 会忽略服务端提示。204 响应会正常结束重连流，不检查媒体类型、不读取 body，也不再发起连接。这些是有意的行为变化，不代表完整实现 EventSource。取消与协议错误默认不会重连。重连预算覆盖尝试和等待；最终延迟上限及 SSE 的一毫秒最小等待由重连策略处理。
+重连执行器禁用内层普通 HTTP 重试，打开响应、解码 SSE record、保存最近的事件 ID 和服务端 `retry:` 延迟，然后依照 `SseReconnectOptions` 再次建立连接。该 API 使用独立的 `SseReconnectOptions.retry` 策略；普通 HTTP 重试设置、方法策略和请求级 `disable_retry()` 都不会禁止外层 SSE 重连。原请求可能被重复发送，包括 `POST` 或 `PATCH`；调用方须确保操作和请求体在业务幂等保证下可以安全重复。工厂能生成新的请求体流只代表技术上可重放，并不保证业务幂等。优先使用 `GET`；需要完全控制重放时，可直接通过 `execute` 管理连接。消息未提供新 ID 时继承最近游标，control-only ID 更新和显式空 ID 重置同样生效。服务端提供 ID 后，重连执行器的非空游标会在默认 header、注入器、拦截器和 request-local header 合并后覆盖最终值；空 ID 会删除最终 header。首个服务端 ID 到达前仍遵循普通 header 优先级。有效的 `retry:` 字段在其所在行解码后即产出控制记录，无需等待事件终结空行。启用服务端 retry 提示时，已经应用的延迟不会因后续 body 读取失败而撤销，并持续生效，直到新的有效 `retry:` 将其替换；`honor_server_retry = false` 会忽略服务端提示。204 响应会正常结束重连流，不检查媒体类型、不读取 body，也不再发起连接。这些是有意的行为变化，不代表完整实现 EventSource。取消与协议错误默认不会重连。重连预算覆盖尝试和等待；最终延迟上限及 SSE 的一毫秒最小等待由重连策略处理。
 
 `SseReconnectOptions.retry` 中的时间预算是后续连接的准入限额，并非正在读取流的硬截止时间：
 
