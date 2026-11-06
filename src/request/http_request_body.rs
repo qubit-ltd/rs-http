@@ -34,31 +34,52 @@ pub enum HttpRequestBody {
     Empty,
     /// Opaque binary payload.
     #[strum(disabled)]
-    Bytes(Bytes),
-    /// UTF-8 text; builders may set `Content-Type: text/plain`.
+    Bytes(
+        /// Opaque byte payload.
+        Bytes,
+    ),
+    /// UTF-8 text; builders may generate a text `Content-Type`.
     #[strum(disabled)]
-    Text(String),
+    Text(
+        /// UTF-8 encoded request payload.
+        String,
+    ),
     /// JSON-serialized bytes; builders may set `Content-Type:
     /// application/json`.
     #[strum(disabled)]
-    Json(Bytes),
+    Json(
+        /// JSON-serialized request payload.
+        Bytes,
+    ),
     /// URL-encoded form bytes; builders may set `Content-Type:
     /// application/x-www-form-urlencoded`.
     #[strum(disabled)]
-    Form(Bytes),
+    Form(
+        /// URL-encoded key/value request payload.
+        Bytes,
+    ),
     /// Multipart body bytes; builders ensure multipart Content-Type boundary
     /// consistency.
     #[strum(disabled)]
-    Multipart(Bytes),
+    Multipart(
+        /// Multipart request payload.
+        Bytes,
+    ),
     /// NDJSON bytes (`\n`-delimited JSON objects); builders may set
     /// `application/x-ndjson`.
     #[strum(disabled)]
-    Ndjson(Bytes),
+    Ndjson(
+        /// Newline-delimited JSON request payload.
+        Bytes,
+    ),
     /// Chunked upload payload represented as ordered byte chunks.
     ///
     /// The client sends this variant through reqwest streaming body support.
     #[strum(disabled)]
-    Stream(Vec<Bytes>),
+    Stream(
+        /// Ordered upload chunks.
+        Vec<Bytes>,
+    ),
 }
 
 impl fmt::Debug for HttpRequestBody {

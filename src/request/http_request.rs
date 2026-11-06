@@ -90,7 +90,15 @@ pub struct HttpRequest {
     context: HttpRequestContext,
 }
 
+/// Formats request diagnostics with sensitive values redacted.
 impl fmt::Debug for HttpRequest {
+    /// Formats request state while applying the captured redaction policy.
+    ///
+    /// # Parameters
+    /// - `formatter`: Destination formatter.
+    ///
+    /// # Returns
+    /// Result from writing the redacted request representation.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut batch = self.context.log_redactor.diagnostic_batch();
         let url = self.resolved_url().ok().map(|url| batch.redact_http_url(url.as_str()));
@@ -357,7 +365,12 @@ impl HttpRequest {
         self.streaming_body.is_some()
     }
 
-    /// Replaces the entire body payload.
+    /// Replaces the entire body payload while preserving all request headers.
+    ///
+    /// This low-level setter does not infer or update `Content-Type`. If the
+    /// new body's media type differs, update the header with
+    /// [`Self::set_header`] or remove it with [`Self::remove_header`] so
+    /// client defaults can apply.
     ///
     /// # Parameters
     /// - `body`: New [`HttpRequestBody`] variant.
@@ -371,7 +384,12 @@ impl HttpRequest {
         self
     }
 
-    /// Sets deferred streaming upload body factory for this request.
+    /// Sets deferred streaming upload body factory for this request while
+    /// preserving all request headers.
+    ///
+    /// This low-level setter does not infer or update `Content-Type`. If the
+    /// stream's media type differs, update the header with [`Self::set_header`]
+    /// or remove it with [`Self::remove_header`] so client defaults can apply.
     ///
     /// # Parameters
     /// - `streaming_body`: Deferred body stream factory reused across retries.
@@ -767,6 +785,10 @@ impl HttpRequest {
 
     /// Waits for one asynchronous pre-send preparation step with cancellation
     /// and response-header-timeout handling.
+    ///
+    /// # Type Parameters
+    /// - `T`: Output type of the preparation future.
+    /// - `F`: Future that prepares and returns the request context.
     ///
     /// # Parameters
     /// - `future`: Preparation future, such as async header injection or
@@ -1192,7 +1214,9 @@ fn same_origin(left: &Url, right: &Url) -> bool {
         && left.port_or_known_default() == right.port_or_known_default()
 }
 
+/// Clones the request payload, execution context, and cached diagnostics.
 impl Clone for HttpRequest {
+    /// Creates a request snapshot with independent caches and cloned context.
     fn clone(&self) -> Self {
         Self {
             method: self.method.clone(),
@@ -1224,7 +1248,7 @@ mod tests {
     use crate::HttpLogger;
 
     #[test]
-    fn share_text_body_for_retry_normalizes_only_text_and_preserves_headers() {
+    fn test_retry_snapshot_normalizes_only_text_body_and_preserves_headers() {
         use http::HeaderValue;
         use http::header::CONTENT_TYPE;
 

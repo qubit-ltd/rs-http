@@ -288,16 +288,33 @@ assert_eq!(
 
 | 方法 | 行为 |
 | --- | --- |
-| `bytes_body` | 原始字节体，不自动设置 `Content-Type` |
-| `stream_body` | 调用时会把有限迭代器完整收集到内存，再通过 reqwest streaming body 按顺序发送；内存占用随总载荷增长。虽然已收集到内存，reqwest 仍将其视为流式 body，无法在内部 307/308 重定向中重放 |
-| `streaming_body` | 设置异步工厂，每次外层发送尝试生成新的字节流；内部 307/308 重定向不会再次调用工厂，流式 body 不会自动跟随此类重定向 |
-| `text_body` | 文本体；缺少 `Content-Type` 时设置 `text/plain; charset=utf-8` |
-| `json_body` | 序列化 JSON；缺少 `Content-Type` 时设置 `application/json` |
+| `bytes_body` | 原始字节体，不推断媒体类型；会移除之前由 builder 自动生成的 `Content-Type` |
+| `stream_body` | 调用时会把有限迭代器完整收集到内存，再通过 reqwest streaming body 按顺序发送；内存占用随总载荷增长。虽然已收集到内存，reqwest 仍将其视为流式 body，无法在内部 307/308 重定向中重放；会移除之前由 builder 自动生成的 `Content-Type` |
+| `streaming_body` | 设置异步工厂，每次外层发送尝试生成新的字节流；内部 307/308 重定向不会再次调用工厂，流式 body 不会自动跟随此类重定向；会移除之前由 builder 自动生成的 `Content-Type` |
+| `text_body` | 文本体；设置或更新 builder 自动生成的 `text/plain; charset=utf-8` |
+| `json_body` | 序列化 JSON；设置或更新 builder 自动生成的 `application/json` |
 | `json_body_with_limits` | 使用本请求的 value 与输出字节上限序列化 JSON |
-| `form_body` | `application/x-www-form-urlencoded` |
-| `multipart_body` | 原始 multipart 字节；需要 1 到 70 个 token-safe 字符的 boundary；缺少 `Content-Type` 时设置默认 multipart，已有 multipart `Content-Type` 但缺少 boundary 时补齐；重复、格式错误或与 body 不一致的 boundary 会被拒绝 |
-| `ndjson_body` | 每条记录一行 JSON；缺少 `Content-Type` 时设置 `application/x-ndjson` |
+| `form_body` | 表单体；设置或更新 builder 自动生成的 `application/x-www-form-urlencoded` |
+| `multipart_body` | 原始 multipart 字节；需要 1 到 70 个 token-safe 字符的 boundary；自动生成的 multipart 值会随新 boundary 更新，显式 multipart 值缺少 boundary 时会补齐；重复、格式错误或不匹配的 boundary 会被拒绝 |
+| `ndjson_body` | 每条记录一行 JSON；设置或更新 builder 自动生成的 `application/x-ndjson` |
 | `ndjson_body_with_limits` | 使用一个累计输出预算序列化 NDJSON，且包含行结束符 |
+
+带媒体类型的 body helper 互相替换时，会更新前一个 helper 自动生成的 `Content-Type`。`bytes_body`、`stream_body` 和 `streaming_body` 不推断媒体类型，因此会清除 builder 自动生成的值。通过 `header` 或 `headers` 传入的请求级值始终视为显式设置，即使它和自动值相同也会保留；可以在 body helper 前或后设置。清除自动生成的请求级值后，客户端默认 header 或注入器可能重新生效，builder 不会清除这些来源。
+
+如果旧链式调用依赖前一个 body helper 留下的媒体类型，应显式设置它：
+
+```rust
+let request = client.request(Method::POST, "/items")
+    .header("content-type", "text/plain; charset=utf-8")?
+    .text_body("old")
+    .json_body(&serde_json::json!({"ready": true}))?
+    .build();
+assert_eq!(request.headers().get("content-type").unwrap(), "text/plain; charset=utf-8");
+```
+
+升级到包含这项行为变化的版本时，请检查连续调用多个 body helper 的链式代码。若前一个正文的媒体类型仍是业务要求，就显式调用 `header("content-type", ...)`；否则，最终的带媒体类型 helper 会设置自己的值，原始字节或流式 helper 则不会留下请求级自动值。
+
+`HttpRequest::set_body` 和 `set_streaming_body` 是底层替换接口，会保留现有 header，也不会推断 `Content-Type`。媒体类型变化时，应配套调用 `set_header` 或 `remove_header`。
 
 请求级覆盖：
 

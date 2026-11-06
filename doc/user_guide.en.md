@@ -299,16 +299,33 @@ Request body builders:
 
 | Method | Behavior |
 | --- | --- |
-| `bytes_body` | Raw bytes; does not set `Content-Type` |
-| `stream_body` | Eagerly collects a finite iterator into memory during this call, then sends the ordered chunks through reqwest streaming body support; memory grows with the total payload. Despite the collection, reqwest treats it as streaming and cannot replay it across an internal 307/308 redirect |
-| `streaming_body` | Installs an async factory that creates a fresh byte stream for each outer send attempt; it is not called again for an internal 307/308 redirect, which is not followed for streaming bodies |
-| `text_body` | Text body; sets `text/plain; charset=utf-8` when `Content-Type` is absent |
-| `json_body` | Serializes JSON; sets `application/json` when `Content-Type` is absent |
+| `bytes_body` | Raw bytes; does not infer a media type and removes a previous builder-generated `Content-Type` |
+| `stream_body` | Eagerly collects a finite iterator into memory during this call, then sends the ordered chunks through reqwest streaming body support; memory grows with the total payload. Despite the collection, reqwest treats it as streaming and cannot replay it across an internal 307/308 redirect; removes a previous builder-generated `Content-Type` |
+| `streaming_body` | Installs an async factory that creates a fresh byte stream for each outer send attempt; it is not called again for an internal 307/308 redirect, which is not followed for streaming bodies; removes a previous builder-generated `Content-Type` |
+| `text_body` | Text body; sets or refreshes the builder-generated `text/plain; charset=utf-8` value |
+| `json_body` | Serializes JSON; sets or refreshes the builder-generated `application/json` value |
 | `json_body_with_limits` | Serializes JSON with per-request value and output-byte limits |
-| `form_body` | `application/x-www-form-urlencoded` |
-| `multipart_body` | Raw multipart bytes; requires a 1 to 70 character token-safe boundary; inserts a default multipart `Content-Type`, adds a missing boundary to an existing multipart `Content-Type`, and rejects duplicate, malformed, or mismatched boundary parameters |
-| `ndjson_body` | One JSON record per line; sets `application/x-ndjson` when absent |
+| `form_body` | Form body; sets or refreshes the builder-generated `application/x-www-form-urlencoded` value |
+| `multipart_body` | Raw multipart bytes; requires a 1 to 70 character token-safe boundary; refreshes a builder-generated multipart value for the new boundary, adds a missing boundary to an explicit multipart value, and rejects duplicate, malformed, or mismatched boundary parameters |
+| `ndjson_body` | One JSON record per line; sets or refreshes the builder-generated `application/x-ndjson` value |
 | `ndjson_body_with_limits` | Serializes an NDJSON sequence with one aggregate output budget, including line terminators |
+
+Typed body helpers update the `Content-Type` they previously generated when you replace one typed body with another. `bytes_body`, `stream_body`, and `streaming_body` remove a builder-generated value because they do not infer a media type. A request-local value supplied with `header` or `headers` is explicit—even when it matches a generated value—and body helpers preserve it. You can set that value before or after a body helper. When an opaque body removes a generated request-local value, the normal merge can expose a client default or injector value again; those client-level sources are not cleared.
+
+If an existing chain relied on an earlier helper's generated value surviving a later body replacement, make that choice explicit:
+
+```rust
+let request = client.request(Method::POST, "/items")
+    .header("content-type", "text/plain; charset=utf-8")?
+    .text_body("old")
+    .json_body(&serde_json::json!({"ready": true}))?
+    .build();
+assert_eq!(request.headers().get("content-type").unwrap(), "text/plain; charset=utf-8");
+```
+
+When upgrading to a build with this behavior change, review chains that call more than one body helper. Add an explicit `header("content-type", ...)` where the earlier media type is intentional; otherwise, the final typed helper supplies its own type, and an opaque helper leaves the request-local type unset.
+
+`HttpRequest::set_body` and `set_streaming_body` are lower-level replacements and preserve headers without inferring a media type. Pair either setter with `set_header` or `remove_header` when the media type must change.
 
 Per-request overrides:
 
