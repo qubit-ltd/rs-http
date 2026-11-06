@@ -43,6 +43,7 @@ use crate::HttpCancellationToken;
 use crate::HttpError;
 use crate::HttpErrorKind;
 use crate::HttpResult;
+use crate::content_type;
 use crate::error::ReqwestErrorPhase;
 use crate::error::backend_error_mapper::map_reqwest_error;
 use crate::json_limits::json_decode_limits;
@@ -218,6 +219,58 @@ impl fmt::Debug for HttpResponse {
 }
 
 impl HttpResponse {
+    /// Validates that this response declares the Server-Sent Events media type.
+    ///
+    /// This optional check examines only the `Content-Type` header and does not
+    /// read or consume the response body. Call it before decoding when the
+    /// caller wants to enforce the SSE media type:
+    ///
+    /// ```no_run
+    /// # async fn example(mut response: qubit_http::HttpResponse) -> qubit_http::HttpResult<()> {
+    /// response.validate_sse_content_type()?;
+    /// let mut events = response.sse_messages();
+    /// # let _ = events;
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Returns
+    /// `Ok(())` when `Content-Type` is `text/event-stream` (parameters and
+    /// casing are accepted).
+    ///
+    /// # Errors
+    /// Returns [`HttpErrorKind::SseProtocol`] when the header is missing,
+    /// invalid UTF-8, or does not declare the SSE media type.
+    pub fn validate_sse_content_type(&self) -> HttpResult<()> {
+        let method = self.meta().method().clone();
+        let url = self.request_url().clone();
+        let redactor = self.log_redactor();
+        let Some(value) = self.headers().get(CONTENT_TYPE) else {
+            return Err(HttpError::sse_protocol("Missing Content-Type header for SSE response")
+                .with_status(self.status())
+                .with_method(&method)
+                .with_url(&url)
+                .with_log_redactor(redactor.clone()));
+        };
+        let content_type = value.to_str().map_err(|_| {
+            HttpError::sse_protocol("Invalid non-UTF8 Content-Type header for SSE response")
+                .with_status(self.status())
+                .with_method(&method)
+                .with_url(&url)
+                .with_log_redactor(redactor.clone())
+        })?;
+        if content_type::is_sse(content_type) {
+            return Ok(());
+        }
+        Err(
+            HttpError::sse_protocol("Expected Content-Type 'text/event-stream' for SSE response")
+                .with_status(self.status())
+                .with_method(&method)
+                .with_url(&url)
+                .with_log_redactor(redactor.clone()),
+        )
+    }
+
     /// Creates a buffered response from its status, headers, body, URL, and
     /// method.
     ///

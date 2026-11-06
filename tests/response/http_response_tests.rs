@@ -33,6 +33,65 @@ use crate::common::ResponsePlan;
 use crate::common::SensitiveChoice;
 use crate::common::spawn_one_shot_server;
 
+fn sse_validation_response(content_type: Option<HeaderValue>) -> HttpResponse {
+    let mut headers = HeaderMap::new();
+    if let Some(content_type) = content_type {
+        headers.insert(http::header::CONTENT_TYPE, content_type);
+    }
+    HttpResponse::new(
+        StatusCode::BAD_GATEWAY,
+        headers,
+        Bytes::from_static(b"event body"),
+        Url::parse("https://example.com/events?access_token=sse-query-secret").unwrap(),
+        Method::POST,
+    )
+}
+
+#[test]
+fn test_validate_sse_content_type_accepts_sse_media_types() {
+    for content_type in ["text/event-stream", "Text/Event-Stream; charset=utf-8"] {
+        let response = sse_validation_response(Some(HeaderValue::from_str(content_type).unwrap()));
+        assert!(response.validate_sse_content_type().is_ok(), "{content_type}");
+    }
+}
+
+#[test]
+fn test_validate_sse_content_type_rejects_invalid_headers_with_response_context() {
+    let invalid_values = [
+        None,
+        Some(HeaderValue::from_static("application/json")),
+        Some(HeaderValue::from_static("text/event-streaming")),
+        Some(HeaderValue::from_bytes(b"\xff").unwrap()),
+    ];
+    for content_type in invalid_values {
+        let response = sse_validation_response(content_type);
+        let error = response.validate_sse_content_type().unwrap_err();
+        assert_eq!(error.kind, HttpErrorKind::SseProtocol);
+        assert_eq!(error.status, Some(StatusCode::BAD_GATEWAY));
+        assert_eq!(error.method, Some(Method::POST));
+        assert_eq!(
+            error.url,
+            Some(Url::parse("https://example.com/events?access_token=sse-query-secret").unwrap())
+        );
+        assert!(!format!("{error}").contains("sse-query-secret"));
+        assert!(!format!("{error:?}").contains("sse-query-secret"));
+    }
+}
+
+#[tokio_test]
+async fn test_validate_sse_content_type_does_not_consume_body() {
+    let mut valid = sse_validation_response(Some(HeaderValue::from_static("text/event-stream")));
+    valid.validate_sse_content_type().unwrap();
+    assert_eq!(valid.bytes().await.unwrap(), Bytes::from_static(b"event body"));
+
+    let mut invalid = sse_validation_response(Some(HeaderValue::from_static("application/json")));
+    assert_eq!(
+        invalid.validate_sse_content_type().unwrap_err().kind,
+        HttpErrorKind::SseProtocol
+    );
+    assert_eq!(invalid.bytes().await.unwrap(), Bytes::from_static(b"event body"));
+}
+
 async fn cached_response(body: &'static [u8], content_type: &'static str) -> (HttpResponse, HttpCancellationToken) {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,

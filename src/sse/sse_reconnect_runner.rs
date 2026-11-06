@@ -18,7 +18,6 @@ use async_stream::stream;
 use futures_util::StreamExt;
 use http::Method;
 use http::StatusCode;
-use http::header::CONTENT_TYPE;
 use http::header::HeaderValue;
 use qubit_clock::StdMonotonicClock;
 use qubit_redact::Redactor;
@@ -41,11 +40,9 @@ use crate::HttpClient;
 use crate::HttpError;
 use crate::HttpErrorKind;
 use crate::HttpRequest;
-use crate::HttpResponse;
 use crate::HttpResult;
 use crate::RetryHint;
 use crate::client::HttpAttemptFailure;
-use crate::content_type;
 
 /// Stateful SSE reconnect runner for one stream invocation.
 pub(crate) struct SseReconnectRunner {
@@ -208,9 +205,7 @@ impl SseReconnectRunner {
                     }
                     return;
                 }
-                if let Err(error) =
-                    validate_sse_response_content_type(&response, runtime.log_redactor)
-                {
+                if let Err(error) = response.validate_sse_content_type() {
                     if let Err(error) = retry_budget.finish_attempt(attempt) {
                         yield Err(reconnect_budget_error(error, &runtime));
                         return;
@@ -554,47 +549,6 @@ fn attach_last_retryable_error(mut error: HttpError, last_error: HttpError) -> H
     error.message = message;
     error.source = Some(Box::new(last_error));
     error
-}
-
-/// Validates whether response content type is SSE media type.
-///
-/// # Parameters
-/// - `response`: HTTP response to validate.
-/// - `log_redactor`: Redactor attached to any validation error.
-///
-/// # Returns
-/// `Ok(())` when content type is `text/event-stream`.
-///
-/// # Errors
-/// Returns [`HttpErrorKind::SseProtocol`] when `Content-Type` is missing,
-/// non-UTF8, or not SSE media type.
-fn validate_sse_response_content_type(response: &HttpResponse, log_redactor: &Redactor) -> HttpResult<()> {
-    let method = response.meta().method().clone();
-    let url = response.request_url().clone();
-    let Some(value) = response.headers().get(CONTENT_TYPE) else {
-        return Err(HttpError::sse_protocol("Missing Content-Type header for SSE response")
-            .with_status(response.status())
-            .with_method(&method)
-            .with_url(&url)
-            .with_log_redactor(log_redactor.clone()));
-    };
-    let content_type = value.to_str().map_err(|_| {
-        HttpError::sse_protocol("Invalid non-UTF8 Content-Type header for SSE response")
-            .with_status(response.status())
-            .with_method(&method)
-            .with_url(&url)
-            .with_log_redactor(log_redactor.clone())
-    })?;
-    if content_type::is_sse(content_type) {
-        return Ok(());
-    }
-    Err(
-        HttpError::sse_protocol("Expected Content-Type 'text/event-stream' for SSE response")
-            .with_status(response.status())
-            .with_method(&method)
-            .with_url(&url)
-            .with_log_redactor(log_redactor.clone()),
-    )
 }
 
 /// Returns whether an HTTP error represents an unexpected stream EOF that is
