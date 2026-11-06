@@ -57,6 +57,18 @@ def tree_digest(root: pathlib.Path) -> str:
     return digest.hexdigest()
 
 
+def manifest_lock_digests(roots: list[tuple[str, pathlib.Path]]) -> dict[str, str]:
+    """Hash source Cargo manifests and lockfiles without scanning build artifacts."""
+    digests = {}
+    for label, root in roots:
+        for path in sorted(root.rglob("Cargo.toml")) + sorted(root.rglob("Cargo.lock")):
+            relative = path.relative_to(root)
+            if any(part in EXCLUDED for part in relative.parts):
+                continue
+            digests[f"{label}/{relative.as_posix()}"] = sha256_file(path)
+    return digests
+
+
 def rewrite_http_dependency(source: str, version: str, path: str) -> tuple[str, int]:
     """Rewrite one `qubit-http` dependency while preserving its other options."""
     try:
@@ -240,11 +252,16 @@ def run(args: argparse.Namespace) -> int:
     result = {"schema_version": 1, "started_at": datetime.now(timezone.utc).isoformat(),
               "status": "failed", "commands": [], "repositories": [], "errors": []}
     output_created = False
+    source_manifest_lock_inputs = None
     try:
         source_root = args.source_root.resolve(strict=True)
         ensure_output_disjoint(output, [source_root, ROOT])
         records = validate_repositories(source_root, args.baseline.resolve(), args.candidate_source)
         result["repositories"] = records
+        tracked_roots = [(item["repo_id"], source_root / item["relative_path"]) for item in records]
+        tracked_roots.append(("rs-http", ROOT))
+        source_manifest_lock_inputs = manifest_lock_digests(tracked_roots)
+        result["source_manifest_lock_sha256_before"] = source_manifest_lock_inputs
         prepare_output(output)
         output_created = True
         snapshot_root = output / "source"
@@ -311,6 +328,11 @@ def run(args: argparse.Namespace) -> int:
         print(f"compatibility check failed: {error}", file=sys.stderr)
     finally:
         if output_created:
+            after = manifest_lock_digests(tracked_roots)
+            result["source_manifest_lock_sha256_after"] = after
+            if after != source_manifest_lock_inputs:
+                result["errors"].append("source manifests or lockfiles changed during compatibility check")
+                result["status"] = "failed"
             (output / "result.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     return 0 if result["status"] == "passed" else 1
 

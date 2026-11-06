@@ -128,7 +128,7 @@ class RunnerIntegrationTests(unittest.TestCase):
         subprocess.run(["git", "-C", str(path), "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "baseline"], check=True)
         return runner.git(path, "rev-parse", "HEAD")
 
-    def run_with_cargo_output(self, test_output: str) -> dict:
+    def run_with_cargo_output(self, test_output: str, mutate_source_manifest: bool = False) -> dict:
         with tempfile.TemporaryDirectory() as directory:
             temp = pathlib.Path(directory)
             source_root = temp / "qubit"
@@ -165,6 +165,9 @@ class RunnerIntegrationTests(unittest.TestCase):
                         {"id": "http", "name": "qubit-http", "version": "0.16.0", "source": None, "manifest_path": str(http_manifest)},
                     ], "resolve": {"nodes": [{"id": "sdk", "deps": [{"pkg": "http"}]}, {"id": "http", "deps": []}]}}
                     return subprocess.CompletedProcess(argv, 0, stdout=json.dumps(metadata), stderr=None)
+                if mutate_source_manifest:
+                    source_manifest = source_root / "rust-llmsdk/rs-llmsdk-core/Cargo.toml"
+                    source_manifest.write_text(source_manifest.read_text(encoding="utf-8") + "# unexpected source mutation\n", encoding="utf-8")
                 return subprocess.CompletedProcess(argv, 0, stdout=test_output, stderr=None)
 
             with mock.patch.object(runner, "ROOT", http_repo), mock.patch.object(runner.subprocess, "run", side_effect=fake_cargo):
@@ -178,12 +181,19 @@ class RunnerIntegrationTests(unittest.TestCase):
         self.assertEqual(result["commands"][-1]["exit_code"], 0)
         self.assertEqual(result["commands"][-1]["tests_run"], 0)
         self.assertIn("zero or an unrecognized number", result["errors"][-1])
+        self.assertEqual(result["source_manifest_lock_sha256_before"], result["source_manifest_lock_sha256_after"])
 
     def test_successful_cargo_with_unrecognized_test_count_is_rejected(self):
         result = self.run_with_cargo_output("Finished `test` profile\n")
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["commands"][-1]["exit_code"], 0)
         self.assertIsNone(result["commands"][-1]["tests_run"])
+
+    def test_source_manifest_mutation_is_detected(self):
+        result = self.run_with_cargo_output("running 1 test\ntest test_case ... ok\n", mutate_source_manifest=True)
+        self.assertEqual(result["status"], "failed")
+        self.assertIn("source manifests or lockfiles changed", result["errors"][-1])
+        self.assertNotEqual(result["source_manifest_lock_sha256_before"], result["source_manifest_lock_sha256_after"])
 
 
 class ResultTests(unittest.TestCase):
