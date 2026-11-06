@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "repositories": [
-    {"repo_id": "llmsdk-core", "relative_path": "rust-llmsdk/rs-llmsdk-core", "commit": "b31c44d4cded0c260a02c2aac59c45cce65570b7"},
-    {"repo_id": "llmsdk-provider-openai", "relative_path": "rust-llmsdk/rs-llmsdk-provider-openai", "commit": "1231c34dc5989910ddcffdff9d7a738381b03323"},
+    {"repo_id": "llmsdk-core", "relative_path": "rust-llmsdk/rs-llmsdk-core", "commit": "72c92611b804e1edc81ab6e912f5db908a5899b2"},
+    {"repo_id": "llmsdk-provider-openai", "relative_path": "rust-llmsdk/rs-llmsdk-provider-openai", "commit": "c20c3fd5cb4652c0e03b53f6caf13b6bfdf781c0"},
     {"repo_id": "llmsdk-agent", "relative_path": "rust-llmsdk/rs-llmsdk-agent", "commit": "9c863062c91abe01bfcdaf58da5723a92db70543"},
     {"repo_id": "qubit-config", "relative_path": "rust-common/rs-config", "commit": "871deec5a3f47805e0f9936937ce00ae4836d61b"},
     {"repo_id": "qubit-json", "relative_path": "rust-common/rs-json", "commit": "b07f7f3a66f1de38c62839988c0afbeee08e4ebd"},
