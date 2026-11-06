@@ -898,7 +898,7 @@ dependencies = [
  "qubit-budget",
  "qubit-datatype",
  "qubit-json 0.12.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "qubit-redact",
+ "qubit-redact 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "qubit-utils",
  "qubit-value",
  "serde",
@@ -951,7 +951,7 @@ dependencies = [
  "qubit-error",
  "qubit-function",
  "qubit-json 0.12.1",
- "qubit-redact",
+ "qubit-redact 0.10.0",
  "qubit-retry",
  "reqwest",
  "serde",
@@ -1012,6 +1012,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "qubit-redact"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ed3fa4e8064f159e9facdad5e0c12eb35ed8b4d7ccca59a8446f28e2aeff1de0"
+dependencies = [
+ "qubit-budget",
+ "qubit-json 0.12.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "qubit-retry"
 version = "0.26.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1037,7 +1049,7 @@ dependencies = [
  "qubit-budget",
  "qubit-datatype",
  "qubit-json 0.12.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "qubit-redact",
+ "qubit-redact 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde",
  "serde_json",
  "thiserror",
