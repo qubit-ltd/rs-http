@@ -1,8 +1,18 @@
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
+
 #[cfg(test)]
 use std::future::Future;
 #[cfg(test)]
 use std::pin::pin;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 #[cfg(test)]
 use std::task::Poll;
 
@@ -41,7 +51,7 @@ fn reset() {
 }
 
 #[tokio::test]
-async fn concurrent_cold_cache_requests_share_one_refresh() {
+async fn test_concurrent_cold_cache_requests_share_one_refresh() {
     reset();
     BLOCK.store(true, Ordering::SeqCst);
     let provider = std::sync::Arc::new(TokenProvider::new());
@@ -64,7 +74,7 @@ async fn concurrent_cold_cache_requests_share_one_refresh() {
 }
 
 #[tokio::test]
-async fn fresh_cache_does_not_refresh() {
+async fn test_fresh_cache_does_not_refresh() {
     reset();
     let provider = TokenProvider::new();
     *provider.cached.write().await = Some(CachedToken {
@@ -76,7 +86,7 @@ async fn fresh_cache_does_not_refresh() {
 }
 
 #[tokio::test]
-async fn expired_cache_refreshes_once() {
+async fn test_expired_cache_refreshes_once() {
     reset();
     let provider = TokenProvider::new();
     *provider.cached.write().await = Some(CachedToken {
@@ -88,7 +98,7 @@ async fn expired_cache_refreshes_once() {
 }
 
 #[tokio::test]
-async fn failed_refresh_is_not_cached_and_a_later_call_recovers() {
+async fn test_failed_refresh_is_not_cached_and_a_later_call_recovers() {
     reset();
     FAIL_NEXT.store(true, Ordering::SeqCst);
     let provider = TokenProvider::new();
@@ -99,7 +109,7 @@ async fn failed_refresh_is_not_cached_and_a_later_call_recovers() {
 }
 
 #[tokio::test]
-async fn cancelled_refresh_releases_refresh_lock() {
+async fn test_cancelled_refresh_releases_refresh_lock() {
     reset();
     BLOCK.store(true, Ordering::SeqCst);
     let provider = std::sync::Arc::new(TokenProvider::new());
