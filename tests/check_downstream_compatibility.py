@@ -130,19 +130,19 @@ def ensure_output_disjoint(output: pathlib.Path, source_roots: list[pathlib.Path
             raise CompatibilityError(f"output directory overlaps a source repository: {source}")
 
 
-def snapshot_tree(source: pathlib.Path, destination: pathlib.Path) -> None:
-    """Copy a repository's tracked and non-ignored files without following links."""
-    destination.mkdir(parents=True, exist_ok=True)
+def snapshot_paths(source: pathlib.Path) -> list[pathlib.PurePosixPath]:
     listing = subprocess.run(["git", "-C", str(source), "ls-files", "-co", "--exclude-standard", "-z"],
                              check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    for raw in listing.stdout.split(b"\0"):
-        if not raw:
-            continue
-        rel = pathlib.PurePosixPath(os.fsdecode(raw))
+    return [pathlib.PurePosixPath(os.fsdecode(raw)) for raw in listing.stdout.split(b"\0") if raw]
+
+
+def validate_snapshot_paths(source: pathlib.Path, paths: list[pathlib.PurePosixPath] | None = None) -> list[pathlib.PurePosixPath]:
+    """Preflight a source tree's copy set and reject symlinks before output creation."""
+    paths = snapshot_paths(source) if paths is None else paths
+    for rel in paths:
         if any(part in EXCLUDED for part in rel.parts):
             continue
         src = source.joinpath(*rel.parts)
-        dst = destination.joinpath(*rel.parts)
         if src.is_symlink():
             target = src.resolve(strict=True)
             try:
@@ -150,6 +150,18 @@ def snapshot_tree(source: pathlib.Path, destination: pathlib.Path) -> None:
             except ValueError as error:
                 raise CompatibilityError(f"external symlink in source snapshot: {src}") from error
             raise CompatibilityError(f"symlink inputs are not supported in source snapshot: {src}")
+    return paths
+
+
+def snapshot_tree(source: pathlib.Path, destination: pathlib.Path) -> None:
+    """Copy a repository's tracked and non-ignored files without following links."""
+    paths = validate_snapshot_paths(source)
+    destination.mkdir(parents=True, exist_ok=True)
+    for rel in paths:
+        if any(part in EXCLUDED for part in rel.parts):
+            continue
+        src = source.joinpath(*rel.parts)
+        dst = destination.joinpath(*rel.parts)
         if src.is_dir():
             dst.mkdir(parents=True, exist_ok=True)
         elif src.is_file():
@@ -258,6 +270,9 @@ def run(args: argparse.Namespace) -> int:
         ensure_output_disjoint(output, [source_root, ROOT])
         records = validate_repositories(source_root, args.baseline.resolve(), args.candidate_source)
         result["repositories"] = records
+        snapshot_sources = [source_root / item["relative_path"] for item in records] + [ROOT]
+        for snapshot_source in snapshot_sources:
+            validate_snapshot_paths(snapshot_source)
         tracked_roots = [(item["repo_id"], source_root / item["relative_path"]) for item in records]
         tracked_roots.append(("rs-http", ROOT))
         source_manifest_lock_inputs = manifest_lock_digests(tracked_roots)

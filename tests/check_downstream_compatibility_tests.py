@@ -72,6 +72,26 @@ class InputSafetyTests(unittest.TestCase):
                 with self.assertRaisesRegex(runner.CompatibilityError, "dirty downstream"):
                     runner.validate_repositories(root, baseline, False)
 
+    def test_candidate_accepts_dirty_sdk_at_baseline_and_records_digest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            repo = root / "sdk"
+            repo.mkdir()
+            (repo / "Cargo.toml").write_text("[package]\nname='sdk'\n", encoding="utf-8")
+            subprocess.run(["git", "init", "-q", str(repo)], check=True)
+            subprocess.run(["git", "-C", str(repo), "add", "Cargo.toml"], check=True)
+            subprocess.run(["git", "-C", str(repo), "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "baseline"], check=True)
+            head = runner.git(repo, "rev-parse", "HEAD")
+            (repo / "Cargo.toml").write_text("[package]\nname='sdk-candidate'\n", encoding="utf-8")
+            baseline = root / "baseline.json"
+            baseline.write_text(json.dumps({"schema_version": 1, "repositories": [
+                {"repo_id": "llmsdk-core", "relative_path": "sdk", "commit": head}
+            ]}), encoding="utf-8")
+            record = runner.validate_repositories(root, baseline, True)[0]
+            self.assertTrue(record["dirty"])
+            self.assertEqual(record["commit"], head)
+            self.assertEqual(len(record["tree_sha256"]), 64)
+
     def test_records_dirty_local_path_dependency(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
@@ -173,6 +193,7 @@ class RunnerIntegrationTests(unittest.TestCase):
             with mock.patch.object(runner, "ROOT", http_repo), mock.patch.object(runner.subprocess, "run", side_effect=fake_cargo):
                 exit_code = runner.run(args)
             self.assertEqual(exit_code, 1)
+            self.assertTrue((output / "result.json").is_file())
             return json.loads((output / "result.json").read_text(encoding="utf-8"))
 
     def test_successful_cargo_with_zero_tests_is_rejected(self):
