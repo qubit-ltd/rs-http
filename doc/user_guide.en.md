@@ -393,15 +393,16 @@ let _ = upload;
 ```
 <!-- guide-check:async-upload:end -->
 
-Async injectors are useful for headers that must be resolved right before send time, such as authentication tokens. In the example below, `TokenProvider` reuses a cached token while it is still fresh, refreshes it asynchronously when needed, and writes the latest value to `Authorization`. When automatic retry is enabled, async injectors run before each send attempt, so retried requests can pick up a refreshed token too.
+Async injectors can resolve headers immediately before sending, including authentication tokens. This complete example reuses a fresh cached token and refreshes it when it expires. When automatic retry is enabled, the injector runs before each send attempt. Concurrent cache misses wait on a refresh lock and check the cache again before refreshing. A failed refresh is not cached, so a later call can retry. The one-hour lifetime is illustrative; use the expiry returned by the auth service. Cancellation releases the local lock, but cannot undo a refresh already performed by the service, so this does not promise exactly-once remote effects.
 
+<!-- guide-check:token-refresh:start -->
 ```rust
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use http::header::{AUTHORIZATION, HeaderValue};
-use qubit_http::{AsyncHttpHeaderInjector, HttpError, HttpResult};
-use tokio::sync::RwLock;
+use qubit_http::{AsyncHttpHeaderInjector, HttpClient, HttpError, HttpResult};
+use tokio::sync::{Mutex, RwLock};
 
 struct CachedToken {
     value: String,
@@ -410,22 +411,35 @@ struct CachedToken {
 
 struct TokenProvider {
     cached: RwLock<Option<CachedToken>>,
+    refresh_lock: Mutex<()>,
 }
 
 impl TokenProvider {
     fn new() -> Self {
         Self {
             cached: RwLock::new(None),
+            refresh_lock: Mutex::new(()),
         }
     }
 
     async fn bearer_token(&self) -> HttpResult<String> {
-        if let Some(token) = self.cached.read().await.as_ref() {
-            if token.expires_at > Instant::now() + Duration::from_secs(30) {
-                return Ok(token.value.clone());
+        {
+            let cached = self.cached.read().await;
+            if let Some(token) = cached.as_ref() {
+                if token.expires_at > Instant::now() + Duration::from_secs(30) {
+                    return Ok(token.value.clone());
+                }
             }
         }
-
+        let _refresh_guard = self.refresh_lock.lock().await;
+        {
+            let cached = self.cached.read().await;
+            if let Some(token) = cached.as_ref() {
+                if token.expires_at > Instant::now() + Duration::from_secs(30) {
+                    return Ok(token.value.clone());
+                }
+            }
+        }
         let value = refresh_access_token().await?;
         let expires_at = Instant::now() + Duration::from_secs(3600);
         *self.cached.write().await = Some(CachedToken {
@@ -441,19 +455,25 @@ async fn refresh_access_token() -> HttpResult<String> {
     Ok("fresh-token".to_string())
 }
 
-let provider = Arc::new(TokenProvider::new());
-client.add_async_header_injector(AsyncHttpHeaderInjector::new(move |headers| {
-    let provider = Arc::clone(&provider);
-    Box::pin(async move {
-        let token = provider.bearer_token().await?;
-        let value = HeaderValue::from_str(&format!("Bearer {token}")).map_err(|error| {
-            HttpError::other(format!("invalid authorization header: {error}"))
-        })?;
-        headers.insert(AUTHORIZATION, value);
-        Ok(())
-    })
-}));
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut client = HttpClient::builder().build()?;
+    let provider = Arc::new(TokenProvider::new());
+    client.add_async_header_injector(AsyncHttpHeaderInjector::new(move |headers| {
+        let provider = Arc::clone(&provider);
+        Box::pin(async move {
+            let token = provider.bearer_token().await?;
+            let value = HeaderValue::from_str(&format!("Bearer {token}")).map_err(|error| {
+                HttpError::other(format!("invalid authorization header: {error}"))
+            })?;
+            headers.insert(AUTHORIZATION, value);
+            Ok(())
+        })
+    }));
+    Ok(())
+}
 ```
+<!-- guide-check:token-refresh:end -->
 
 Request interceptors run before each send attempt. They can mutate `HttpRequest`; returning an error short-circuits execution. Response interceptors run only for successful-status responses. They receive `HttpResponseInterceptorContext`: status and request method are immutable, while response headers and the final response URL can be mutated. Returning an error makes `execute` fail.
 

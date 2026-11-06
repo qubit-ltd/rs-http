@@ -30,6 +30,20 @@ path = "target/guide_examples/src/bin/sse-reconnect-en.rs"
 [[bin]]
 name = "sse-reconnect-zh_CN"
 path = "target/guide_examples/src/bin/sse-reconnect-zh_CN.rs"
+[[bin]]
+name = "token-refresh-en"
+path = "target/guide_examples/src/bin/token-refresh-en.rs"
+[[bin]]
+name = "token-refresh-zh_CN"
+path = "target/guide_examples/src/bin/token-refresh-zh_CN.rs"
+[[bin]]
+name = "token-refresh-regression-en"
+path = "target/guide_examples/src/bin/token-refresh-regression-en.rs"
+test = true
+[[bin]]
+name = "token-refresh-regression-zh_CN"
+path = "target/guide_examples/src/bin/token-refresh-regression-zh_CN.rs"
+test = true
 
 [dependencies]
 qubit-http = { path = "../../..", version = "0.16.0" }

@@ -18,11 +18,12 @@ GUIDES = {
     "en": ROOT / "doc/user_guide.en.md",
     "zh_CN": ROOT / "doc/user_guide.zh_CN.md",
 }
-SCENARIOS = ("configuration", "async-upload", "redaction", "sse-reconnect")
+SCENARIOS = ("configuration", "async-upload", "redaction", "sse-reconnect", "token-refresh")
 FENCE = re.compile(r"```rust\s*\n(.*?)\n```", re.DOTALL)
 DEPENDENCIES_START = "<!-- guide-dependencies:start -->"
 DEPENDENCIES_END = "<!-- guide-dependencies:end -->"
 TOML_FENCE = re.compile(r"```toml\s*\n(.*?)\n```", re.DOTALL)
+TOKEN_REFRESH_DECLARATION = "async fn refresh_access_token() -> HttpResult<String> {"
 
 
 def extract_dependencies(markdown: str) -> dict:
@@ -140,6 +141,14 @@ def extract(markdown: str, scenario: str) -> str:
     return "\n\n".join(snippets)
 
 
+def replace_refresh_declaration(source: str) -> str:
+    """Rename only the example's refresh implementation for its test harness."""
+    if source.count(TOKEN_REFRESH_DECLARATION) != 1:
+        raise ValueError("token-refresh: expected exactly one refresh declaration")
+    renamed = TOKEN_REFRESH_DECLARATION.replace("refresh_access_token", "example_refresh_access_token")
+    return source.replace(TOKEN_REFRESH_DECLARATION, "#[allow(dead_code)]\n" + renamed, 1)
+
+
 def generate() -> list[pathlib.Path]:
     destination = ROOT / "tests/fixtures/guide_examples/target/guide_examples/src/bin"
     destination.mkdir(parents=True, exist_ok=True)
@@ -148,6 +157,15 @@ def generate() -> list[pathlib.Path]:
         for language, path in GUIDES.items():
             code = extract(path.read_text(encoding="utf-8"), scenario)
             source = destination / f"{scenario}-{language}.rs"
+            if scenario == "token-refresh":
+                source.write_text(code + "\n", encoding="utf-8")
+                generated.append(source)
+                regression = destination / f"token-refresh-regression-{language}.rs"
+                renamed = replace_refresh_declaration(code)
+                harness = (ROOT / "tests/fixtures/guide_examples/token_refresh_tests.rs").read_text(encoding="utf-8")
+                regression.write_text(renamed + "\n\n" + harness, encoding="utf-8")
+                generated.append(regression)
+                continue
             context = "#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n"
             if scenario in ("async-upload", "sse-reconnect"):
                 context = "use qubit_http::HttpClient;\n\n" + context
@@ -163,6 +181,31 @@ def generate() -> list[pathlib.Path]:
 
 
 class ExtractorTests(unittest.TestCase):
+    def test_token_refresh_missing_marker(self):
+        with self.assertRaisesRegex(ValueError, "exactly one start and end marker"):
+            extract("```rust\nfn main() {}\n```", "token-refresh")
+
+    def test_token_refresh_duplicate_marker(self):
+        source = "<!-- guide-check:token-refresh:start -->\n<!-- guide-check:token-refresh:start -->\n```rust\nx\n```\n<!-- guide-check:token-refresh:end -->"
+        with self.assertRaisesRegex(ValueError, "exactly one start and end marker"):
+            extract(source, "token-refresh")
+
+    def test_token_refresh_empty_code(self):
+        source = "<!-- guide-check:token-refresh:start -->\n```rust\n\n```\n<!-- guide-check:token-refresh:end -->"
+        with self.assertRaisesRegex(ValueError, "non-empty complete Rust"):
+            extract(source, "token-refresh")
+
+    def test_refresh_declaration_must_match_once(self):
+        for source in ("", TOKEN_REFRESH_DECLARATION + "\n" + TOKEN_REFRESH_DECLARATION):
+            with self.assertRaisesRegex(ValueError, "exactly one refresh declaration"):
+                replace_refresh_declaration(source)
+
+    def test_refresh_declaration_renames_only_its_definition(self):
+        source = TOKEN_REFRESH_DECLARATION + "\n    refresh_access_token().await\n"
+        renamed = replace_refresh_declaration(source)
+        self.assertIn("async fn example_refresh_access_token()", renamed)
+        self.assertIn("refresh_access_token().await", renamed)
+
     def test_duplicate_marker(self):
         with self.assertRaises(ValueError):
             extract("<!-- guide-check:x:start -->\n<!-- guide-check:x:start -->\n```rust\nx\n```\n<!-- guide-check:x:end -->", "x")
@@ -364,6 +407,15 @@ if __name__ == "__main__":
         generate()
         subprocess.run(
             ["cargo", "check", "--manifest-path", "tests/fixtures/guide_examples/Cargo.toml", "--all-targets"],
+            cwd=ROOT,
+            check=True,
+        )
+        subprocess.run(
+            [
+                "cargo", "test", "--manifest-path", "tests/fixtures/guide_examples/Cargo.toml",
+                "--bin", "token-refresh-regression-en", "--bin", "token-refresh-regression-zh_CN",
+                "--", "--test-threads=1",
+            ],
             cwd=ROOT,
             check=True,
         )

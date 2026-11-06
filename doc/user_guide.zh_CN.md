@@ -382,15 +382,16 @@ let _ = upload;
 ```
 <!-- guide-check:async-upload:end -->
 
-异步注入器适合在发送前动态获取会变化的请求头，例如认证 token。下面示例中，`TokenProvider` 会复用未过期 token；过期时异步刷新，并把最新值写入 `Authorization`。如果启用了自动重试，异步注入器会在每次发送尝试前重新执行，因此重试请求也能拿到新的 token。
+异步注入器可以在发送前动态获取请求头，例如认证 token。此完整示例会复用有效缓存，并在 token 过期时刷新。启用自动重试时，注入器会在每次发送尝试前运行。多个请求同时遇到缓存失效时会等待刷新锁，并在锁内再次检查缓存。刷新失败不会写入缓存，因此后续调用可以重试。一小时有效期仅为示例值；实际应用应使用认证服务返回的有效期。取消会释放本地锁，但无法撤销认证服务已经执行的刷新，因此本示例不保证远端副作用恰好执行一次。
 
+<!-- guide-check:token-refresh:start -->
 ```rust
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use http::header::{AUTHORIZATION, HeaderValue};
-use qubit_http::{AsyncHttpHeaderInjector, HttpError, HttpResult};
-use tokio::sync::RwLock;
+use qubit_http::{AsyncHttpHeaderInjector, HttpClient, HttpError, HttpResult};
+use tokio::sync::{Mutex, RwLock};
 
 struct CachedToken {
     value: String,
@@ -399,22 +400,35 @@ struct CachedToken {
 
 struct TokenProvider {
     cached: RwLock<Option<CachedToken>>,
+    refresh_lock: Mutex<()>,
 }
 
 impl TokenProvider {
     fn new() -> Self {
         Self {
             cached: RwLock::new(None),
+            refresh_lock: Mutex::new(()),
         }
     }
 
     async fn bearer_token(&self) -> HttpResult<String> {
-        if let Some(token) = self.cached.read().await.as_ref() {
-            if token.expires_at > Instant::now() + Duration::from_secs(30) {
-                return Ok(token.value.clone());
+        {
+            let cached = self.cached.read().await;
+            if let Some(token) = cached.as_ref() {
+                if token.expires_at > Instant::now() + Duration::from_secs(30) {
+                    return Ok(token.value.clone());
+                }
             }
         }
-
+        let _refresh_guard = self.refresh_lock.lock().await;
+        {
+            let cached = self.cached.read().await;
+            if let Some(token) = cached.as_ref() {
+                if token.expires_at > Instant::now() + Duration::from_secs(30) {
+                    return Ok(token.value.clone());
+                }
+            }
+        }
         let value = refresh_access_token().await?;
         let expires_at = Instant::now() + Duration::from_secs(3600);
         *self.cached.write().await = Some(CachedToken {
@@ -430,19 +444,25 @@ async fn refresh_access_token() -> HttpResult<String> {
     Ok("fresh-token".to_string())
 }
 
-let provider = Arc::new(TokenProvider::new());
-client.add_async_header_injector(AsyncHttpHeaderInjector::new(move |headers| {
-    let provider = Arc::clone(&provider);
-    Box::pin(async move {
-        let token = provider.bearer_token().await?;
-        let value = HeaderValue::from_str(&format!("Bearer {token}")).map_err(|error| {
-            HttpError::other(format!("invalid authorization header: {error}"))
-        })?;
-        headers.insert(AUTHORIZATION, value);
-        Ok(())
-    })
-}));
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut client = HttpClient::builder().build()?;
+    let provider = Arc::new(TokenProvider::new());
+    client.add_async_header_injector(AsyncHttpHeaderInjector::new(move |headers| {
+        let provider = Arc::clone(&provider);
+        Box::pin(async move {
+            let token = provider.bearer_token().await?;
+            let value = HeaderValue::from_str(&format!("Bearer {token}")).map_err(|error| {
+                HttpError::other(format!("invalid authorization header: {error}"))
+            })?;
+            headers.insert(AUTHORIZATION, value);
+            Ok(())
+        })
+    }));
+    Ok(())
+}
 ```
+<!-- guide-check:token-refresh:end -->
 
 请求拦截器在每次尝试发送前执行，可以修改 `HttpRequest`，返回错误会短路本次执行。响应拦截器只在成功状态响应上执行，接收 `HttpResponseInterceptorContext`：status 和请求方法不可变，响应 headers 和最终响应 URL 可以修改。返回错误会让 `execute` 失败。
 
