@@ -1221,7 +1221,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 python3 tests/check_downstream_compatibility.py --source-root /data/working/qubit --output-dir /tmp/rs-http-compat-run
 ```
 
-输出目录必须是新目录。运行器会将基线仓库和本 crate 复制到隔离快照，只改写 SDK 快照中的 `qubit-http` 依赖，核对 Cargo 包身份后运行指定的 SDK 定向测试。它会在输出目录写入 `result.json` 和完整命令日志；失败时保留证据。SDK 仓库必须匹配 `tests/downstream_compatibility_baseline.json` 中的提交且工作树干净。使用 `--candidate-source` 可以单独检查包含未提交改动的候选 SDK 工作树，并记录内容摘要；候选结果不能替代固定基线证据。
+输出目录必须是新目录。运行器会将基线仓库和本 crate 复制到隔离快照，只改写 SDK 快照中的 `qubit-http` 依赖，核对 Cargo 包身份后运行指定的 SDK 定向测试。它会在输出目录写入 `result.json` 和完整命令日志；失败时保留证据。SDK 仓库必须匹配 `tests/downstream_compatibility_baseline.json` 中的提交且工作树干净。使用 `--candidate-source` 可以单独检查包含未提交改动的候选 SDK 工作树。每个仓库记录包含完整输入树摘要（包括未忽略的未跟踪文件）和相对 HEAD 的已跟踪文件 diff 摘要；干净工作树的 diff 摘要是空字节的 SHA-256。候选结果不能替代固定基线证据。
 
 更新固定基线前，应逐个检查 SDK 和本地 path 依赖仓库，确认目标提交与工作树内容，再更新 JSON 中的 `repo_id`、`relative_path` 和完整提交号，随后运行检查并审阅解析出的包身份和测试数。本地 path 依赖仓库会记录提交和内容摘要，包括已有本地改动。这是定向源码兼容检查，不等同于 registry 正式消费测试，也不代表完整的下游兼容性。
 

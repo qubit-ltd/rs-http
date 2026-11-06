@@ -57,6 +57,13 @@ def tree_digest(root: pathlib.Path) -> str:
     return digest.hexdigest()
 
 
+def tracked_diff_digest(repo: pathlib.Path) -> str:
+    """Hash the binary tracked-file diff from HEAD; tree_digest also covers untracked inputs."""
+    result = subprocess.run(["git", "-C", str(repo), "diff", "--binary", "--no-ext-diff", "HEAD"],
+                           check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    return hashlib.sha256(result.stdout).hexdigest()
+
+
 def manifest_lock_digests(roots: list[tuple[str, pathlib.Path]]) -> dict[str, str]:
     """Hash source Cargo manifests and lockfiles without scanning build artifacts."""
     digests = {}
@@ -195,7 +202,8 @@ def validate_repositories(source_root: pathlib.Path, baseline_path: pathlib.Path
         if dirty and repo_id in {"llmsdk-core", "llmsdk-provider-openai", "llmsdk-agent"} and not candidate:
             raise CompatibilityError(f"dirty downstream repository {repo_id}; use --candidate-source to record this input")
         records.append({"repo_id": repo_id, "relative_path": relative, "commit": head,
-                        "dirty": dirty, "tree_sha256": tree_digest(repo)})
+                        "dirty": dirty, "tree_sha256": tree_digest(repo),
+                        "tracked_diff_sha256": tracked_diff_digest(repo)})
     return records
 
 

@@ -82,15 +82,20 @@ class InputSafetyTests(unittest.TestCase):
             subprocess.run(["git", "-C", str(repo), "add", "Cargo.toml"], check=True)
             subprocess.run(["git", "-C", str(repo), "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "baseline"], check=True)
             head = runner.git(repo, "rev-parse", "HEAD")
-            (repo / "Cargo.toml").write_text("[package]\nname='sdk-candidate'\n", encoding="utf-8")
             baseline = root / "baseline.json"
             baseline.write_text(json.dumps({"schema_version": 1, "repositories": [
                 {"repo_id": "llmsdk-core", "relative_path": "sdk", "commit": head}
             ]}), encoding="utf-8")
+            clean_record = runner.validate_repositories(root, baseline, True)[0]
+            self.assertFalse(clean_record["dirty"])
+            self.assertEqual(clean_record["tracked_diff_sha256"], runner.hashlib.sha256(b"").hexdigest())
+            (repo / "Cargo.toml").write_text("[package]\nname='sdk-candidate'\n", encoding="utf-8")
             record = runner.validate_repositories(root, baseline, True)[0]
             self.assertTrue(record["dirty"])
             self.assertEqual(record["commit"], head)
             self.assertEqual(len(record["tree_sha256"]), 64)
+            self.assertEqual(len(record["tracked_diff_sha256"]), 64)
+            self.assertNotEqual(record["tracked_diff_sha256"], clean_record["tracked_diff_sha256"])
 
     def test_records_dirty_local_path_dependency(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -98,7 +103,7 @@ class InputSafetyTests(unittest.TestCase):
             (root / "repo").mkdir()
             baseline = root / "baseline.json"
             baseline.write_text(json.dumps({"schema_version": 1, "repositories": [{"repo_id": "qubit-config", "relative_path": "repo", "commit": "a" * 40}]}))
-            with mock.patch.object(runner, "git", side_effect=["a" * 40, " M src/lib.rs"]):
+            with mock.patch.object(runner, "git", side_effect=["a" * 40, " M src/lib.rs"]), mock.patch.object(runner, "tracked_diff_digest", return_value="d" * 64):
                 record = runner.validate_repositories(root, baseline, False)[0]
             self.assertTrue(record["dirty"])
             self.assertEqual(record["commit"], "a" * 40)
