@@ -816,6 +816,7 @@ use http::Method;
 use qubit_http::{
     HttpClient,
     HttpClientOptions,
+    HttpLogger,
 };
 use qubit_redact::{RedactionPolicy, Sensitivity};
 use serde_json::json;
@@ -824,6 +825,7 @@ let mut options = HttpClientOptions::new();
 options.logging.enabled = true;
 options.logging.log_request_header = true;
 options.logging.log_request_body = true;
+options.logging.log_response_body = true;
 let builder = RedactionPolicy::default().to_builder().http(|http| {
     let _ = http.header().raise("x-api-key", Sensitivity::High);
     let _ = http.query().raise("access_token", Sensitivity::High);
@@ -842,11 +844,16 @@ let request = client
     }))?
     .build();
 
-client.execute(request).await?;
+let mut response = client.execute(request).await?;
+let _ = response.bytes().await?;
+let logger = HttpLogger::new(client.options());
+logger.log_response(&mut response).await?;
 ```
 <!-- guide-check:redaction:end -->
 
-注意：如果 TRACE 日志开启且 `log_response_body = true`，响应体日志只记录已经缓存的 body。尚未读取的后端流始终留给调用方，包括带有已知 `Content-Length` 的响应；调用方读取前，这些响应会记录为跳过。
+自动响应日志在 `execute` 返回前触发。如果此时响应体尚未消费，日志会显示 `<skipped: body not yet consumed>`；即使已知 `Content-Length`，logger 也不会为了日志读取响应体。之后读取响应体不会自动补记日志。若要记录已缓冲的响应体，应先完成缓冲读取，再显式调用上方的 `HttpLogger::log_response`。这次调用会再次记录响应行，以及已启用的响应头。除开启 logging 开关外，应用的 tracing subscriber 也必须允许 TRACE 事件。
+
+显式记录仍遵循 body 展示限额和脱敏规则。如果 `bytes()` 读取失败，`?` 会返回错误，后续 logger 调用不会执行。缓冲读取也受配置的读取超时和取消 token 约束。此用法适用于能在 `response_body_size_limit` 内完整缓冲的有限响应体；不要为了日志而消费未缓存的 `stream()` 或 SSE 响应。请将示例中的 `https://api.example.com/login` 替换为你自己的服务地址；指南检查器只编译示例，不会连接该地址。示例由同一 client 构造并执行请求，logger 也从该 client 的 options 构造。独立创建的 logger 使用传给构造器的策略，不会自动继承另一份请求快照。
 
 ## 代理与 IPv4-only
 
@@ -1139,13 +1146,14 @@ SSE 重连使用独立的 `SseReconnectOptions.retry` 策略。普通 HTTP 重�
 
 - 对只读或幂等接口开启全局重试；对 POST/PATCH 只有在业务允许重放时才使用 `AllMethods` 或请求级强制重试。
 - 对长连接/SSE 设置合理的 `read_timeout`；过短会把正常的慢流误判为 `ReadTimeout`。
-- TRACE 响应体日志只记录调用方已经缓存的 body，不会为了日志消费尚未读取的后端流，包括已知长度的非 SSE 响应。
+- 自动 TRACE 响应体日志在 `execute` 返回前触发，只记录当时已经缓存的 body。后续读取不会自动补记；需要时应在缓冲读取成功后显式调用 `HttpLogger::log_response`。这会再次记录响应行及已启用的响应头，也不会消费未缓存的 stream 或 SSE 响应。
 - 需要完全禁用代理时保持默认 `proxy.enabled = false` 且 `use_env_proxy = false`；需要继承环境代理时显式打开 `use_env_proxy`。
 - 如果使用 `from_config`，优先传入 `section("http")` 一类的作用域视图，这样错误路径会保留完整上下文。
 
 本 crate 有意不暴露全部 `reqwest` API；`HttpResponse` 返回后发生的流式
 读取错误也不会重新进入 HTTP 重试；TRACE 日志不会为了记录内容而消费
-尚未缓存的响应体。整体 body 与 JSON helper 受配置的大小预算约束，SSE
+尚未缓存的响应体；之后读取也不会自动补记，需要显式调用
+`HttpLogger::log_response`。整体 body 与 JSON helper 受配置的大小预算约束，SSE
 解码还受单行和单帧上限约束。只有在业务允许重复执行时，才应把已缓冲的
 请求体或每次都创建新流的 `streaming_body` 工厂视为可重放。
 

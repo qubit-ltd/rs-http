@@ -853,6 +853,7 @@ use http::Method;
 use qubit_http::{
     HttpClient,
     HttpClientOptions,
+    HttpLogger,
 };
 use qubit_redact::{RedactionPolicy, Sensitivity};
 use serde_json::json;
@@ -861,6 +862,7 @@ let mut options = HttpClientOptions::new();
 options.logging.enabled = true;
 options.logging.log_request_header = true;
 options.logging.log_request_body = true;
+options.logging.log_response_body = true;
 let builder = RedactionPolicy::default().to_builder().http(|http| {
     let _ = http.header().raise("x-api-key", Sensitivity::High);
     let _ = http.query().raise("access_token", Sensitivity::High);
@@ -879,11 +881,16 @@ let request = client
     }))?
     .build();
 
-client.execute(request).await?;
+let mut response = client.execute(request).await?;
+let _ = response.bytes().await?;
+let logger = HttpLogger::new(client.options());
+logger.log_response(&mut response).await?;
 ```
 <!-- guide-check:redaction:end -->
 
-Important: if TRACE logging is active and `log_response_body = true`, response-body logging reports the body only when it is already buffered. An unconsumed backend stream is always left for the caller, including responses with a known `Content-Length`; those responses are logged as skipped until the caller reads them.
+Automatic response logging runs before `execute` returns. If the body has not been consumed then, the automatic log reports `<skipped: body not yet consumed>`; it does not read the body for logging, even when `Content-Length` is known. Reading the body later does not trigger another log entry. To log a buffered response body explicitly, finish a buffered read and then call `HttpLogger::log_response` as shown above. This call logs the response line and any enabled headers again. Enable TRACE in the application's tracing subscriber as well as the logging switches.
+
+The body preview limit and redaction rules still apply to the explicit log. If `bytes()` fails, `?` returns the read error and the explicit logger call is not reached. Buffering is also subject to the configured read timeout and cancellation token. This pattern is for a finite body that can be buffered within `response_body_size_limit`; do not use it to consume an unbuffered `stream()` or SSE response just for logging. Replace `https://api.example.com/login` with your service URL. The guide checker compiles this example but does not connect to that address. The example uses the same client to build and execute the request, and constructs the logger from that client's options. A separately constructed logger uses the policy passed to its constructor; it does not automatically inherit a different request snapshot.
 
 ## Proxy And IPv4-only
 
@@ -1184,13 +1191,15 @@ The table below lists every configuration key supported by `HttpClientOptions::f
 
 - Enable global retry for read-only or idempotent APIs. Use `AllMethods` or per-request force retry for POST/PATCH only when the operation is safe to replay.
 - Set a realistic `read_timeout` for long-lived streams/SSE; too short a value turns a slow but healthy stream into `ReadTimeout`.
-- TRACE response-body logging reports only bodies already buffered by the caller; it never consumes an unconsumed backend stream, including known-size non-SSE responses.
+- Automatic TRACE response-body logging runs before `execute` returns and reports only bodies already buffered at that point. A later body read does not add a log entry; call `HttpLogger::log_response` explicitly after buffering when needed. That call repeats the response line and any enabled headers. It does not consume an unbuffered stream or SSE body.
 - Keep `proxy.enabled = false` and `use_env_proxy = false` when you want proxying fully disabled; explicitly enable `use_env_proxy` when environment proxy inheritance is desired.
 - Prefer passing a scoped `section("http")` to `HttpClient::from_config`, so error paths preserve useful context.
 
 The crate deliberately does not expose every `reqwest` API, does not retry
 stream-read failures after `HttpResponse` has been returned, and does not
-consume an unbuffered response body merely to produce a TRACE log. Whole-body
+consume an unbuffered response body merely to produce a TRACE log. Reading it later does
+not trigger a second log; use `HttpLogger::log_response` after a successful buffered
+read when an additional response entry is needed. Whole-body
 and JSON helpers are bounded by configured limits; SSE line and frame limits
 also apply while decoding. Treat buffered request bodies and fresh
 `streaming_body` factories as replayable only when the application can safely
