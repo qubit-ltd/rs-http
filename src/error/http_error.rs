@@ -69,7 +69,9 @@ pub struct HttpError {
     pub source: Option<BoxError>,
     /// Retry-flow metadata retained independently from the source chain.
     pub(crate) retry_metadata: Option<RetryErrorMetadata>,
+    /// Retry execution diagnostics retained for the final failure.
     pub(crate) retry_diagnostics: Option<HttpRetryDiagnostics>,
+    /// Bounded response data captured for a status failure.
     status_response: Option<HttpStatusResponse>,
     /// Redactor used when rendering this error with [`Debug`](fmt::Debug) or
     /// [`Display`](fmt::Display).
@@ -79,6 +81,12 @@ pub struct HttpError {
 impl fmt::Display for HttpError {
     /// Writes the bounded, escaped public message after redacting embedded
     /// URLs with the configured policy.
+    ///
+    /// # Parameters
+    /// - `formatter`: Destination for the formatted error message.
+    ///
+    /// # Returns
+    /// Formatting result from the destination.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let debugger = RedactedDebugger::new(&self.log_redactor);
         formatter.write_str(&debugger.urls_in_text(&self.message))
@@ -97,6 +105,12 @@ impl fmt::Debug for HttpError {
     /// contents. The message is URL-redacted, escaped, and bounded by the
     /// configured redaction policy; the enclosing debug representation is not
     /// included in that message limit.
+    ///
+    /// # Parameters
+    /// - `formatter`: Destination for the diagnostic representation.
+    ///
+    /// # Returns
+    /// Formatting result from the destination.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let debugger = RedactedDebugger::new(&self.log_redactor);
         let url = debugger.optional_url(self.url.as_ref());
@@ -431,6 +445,9 @@ impl HttpError {
     ///
     /// # Returns
     /// `self` for chaining.
+    ///
+    /// # Type Parameters
+    /// - `E`: Error type retained as the source cause.
     pub fn with_source<E>(mut self, source: E) -> Self
     where
         E: Error + Send + Sync + 'static,
@@ -524,12 +541,24 @@ impl HttpError {
     }
 
     /// Retains the bounded response data associated with a status failure.
+    ///
+    /// # Parameters
+    /// - `response`: Bounded response data captured for the status failure.
+    ///
+    /// # Returns
+    /// `self` for chaining.
     pub(crate) fn with_status_response(mut self, response: HttpStatusResponse) -> Self {
         self.status_response = Some(response);
         self
     }
 
     /// Attaches retry-flow diagnostics to the final error.
+    ///
+    /// # Parameters
+    /// - `diagnostics`: Retry execution details to retain.
+    ///
+    /// # Returns
+    /// `self` for chaining.
     pub(crate) fn with_retry_diagnostics(mut self, diagnostics: HttpRetryDiagnostics) -> Self {
         self.retry_diagnostics = Some(diagnostics);
         self

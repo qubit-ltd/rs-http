@@ -161,6 +161,12 @@ impl From<ArgumentError> for HttpConfigError {
     /// The argument path is retained. Caller-defined validation messages are
     /// preserved without embedding the path; other structured kinds use a
     /// pathless fallback diagnostic.
+    ///
+    /// # Parameters
+    /// - `error`: Structured argument validation failure to convert.
+    ///
+    /// # Returns
+    /// An HTTP configuration error preserving the argument path and message.
     fn from(error: ArgumentError) -> Self {
         let (kind, message) = match error.kind() {
             ArgumentErrorKind::Missing => (

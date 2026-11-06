@@ -11,10 +11,20 @@ use std::error::Error;
 use std::fmt;
 
 /// Error returned by the redirect policy when a redirect crosses origins.
+///
+/// # Errors
+/// Represents a redirect rejected by the same-origin policy.
 #[derive(Debug)]
 pub(crate) struct RedirectOriginViolation;
 
 impl fmt::Display for RedirectOriginViolation {
+    /// Formats the same-origin policy rejection.
+    ///
+    /// # Parameters
+    /// - `formatter`: Destination formatter.
+    ///
+    /// # Returns
+    /// Result from writing the rejection message.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str("redirect target violates the same-origin policy")
     }

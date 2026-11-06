@@ -13,9 +13,9 @@ use reqwest::Response;
 #[derive(Debug)]
 pub(in crate::response) enum HttpResponseBodyState {
     /// Backend response whose body has not been consumed.
-    Backend(Response),
+    Backend(#[doc = "Backend response with its unconsumed body."] Response),
     /// Fully buffered response body.
-    Buffered(Bytes),
+    Buffered(#[doc = "Complete response body bytes."] Bytes),
     /// Streaming body ownership has been transferred to the caller.
     StreamingTaken,
 }

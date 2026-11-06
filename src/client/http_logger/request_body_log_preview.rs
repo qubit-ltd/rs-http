@@ -8,11 +8,20 @@
 //! Private implementation types used by the HTTP logger.
 
 /// Request body preview category used by TRACE logging.
+///
+/// # Type Parameters
+/// - `'a`: Lifetime of borrowed request body bytes.
 pub(super) enum RequestBodyLogPreview<'a> {
     /// Borrowed bytes that can be safely previewed without consuming a stream.
-    Bytes(&'a [u8]),
+    Bytes(
+        /// Body bytes borrowed for safe preview rendering.
+        &'a [u8],
+    ),
     /// No request body is present.
     Empty,
     /// Body logging is intentionally skipped.
-    Skipped(&'static str),
+    Skipped(
+        /// Static reason that body previewing was skipped.
+        &'static str,
+    ),
 }

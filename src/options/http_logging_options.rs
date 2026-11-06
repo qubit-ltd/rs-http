@@ -67,6 +67,12 @@ impl Default for HttpLoggingOptions {
 ///
 /// The caller merges the returned values into [`HttpLoggingOptions::default`]
 /// and validates the completed options.
+///
+/// # Parameters
+/// - `config`: Reader scoped to the logging section.
+///
+/// # Type Parameters
+/// - `R`: Configuration reader type.
 fn read_logging_config<R>(config: &R) -> ConfigResult<HttpLoggingConfigInput>
 where
     R: ConfigReader + ?Sized,
@@ -113,6 +119,9 @@ impl HttpLoggingOptions {
     /// # Errors
     /// Returns an error when a key is invalid, unknown, or the completed
     /// options violate the body logging limit constraint.
+    ///
+    /// # Type Parameters
+    /// - `R`: Configuration reader type.
     pub fn from_config<R>(config: &R) -> Result<Self, HttpConfigError>
     where
         R: ConfigReader + ?Sized,

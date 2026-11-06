@@ -75,6 +75,9 @@ impl HttpRequestStreamingBody {
     ///
     /// # Returns
     /// New deferred streaming body wrapper.
+    ///
+    /// # Type Parameters
+    /// - `F`: Thread-safe factory that creates a fresh stream for one attempt.
     pub fn new<F>(factory: F) -> Self
     where
         F: Fn() -> HttpRequestBodyStreamFactoryFuture + Send + Sync + 'static,

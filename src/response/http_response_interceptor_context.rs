@@ -210,6 +210,13 @@ impl HttpResponseInterceptorContext {
 }
 
 impl fmt::Debug for HttpResponseInterceptorContext {
+    /// Formats interceptor metadata with URL and header redaction.
+    ///
+    /// # Parameters
+    /// - `formatter`: Destination for the diagnostic representation.
+    ///
+    /// # Returns
+    /// Formatting result from the destination.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut batch = self.log_redactor.diagnostic_batch();
         let url = batch.redact_http_url(self.url.as_str());

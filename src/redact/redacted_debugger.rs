@@ -43,6 +43,9 @@ impl<'redactor> RedactedDebugger<'redactor> {
     ///
     /// `Some` contains the redacted URL when `url` is present; `None` means no
     /// URL was supplied.
+    ///
+    /// # Parameters
+    /// - `url`: Optional URL to redact.
     pub(crate) fn optional_url(&self, url: Option<&Url>) -> Option<RedactedText> {
         url.map(|url| {
             self.redactor
@@ -64,6 +67,9 @@ impl<'redactor> RedactedDebugger<'redactor> {
     /// # Returns
     ///
     /// The message with each HTTP URL replaced by its redacted representation.
+    ///
+    /// # Parameters
+    /// - `text`: Diagnostic text that may contain HTTP URLs.
     #[must_use]
     pub(crate) fn urls_in_text(&self, text: &str) -> String {
         const MARKER: &str = "<redaction incomplete>";
@@ -120,6 +126,13 @@ impl<'redactor> RedactedDebugger<'redactor> {
 }
 
 /// Finds a scheme at or after `cursor`, inspecting each byte at most once.
+///
+/// # Parameters
+/// - `text`: Text to scan for an HTTP or HTTPS scheme.
+/// - `cursor`: Byte offset from which scanning begins.
+///
+/// # Returns
+/// The scheme start and length, or `None` when no scheme remains.
 fn find_url_start(text: &str, cursor: usize) -> Option<(usize, usize)> {
     let bytes = text.as_bytes();
     let mut index = cursor;
@@ -188,6 +201,12 @@ fn url_candidate_end(text: &str, start: usize, limit: usize) -> usize {
 
 /// Returns the full marker when it fits the byte budget, and an empty string
 /// otherwise.
+///
+/// # Parameters
+/// - `maximum`: Maximum number of marker bytes allowed.
+///
+/// # Returns
+/// The complete marker when it fits, or an empty string.
 fn bounded_marker(maximum: usize) -> String {
     const MARKER: &str = "<redaction incomplete>";
     if MARKER.len() <= maximum {

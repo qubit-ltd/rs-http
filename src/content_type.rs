@@ -203,7 +203,7 @@ mod tests {
     use super::is_multipart;
 
     #[test]
-    fn multipart_requires_a_nonempty_token_subtype() {
+    fn test_is_multipart_accepts_nonempty_token_subtypes_and_rejects_invalid_values() {
         for content_type in [
             "multipart/form-data",
             "multipart/mixed",

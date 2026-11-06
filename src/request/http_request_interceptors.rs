@@ -70,6 +70,9 @@ impl HttpRequestInterceptors {
     }
 
     /// Appends one request interceptor.
+    ///
+    /// # Parameters
+    /// - `interceptor`: Callback to run before each request attempt is sent.
     pub fn push(&mut self, interceptor: HttpRequestInterceptor) {
         self.interceptors.push(interceptor);
     }

@@ -73,6 +73,13 @@ pub struct HttpRetryOptions {
 /// Returns whether `status` is retryable for the given optional allowlist.
 ///
 /// When `retry_status_codes` is `None`, uses [`default_retryable_status`].
+///
+/// # Parameters
+/// - `status`: Response status to check.
+/// - `retry_status_codes`: Optional status allowlist.
+///
+/// # Returns
+/// Whether the status is eligible for retry.
 fn is_retryable_status(status: StatusCode, retry_status_codes: Option<&[StatusCode]>) -> bool {
     if let Some(status_codes) = retry_status_codes {
         status_codes.contains(&status)
@@ -84,6 +91,13 @@ fn is_retryable_status(status: StatusCode, retry_status_codes: Option<&[StatusCo
 /// Returns whether `kind` is retryable for the given optional allowlist.
 ///
 /// When `retry_error_kinds` is `None`, uses [`default_retryable_error_kind`].
+///
+/// # Parameters
+/// - `kind`: Error kind to check.
+/// - `retry_error_kinds`: Optional error-kind allowlist.
+///
+/// # Returns
+/// Whether the error kind is eligible for retry.
 fn is_retryable_error_kind(kind: HttpErrorKind, retry_error_kinds: Option<&[HttpErrorKind]>) -> bool {
     if let Some(error_kinds) = retry_error_kinds {
         error_kinds.contains(&kind)
@@ -107,6 +121,9 @@ impl HttpRetryOptions {
     ///
     /// # Parameters
     /// - `config`: Any [`ConfigReader`] scoped to the retry section.
+    ///
+    /// # Type Parameters
+    /// - `R`: Configuration reader type.
     ///
     /// # Returns
     /// Parsed raw retry configuration values or a configuration reading error.
@@ -157,6 +174,9 @@ impl HttpRetryOptions {
     ///
     /// # Returns
     /// Parsed retry options or [`HttpConfigError`].
+    ///
+    /// # Type Parameters
+    /// - `R`: Configuration reader type.
     fn read_config<R>(config: &R) -> ConfigResult<HttpRetryConfigInput>
     where
         R: ConfigReader + ?Sized,
@@ -303,6 +323,9 @@ impl HttpRetryOptions {
     /// request. Configure [`crate::HttpTimeoutOptions::request_timeout`] when
     /// each individual request needs a hard duration bound.
     ///
+    /// # Returns
+    /// The validated retry settings converted to a [`RetryPolicy`].
+    ///
     /// # Panics
     /// Panics only if options that already passed [`Self::validate`] cannot be
     /// represented by `qubit-retry`.
@@ -320,6 +343,7 @@ impl HttpRetryOptions {
 }
 
 impl Default for HttpRetryOptions {
+    /// Creates retry options with retry disabled and library defaults selected.
     fn default() -> Self {
         Self {
             enabled: false,

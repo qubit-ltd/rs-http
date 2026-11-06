@@ -58,6 +58,12 @@ pub(crate) fn map_reqwest_error(
 }
 
 /// Returns whether an error source chain contains an origin-policy violation.
+///
+/// # Parameters
+/// - `error`: Reqwest error whose source chain is inspected.
+///
+/// # Returns
+/// `true` when the chain contains an origin-policy violation.
 fn contains_redirect_origin_violation(error: &ReqwestError) -> bool {
     let mut source = error.source();
     while let Some(candidate) = source {
@@ -70,6 +76,12 @@ fn contains_redirect_origin_violation(error: &ReqwestError) -> bool {
 }
 
 /// Returns whether an error source chain contains an IPv6 redirect violation.
+///
+/// # Parameters
+/// - `error`: Reqwest error whose source chain is inspected.
+///
+/// # Returns
+/// `true` when the chain contains an IPv6 redirect violation.
 fn contains_redirect_ipv6_violation(error: &ReqwestError) -> bool {
     let mut source = error.source();
     while let Some(candidate) = source {

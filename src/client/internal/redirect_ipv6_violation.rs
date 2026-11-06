@@ -11,10 +11,20 @@ use std::error::Error;
 use std::fmt;
 
 /// Error returned when an IPv4-only redirect targets an IPv6 literal.
+///
+/// # Errors
+/// Represents a redirect rejected because its target uses an IPv6 literal.
 #[derive(Debug)]
 pub(crate) struct RedirectIpv6Violation;
 
 impl fmt::Display for RedirectIpv6Violation {
+    /// Formats the rejected IPv6 redirect reason.
+    ///
+    /// # Parameters
+    /// - `formatter`: Destination formatter.
+    ///
+    /// # Returns
+    /// Result from writing the rejection message.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str("redirect target is IPv6 while ipv4_only=true")
     }

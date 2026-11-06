@@ -112,6 +112,17 @@ impl HttpClientBuilder {
         Self::build_backend(options)
     }
 
+    /// Builds a reqwest client backend after validating its options.
+    ///
+    /// # Parameters
+    /// - `options`: Complete client configuration.
+    ///
+    /// # Returns
+    /// A configured HTTP client.
+    ///
+    /// # Errors
+    /// Returns a configuration error for invalid options or a client error
+    /// when reqwest cannot build the backend.
     fn build_backend(options: HttpClientOptions) -> HttpResult<HttpClient> {
         options.validate().map_err(map_validation_error)?;
 
@@ -199,6 +210,9 @@ impl HttpClientBuilder {
     /// # Errors
     /// Returns an error when reading or validating `config` fails, or when the
     /// configured reqwest client cannot be built.
+    ///
+    /// # Type Parameters
+    /// - `R`: Configuration reader type.
     #[deprecated(note = "use HttpClient::from_config(config) instead")]
     pub fn create_from_config<R>(&self, config: &R) -> Result<HttpClient, HttpConfigError>
     where

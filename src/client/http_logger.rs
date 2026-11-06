@@ -37,6 +37,7 @@ const UNRESOLVED_REQUEST_URL: &str = "<unresolved request URL>";
 const STREAMING_REQUEST_BODY_SKIPPED: &str = "<skipped: streaming request body>";
 
 // Categorizes request body previews for log rendering.
+#[path = "http_logger/request_body_log_preview.rs"]
 mod internal;
 
 /// Callsite metadata used to query the current dispatcher directly, bypassing

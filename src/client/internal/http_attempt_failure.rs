@@ -25,6 +25,14 @@ pub(crate) struct HttpAttemptFailure {
 
 impl HttpAttemptFailure {
     /// Creates a failure with the final request's retry decisions.
+    ///
+    /// # Parameters
+    /// - `error`: HTTP error produced by the attempt.
+    /// - `retry_allowed`: Whether the request may be retried.
+    /// - `honor_retry_after`: Whether a Retry-After hint may be used.
+    ///
+    /// # Returns
+    /// Failure metadata for the completed attempt.
     pub(in crate::client) fn new(error: HttpError, retry_allowed: bool, honor_retry_after: bool) -> Self {
         Self {
             error,
@@ -34,18 +42,29 @@ impl HttpAttemptFailure {
     }
 
     /// Consumes this wrapper and returns its HTTP error.
+    ///
+    /// # Returns
+    /// The underlying HTTP error.
     pub(in crate::client) fn into_error(self) -> HttpError {
         self.error
     }
 }
 
 impl fmt::Display for HttpAttemptFailure {
+    /// Formats the underlying request failure.
+    ///
+    /// # Parameters
+    /// - `formatter`: Destination formatter.
+    ///
+    /// # Returns
+    /// Result from formatting the underlying error.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.error.fmt(formatter)
     }
 }
 
 impl Error for HttpAttemptFailure {
+    /// Returns the underlying HTTP error as this wrapper's source.
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         self.error.source()
     }

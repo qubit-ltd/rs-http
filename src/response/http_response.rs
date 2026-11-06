@@ -87,6 +87,14 @@ fn map_response_read_error(
 }
 
 /// Parses the original response body length hint from backend metadata.
+///
+/// # Parameters
+/// - `method`: Request method associated with the response.
+/// - `status`: Response status code.
+/// - `headers`: Response headers that may contain `Content-Length`.
+///
+/// # Returns
+/// The advertised body length, or `None` when it is unavailable or invalid.
 fn parse_content_length_hint(method: &Method, status: StatusCode, headers: &HeaderMap) -> Option<u64> {
     if method == Method::HEAD || status == StatusCode::NOT_MODIFIED {
         return Some(0);
@@ -168,6 +176,13 @@ fn attach_sse_error_context(
 }
 
 impl fmt::Debug for HttpResponse {
+    /// Formats response diagnostics while redacting sensitive metadata.
+    ///
+    /// # Parameters
+    /// - `formatter`: Destination for the diagnostic representation.
+    ///
+    /// # Returns
+    /// Formatting result from the destination.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut batch = self.options.log_redactor.diagnostic_batch();
         let url = batch.redact_http_url(self.meta.url().as_str());
@@ -281,6 +296,9 @@ impl HttpResponse {
     /// request-level cancellation error cannot mask the structured retry
     /// terminal. A successful response keeps using the same token for body and
     /// SSE stream reads.
+    ///
+    /// # Parameters
+    /// - `token`: Cancellation token used by retry and response reads.
     pub(crate) fn set_cancellation_token(&mut self, token: HttpCancellationToken) {
         self.runtime.cancellation_token = Some(token);
     }
@@ -419,6 +437,13 @@ impl HttpResponse {
     /// Returns [`HttpErrorKind::Cancelled`](crate::HttpErrorKind::Cancelled)
     /// when the request cancellation token fires while preview bytes are being
     /// read.
+    ///
+    /// # Parameters
+    /// - `preview_limit`: Maximum rendered preview size in bytes.
+    /// - `raw_limit`: Maximum retained raw body size in bytes.
+    ///
+    /// # Returns
+    /// Captured response body data and its terminal status.
     async fn into_error_body_capture(
         mut self,
         preview_limit: usize,
@@ -969,6 +994,15 @@ impl HttpResponse {
     /// Returns [`HttpErrorKind::Cancelled`](crate::HttpErrorKind::Cancelled)
     /// when the supplied cancellation token fires while waiting for preview
     /// bytes.
+    ///
+    /// # Parameters
+    /// - `response`: Backend response whose error body is read.
+    /// - `max_bytes`: Maximum rendered preview size in bytes.
+    /// - `raw_limit`: Maximum retained raw body size in bytes.
+    /// - `content_type`: Optional response content type used to render preview.
+    ///
+    /// # Returns
+    /// Captured response body data and its terminal status.
     async fn read_error_body_preview(
         &self,
         mut response: reqwest::Response,
@@ -1136,6 +1170,12 @@ impl HttpResponse {
     }
 
     /// Returns a response-body aggregation limit error with request context.
+    ///
+    /// # Parameters
+    /// - `observed_size`: Number of body bytes observed before exceeding limit.
+    ///
+    /// # Returns
+    /// An error with the response limit and request context attached.
     fn response_body_size_limit_error(&self, observed_size: usize) -> HttpError {
         let limit = self.options.response_body_size_limit;
         HttpError::new(

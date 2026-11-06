@@ -58,6 +58,9 @@ use super::HttpConfigError;
 ///
 /// # Returns
 /// The error with its path resolved relative to the root reader.
+///
+/// # Type Parameters
+/// - `R`: Configuration reader type.
 pub(crate) fn resolve_config_error<R>(config: &R, mut error: HttpConfigError) -> HttpConfigError
 where
     R: ConfigReader + ?Sized,
@@ -85,6 +88,9 @@ where
 /// Returns a configuration read error when a key cannot be resolved, or an
 /// unknown-properties error containing sorted, deduplicated root-relative
 /// paths.
+///
+/// # Type Parameters
+/// - `R`: Configuration reader type.
 pub(crate) fn ensure_known_config_keys<R>(config: &R, fields: &[&str], sections: &[&str]) -> ConfigResult<()>
 where
     R: ConfigReader + ?Sized,
@@ -103,6 +109,9 @@ where
 /// # Returns
 /// The error with the component prefix removed and its remaining path resolved
 /// relative to the root reader.
+///
+/// # Type Parameters
+/// - `R`: Configuration reader type.
 pub(crate) fn resolve_component_error<R>(config: &R, mut error: HttpConfigError, component: &str) -> HttpConfigError
 where
     R: ConfigReader + ?Sized,
@@ -132,6 +141,9 @@ where
 /// # Errors
 /// Returns the reader's configuration error when conversion fails, including
 /// when the configured value is outside the platform's usize range.
+///
+/// # Type Parameters
+/// - `R`: Configuration reader type.
 pub(crate) fn get_optional_usize<R>(config: &R, key: &str) -> ConfigResult<Option<usize>>
 where
     R: ConfigReader + ?Sized,

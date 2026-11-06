@@ -33,6 +33,9 @@ pub(crate) fn validate_positive_timeout(name: &str, timeout: Duration) -> HttpRe
 
 /// Checks whether `timeout` can be added to the platform's current instant.
 ///
+/// # Parameters
+/// - `timeout`: Duration to add to the current instant.
+///
 /// # Returns
 /// `true` when the duration is representable as an `Instant` deadline.
 pub(crate) fn response_header_deadline_is_representable(timeout: Duration) -> bool {
@@ -40,6 +43,9 @@ pub(crate) fn response_header_deadline_is_representable(timeout: Duration) -> bo
 }
 
 /// Validates that a response-header timeout is positive and representable.
+///
+/// # Parameters
+/// - `timeout`: Response-header timeout to validate.
 ///
 /// # Returns
 /// `Ok(())` when `timeout` is valid.

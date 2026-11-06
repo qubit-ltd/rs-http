@@ -24,6 +24,7 @@ use qubit_retry::RetryCancellationToken;
 /// ```
 #[derive(Clone, Debug, Default)]
 pub struct HttpCancellationToken {
+    /// Shared cancellation state used by retry admission and request I/O.
     inner: RetryCancellationToken,
 }
 

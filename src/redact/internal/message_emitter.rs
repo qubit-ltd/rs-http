@@ -22,6 +22,12 @@ pub(in crate::redact) struct MessageEmitter {
 impl MessageEmitter {
     /// Creates an empty emitter with the specified maximum output size in
     /// bytes.
+    ///
+    /// # Parameters
+    /// - `maximum`: Maximum number of output bytes permitted.
+    ///
+    /// # Returns
+    /// An empty emitter with the given output limit.
     pub(in crate::redact) fn new(maximum: usize) -> Self {
         Self {
             output: String::new(),
@@ -34,6 +40,12 @@ impl MessageEmitter {
     /// Returns `false` without changing the output when the fragment does not
     /// fit, allowing the caller to fail closed with a marker or an empty
     /// string.
+    ///
+    /// # Parameters
+    /// - `value`: Safe fragment to append.
+    ///
+    /// # Returns
+    /// `true` when appended, or `false` when it exceeds the remaining budget.
     pub(in crate::redact) fn push_safe(&mut self, value: &str) -> bool {
         if value.len() > self.maximum.saturating_sub(self.output.len()) {
             return false;
@@ -48,6 +60,13 @@ impl MessageEmitter {
     /// Returns `false` if any escaped character would exceed the budget.
     /// Earlier characters may already have been appended; callers should
     /// then discard this partial output and use their fail-closed fallback.
+    ///
+    /// # Parameters
+    /// - `value`: Text to escape and append.
+    ///
+    /// # Returns
+    /// `true` when all text was appended, or `false` when the budget was
+    /// exceeded.
     pub(in crate::redact) fn push_plain(&mut self, value: &str) -> bool {
         for character in value.chars() {
             if is_log_dangerous(character) {
@@ -73,6 +92,12 @@ impl MessageEmitter {
 }
 
 /// Reports characters that can disrupt the visual or structural form of logs.
+///
+/// # Parameters
+/// - `character`: Character to inspect.
+///
+/// # Returns
+/// `true` for control or directional formatting characters.
 fn is_log_dangerous(character: char) -> bool {
     character.is_control() || matches!(character as u32, 0x061c | 0x200e..=0x200f | 0x2028..=0x202e | 0x2066..=0x2069)
 }
@@ -82,7 +107,7 @@ mod tests {
     use super::MessageEmitter;
 
     #[test]
-    fn push_plain_respects_empty_and_ascii_budgets() {
+    fn test_push_plain_respects_empty_and_ascii_budgets() {
         let mut emitter = MessageEmitter::new(0);
         assert!(emitter.push_plain(""));
         assert!(!emitter.push_plain("a"));
@@ -98,7 +123,7 @@ mod tests {
     }
 
     #[test]
-    fn push_plain_respects_unicode_and_accumulated_budgets() {
+    fn test_push_plain_respects_unicode_and_accumulated_budgets() {
         let mut emitter = MessageEmitter::new(2);
         assert!(emitter.push_plain("é"));
         assert_eq!(emitter.finish(), "é");
@@ -115,7 +140,7 @@ mod tests {
     }
 
     #[test]
-    fn push_plain_escapes_newlines_within_budget() {
+    fn test_push_plain_escapes_newlines_within_budget() {
         let mut emitter = MessageEmitter::new(2);
         assert!(emitter.push_plain("\n"));
         assert_eq!(emitter.finish(), r"\n");
@@ -126,7 +151,7 @@ mod tests {
     }
 
     #[test]
-    fn push_plain_preserves_escape_debug_for_directional_controls() {
+    fn test_push_plain_preserves_escape_debug_for_directional_controls() {
         let character = '\u{202e}';
         let expected = character.escape_debug().to_string();
 

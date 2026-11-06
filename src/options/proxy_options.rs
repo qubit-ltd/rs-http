@@ -110,6 +110,9 @@ impl Default for ProxyOptions {
 /// # Errors
 /// Returns the configuration reader's error when a key is unknown or cannot
 /// be read or converted to its expected type.
+///
+/// # Type Parameters
+/// - `R`: Configuration reader type.
 fn read_proxy_config<R>(config: &R) -> ConfigResult<ProxyConfigInput>
 where
     R: ConfigReader + ?Sized,
@@ -149,6 +152,9 @@ impl ProxyOptions {
     /// # Errors
     /// Returns [`HttpConfigError`] when reading or converting a key fails, the
     /// proxy type is unknown, or the resulting enabled settings are invalid.
+    ///
+    /// # Type Parameters
+    /// - `R`: Configuration reader type.
     pub fn from_config<R>(config: &R) -> Result<Self, HttpConfigError>
     where
         R: ConfigReader + ?Sized,

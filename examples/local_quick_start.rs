@@ -130,7 +130,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 #[cfg(test)]
 mod tests {
     #[tokio::test]
-    async fn local_quick_start_completes() {
+    async fn test_run_serves_a_local_request_and_completes() {
         super::run().await.expect("local quick start should complete");
     }
 }

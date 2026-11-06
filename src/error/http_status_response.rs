@@ -147,6 +147,12 @@ impl HttpStatusResponse {
 
 impl std::fmt::Debug for HttpStatusResponse {
     /// Formats response metadata without exposing headers or body contents.
+    ///
+    /// # Parameters
+    /// - `formatter`: Destination for the diagnostic representation.
+    ///
+    /// # Returns
+    /// Formatting result from the destination.
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
             .debug_struct("HttpStatusResponse")

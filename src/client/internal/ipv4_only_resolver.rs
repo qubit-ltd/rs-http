@@ -56,6 +56,9 @@ impl Resolve for Ipv4OnlyResolver {
 /// # Errors
 /// Returns an [`std::io::ErrorKind::AddrNotAvailable`] error when resolution
 /// produced no IPv4 address.
+///
+/// # Type Parameters
+/// - `I`: Iterator of resolved socket addresses.
 fn filter_ipv4_addrs<I>(host: &str, resolved: I) -> Result<Addrs, BoxError>
 where
     I: IntoIterator<Item = SocketAddr>,

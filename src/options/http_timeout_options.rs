@@ -85,6 +85,12 @@ impl Default for HttpTimeoutOptions {
 /// Reads the supported timeout keys as optional durations.
 ///
 /// Unknown keys are rejected by the shared configuration helper.
+///
+/// # Parameters
+/// - `config`: Reader scoped to the timeout section.
+///
+/// # Type Parameters
+/// - `R`: Configuration reader type.
 fn read_timeout_config<R>(config: &R) -> ConfigResult<TimeoutConfigInput>
 where
     R: ConfigReader + ?Sized,
@@ -160,6 +166,9 @@ impl HttpTimeoutOptions {
     /// # Errors
     /// Returns [`HttpConfigError`] for unknown keys, invalid value types, or
     /// timeout values that fail validation.
+    ///
+    /// # Type Parameters
+    /// - `R`: Configuration reader type.
     pub fn from_config<R>(config: &R) -> Result<Self, HttpConfigError>
     where
         R: ConfigReader + ?Sized,

@@ -467,6 +467,12 @@ impl HttpClient {
 
     /// Performs one SSE attempt and preserves the final request's
     /// `Retry-After` preference when the attempt fails.
+    ///
+    /// # Parameters
+    /// - `request`: Request snapshot consumed by this attempt.
+    ///
+    /// # Returns
+    /// The response on success, or the attempt failure with retry metadata.
     pub(crate) async fn execute_once_for_sse(&self, request: HttpRequest) -> Result<HttpResponse, HttpAttemptFailure> {
         self.execute_once_with_context(request, HttpAttemptExecutionContext::direct())
             .await

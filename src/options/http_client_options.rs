@@ -248,6 +248,9 @@ impl HttpClientOptions {
     /// # Errors
     /// Returns the first invalid, missing, or incorrectly typed option with
     /// its resolved configuration path.
+    ///
+    /// # Type Parameters
+    /// - `R`: Configuration reader type.
     pub fn from_config<R>(config: &R) -> Result<Self, HttpConfigError>
     where
         R: ConfigReader + ?Sized,
@@ -267,6 +270,9 @@ impl HttpClientOptions {
     /// # Errors
     /// Returns the first invalid, missing, or incorrectly typed option with
     /// its resolved configuration path.
+    ///
+    /// # Type Parameters
+    /// - `R`: Configuration reader type.
     fn from_config_impl<R>(config: &R) -> Result<Self, HttpConfigError>
     where
         R: ConfigReader + ?Sized,
@@ -761,6 +767,9 @@ impl HttpClientOptions {
     ///
     /// # Returns
     /// The same error with its configuration path resolved when possible.
+    ///
+    /// # Type Parameters
+    /// - `R`: Configuration reader type.
     fn resolve_config_error<R>(config: &R, error: HttpConfigError) -> HttpConfigError
     where
         R: ConfigReader + ?Sized,
@@ -779,6 +788,9 @@ impl HttpClientOptions {
     ///
     /// # Errors
     /// Returns a configuration error for unknown keys or invalid values.
+    ///
+    /// # Type Parameters
+    /// - `R`: Configuration reader type.
     fn read_config<R>(config: &R) -> ConfigResult<HttpClientRootConfigInput>
     where
         R: ConfigReader + ?Sized,
@@ -835,6 +847,9 @@ impl HttpClientOptions {
     ///
     /// # Errors
     /// Returns a configuration error for unknown keys or invalid values.
+    ///
+    /// # Type Parameters
+    /// - `R`: Configuration reader type.
     fn read_sse_config<R>(config: &R) -> ConfigResult<HttpClientSseConfigInput>
     where
         R: ConfigReader + ?Sized,
@@ -872,6 +887,9 @@ impl HttpClientOptions {
     /// # Errors
     ///
     /// Returns the first configuration type or quantity conversion error.
+    ///
+    /// # Type Parameters
+    /// - `R`: Configuration reader type.
     fn read_json_config<R>(config: &R) -> ConfigResult<HttpClientJsonConfigInput>
     where
         R: ConfigReader + ?Sized,
@@ -918,6 +936,9 @@ impl HttpClientOptions {
     ///
     /// Returns the first [`qubit_config::ConfigError`] produced while reading
     /// or interpolating a configured value.
+    ///
+    /// # Type Parameters
+    /// - `R`: Configuration reader type.
     fn read_log_redaction_config<R>(config: &R) -> ConfigResult<HttpClientLogRedactionConfigInput>
     where
         R: ConfigReader + ?Sized,

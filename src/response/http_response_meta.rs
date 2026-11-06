@@ -60,6 +60,15 @@ pub struct HttpResponseMeta {
 
 impl HttpResponseMeta {
     /// Creates response metadata from status/headers/url/method parts.
+    ///
+    /// # Parameters
+    /// - `status`: HTTP response status.
+    /// - `headers`: HTTP response headers.
+    /// - `url`: Final response URL.
+    /// - `method`: Method used for the originating request.
+    ///
+    /// # Returns
+    /// Response metadata containing the supplied values.
     #[must_use]
     #[inline]
     pub fn new(status: StatusCode, headers: HeaderMap, url: Url, method: Method) -> Self {
@@ -218,6 +227,13 @@ impl HttpResponseMeta {
 }
 
 impl fmt::Debug for HttpResponseMeta {
+    /// Formats response metadata with URL and header redaction.
+    ///
+    /// # Parameters
+    /// - `formatter`: Destination for the diagnostic representation.
+    ///
+    /// # Returns
+    /// Formatting result from the destination.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut batch = self.log_redactor.diagnostic_batch();
         let url = batch.redact_http_url(self.url.as_str());
@@ -236,11 +252,23 @@ impl fmt::Debug for HttpResponseMeta {
 }
 
 /// Returns whether a status permits interpreting its `Retry-After` header.
+///
+/// # Parameters
+/// - `status`: HTTP status code to check.
+///
+/// # Returns
+/// `true` for status 429 and server error statuses.
 fn is_retry_after_applicable_status(status: StatusCode) -> bool {
     status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error()
 }
 
 /// Parses `Retry-After` as delta-seconds or an HTTP date.
+///
+/// # Parameters
+/// - `value`: Header value to parse.
+///
+/// # Returns
+/// Parsed delay, or `None` when the value is invalid.
 fn parse_retry_after_value(value: &str) -> Option<Duration> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
