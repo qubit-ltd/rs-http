@@ -133,6 +133,16 @@ redirect policy restricts redirects even when A used `AnyOrigin`. Rebuilding a
 client does not rebind existing requests. Build a new request with the desired
 client configuration when both stages should use that client's policy.
 
+`AnyOrigin` allows cross-origin initial targets when selected by the request
+snapshot and cross-origin redirects when selected by the executing backend.
+Log redaction settings and `HeaderValue::set_sensitive(true)` affect diagnostic
+rendering; they do not filter headers sent over the network. A custom API-key
+header may therefore be forwarded on an allowed cross-origin redirect, while
+reqwest removes its fixed set of standard authentication headers. Keep
+`SameOrigin` for requests carrying credentials. If a cross-origin request is
+required, use a separate client/request without those credentials and validate
+the destination in application code.
+
 ### Programmatic Options
 
 ```rust
@@ -959,6 +969,7 @@ use http::Method;
 let response = client
     .execute(client.request(Method::GET, "/stream").build())
     .await?;
+response.validate_sse_content_type()?;
 
 let mut messages = response.sse_messages();
 while let Some(item) = messages.next().await {

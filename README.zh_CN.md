@@ -99,7 +99,7 @@ text = ready
 | `HttpClientOptions` | 保存客户端级默认配置，包括 base URL、请求头、超时、重试、日志、代理、重定向、连接池、JSON value 预算和 SSE 解码。 |
 | `HttpClient` | 执行请求，并应用请求头、注入器、拦截器、重试、日志和 SSE 重连辅助能力。 |
 | `HttpRequestBuilder` | 构建方法、路径、查询参数、请求头、请求体和请求级覆盖项。 |
-| `HttpResponse` | 提供响应元数据，以及 bytes、text、JSON、流式响应和 SSE 的惰性读取方法。 |
+| `HttpResponse` | 提供响应元数据、惰性 body 读取、SSE 解码及可选的 `validate_sse_content_type()`；详见 [SSE 解码指南](doc/user_guide.zh_CN.md#sse-解码)。 |
 | `HttpResponseInterceptorContext` | 让响应拦截器检查 status/method，并修改 headers/最终 URL，同时不破坏成功状态不变量。 |
 
 修改客户端选项且需要保留注入器和拦截器时，使用 `HttpClient::rebuild_with_options`；`to_builder()` 只复制选项。
@@ -110,6 +110,7 @@ text = ready
 - `execute` 只对 2xx 状态返回响应。响应体采用惰性读取；TRACE body 日志不会消费尚未读取的后端流。
 - 内置请求重试只覆盖返回 `HttpResponse` 之前的失败；返回后的流读取错误由调用方处理。SSE 重连使用独立 API 和生命周期。详见[自动重试](doc/user_guide.zh_CN.md#自动重试)及 [SSE 自动重连](doc/user_guide.zh_CN.md#sse-自动重连)。
 - 默认使用 `SameOrigin`。初始 URL 按请求快照校验，重定向按执行客户端的后端策略校验。详见[跨客户端来源策略](doc/user_guide.zh_CN.md#跨客户端来源策略)。
+- 日志脱敏和敏感 header 标记不会过滤网络转发；携带凭证的请求应保留 `SameOrigin`。详见[跨客户端来源策略](doc/user_guide.zh_CN.md#跨客户端来源策略)。
 - 标准脱敏策略保留 URL path；若其中可能包含敏感信息，请使用严格或 path 脱敏。详见[日志脱敏](doc/user_guide.zh_CN.md#日志脱敏)。
 - SSE 重连有独立的游标、retry 提示和 204 结束语义，不代表完整实现 EventSource。详见 [SSE 自动重连](doc/user_guide.zh_CN.md#sse-自动重连)。
 - 错误预览、保留 raw body 的限额和错误体完整读取期限相互独立。详见[错误模型](doc/user_guide.zh_CN.md#错误模型)。

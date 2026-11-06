@@ -102,7 +102,7 @@ In particular, `.options(saved).create_default()` ignores `saved`; use
 | `HttpClientOptions` | Holds client-level defaults for base URL, headers, timeouts, retry, logging, proxy, redirects, connection pool, JSON value limits, and SSE decoding. |
 | `HttpClient` | Executes requests and applies headers, injectors, interceptors, retry, logging, and SSE reconnect helpers. |
 | `HttpRequestBuilder` | Builds method, path, query, headers, body, and request-level overrides. |
-| `HttpResponse` | Exposes response metadata and lazy readers for bytes, text, JSON, streams, and SSE. |
+| `HttpResponse` | Exposes response metadata, lazy body readers, SSE decoders, and optional `validate_sse_content_type()`; see the [SSE decoding guide](doc/user_guide.en.md#sse-decoding). |
 | `HttpResponseInterceptorContext` | Lets response interceptors inspect status/method and mutate headers/final URL without breaking success-status invariants. |
 
 Use `HttpClient::rebuild_with_options` to change client options while retaining registered injectors and interceptors. `to_builder()` copies options only.
@@ -113,6 +113,7 @@ Use `HttpClient::rebuild_with_options` to change client options while retaining 
 - `execute` returns a response only for 2xx status codes. Response bodies are read lazily, and TRACE body logging does not consume an unread backend stream.
 - Built-in request retry covers failures before `HttpResponse` is returned; later stream-read errors belong to the caller. SSE reconnect has a separate API and lifecycle. See [Automatic Retry](doc/user_guide.en.md#automatic-retry) and [SSE Auto-reconnect](doc/user_guide.en.md#sse-auto-reconnect).
 - `SameOrigin` is the default. Initial URL checks use the request snapshot, while redirect checks use the executing client's backend policy. See [origin policy across clients](doc/user_guide.en.md#origin-policy-across-clients).
+- Log redaction and sensitive header markers do not filter network forwarding. Keep `SameOrigin` for credential-bearing requests; see [origin policy across clients](doc/user_guide.en.md#origin-policy-across-clients).
 - The standard redaction policy preserves URL paths; choose strict or path redaction when paths may contain secrets. See [Logging Redaction](doc/user_guide.en.md#logging-redaction).
 - SSE reconnect has dedicated cursor, retry-hint, and 204 termination behavior; it does not claim full EventSource compliance. See [SSE Auto-reconnect](doc/user_guide.en.md#sse-auto-reconnect).
 - Error preview, retained raw-body limits, and complete error-body read deadlines are independent. See [Error Model](doc/user_guide.en.md#error-model).

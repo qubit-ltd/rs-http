@@ -126,6 +126,13 @@ let client = qubit_http::HttpClient::builder().build()?;
 `SameOrigin`，即使 A 使用 `AnyOrigin`，B 的重定向策略仍会限制重定向。
 重建客户端不会重绑已有请求；若两个阶段都要使用新客户端配置，请用该配置重新构建请求。
 
+请求快照选择 `AnyOrigin` 时，初始目标可以跨源；执行后端选择
+`AnyOrigin` 时，重定向也可以跨源。日志脱敏设置和
+`HeaderValue::set_sensitive(true)` 只影响诊断输出，不会过滤网络请求头。
+因此，允许跨源跳转时，自定义 API key header 可能继续发送；reqwest 只会
+移除其固定名单中的标准认证头。携带凭证的请求应保留 `SameOrigin`。确需
+跨源访问时，请使用不携带这些凭证的独立客户端/请求，并由应用校验目标。
+
 ### 使用代码配置
 
 ```rust
@@ -921,6 +928,7 @@ use http::Method;
 let response = client
     .execute(client.request(Method::GET, "/stream").build())
     .await?;
+response.validate_sse_content_type()?;
 
 let mut messages = response.sse_messages();
 while let Some(item) = messages.next().await {

@@ -28,6 +28,8 @@ flowchart LR
 
 默认的 `SameOrigin` 策略会以配置的 base URL 校验绝对请求目标，并以初始源校验每次重定向。未配置 base URL 时，可由绝对请求 URL 确定本次请求的初始源。只有显式选择 `AnyOrigin` 才允许跨源目标及重定向。配置读取器接受 `origin_policy = "same_origin"` 或 `"any_origin"`，不支持的值会在构造客户端前报错。
 
+请求快照阶段的 `AnyOrigin` 允许跨源初始目标；执行后端阶段的 `AnyOrigin` 允许跨源重定向。日志脱敏和 `HeaderValue::set_sensitive(true)` 不会过滤网络请求头。允许跨源跳转时，自定义 API key header 可能继续发送，而 reqwest 会移除其固定名单中的标准认证头。携带凭证的请求应保留 `SameOrigin`；跨源请求应使用不携带这些凭证的独立客户端/请求，并由应用校验目标。
+
 base URL 在配置解析和客户端构造时校验；最终请求 URL 在解析或 join 后校验，拦截器修改后的目标也会检查。仅支持 HTTP 和 HTTPS；不支持的请求 scheme 返回 `InvalidUrl`。IPv4-only 过滤仅作用于客户端本地 resolver 和 URL literal 检查。SOCKS5 保留远端 DNS（`socks5h`），因此代理解析的目标及代理到目标这一段的地址族不受本地 IPv4 保证约束。
 
 ## 请求与重试边界
@@ -62,7 +64,7 @@ base URL 在配置解析和客户端构造时校验；最终请求 URL 在解析
 
 ## SSE 解码与自动重连
 
-`HttpResponse::sse_messages` 和 `sse_chunks` 是响应体解码器：只有空行才会派发 SSE data 事件，EOF 不派发未完成的数据事件；完整的 retry 与 control-only id 控制记录仍按既有规则处理。仅首行开头的一个 UTF-8 BOM 会被移除。默认 `AllowEof` 允许完整事件流在没有 done marker 时结束，但不派发未完成帧；`RequireDoneMarker` 只接受完整事件中的 marker。解码器执行行/帧限制，以及 JSON chunk 的 JSON 和完成条件限制，但不检查 `Content-Type`。如果上游协议要求 SSE，直接调用者须先校验 `text/event-stream`；`HttpClient::execute_sse_with_reconnect` 会自行校验媒体类型。解码器处理连续行或过滤记录时会合作式让出执行权，避免一条已就绪的长输入独占一次任务轮询；内部预算不构成公开的时间保证。这种让步不会改变缓冲正文的取消语义。
+`HttpResponse::sse_messages` 和 `sse_chunks` 是响应体解码器：只有空行才会派发 SSE data 事件，EOF 不派发未完成的数据事件；完整的 retry 与 control-only id 控制记录仍按既有规则处理。仅首行开头的一个 UTF-8 BOM 会被移除。默认 `AllowEof` 允许完整事件流在没有 done marker 时结束，但不派发未完成帧；`RequireDoneMarker` 只接受完整事件中的 marker。解码器执行行/帧限制，以及 JSON chunk 的 JSON 和完成条件限制，但不会自动检查 `Content-Type`。直接调用者可先调用可选的 `HttpResponse::validate_sse_content_type()`；该方法只检查响应媒体类型，不读取 body。`HttpClient::execute_sse_with_reconnect` 会在 204 提前结束分支之后复用该检查。解码器处理连续行或过滤记录时会合作式让出执行权，避免一条已就绪的长输入独占一次任务轮询；内部预算不构成公开的时间保证。这种让步不会改变缓冲正文的取消语义。
 
 重连执行器禁用内层普通 HTTP 重试，打开响应、解码 SSE record、保存最近的事件 ID 和服务端 `retry:` 延迟，然后依照 `SseReconnectOptions` 再次建立连接。该 API 使用独立的 `SseReconnectOptions.retry` 策略；普通 HTTP 重试设置、方法策略和请求级 `disable_retry()` 都不会禁止外层 SSE 重连。原请求可能被重复发送，包括 `POST` 或 `PATCH`；调用方须确保操作和请求体在业务幂等保证下可以安全重复。工厂能生成新的请求体流只代表技术上可重放，并不保证业务幂等。优先使用 `GET`；需要完全控制重放时，可直接通过 `execute` 管理连接。消息未提供新 ID 时继承最近游标，control-only ID 更新和显式空 ID 重置同样生效。服务端提供 ID 后，重连执行器的非空游标会在默认 header、注入器、拦截器和 request-local header 合并后覆盖最终值；空 ID 会删除最终 header。首个服务端 ID 到达前仍遵循普通 header 优先级。有效的 `retry:` 字段在其所在行解码后即产出控制记录，无需等待事件终结空行。启用服务端 retry 提示时，已经应用的延迟不会因后续 body 读取失败而撤销，并持续生效，直到新的有效 `retry:` 将其替换；`honor_server_retry = false` 会忽略服务端提示。204 响应会正常结束重连流，不检查媒体类型、不读取 body，也不再发起连接。这些是有意的行为变化，不代表完整实现 EventSource。取消与协议错误默认不会重连。重连预算覆盖尝试和等待；最终延迟上限及 SSE 的一毫秒最小等待由重连策略处理。
 
