@@ -140,6 +140,9 @@ impl SseMessage {
     ///
     /// Returns an SSE decode error when strict mode rejects the payload or
     /// either mode exceeds a configured resource budget.
+    ///
+    /// # Type Parameters
+    /// - `T`: Type to deserialize from the event data.
     pub(crate) fn decode_json_with_mode_and_limits<T>(
         &self,
         mode: SseJsonMode,
@@ -176,6 +179,9 @@ impl SseMessage {
     }
 
     /// Wraps a JSON decoder failure with non-payload SSE message context.
+    ///
+    /// # Parameters
+    /// - `error`: Structured failure returned by the JSON decoder.
     fn json_decode_error(&self, error: JsonDecodeError) -> HttpError {
         HttpError::sse_decode("Failed to decode SSE message data as JSON").with_source(error)
     }

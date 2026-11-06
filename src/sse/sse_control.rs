@@ -10,7 +10,13 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum SseControl {
     /// Reconnection delay from a valid `retry:` field, in milliseconds.
-    ReconnectDelayMs(u64),
+    ReconnectDelayMs(
+        /// Delay from the SSE `retry:` value.
+        u64,
+    ),
     /// Last event id update from an `id:` field without dispatchable data.
-    LastEventId(String),
+    LastEventId(
+        /// Event ID carried by the control record.
+        String,
+    ),
 }

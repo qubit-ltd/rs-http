@@ -11,6 +11,7 @@
 
 mod done_marker_policy;
 mod frame_decoder;
+mod internal;
 mod json_decoder;
 mod line_decoder;
 mod message_decoder;

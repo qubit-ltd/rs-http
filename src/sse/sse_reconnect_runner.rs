@@ -639,6 +639,10 @@ fn has_unexpected_eof_in_error_chain(error: &(dyn StdError + 'static)) -> bool {
 }
 
 /// Preserves a reconnect accounting failure and its request diagnostics.
+///
+/// # Parameters
+/// - `error`: Reconnect budget failure to map into the HTTP error model.
+/// - `runtime`: Current request diagnostics and redaction context.
 fn reconnect_budget_error(error: RetryBudgetError, runtime: &ReconnectRuntime<'_>) -> HttpError {
     let mut mapped = HttpError::other(format!("SSE reconnect budget failed: {error}"))
         .with_source(error)

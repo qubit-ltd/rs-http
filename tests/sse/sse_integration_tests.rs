@@ -187,6 +187,44 @@ async fn test_execute_stream_with_decode_events_end_to_end() {
 }
 
 #[tokio_test]
+async fn test_loopback_many_heartbeat_frames_reaches_final_event() {
+    let mut body = String::new();
+    for _ in 0..4_096 {
+        body.push_str(": heartbeat\n\n");
+    }
+    body.push_str("data: ok\n\n");
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 200,
+        headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+        body: body.into_bytes(),
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.timeouts.read_timeout = Duration::from_secs(2);
+    options.timeouts.response_header_timeout = Duration::from_secs(2);
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
+    let request = client.request(Method::GET, "/sse-heartbeat-audit").build();
+    let response = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("loopback execute timed out")
+        .unwrap();
+    let mut events = response.sse_messages();
+
+    let event = timeout(Duration::from_secs(3), events.next())
+        .await
+        .expect("loopback SSE decode timed out")
+        .unwrap()
+        .unwrap();
+    assert_eq!(event.data, "ok");
+    assert!(events.next().await.is_none());
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("loopback server finish timed out");
+    assert_eq!(captured.target, "/sse-heartbeat-audit");
+}
+
+#[tokio_test]
 async fn test_execute_stream_decode_events_reports_read_timeout_when_interrupted() {
     let server = spawn_one_shot_server(ResponsePlan::Chunked {
         status: 200,

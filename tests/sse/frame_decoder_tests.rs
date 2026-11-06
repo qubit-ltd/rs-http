@@ -18,6 +18,55 @@ use qubit_http::HttpResult;
 use tokio::test as tokio_test;
 use url::Url;
 
+#[tokio_test]
+async fn test_buffered_sse_body_yields_before_emitting_final_event() {
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering;
+    use std::task::Wake;
+
+    struct CountWake(AtomicUsize);
+    impl Wake for CountWake {
+        fn wake(self: Arc<Self>) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+        fn wake_by_ref(self: &Arc<Self>) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    let mut body = String::new();
+    for _ in 0..4_096 {
+        body.push_str(": heartbeat\n\n");
+    }
+    body.push_str("data: ok\n\n");
+    let response = HttpResponse::new(
+        StatusCode::OK,
+        HeaderMap::new(),
+        Bytes::from(body),
+        Url::parse("https://example.com/stream").unwrap(),
+        Method::GET,
+    );
+    let mut events = response.sse_messages();
+    let side_task_ran = Arc::new(AtomicUsize::new(0));
+    let task_flag = Arc::clone(&side_task_ran);
+    tokio::spawn(async move {
+        task_flag.store(1, Ordering::SeqCst);
+    });
+    let wake_counter = Arc::new(CountWake(AtomicUsize::new(0)));
+    let waker = std::task::Waker::from(Arc::clone(&wake_counter));
+    let mut context = std::task::Context::from_waker(&waker);
+    let result = std::future::poll_fn(|_| std::task::Poll::Ready(events.as_mut().poll_next(&mut context))).await;
+
+    assert!(result.is_pending(), "decoder should yield during buffered input");
+    assert!(wake_counter.0.load(Ordering::SeqCst) > 0);
+    assert_eq!(side_task_ran.load(Ordering::SeqCst), 0);
+    let message = events.next().await.unwrap().unwrap();
+    assert_eq!(message.data, "ok");
+    tokio::task::yield_now().await;
+    assert_eq!(side_task_ran.load(Ordering::SeqCst), 1);
+}
+
 async fn collect_results<T>(stream: impl Stream<Item = HttpResult<T>>) -> Vec<T> {
     stream
         .map(|item| item.expect("unexpected stream error in test"))

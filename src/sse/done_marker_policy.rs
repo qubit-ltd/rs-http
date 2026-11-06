@@ -37,10 +37,20 @@ pub enum DoneMarkerPolicy {
     #[default]
     DefaultDone,
     /// Use a custom marker string.
-    Custom(String),
+    Custom(
+        /// Marker compared with trimmed SSE `data:` payloads.
+        String,
+    ),
 }
 
 impl fmt::Display for DoneMarkerPolicy {
+    /// Formats the policy using its configuration value.
+    ///
+    /// # Parameters
+    /// - `f`: Formatter that receives the policy value.
+    ///
+    /// # Returns
+    /// Result from formatting the value.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Disabled => write!(f, "disable"),
@@ -51,8 +61,16 @@ impl fmt::Display for DoneMarkerPolicy {
 }
 
 impl FromStr for DoneMarkerPolicy {
+    /// Error returned when the input is not a supported marker policy.
     type Err = parse_display::ParseError;
 
+    /// Parses a disabled, default, or custom marker policy.
+    ///
+    /// # Parameters
+    /// - `input`: Configuration value to parse.
+    ///
+    /// # Returns
+    /// The corresponding marker policy.
     fn from_str(input: &str) -> Result<Self, Self::Err> {
         let trimmed = input.trim();
         if trimmed.eq_ignore_ascii_case("disable") {

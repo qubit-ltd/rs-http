@@ -17,12 +17,15 @@ use bytes::BytesMut;
 use futures_util::Stream;
 use futures_util::StreamExt;
 
+use super::internal::decode_poll_budget::DecodePollBudget;
 use crate::HttpByteStream;
 use crate::HttpError;
 use crate::HttpResult;
 
 /// Pin-boxed stream of newline-delimited text lines or errors.
 pub type SseLineStream = Pin<Box<dyn Stream<Item = HttpResult<String>> + Send>>;
+
+const MAX_BYTES_SCANNED_BEFORE_YIELD: usize = 64 * 1024;
 
 /// Removes the UTF-8 BOM from the first line when present, checks the remaining
 /// bytes against the line limit, decodes them as UTF-8, and clears the buffer.
@@ -86,21 +89,29 @@ pub fn decode_lines(mut stream: HttpByteStream, max_line_bytes: usize) -> SseLin
         let mut buffer = BytesMut::new();
         let mut pending_cr = false;
         let mut first_line = true;
+        let mut poll_budget = DecodePollBudget::default();
 
         while let Some(item) = stream.next().await {
             match item {
                 Ok(chunk) => {
                     let mut remaining = chunk.as_ref();
                     while !remaining.is_empty() {
-                        let Some(index) = remaining.iter().position(|byte| is_line_terminator(*byte)) else {
+                        let scan_len = remaining.len().min(MAX_BYTES_SCANNED_BEFORE_YIELD);
+                        let scan = &remaining[..scan_len];
+                        let Some(index) = scan.iter().position(|byte| is_line_terminator(*byte)) else {
                             pending_cr = false;
                             if let Err(error) =
-                                append_line_bytes(&mut buffer, remaining, line_limit(max_line_bytes, first_line))
+                                append_line_bytes(&mut buffer, scan, line_limit(max_line_bytes, first_line))
                             {
                                 yield Err(error);
                                 return;
                             }
-                            break;
+                            poll_budget.account(0, scan.len()).await;
+                            remaining = &remaining[scan_len..];
+                            if remaining.is_empty() {
+                                break;
+                            }
+                            continue;
                         };
 
                         let segment = &remaining[..index];
@@ -116,11 +127,17 @@ pub fn decode_lines(mut stream: HttpByteStream, max_line_bytes: usize) -> SseLin
                         remaining = &remaining[index + 1..];
                         if terminator == b'\n' && pending_cr {
                             pending_cr = false;
+                            poll_budget.account(0, 1).await;
                             continue;
                         }
 
+                        poll_budget.account(0, segment.len().saturating_add(1)).await;
+
                         match take_buffered_line(&mut buffer, &mut first_line, max_line_bytes) {
-                            Ok(text) => yield Ok(text),
+                            Ok(text) => {
+                                poll_budget.account(1, 0).await;
+                                yield Ok(text)
+                            },
                             Err(error) => {
                                 yield Err(error);
                                 return;
@@ -138,7 +155,10 @@ pub fn decode_lines(mut stream: HttpByteStream, max_line_bytes: usize) -> SseLin
 
         if !buffer.is_empty() {
             match take_buffered_line(&mut buffer, &mut first_line, max_line_bytes) {
-                Ok(text) => yield Ok(text),
+                Ok(text) => {
+                    poll_budget.account(1, 0).await;
+                    yield Ok(text)
+                },
                 Err(error) => yield Err(error),
             }
         }

@@ -17,5 +17,8 @@ pub(in crate::sse) enum ReconnectAction {
     /// Reconnect is exhausted without an error to yield.
     Stop,
     /// Reconnect failed and caller should yield this error.
-    Fail(Box<HttpError>),
+    Fail(
+        /// Error that prevented the reconnect from being scheduled.
+        Box<HttpError>,
+    ),
 }

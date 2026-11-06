@@ -13,7 +13,13 @@ use super::SseMessage;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum SseRecord {
     /// Dispatchable EventSource message.
-    Dispatch(SseMessage),
+    Dispatch(
+        /// Message ready for delivery to the public stream.
+        SseMessage,
+    ),
     /// Control state that should not be exposed as a message.
-    Control(SseControl),
+    Control(
+        /// Cursor or reconnect-delay update consumed internally.
+        SseControl,
+    ),
 }

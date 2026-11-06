@@ -36,7 +36,10 @@ use strum::EnumString;
 pub enum SseChunk<T> {
     /// A value successfully deserialized from an SSE data payload.
     #[strum(disabled)]
-    Data(T),
+    Data(
+        /// Successfully deserialized value emitted for one SSE event.
+        T,
+    ),
     /// A synthetic item emitted when
     /// [`DoneMarkerPolicy`](crate::sse::DoneMarkerPolicy) matches; the stream
     /// then ends.
