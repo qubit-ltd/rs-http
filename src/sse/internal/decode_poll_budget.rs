@@ -10,22 +10,25 @@
 
 use std::task::Poll;
 
-/// Yields after a bounded amount of line/record work or input bytes.
+/// Yields after a bounded amount of input chunks, lines, records, or input
+/// bytes.
 #[derive(Default)]
 pub(in crate::sse) struct DecodePollBudget {
-    /// Number of lines or complete records consumed since the last yield.
+    /// Number of input chunks, lines, or complete records consumed since the
+    /// last yield.
     items: usize,
     /// Number of input bytes consumed since the last yield.
     bytes: usize,
 }
 
 impl DecodePollBudget {
-    /// Accounts for consumed work and cooperatively yields when a threshold is
-    /// reached. Counters restart after the yield so later polls get a fresh
-    /// budget.
+    /// Accounts for consumed input chunks, lines, records, or bytes, and
+    /// cooperatively yields when a threshold is reached. Counters restart
+    /// after the yield so later polls get a fresh budget.
     ///
     /// # Parameters
-    /// - `items`: Number of completed lines or records to account for.
+    /// - `items`: Number of input chunks, completed lines, or records to
+    ///   account for.
     /// - `bytes`: Number of input bytes consumed by the work.
     pub(in crate::sse) async fn account(&mut self, items: usize, bytes: usize) {
         self.items = self.items.saturating_add(items);

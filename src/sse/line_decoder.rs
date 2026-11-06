@@ -94,6 +94,7 @@ pub fn decode_lines(mut stream: HttpByteStream, max_line_bytes: usize) -> SseLin
         while let Some(item) = stream.next().await {
             match item {
                 Ok(chunk) => {
+                    poll_budget.account(1, 0).await;
                     let mut remaining = chunk.as_ref();
                     while !remaining.is_empty() {
                         let scan_len = remaining.len().min(MAX_BYTES_SCANNED_BEFORE_YIELD);
@@ -230,12 +231,31 @@ fn is_line_terminator(byte: u8) -> bool {
 #[cfg(test)]
 mod tests {
     use std::ops::Range;
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering;
+    use std::task::Context;
+    use std::task::Poll;
+    use std::task::Wake;
+    use std::task::Waker;
 
     use bytes::Bytes;
     use futures_util::StreamExt;
 
     use super::decode_lines;
     use crate::HttpByteStream;
+
+    struct CountWake(AtomicUsize);
+
+    impl Wake for CountWake {
+        fn wake(self: Arc<Self>) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+
+        fn wake_by_ref(self: &Arc<Self>) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
 
     type LineCase<'a> = (&'a str, &'a [u8], usize, &'a [&'a str], Option<crate::HttpErrorKind>);
 
@@ -318,6 +338,57 @@ mod tests {
         for ending in [b"\r".as_slice(), b"\n", b"\r\n"] {
             assert_eq!(decode(vec![b"line", ending], 64).await.unwrap(), vec!["line"]);
         }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_decode_lines_ready_empty_chunks_yield_with_bounded_work() {
+        let consumed = Arc::new(AtomicUsize::new(0));
+        let source_count = Arc::clone(&consumed);
+        let mut sent_line = false;
+        let mut source_yielded = false;
+        let source = futures_util::stream::poll_fn(move |cx| {
+            if source_count.load(Ordering::SeqCst) < 4096 {
+                source_count.fetch_add(1, Ordering::SeqCst);
+                return Poll::Ready(Some(Ok(Bytes::new())));
+            }
+            if !source_yielded {
+                source_yielded = true;
+                cx.waker().wake_by_ref();
+                return Poll::Pending;
+            }
+            if !sent_line {
+                sent_line = true;
+                return Poll::Ready(Some(Ok(Bytes::from_static(b"data: ok\n"))));
+            }
+            Poll::Ready(None)
+        });
+        let input: HttpByteStream = Box::pin(source);
+        let mut output = decode_lines(input, 64);
+        let counter = Arc::new(CountWake(AtomicUsize::new(0)));
+        let waker = Waker::from(Arc::clone(&counter));
+        let mut cx = Context::from_waker(&waker);
+
+        assert!(output.as_mut().poll_next(&mut cx).is_pending());
+        let observed = consumed.load(Ordering::SeqCst);
+        assert!((1..=1024).contains(&observed), "consumed {observed} empty chunks");
+        assert!(counter.0.load(Ordering::SeqCst) > 0);
+        assert_eq!(output.next().await.unwrap().unwrap(), "data: ok");
+        assert!(output.next().await.is_none());
+        assert_eq!(consumed.load(Ordering::SeqCst), 4096);
+    }
+
+    #[tokio::test]
+    async fn test_decode_lines_ready_empty_chunks_then_error_terminates_once() {
+        let chunks = std::iter::repeat_with(|| Ok(Bytes::new()))
+            .take(4096)
+            .chain(std::iter::once(Err(crate::HttpError::sse_protocol("upstream failed"))))
+            .collect::<Vec<_>>();
+        let input: HttpByteStream = Box::pin(futures_util::stream::iter(chunks));
+
+        let output = decode_lines(input, 64).collect::<Vec<_>>().await;
+
+        assert_eq!(output.len(), 1);
+        assert_eq!(output[0].as_ref().unwrap_err().kind, crate::HttpErrorKind::SseProtocol);
     }
 
     #[tokio::test]
