@@ -190,6 +190,11 @@ class ExtractorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "exactly one start and end marker"):
             extract(source, "token-refresh")
 
+    def test_token_refresh_mismatched_marker(self):
+        source = "<!-- guide-check:token-refresh:start -->\n<!-- guide-check:other:end -->\n```rust\nx\n```\n<!-- guide-check:token-refresh:end -->"
+        with self.assertRaisesRegex(ValueError, "nested or mismatched marker"):
+            extract(source, "token-refresh")
+
     def test_token_refresh_empty_code(self):
         source = "<!-- guide-check:token-refresh:start -->\n```rust\n\n```\n<!-- guide-check:token-refresh:end -->"
         with self.assertRaisesRegex(ValueError, "non-empty complete Rust"):
