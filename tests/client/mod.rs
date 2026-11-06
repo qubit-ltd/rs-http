@@ -8,6 +8,7 @@
 mod http_client_async_injector_tests;
 mod http_client_behavior_tests;
 mod http_client_cancel_tests;
+mod http_client_downstream_contract_tests;
 mod http_client_error_paths_tests;
 mod http_client_factory_ipv4_only_tests;
 mod http_client_factory_proxy_tests;

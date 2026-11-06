@@ -271,6 +271,9 @@ async fn test_same_origin_redirect_rejects_cross_origin_before_sending_credentia
     options
         .add_header("authorization", "Bearer sensitive-value")
         .expect("authorization header should be valid");
+    options
+        .add_header("x-api-key", "api-key-value")
+        .expect("API key header should be valid");
     let client = HttpClientBuilder::new()
         .options(options)
         .build()
@@ -291,11 +294,150 @@ async fn test_same_origin_redirect_rejects_cross_origin_before_sending_credentia
         Some("Bearer sensitive-value")
     );
     assert_eq!(
+        captured.headers.get("x-api-key").map(String::as_str),
+        Some("api-key-value")
+    );
+    assert_eq!(
         target
             .accept()
             .expect_err("cross-origin target must not receive a connection")
             .kind(),
         ErrorKind::WouldBlock
+    );
+}
+
+#[tokio_test]
+async fn test_any_origin_redirect_forwards_custom_header_but_strips_authorization() {
+    let target = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 200,
+        headers: vec![],
+        body: b"ok".to_vec(),
+    })
+    .await;
+    let target_url = format!("{}target", target.base_url());
+    let source = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 302,
+        headers: vec![("Location".to_string(), target_url)],
+        body: vec![],
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(source.base_url());
+    options.origin_policy = HttpOriginPolicy::AnyOrigin;
+    options.add_header("x-api-key", "api-key-value").unwrap();
+    options
+        .add_header("authorization", "Bearer authorization-value")
+        .unwrap();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
+
+    let response = timeout(
+        Duration::from_secs(3),
+        client.execute(client.request(Method::GET, "/redirect").build()),
+    )
+    .await
+    .expect("AnyOrigin redirect request timed out")
+    .expect("AnyOrigin redirect should succeed");
+    assert_eq!(response.status(), StatusCode::OK);
+    let source_request = timeout(Duration::from_secs(3), source.finish())
+        .await
+        .expect("redirect source server did not finish");
+    let target_request = timeout(Duration::from_secs(3), target.finish())
+        .await
+        .expect("redirect target server did not finish");
+    assert_eq!(
+        source_request.headers.get("x-api-key").map(String::as_str),
+        Some("api-key-value")
+    );
+    assert_eq!(target_request.target, "/target");
+    assert_eq!(
+        target_request.headers.get("x-api-key").map(String::as_str),
+        Some("api-key-value")
+    );
+    assert!(!target_request.headers.contains_key("authorization"));
+}
+
+#[tokio_test]
+async fn test_any_origin_redirect_forwards_sensitive_custom_header() {
+    let target = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 200,
+        headers: vec![],
+        body: b"ok".to_vec(),
+    })
+    .await;
+    let target_url = format!("{}target", target.base_url());
+    let source = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 302,
+        headers: vec![("Location".to_string(), target_url)],
+        body: vec![],
+    })
+    .await;
+    let mut api_key = HeaderValue::from_static("sensitive-api-key-value");
+    api_key.set_sensitive(true);
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(source.base_url());
+    options.origin_policy = HttpOriginPolicy::AnyOrigin;
+    options
+        .default_headers
+        .insert(HeaderName::from_static("x-api-key"), api_key);
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
+
+    timeout(
+        Duration::from_secs(3),
+        client.execute(client.request(Method::GET, "/redirect").build()),
+    )
+    .await
+    .expect("sensitive-header redirect request timed out")
+    .expect("AnyOrigin redirect with a sensitive header should succeed");
+    let _ = timeout(Duration::from_secs(3), source.finish())
+        .await
+        .expect("redirect source server did not finish");
+    let target_request = timeout(Duration::from_secs(3), target.finish())
+        .await
+        .expect("redirect target server did not finish");
+    assert_eq!(
+        target_request.headers.get("x-api-key").map(String::as_str),
+        Some("sensitive-api-key-value")
+    );
+}
+
+#[tokio_test]
+async fn test_same_origin_redirect_preserves_custom_header() {
+    let server = spawn_multi_shot_server(vec![
+        ResponsePlan::Immediate {
+            status: 302,
+            headers: vec![
+                ("Location".to_string(), "/final".to_string()),
+                ("Connection".to_string(), "close".to_string()),
+            ],
+            body: vec![],
+        },
+        ResponsePlan::Immediate {
+            status: 200,
+            headers: vec![],
+            body: b"ok".to_vec(),
+        },
+    ])
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.add_header("x-api-key", "same-origin-api-key").unwrap();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
+
+    timeout(
+        Duration::from_secs(3),
+        client.execute(client.request(Method::GET, "/start").build()),
+    )
+    .await
+    .expect("same-origin custom-header redirect timed out")
+    .expect("same-origin redirect should succeed");
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("same-origin redirect server did not finish");
+    assert_eq!(captured.len(), 2);
+    assert!(
+        captured
+            .iter()
+            .all(|request| { request.headers.get("x-api-key").map(String::as_str) == Some("same-origin-api-key") })
     );
 }
 
