@@ -266,12 +266,15 @@ def command_record(argv: list[str], exit_code: int, log_path: str, output: str) 
 
 def run_cargo(argv: list[str], cwd: pathlib.Path, env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
     return subprocess.run(argv, cwd=cwd, env=env, text=True, stdout=subprocess.PIPE,
-                          stderr=subprocess.STDOUT)
+                          stderr=subprocess.PIPE)
 
 
 def command_output(process: subprocess.CompletedProcess) -> str:
-    """Return captured output for merged or separate stdout/stderr streams."""
-    return (process.stdout or "") + (process.stderr or "")
+    """Return both captured streams in a readable log representation."""
+    stdout, stderr = process.stdout or "", process.stderr or ""
+    if stdout and stderr:
+        return stdout + ("" if stdout.endswith("\n") else "\n") + "[stderr]\n" + stderr
+    return stdout or stderr
 
 
 def run(args: argparse.Namespace) -> int:
@@ -333,8 +336,8 @@ def run(args: argparse.Namespace) -> int:
                 env = dict(os.environ, CARGO_TARGET_DIR=str(target))
                 proc = run_cargo(argv, cwd=manifest.parent, env=env)
                 log = output / f"{repo_id}-test-{index}.log"
-                log.write_text(proc.stdout, encoding="utf-8")
-                result["commands"].append(command_record(argv, proc.returncode, log.name, proc.stdout))
+                log.write_text(command_output(proc), encoding="utf-8")
+                result["commands"].append(command_record(argv, proc.returncode, log.name, proc.stdout or ""))
                 if proc.returncode:
                     raise CompatibilityError(f"cargo test failed for {repo_id}/{filter_name}; see {log}")
                 if result["commands"][-1]["tests_run"] is None or result["commands"][-1]["tests_run"] == 0:

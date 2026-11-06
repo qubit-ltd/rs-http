@@ -204,17 +204,25 @@ class RunnerIntegrationTests(unittest.TestCase):
                         {"id": "sdk", "name": "sdk", "version": "0.1.0", "source": None, "manifest_path": str(sdk_manifest)},
                         {"id": "http", "name": "qubit-http", "version": "0.16.0", "source": None, "manifest_path": str(http_manifest)},
                     ], "resolve": {"nodes": [{"id": "sdk", "deps": [{"pkg": "http"}]}, {"id": "http", "deps": []}]}}
-                    return subprocess.CompletedProcess(argv, 0, stdout=json.dumps(metadata), stderr=None)
+                    return subprocess.CompletedProcess(argv, 0, stdout=json.dumps(metadata), stderr="Updating crates.io index\n")
                 if mutate_source_manifest:
                     source_manifest = source_root / "rust-llmsdk/rs-llmsdk-core/Cargo.toml"
                     source_manifest.write_text(source_manifest.read_text(encoding="utf-8") + "# unexpected source mutation\n", encoding="utf-8")
-                return subprocess.CompletedProcess(argv, 0, stdout=test_output, stderr=None)
+                return subprocess.CompletedProcess(argv, 0, stdout=test_output, stderr="running 12 tests\ncompiler warning\n")
 
             with mock.patch.object(runner, "ROOT", http_repo), mock.patch.object(runner.subprocess, "run", side_effect=fake_cargo):
                 exit_code = runner.run(args)
             self.assertEqual(exit_code, 1)
             self.assertTrue((output / "result.json").is_file())
-            return json.loads((output / "result.json").read_text(encoding="utf-8"))
+            result = json.loads((output / "result.json").read_text(encoding="utf-8"))
+            for command in result["commands"]:
+                logged = (output / command["log_path"]).read_text(encoding="utf-8")
+                self.assertIn("[stderr]", logged)
+                if command["argv"][1] == "metadata":
+                    self.assertIn("Updating crates.io index", logged)
+                else:
+                    self.assertIn("compiler warning", logged)
+            return result
 
     def test_successful_cargo_with_zero_tests_is_rejected(self):
         result = self.run_with_cargo_output("running 0 tests\n")
@@ -239,8 +247,9 @@ class RunnerIntegrationTests(unittest.TestCase):
 
 class ResultTests(unittest.TestCase):
     def test_successful_metadata_result_with_merged_stream_logs_stdout(self):
-        process = subprocess.CompletedProcess(["cargo", "metadata"], 0, stdout='{"packages": []}', stderr=None)
-        self.assertEqual(runner.command_output(process), '{"packages": []}')
+        process = subprocess.CompletedProcess(["cargo", "metadata"], 0, stdout='{"packages": []}', stderr="Updating crates.io index\n")
+        self.assertEqual(json.loads(process.stdout), {"packages": []})
+        self.assertIn("Updating crates.io index", runner.command_output(process))
 
     def test_rejects_zero_tests(self):
         with self.assertRaisesRegex(runner.CompatibilityError, "zero tests"):
