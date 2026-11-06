@@ -33,6 +33,9 @@ use serde::Serialize;
 use serde::ser::Error as _;
 use serde::ser::Serializer;
 
+use crate::common::ResponsePlan;
+use crate::common::spawn_one_shot_server;
+
 struct FailingSerialize;
 
 impl Serialize for FailingSerialize {
@@ -387,6 +390,134 @@ fn test_request_builder_json_body_sets_content_type_and_payload() {
         }
         _ => panic!("expected JSON body"),
     }
+}
+
+#[test]
+fn test_body_replacement_refreshes_auto_content_type() {
+    let request = new_builder(Method::POST, "/items")
+        .text_body("old")
+        .json_body(&serde_json::json!({"ready": true}))
+        .unwrap()
+        .build();
+    assert_eq!(request.headers().get(CONTENT_TYPE).unwrap(), "application/json");
+    assert!(matches!(request.body(), HttpRequestBody::Json(_)));
+}
+
+#[test]
+fn test_body_replacement_tracks_typed_and_opaque_helpers() {
+    let typed = new_builder(Method::POST, "/items")
+        .text_body("text")
+        .form_body([("a", "1")])
+        .build();
+    assert_eq!(
+        typed.headers().get(CONTENT_TYPE).unwrap(),
+        "application/x-www-form-urlencoded"
+    );
+
+    let opaque = new_builder(Method::POST, "/items")
+        .json_body(&serde_json::json!({"a": 1}))
+        .unwrap()
+        .stream_body([Bytes::from_static(b"chunk")])
+        .build();
+    assert!(opaque.headers().get(CONTENT_TYPE).is_none());
+
+    let deferred = new_builder(Method::POST, "/items")
+        .form_body([("a", "1")])
+        .streaming_body(|| {
+            Box::pin(async { Box::pin(futures_util::stream::empty()) as qubit_http::HttpRequestBodyByteStream })
+        })
+        .build();
+    assert!(deferred.headers().get(CONTENT_TYPE).is_none());
+}
+
+#[test]
+fn test_explicit_same_content_type_is_preserved_before_or_after_body_helper() {
+    let before = new_builder(Method::POST, "/items")
+        .header(CONTENT_TYPE.as_str(), "text/plain; charset=utf-8")
+        .unwrap()
+        .json_body(&serde_json::json!({"a": 1}))
+        .unwrap()
+        .build();
+    let after = new_builder(Method::POST, "/items")
+        .text_body("text")
+        .header(CONTENT_TYPE.as_str(), "text/plain; charset=utf-8")
+        .unwrap()
+        .json_body(&serde_json::json!({"a": 1}))
+        .unwrap()
+        .build();
+    for request in [before, after] {
+        assert_eq!(
+            request.headers().get(CONTENT_TYPE).unwrap(),
+            "text/plain; charset=utf-8"
+        );
+    }
+}
+
+#[test]
+fn test_headers_map_marks_content_type_explicit_and_empty_map_does_not() {
+    let mut map = HeaderMap::new();
+    map.insert(CONTENT_TYPE, HeaderValue::from_static("application/map"));
+    let explicit = new_builder(Method::POST, "/items")
+        .headers(map)
+        .text_body("text")
+        .build();
+    assert_eq!(explicit.headers().get(CONTENT_TYPE).unwrap(), "application/map");
+
+    let automatic = new_builder(Method::POST, "/items")
+        .text_body("text")
+        .headers(HeaderMap::new())
+        .json_body(&serde_json::json!({"a": 1}))
+        .unwrap()
+        .build();
+    assert_eq!(automatic.headers().get(CONTENT_TYPE).unwrap(), "application/json");
+}
+
+#[test]
+fn test_multipart_and_builder_clone_refresh_auto_content_type() {
+    let multipart = new_builder(Method::POST, "/items")
+        .multipart_body(Bytes::new(), "first")
+        .unwrap()
+        .multipart_body(Bytes::new(), "second")
+        .unwrap()
+        .build();
+    assert_eq!(
+        multipart.headers().get(CONTENT_TYPE).unwrap(),
+        "multipart/form-data; boundary=second"
+    );
+
+    let builder = new_builder(Method::POST, "/items").text_body("text");
+    let json = builder.clone().json_body(&serde_json::json!({"a": 1})).unwrap().build();
+    let bytes = builder.bytes_body(Bytes::new()).build();
+    assert_eq!(json.headers().get(CONTENT_TYPE).unwrap(), "application/json");
+    assert!(bytes.headers().get(CONTENT_TYPE).is_none());
+}
+
+#[tokio::test]
+async fn test_removed_automatic_content_type_allows_client_default_to_apply() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 200,
+        headers: vec![],
+        body: b"ok".to_vec(),
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options
+        .default_headers
+        .insert(CONTENT_TYPE, HeaderValue::from_static("application/client-default"));
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
+    let request = client
+        .request(Method::POST, "/items")
+        .text_body("old")
+        .bytes_body(Bytes::from_static(b"opaque"))
+        .build();
+
+    client.execute(request).await.unwrap();
+    let captured = server.finish().await;
+    assert_eq!(
+        captured.headers.get("content-type"),
+        Some(&"application/client-default".to_string())
+    );
 }
 
 #[test]
