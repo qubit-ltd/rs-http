@@ -48,11 +48,18 @@ def sha256_file(path: pathlib.Path) -> str:
 
 def tree_digest(root: pathlib.Path) -> str:
     digest = hashlib.sha256()
-    for path in sorted(root.rglob("*")):
-        if any(part in EXCLUDED for part in path.relative_to(root).parts):
+    probe = subprocess.run(["git", "-C", str(root), "rev-parse", "--show-toplevel"],
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if probe.returncode == 0:
+        paths = snapshot_paths(root)
+    else:
+        paths = [path.relative_to(root) for path in root.rglob("*")]
+    for relative in sorted(paths):
+        if any(part in EXCLUDED for part in relative.parts):
             continue
+        path = root.joinpath(*relative.parts)
         if path.is_file() and not path.is_symlink():
-            digest.update(path.relative_to(root).as_posix().encode())
+            digest.update(relative.as_posix().encode())
             digest.update(bytes.fromhex(sha256_file(path)))
     return digest.hexdigest()
 

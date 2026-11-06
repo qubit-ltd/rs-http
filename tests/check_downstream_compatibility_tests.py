@@ -51,6 +51,21 @@ class RewriteTests(unittest.TestCase):
 
 
 class InputSafetyTests(unittest.TestCase):
+    def test_input_digest_matches_snapshot_file_selection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = pathlib.Path(directory) / "repo"
+            repo.mkdir()
+            (repo / ".gitignore").write_text("ignored.txt\n", encoding="utf-8")
+            (repo / "Cargo.toml").write_text("[package]\nname='sample'\n", encoding="utf-8")
+            subprocess.run(["git", "init", "-q", str(repo)], check=True)
+            subprocess.run(["git", "-C", str(repo), "add", ".gitignore", "Cargo.toml"], check=True)
+            subprocess.run(["git", "-C", str(repo), "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "baseline"], check=True)
+            initial = runner.tree_digest(repo)
+            (repo / "ignored.txt").write_text("ignored input\n", encoding="utf-8")
+            self.assertEqual(runner.tree_digest(repo), initial)
+            (repo / "candidate.rs").write_text("fn candidate() {}\n", encoding="utf-8")
+            self.assertNotEqual(runner.tree_digest(repo), initial)
+
     def test_rejects_baseline_drift(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
