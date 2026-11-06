@@ -209,6 +209,11 @@ def run_cargo(argv: list[str], cwd: pathlib.Path, env: dict[str, str] | None = N
                           stderr=subprocess.STDOUT)
 
 
+def command_output(process: subprocess.CompletedProcess) -> str:
+    """Return captured output for merged or separate stdout/stderr streams."""
+    return (process.stdout or "") + (process.stderr or "")
+
+
 def run(args: argparse.Namespace) -> int:
     output = args.output_dir.resolve()
     result = {"schema_version": 1, "started_at": datetime.now(timezone.utc).isoformat(),
@@ -244,7 +249,7 @@ def run(args: argparse.Namespace) -> int:
             metadata_argv = ["cargo", "metadata", "--format-version", "1", "--manifest-path", str(manifest)]
             meta = run_cargo(metadata_argv, cwd=manifest.parent)
             log = output / f"{repo_id}-metadata.log"
-            log.write_text(meta.stdout + meta.stderr, encoding="utf-8")
+            log.write_text(command_output(meta), encoding="utf-8")
             result["commands"].append({"argv": metadata_argv, "exit_code": meta.returncode,
                                        "tests_run": None, "log_path": log.name})
             if meta.returncode:

@@ -100,6 +100,10 @@ class InputSafetyTests(unittest.TestCase):
 
 
 class ResultTests(unittest.TestCase):
+    def test_successful_metadata_result_with_merged_stream_logs_stdout(self):
+        process = subprocess.CompletedProcess(["cargo", "metadata"], 0, stdout='{"packages": []}', stderr=None)
+        self.assertEqual(runner.command_output(process), '{"packages": []}')
+
     def test_rejects_zero_tests(self):
         with self.assertRaisesRegex(runner.CompatibilityError, "zero tests"):
             runner.test_count("running 0 tests")
