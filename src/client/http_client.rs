@@ -65,9 +65,10 @@ use crate::sse::SseReconnectRunner;
 /// High-level HTTP client: default headers, injectors, interceptors, logging,
 /// timeouts, and optional per-request retry.
 ///
-/// [`Clone`] is shallow and cheap enough for typical use (including passing
-/// into retry closures); cloning does not duplicate the underlying connection
-/// pool beyond what [`reqwest::Client`] already shares.
+/// Cloning shares the underlying [`reqwest::Client`] connection pool. Client
+/// options and injector/interceptor registration containers are cloned;
+/// callback handles retain their existing [`Clone`] semantics. Clone cost
+/// depends on owned configuration and registration data.
 ///
 /// # Examples
 ///
