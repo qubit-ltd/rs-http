@@ -958,6 +958,7 @@ dependencies = [
  "serde_json",
  "strum",
  "tokio",
+ "tokio-rustls",
  "tracing",
  "tracing-subscriber",
  "url",

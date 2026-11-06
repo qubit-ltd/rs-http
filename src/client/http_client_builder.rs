@@ -124,6 +124,23 @@ impl HttpClientBuilder {
     /// Returns a configuration error for invalid options or a client error
     /// when reqwest cannot build the backend.
     fn build_backend(options: HttpClientOptions) -> HttpResult<HttpClient> {
+        let backend = Self::configure_backend(&options)?.build().map_err(HttpError::from)?;
+
+        Ok(HttpClient::new(backend, options))
+    }
+
+    /// Applies the validated production options to a reqwest client builder.
+    ///
+    /// # Parameters
+    /// - `options`: Complete client configuration to validate and apply.
+    ///
+    /// # Returns
+    /// A reqwest client builder configured with `options`.
+    ///
+    /// # Errors
+    /// Returns a configuration error when options are invalid or the proxy
+    /// configuration cannot be represented by reqwest.
+    fn configure_backend(options: &HttpClientOptions) -> HttpResult<reqwest::ClientBuilder> {
         options.validate().map_err(map_validation_error)?;
 
         let mut builder = Client::builder();
@@ -188,9 +205,7 @@ impl HttpClientBuilder {
             builder = builder.no_proxy();
         }
 
-        let backend = builder.build().map_err(HttpError::from)?;
-
-        Ok(HttpClient::new(backend, options))
+        Ok(builder)
     }
 
     /// Loads [`HttpClientOptions`] from `config` and builds a client.
@@ -237,6 +252,9 @@ impl HttpClientBuilder {
         self
     }
 }
+
+#[cfg(test)]
+mod tests;
 
 /// Maps options validation errors to runtime [`HttpError`] values.
 ///
