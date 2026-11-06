@@ -103,6 +103,8 @@ Default behavior:
 | Logging | Enabled, but logs are emitted only when tracing TRACE is active |
 | Log body preview | 16 KiB |
 | Non-success response preview | 16 KiB |
+| Whole-response aggregation (`response_body_size_limit`) | 8 MiB |
+| Raw non-success body capture (`error_response_body_limit`) | 64 KiB |
 | Automatic retry | Disabled |
 | Retry max attempts | 3, including the first attempt |
 | Retry method policy | Idempotent methods only |
@@ -491,6 +493,16 @@ Body APIs:
 | `sse_messages()` | Consumes `self` and decodes the body stream into an SSE message stream using the configured line/frame limits (see “SSE Decoding” below) |
 | `sse_chunks::<T>()` | Consumes `self` and decodes SSE JSON `data:` chunks into a `SseChunk<T>` stream (JSON mode, done-marker policy, etc.—see “SSE JSON Chunks” below) |
 
+`bytes()`, `text()`, and `json()` aggregate the whole response and share the
+`response_body_size_limit` default of 8 MiB. Exceeding it returns
+`HttpErrorKind::ResponseBodyTooLarge`; a JSON helper is also subject to the
+independent JSON value and payload limits. For a trusted endpoint whose
+expected response size is known, set a suitable aggregate budget when building
+the client. For a large or unpredictable download, choose `stream()` before
+reading the body and process chunks incrementally. Streaming avoids this
+whole-body aggregation limit, but the application should still bound its own
+accumulated bytes, storage, and processing work.
+
 ### Examples
 
 **Whole-body reads (`bytes` / `text` / `json`)**: each loads the entire body into the cache. Cached bytes can be reused by whole-body readers and `stream()`; a successful cache read does not prevent creating a stream. This example uses `response` from the existing `client.execute(...).await?` in the same async function:
@@ -531,6 +543,23 @@ async fn read_whole_body_examples(
 }
 ```
 
+To raise the aggregate budget for known large responses, configure the client
+before sending the request. This example uses a 16 MiB application budget; it
+does not change the library default. JSON value and payload limits remain
+independent and may still reject a JSON body:
+
+```rust
+use qubit_http::{HttpClient, HttpClientOptions};
+
+fn client_for_known_large_responses() -> qubit_http::HttpResult<HttpClient> {
+    let options = HttpClientOptions {
+        response_body_size_limit: 16 * 1024 * 1024,
+        ..HttpClientOptions::default()
+    };
+    HttpClient::builder().options(options).build()
+}
+```
+
 **Streaming bytes (`stream`)**: for an unbuffered body, `stream()` transfers the backend body to the returned stream; it cannot be recovered for later whole-body reads. `?` applies when obtaining the stream, for example if a request cancellation token has already fired before body reading starts. A cancellation or body-read failure is retained and cannot be bypassed by another reader. Once a whole-body read succeeds, later cancellation does not block reading the cache or decoding cached SSE; cancellation still stops reads that need backend I/O. Callers that must stop business processing immediately when a token is cancelled should check that token at the application processing boundary. This separate request example shows unbuffered network streaming, rather than cached in-memory bytes.
 
 For `bytes`, `text`, and `json`, an unbuffered backend body is also transferred when the aggregate-read future is first polled. If an outer `timeout` or a losing `select!` branch then drops that future before buffering succeeds, the backend and any partial bytes are lost; later readers return `ResponseBodyAlreadyConsumed`. Dropping an unpolled future does not take the body, and a successfully cached body remains reusable. This external drop differs from cancellation or read-timeout errors returned by the built-in reader, which retain their existing failure category. Configure the request read timeout or cancellation token before sending when a classified read failure is needed; treat an externally cancelled unbuffered response as unreadable afterward.
@@ -552,6 +581,14 @@ async fn read_stream_example(client: &qubit_http::HttpClient) -> qubit_http::Htt
     Ok(())
 }
 ```
+
+Process each chunk and release or store it according to application policy;
+collecting every chunk into one unbounded buffer would recreate the memory
+risk of whole-body aggregation. If an aggregate read returns
+`ResponseBodyTooLarge`, that response body has already failed its read and
+cannot be recovered by switching the same response to `stream()`. If the
+operation needs another request, the application must decide whether replay is
+safe; the client does not automatically retry body-read failures.
 
 **SSE (`sse_messages` / `sse_chunks`)**: both **consume** `self` (move the response). To tweak line/frame limits, JSON mode, or done-marker policy before decoding, chain the `sse_*` configuration methods with `sse_messages()` or `sse_chunks::<T>()` on the same expression (full details under “SSE Decoding” and “SSE JSON Chunks” below).
 
@@ -632,7 +669,7 @@ Runtime HTTP errors use `HttpError`; the result alias is `HttpResult<T> = Result
 
 Error categories:
 
-For non-2xx errors, the redacted preview and retained raw body have independent limits. The preview can be truncated while the raw body remains complete. `HttpStatusResponse::is_truncated()` retains its compatibility meaning: it is true if raw bytes were omitted or capture ended before completeness was established, and it does not identify the cause. Use `capture_end()` to distinguish `Complete`, `SizeLimit`, `ReadTimeout`, `ReadFailure`, and `BodyUnavailable`; the non-exhaustive enum requires a fallback match arm. `capture_error()` returns the backend error and source chain only for `ReadFailure`; redact it before logging. This is independent of the top-level `HttpError::source()` retry chain, and the snapshot retains it through retry projection. Parse provider fields only when `capture_end()` is `Complete`; preview truncation alone does not make the raw body incomplete.
+For non-2xx errors, the redacted preview and retained raw body have independent limits. The preview can be truncated while the raw body remains complete. `HttpStatusResponse::is_truncated()` retains its compatibility meaning: it is true if raw bytes were omitted or capture ended before completeness was established, and it does not identify the cause. Use `capture_end()` to distinguish `Complete`, `SizeLimit`, `ReadTimeout`, `ReadFailure`, and `BodyUnavailable`; the non-exhaustive enum requires a fallback match arm. `capture_error()` returns the backend error and source chain only for `ReadFailure`; redact it before logging. This is independent of the top-level `HttpError::source()` retry chain, and the snapshot retains it through retry projection. Parse provider fields only when `capture_end()` is `Complete`; preview truncation alone does not make the raw body incomplete. The default raw capture is 64 KiB. Raw bytes may contain sensitive data: do not log them directly, and check capture completeness before parsing.
 
 | Group | Error kinds | Typical meaning |
 | --- | --- | --- |
@@ -1080,9 +1117,9 @@ The table below lists every configuration key supported by `HttpClientOptions::f
 | --- | --- |
 | `base_url` | Base URL used to resolve relative request paths |
 | `ipv4_only` | Keeps only IPv4 DNS results and rejects IPv6 literal URLs |
-| `error_response_preview_limit` | Body preview byte limit stored on non-2xx errors |
-| `response_body_size_limit` | Maximum bytes accumulated by whole-response body and JSON helpers |
-| `error_response_body_limit` | Maximum raw bytes retained in non-2xx `HttpStatusResponse` values; separate from the redacted `error_response_preview_limit` |
+| `error_response_preview_limit` | Body preview byte limit stored on non-2xx errors; defaults to 16 KiB |
+| `response_body_size_limit` | Maximum bytes accumulated by whole-response body and JSON helpers; defaults to 8 MiB |
+| `error_response_body_limit` | Maximum raw bytes retained in non-2xx `HttpStatusResponse` values; defaults to 64 KiB and is separate from the redacted `error_response_preview_limit` (16 KiB by default) |
 | `user_agent` | Default User-Agent passed to the reqwest builder |
 | `max_redirects` | Redirect limit |
 | `pool_idle_timeout` | Connection pool idle timeout |

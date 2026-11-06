@@ -99,6 +99,8 @@ let client = qubit_http::HttpClient::builder().build()?;
 | 日志 | 开启，但只有 tracing TRACE 级别启用时才输出 |
 | 日志体预览 | 16 KiB |
 | 非成功响应体预览 | 16 KiB |
+| 整体响应体聚合（`response_body_size_limit`） | 8 MiB |
+| 非成功响应原始 body 采集（`error_response_body_limit`） | 64 KiB |
 | 自动重试 | 禁用 |
 | 重试最大尝试次数 | 3，含第一次请求 |
 | 重试方法策略 | 只允许幂等方法 |
@@ -480,6 +482,13 @@ body 可用方式：
 | `sse_messages()` | 消费 `self`，按当前 SSE 行/帧上限等选项将 body 解码为 SSE 消息流（详见下文「SSE 解码」） |
 | `sse_chunks::<T>()` | 消费 `self`，将 SSE `data:` JSON chunk 解码为 `SseChunk<T>` 流（JSON 模式、完成标记等见下文「SSE JSON chunk」） |
 
+`bytes()`、`text()` 和 `json()` 都会聚合完整响应体，共用默认 8 MiB 的
+`response_body_size_limit`。超过上限会返回
+`HttpErrorKind::ResponseBodyTooLarge`。JSON helper 还受独立的 JSON value
+和 payload 限额约束。若可信服务的响应大小已知，可在构建客户端时设置合适的
+聚合预算；若下载较大或大小难以预计，应在开始读取前选择 `stream()`，逐块处理。
+流式读取不受整包聚合上限约束，但应用仍应限制自行累计的字节数、存储空间和处理量。
+
 ### 使用示例
 
 **整包读取（`bytes` / `text` / `json`）**：三者都会把完整 body 读入并缓存；缓存可供整包读取和 `stream()` 复用，成功缓存后仍可创建流。下面的 `response` 来自本节已有的 `client.execute(...).await?`，并在同一个异步函数内连续使用：
@@ -537,6 +546,26 @@ async fn read_stream_example(client: &qubit_http::HttpClient) -> qubit_http::Htt
         let _len = chunk.len();
     }
     Ok(())
+}
+```
+
+逐块处理后按应用策略释放或存储数据；若把所有块重新放进一个不设上限的缓冲区，
+仍会带来整包聚合的内存风险。整包读取返回 `ResponseBodyTooLarge` 后，该响应的读取
+已经失败，不能再对同一个 `HttpResponse` 切换到 `stream()` 恢复内容。若业务需要重新
+发请求，应由应用判断操作能否安全重放；响应体读取失败不会触发客户端自动重试。
+
+在发送请求前，也可以为预期较大的响应提高聚合预算。下面示例设置 16 MiB，属于应用
+自己的预算，并非库的默认值；JSON value 和 payload 限额仍独立生效：
+
+```rust
+use qubit_http::{HttpClient, HttpClientOptions};
+
+fn client_for_known_large_responses() -> qubit_http::HttpResult<HttpClient> {
+    let options = HttpClientOptions {
+        response_body_size_limit: 16 * 1024 * 1024,
+        ..HttpClientOptions::default()
+    };
+    HttpClient::builder().options(options).build()
 }
 ```
 
@@ -621,7 +650,7 @@ match client.execute(request).await {
 
 错误分类：
 
-非 2xx 错误的脱敏预览和保留原始 body 使用独立限额。预览可能已截断而 raw body 仍完整。`HttpStatusResponse::is_truncated()` 保持兼容语义：raw 字节有遗漏或采集未能确认完整时为 true，但它不说明具体原因。使用 `capture_end()` 区分 `Complete`、`SizeLimit`、`ReadTimeout`、`ReadFailure` 和 `BodyUnavailable`；该枚举为 non-exhaustive，匹配时需提供兜底分支。仅 `ReadFailure` 的 `capture_error()` 会返回 backend 错误及其 source 链；记录前须脱敏。该查询独立于顶层 `HttpError::source()` 重试错误链，并会随状态快照经过重试投影保留。只有 `capture_end()` 为 `Complete` 时才解析 provider 字段；仅 preview 截断不表示 raw body 不完整。
+非 2xx 错误的脱敏预览和保留原始 body 使用独立限额。预览可能已截断而 raw body 仍完整。`HttpStatusResponse::is_truncated()` 保持兼容语义：raw 字节有遗漏或采集未能确认完整时为 true，但它不说明具体原因。使用 `capture_end()` 区分 `Complete`、`SizeLimit`、`ReadTimeout`、`ReadFailure` 和 `BodyUnavailable`；该枚举为 non-exhaustive，匹配时需提供兜底分支。仅 `ReadFailure` 的 `capture_error()` 会返回 backend 错误及其 source 链；记录前须脱敏。该查询独立于顶层 `HttpError::source()` 重试错误链，并会随状态快照经过重试投影保留。只有 `capture_end()` 为 `Complete` 时才解析 provider 字段；仅 preview 截断不表示 raw body 不完整。默认最多保留 64 KiB 原始字节；raw body 可能含敏感信息，不应直接写入日志，解析前先确认采集完整。
 
 | 分组 | 错误类型 | 典型含义 |
 | --- | --- | --- |
@@ -1043,9 +1072,9 @@ SSE 重连使用独立的 `SseReconnectOptions.retry` 策略。普通 HTTP 重�
 | --- | --- |
 | `base_url` | 相对请求路径的基础 URL |
 | `ipv4_only` | 启用后 DNS 只保留 IPv4 地址，并拒绝 IPv6 literal URL |
-| `error_response_preview_limit` | 非 2xx 错误中保留的响应体预览字节数 |
-| `response_body_size_limit` | 整体响应体与 JSON helper 允许累计的最大字节数 |
-| `error_response_body_limit` | 非 2xx `HttpStatusResponse` 保留的原始 body 最大字节数；与脱敏后的 `error_response_preview_limit` 独立 |
+| `error_response_preview_limit` | 非 2xx 错误中保留的响应体预览字节数；默认 16 KiB |
+| `response_body_size_limit` | 整体响应体与 JSON helper 允许累计的最大字节数；默认 8 MiB |
+| `error_response_body_limit` | 非 2xx `HttpStatusResponse` 保留的原始 body 最大字节数；默认 64 KiB，与默认 16 KiB 的脱敏 `error_response_preview_limit` 独立 |
 | `user_agent` | 传给 `reqwest` builder 的默认 User-Agent |
 | `max_redirects` | 最大重定向次数 |
 | `pool_idle_timeout` | 连接池空闲超时 |
