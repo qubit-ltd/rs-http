@@ -5,9 +5,10 @@ from __future__ import annotations
 import importlib.util
 import json
 import pathlib
-import tempfile
-import unittest
 import subprocess
+import tempfile
+import types
+import unittest
 from unittest import mock
 
 SCRIPT = pathlib.Path(__file__).with_name("check_downstream_compatibility.py")
@@ -97,6 +98,92 @@ class InputSafetyTests(unittest.TestCase):
             output.mkdir()
             with self.assertRaisesRegex(runner.CompatibilityError, "already exists"):
                 runner.prepare_output(output)
+
+    def test_rejects_output_equal_to_inside_or_ancestor_of_sources(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = pathlib.Path(directory) / "source"
+            child = source / "nested-output"
+            ancestor = pathlib.Path(directory)
+            source.mkdir()
+            for output in (source, child, ancestor):
+                with self.subTest(output=output), self.assertRaisesRegex(runner.CompatibilityError, "overlaps"):
+                    runner.ensure_output_disjoint(output, [source])
+
+    def test_rejects_path_package_outside_snapshot(self):
+        metadata = {"packages": [
+            {"name": "sdk", "source": None, "manifest_path": "/snapshot/sdk/Cargo.toml"},
+            {"name": "local-dependency", "source": None, "manifest_path": "/original/repo/Cargo.toml"},
+            {"name": "registry-dependency", "source": "registry+https://example.invalid", "manifest_path": "/cargo/registry/pkg/Cargo.toml"},
+        ]}
+        with self.assertRaisesRegex(runner.CompatibilityError, "path dependency escapes"):
+            runner.assert_path_packages_within(metadata, pathlib.Path("/snapshot"))
+
+
+class RunnerIntegrationTests(unittest.TestCase):
+    def make_repo(self, path: pathlib.Path, manifest: str) -> str:
+        path.mkdir(parents=True)
+        (path / "Cargo.toml").write_text(manifest, encoding="utf-8")
+        subprocess.run(["git", "init", "-q", str(path)], check=True)
+        subprocess.run(["git", "-C", str(path), "add", "Cargo.toml"], check=True)
+        subprocess.run(["git", "-C", str(path), "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "baseline"], check=True)
+        return runner.git(path, "rev-parse", "HEAD")
+
+    def run_with_cargo_output(self, test_output: str) -> dict:
+        with tempfile.TemporaryDirectory() as directory:
+            temp = pathlib.Path(directory)
+            source_root = temp / "qubit"
+            repo_specs = [
+                ("llmsdk-core", "rust-llmsdk/rs-llmsdk-core", '[package]\nname="llmsdk-core"\nversion="0.1.0"\nedition="2021"\n[dependencies]\nqubit-http="^0.15"\n'),
+                ("llmsdk-provider-openai", "rust-llmsdk/rs-llmsdk-provider-openai", '[package]\nname="llmsdk-provider-openai"\nversion="0.1.0"\nedition="2021"\n[dependencies]\nqubit-http="^0.15"\n'),
+                ("llmsdk-agent", "rust-llmsdk/rs-llmsdk-agent", '[package]\nname="llmsdk-agent"\nversion="0.1.0"\nedition="2021"\n'),
+                ("qubit-config", "rust-common/rs-config", '[package]\nname="qubit-config"\nversion="0.15.0"\nedition="2021"\n'),
+                ("qubit-json", "rust-common/rs-json", '[package]\nname="qubit-json"\nversion="0.12.0"\nedition="2021"\n'),
+                ("qubit-redact", "rust-common/rs-redact", '[package]\nname="qubit-redact"\nversion="0.10.0"\nedition="2021"\n'),
+                ("qubit-value", "rust-common/rs-value", '[package]\nname="qubit-value"\nversion="0.13.0"\nedition="2021"\n'),
+            ]
+            baseline = {"schema_version": 1, "repositories": []}
+            for repo_id, relative, manifest in repo_specs:
+                head = self.make_repo(source_root / relative, manifest)
+                baseline["repositories"].append({"repo_id": repo_id, "relative_path": relative, "commit": head})
+            http_repo = temp / "http"
+            self.make_repo(http_repo, '[package]\nname="qubit-http"\nversion="0.16.0"\nedition="2021"\n')
+            baseline_path = temp / "baseline.json"
+            baseline_path.write_text(json.dumps(baseline), encoding="utf-8")
+            output = temp / "result"
+            args = types.SimpleNamespace(source_root=source_root, output_dir=output,
+                                         baseline=baseline_path, candidate_source=False)
+            real_run = runner.subprocess.run
+
+            def fake_cargo(argv, **kwargs):
+                if argv[0] != "cargo":
+                    return real_run(argv, **kwargs)
+                if argv[1] == "metadata":
+                    sdk_manifest = pathlib.Path(argv[-1]).resolve()
+                    http_manifest = (output / "source/rust-common/rs-http/Cargo.toml").resolve()
+                    metadata = {"packages": [
+                        {"id": "sdk", "name": "sdk", "version": "0.1.0", "source": None, "manifest_path": str(sdk_manifest)},
+                        {"id": "http", "name": "qubit-http", "version": "0.16.0", "source": None, "manifest_path": str(http_manifest)},
+                    ], "resolve": {"nodes": [{"id": "sdk", "deps": [{"pkg": "http"}]}, {"id": "http", "deps": []}]}}
+                    return subprocess.CompletedProcess(argv, 0, stdout=json.dumps(metadata), stderr=None)
+                return subprocess.CompletedProcess(argv, 0, stdout=test_output, stderr=None)
+
+            with mock.patch.object(runner, "ROOT", http_repo), mock.patch.object(runner.subprocess, "run", side_effect=fake_cargo):
+                exit_code = runner.run(args)
+            self.assertEqual(exit_code, 1)
+            return json.loads((output / "result.json").read_text(encoding="utf-8"))
+
+    def test_successful_cargo_with_zero_tests_is_rejected(self):
+        result = self.run_with_cargo_output("running 0 tests\n")
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["commands"][-1]["exit_code"], 0)
+        self.assertEqual(result["commands"][-1]["tests_run"], 0)
+        self.assertIn("zero or an unrecognized number", result["errors"][-1])
+
+    def test_successful_cargo_with_unrecognized_test_count_is_rejected(self):
+        result = self.run_with_cargo_output("Finished `test` profile\n")
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["commands"][-1]["exit_code"], 0)
+        self.assertIsNone(result["commands"][-1]["tests_run"])
 
 
 class ResultTests(unittest.TestCase):

@@ -110,6 +110,14 @@ def prepare_output(output: pathlib.Path) -> None:
     output.mkdir(parents=True)
 
 
+def ensure_output_disjoint(output: pathlib.Path, source_roots: list[pathlib.Path]) -> None:
+    output = output.resolve()
+    for source in source_roots:
+        source = source.resolve()
+        if output == source or output.is_relative_to(source) or source.is_relative_to(output):
+            raise CompatibilityError(f"output directory overlaps a source repository: {source}")
+
+
 def snapshot_tree(source: pathlib.Path, destination: pathlib.Path) -> None:
     """Copy a repository's tracked and non-ignored files without following links."""
     destination.mkdir(parents=True, exist_ok=True)
@@ -186,22 +194,35 @@ def assert_single_http_package(metadata: dict, root_id: str, expected_manifest: 
     return {"id": package["id"], "manifest_path": package["manifest_path"], "version": package["version"]}
 
 
-def test_count(output: str) -> int:
+def assert_path_packages_within(metadata: dict, snapshot_root: pathlib.Path) -> None:
+    """Reject path packages Cargo resolved from outside the isolated input snapshot."""
+    root = snapshot_root.resolve()
+    for package in metadata.get("packages", []):
+        if package.get("source") is not None:
+            continue
+        manifest = pathlib.Path(package["manifest_path"]).resolve()
+        if not manifest.is_relative_to(root):
+            raise CompatibilityError(f"path dependency escapes source snapshot: {manifest}")
+
+
+def parsed_test_count(output: str) -> int | None:
     matches = re.findall(r"^running (\d+) tests?$", output, re.MULTILINE)
     if not matches:
+        return None
+    return sum(map(int, matches))
+
+
+def test_count(output: str) -> int:
+    count = parsed_test_count(output)
+    if count is None:
         raise CompatibilityError("could not identify test count from cargo output")
-    count = sum(map(int, matches))
     if count == 0:
         raise CompatibilityError("cargo command ran zero tests")
     return count
 
 
 def command_record(argv: list[str], exit_code: int, log_path: str, output: str) -> dict:
-    try:
-        count = test_count(output)
-    except CompatibilityError:
-        count = None
-    return {"argv": argv, "exit_code": exit_code, "tests_run": count, "log_path": log_path}
+    return {"argv": argv, "exit_code": exit_code, "tests_run": parsed_test_count(output), "log_path": log_path}
 
 
 def run_cargo(argv: list[str], cwd: pathlib.Path, env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
@@ -221,6 +242,7 @@ def run(args: argparse.Namespace) -> int:
     output_created = False
     try:
         source_root = args.source_root.resolve(strict=True)
+        ensure_output_disjoint(output, [source_root, ROOT])
         records = validate_repositories(source_root, args.baseline.resolve(), args.candidate_source)
         result["repositories"] = records
         prepare_output(output)
@@ -228,7 +250,7 @@ def run(args: argparse.Namespace) -> int:
         snapshot_root = output / "source"
         for item in records:
             snapshot_tree(source_root / item["relative_path"], snapshot_root / item["relative_path"])
-        http_snapshot = output / "http"
+        http_snapshot = snapshot_root / "rust-common" / "rs-http"
         snapshot_tree(ROOT, http_snapshot)
         http_head = git(ROOT, "rev-parse", "HEAD")
         http_dirty = bool(git(ROOT, "status", "--porcelain", "--untracked-files=all"))
@@ -255,6 +277,7 @@ def run(args: argparse.Namespace) -> int:
             if meta.returncode:
                 raise CompatibilityError(f"cargo metadata failed for {repo_id}; see {log}")
             metadata = json.loads(meta.stdout)
+            assert_path_packages_within(metadata, snapshot_root)
             root_id = next(p["id"] for p in metadata["packages"] if pathlib.Path(p["manifest_path"]).resolve() == manifest.resolve())
             package_info[repo_id] = assert_single_http_package(metadata, root_id, http_snapshot / "Cargo.toml", version)
             filters = [filter_name for rid, _, filter_name in TESTS if rid == repo_id]
@@ -267,6 +290,8 @@ def run(args: argparse.Namespace) -> int:
                 result["commands"].append(command_record(argv, proc.returncode, log.name, proc.stdout))
                 if proc.returncode:
                     raise CompatibilityError(f"cargo test failed for {repo_id}/{filter_name}; see {log}")
+                if result["commands"][-1]["tests_run"] is None or result["commands"][-1]["tests_run"] == 0:
+                    raise CompatibilityError(f"cargo test ran zero or an unrecognized number of tests for {repo_id}/{filter_name}; see {log}")
         result["http_packages"] = package_info
         result["http_source_sha256"] = tree_digest(http_snapshot)
         result["http_source"] = {"commit": http_head, "dirty": http_dirty,
