@@ -52,26 +52,41 @@ use qubit_http::{HttpClient, HttpClientOptions};
 
 ## 快速开始
 
-假设服务需要调用 HTTP API、附加客户端标识并读取响应体。可运行示例会在
-操作系统分配的端口启动回环服务，并将其地址设为客户端的 `base_url`：
+这段完整客户端程序会调用 HTTP API、附加客户端标识并读取响应体。运行前，
+请启动支持 `GET /anything` 并返回 UTF-8 响应正文的测试服务。将服务基础 URL
+设置到 `HTTP_EXAMPLE_BASE_URL`，再运行
+`HTTP_EXAMPLE_BASE_URL=http://127.0.0.1:8080 cargo run`。该命令不会启动服务。
 
+<!-- guide-check:quick-start:start -->
 ```rust
-let mut options = HttpClientOptions::new();
-options.set_base_url(&format!("http://{address}"))?;
-options.add_header("x-client-id", "demo")?;
-let client = HttpClient::builder().options(options).build()?;
-let request = client
-    .request(Method::GET, "/anything")
-    .query_param("from", "local-quick-start")
-    .build();
-let mut response = client.execute(request).await?;
-println!("status = {}", response.status());
-println!("text = {}", response.text().await?);
-```
+use http::Method;
+use qubit_http::HttpClient;
+use qubit_http::HttpClientOptions;
 
-使用 `cargo run --example local_quick_start` 运行完整示例（包含本地服务）。
-它会检查响应并输出 `status = 200 OK` 和 `text = ready`；完整源码见
-[`examples/local_quick_start.rs`](../examples/local_quick_start.rs)。示例不需要外部服务或凭据。
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let base_url = std::env::var("HTTP_EXAMPLE_BASE_URL")?;
+    let mut options = HttpClientOptions::new();
+    options.set_base_url(&base_url)?;
+    options.add_header("x-client-id", "demo")?;
+    let client = HttpClient::builder().options(options).build()?;
+    let request = client
+        .request(Method::GET, "/anything")
+        .query_param("from", "local-quick-start")
+        .build();
+    let mut response = client.execute(request).await?;
+    println!("status = {}", response.status());
+    println!("text = {}", response.text().await?);
+    Ok(())
+}
+```
+<!-- guide-check:quick-start:end -->
+
+程序仅在收到 2xx 响应时成功，并输出该响应的状态码和正文；具体内容取决于服务。
+若环境变量缺失、连接失败、响应非 2xx 或正文解码失败，程序会返回错误。无需外部服务的
+本地运行方式是 `cargo run --example local_quick_start`；该示例会启动本地服务、检查响应，
+并输出 `status = 200 OK` 和 `text = ready`。完整源码见
+[`examples/local_quick_start.rs`](../examples/local_quick_start.rs)，无需外部服务或凭据。
 
 `execute` 只把 2xx 状态码视为成功。非 2xx 状态会返回 `HttpErrorKind::Status`，并在错误中携带状态码、方法、URL、截断后的响应体预览，以及可解析的 `Retry-After`。
 

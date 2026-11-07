@@ -7,6 +7,19 @@ publish = false
 [workspace]
 
 [[bin]]
+name = "readme-en"
+path = "target/guide_examples/src/bin/readme-en.rs"
+[[bin]]
+name = "readme-zh_CN"
+path = "target/guide_examples/src/bin/readme-zh_CN.rs"
+[[bin]]
+name = "quick-start-en"
+path = "target/guide_examples/src/bin/quick-start-en.rs"
+[[bin]]
+name = "quick-start-zh_CN"
+path = "target/guide_examples/src/bin/quick-start-zh_CN.rs"
+
+[[bin]]
 name = "configuration-en"
 path = "target/guide_examples/src/bin/configuration-en.rs"
 [[bin]]

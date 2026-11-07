@@ -53,29 +53,46 @@ use qubit_http::{HttpClient, HttpClientOptions};
 
 ## Quick Start
 
-Suppose a service needs to call an HTTP API, attach a client identifier, and
-inspect the response body. The runnable example starts a loopback server on an
-OS-assigned port and uses its address as the client's `base_url`:
+This complete client program calls an HTTP API, attaches a client identifier,
+and reads the response body. Before running it, start a test service that
+accepts `GET /anything` and returns a UTF-8 response body. Set
+`HTTP_EXAMPLE_BASE_URL` to that service's base URL, then run
+`HTTP_EXAMPLE_BASE_URL=http://127.0.0.1:8080 cargo run`. This command does not
+start the service.
 
+<!-- guide-check:quick-start:start -->
 ```rust
-let mut options = HttpClientOptions::new();
-options.set_base_url(&format!("http://{address}"))?;
-options.add_header("x-client-id", "demo")?;
-let client = HttpClient::builder().options(options).build()?;
-let request = client
-    .request(Method::GET, "/anything")
-    .query_param("from", "local-quick-start")
-    .build();
-let mut response = client.execute(request).await?;
-println!("status = {}", response.status());
-println!("text = {}", response.text().await?);
-```
+use http::Method;
+use qubit_http::HttpClient;
+use qubit_http::HttpClientOptions;
 
-Run the complete example, including its local server, with
-`cargo run --example local_quick_start`. It checks the response and prints
-`status = 200 OK` and `text = ready`; see
-[`examples/local_quick_start.rs`](../examples/local_quick_start.rs) for the
-full source. The example needs no external service or credentials.
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let base_url = std::env::var("HTTP_EXAMPLE_BASE_URL")?;
+    let mut options = HttpClientOptions::new();
+    options.set_base_url(&base_url)?;
+    options.add_header("x-client-id", "demo")?;
+    let client = HttpClient::builder().options(options).build()?;
+    let request = client
+        .request(Method::GET, "/anything")
+        .query_param("from", "local-quick-start")
+        .build();
+    let mut response = client.execute(request).await?;
+    println!("status = {}", response.status());
+    println!("text = {}", response.text().await?);
+    Ok(())
+}
+```
+<!-- guide-check:quick-start:end -->
+
+The program succeeds only for a 2xx response and prints that response's status
+and body, which depend on the service. A missing environment variable,
+connection failure, non-2xx response, or body decoding failure returns an
+error. For a self-contained local run, use
+`cargo run --example local_quick_start`; it starts a local server, checks the
+response, and prints `status = 200 OK` and `text = ready`. See
+[`examples/local_quick_start.rs`](../examples/local_quick_start.rs) for its
+full source; it needs no external service or credentials.
 
 `execute` treats only 2xx status codes as success. Non-2xx responses return `HttpErrorKind::Status` with status, method, URL, a bounded response-body preview, and a parsed `Retry-After` value when available.
 

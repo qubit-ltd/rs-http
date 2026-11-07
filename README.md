@@ -44,23 +44,34 @@ Some examples in the user guide use optional helper crates such as `serde`, `ser
 
 ## Quick Start
 
-Run the shared local example with `cargo run --example local_quick_start`. It starts a loopback server on an OS-assigned port, sets that address as `base_url`, sends a GET request with a client header and query parameter, then checks the response:
+To run this complete client program, first start a test service that accepts `GET /anything` and returns a UTF-8 response body. Set `HTTP_EXAMPLE_BASE_URL` to its base URL, then run `HTTP_EXAMPLE_BASE_URL=http://127.0.0.1:8080 cargo run`. The service address is an input to the program; this command does not start a server.
 
+<!-- guide-check:quick-start:start -->
 ```rust
-let mut options = HttpClientOptions::new();
-options.set_base_url(&format!("http://{address}"))?;
-options.add_header("x-client-id", "demo")?;
-let client = HttpClient::builder().options(options).build()?;
-let request = client
-    .request(Method::GET, "/anything")
-    .query_param("from", "local-quick-start")
-    .build();
-let mut response = client.execute(request).await?;
-println!("status = {}", response.status());
-println!("text = {}", response.text().await?);
-```
+use http::Method;
+use qubit_http::HttpClient;
+use qubit_http::HttpClientOptions;
 
-The complete runnable source, including the local server, is [`examples/local_quick_start.rs`](examples/local_quick_start.rs). It prints:
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let base_url = std::env::var("HTTP_EXAMPLE_BASE_URL")?;
+    let mut options = HttpClientOptions::new();
+    options.set_base_url(&base_url)?;
+    options.add_header("x-client-id", "demo")?;
+    let client = HttpClient::builder().options(options).build()?;
+    let request = client
+        .request(Method::GET, "/anything")
+        .query_param("from", "local-quick-start")
+        .build();
+    let mut response = client.execute(request).await?;
+    println!("status = {}", response.status());
+    println!("text = {}", response.text().await?);
+    Ok(())
+}
+```
+<!-- guide-check:quick-start:end -->
+
+The request succeeds only for a 2xx response and prints that response's status and body; output depends on the service. A missing environment variable, connection failure, non-2xx response, or body decoding failure returns an error. For a self-contained local run, use [`examples/local_quick_start.rs`](examples/local_quick_start.rs) with `cargo run --example local_quick_start`. That example starts a local server and prints:
 
 ```text
 status = 200 OK

@@ -10,6 +10,7 @@ import pathlib
 import re
 import subprocess
 import sys
+import tempfile
 import tomllib
 import unittest
 
@@ -17,6 +18,12 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 GUIDES = {
     "en": ROOT / "doc/user_guide.en.md",
     "zh_CN": ROOT / "doc/user_guide.zh_CN.md",
+}
+QUICK_STARTS = {
+    "readme-en": ROOT / "README.md",
+    "readme-zh_CN": ROOT / "README.zh_CN.md",
+    "quick-start-en": ROOT / "doc/user_guide.en.md",
+    "quick-start-zh_CN": ROOT / "doc/user_guide.zh_CN.md",
 }
 SCENARIOS = ("configuration", "async-upload", "redaction", "sse-reconnect", "token-refresh", "tls-roots")
 FENCE = re.compile(r"```rust\s*\n(.*?)\n```", re.DOTALL)
@@ -149,10 +156,23 @@ def replace_refresh_declaration(source: str) -> str:
     return source.replace(TOKEN_REFRESH_DECLARATION, "#[allow(dead_code)]\n" + renamed, 1)
 
 
+def generate_quick_starts(
+    destination: pathlib.Path, entries: dict[str, pathlib.Path] = QUICK_STARTS
+) -> list[pathlib.Path]:
+    destination.mkdir(parents=True, exist_ok=True)
+    generated = []
+    for name, path in entries.items():
+        code = extract(path.read_text(encoding="utf-8"), "quick-start")
+        source = destination / f"{name}.rs"
+        source.write_text(code + "\n", encoding="utf-8")
+        generated.append(source)
+    return generated
+
+
 def generate() -> list[pathlib.Path]:
     destination = ROOT / "tests/fixtures/guide_examples/target/guide_examples/src/bin"
     destination.mkdir(parents=True, exist_ok=True)
-    generated = []
+    generated = generate_quick_starts(destination)
     for scenario in SCENARIOS:
         for language, path in GUIDES.items():
             code = extract(path.read_text(encoding="utf-8"), scenario)
@@ -181,6 +201,33 @@ def generate() -> list[pathlib.Path]:
 
 
 class ExtractorTests(unittest.TestCase):
+    def test_quick_start_entries_cover_all_documents(self):
+        self.assertEqual(
+            {name: path.relative_to(ROOT).as_posix() for name, path in QUICK_STARTS.items()},
+            {
+                "readme-en": "README.md",
+                "readme-zh_CN": "README.zh_CN.md",
+                "quick-start-en": "doc/user_guide.en.md",
+                "quick-start-zh_CN": "doc/user_guide.zh_CN.md",
+            },
+        )
+
+    def test_quick_start_missing_marker_fails(self):
+        with self.assertRaisesRegex(ValueError, "quick-start: expected exactly one start and end marker"):
+            extract("```rust\nfn main() {}\n```", "quick-start")
+
+    def test_quick_start_is_written_raw_with_one_main(self):
+        marker = "<!-- guide-check:quick-start:start -->\n```rust\nfn main() {}\n```\n<!-- guide-check:quick-start:end -->"
+        with tempfile.TemporaryDirectory() as temporary:
+            path = pathlib.Path(temporary) / "sample.md"
+            path.write_text(marker, encoding="utf-8")
+            generated = generate_quick_starts(
+                pathlib.Path(temporary) / "out", {"sample": path}
+            )
+            output = generated[0].read_text(encoding="utf-8")
+        self.assertEqual(output, extract(marker, "quick-start") + "\n")
+        self.assertEqual(len(re.findall(r"\bfn\s+main\s*\(", output)), 1)
+
     def test_token_refresh_missing_marker(self):
         with self.assertRaisesRegex(ValueError, "exactly one start and end marker"):
             extract("```rust\nfn main() {}\n```", "token-refresh")

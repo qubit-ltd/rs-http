@@ -44,23 +44,34 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
 ## 快速开始
 
-运行共享的本地示例：`cargo run --example local_quick_start`。示例会在操作系统分配的端口启动回环服务，把该地址设为 `base_url`，发送带客户端标识和查询参数的 GET 请求，并检查响应：
+运行这段完整客户端程序前，请先启动支持 `GET /anything` 并返回 UTF-8 响应正文的测试服务。将其基础 URL 设置到 `HTTP_EXAMPLE_BASE_URL`，再运行 `HTTP_EXAMPLE_BASE_URL=http://127.0.0.1:8080 cargo run`。服务地址是程序输入；该命令不会启动服务器。
 
+<!-- guide-check:quick-start:start -->
 ```rust
-let mut options = HttpClientOptions::new();
-options.set_base_url(&format!("http://{address}"))?;
-options.add_header("x-client-id", "demo")?;
-let client = HttpClient::builder().options(options).build()?;
-let request = client
-    .request(Method::GET, "/anything")
-    .query_param("from", "local-quick-start")
-    .build();
-let mut response = client.execute(request).await?;
-println!("status = {}", response.status());
-println!("text = {}", response.text().await?);
-```
+use http::Method;
+use qubit_http::HttpClient;
+use qubit_http::HttpClientOptions;
 
-包含本地服务的完整可运行源码见 [`examples/local_quick_start.rs`](examples/local_quick_start.rs)。运行结果：
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let base_url = std::env::var("HTTP_EXAMPLE_BASE_URL")?;
+    let mut options = HttpClientOptions::new();
+    options.set_base_url(&base_url)?;
+    options.add_header("x-client-id", "demo")?;
+    let client = HttpClient::builder().options(options).build()?;
+    let request = client
+        .request(Method::GET, "/anything")
+        .query_param("from", "local-quick-start")
+        .build();
+    let mut response = client.execute(request).await?;
+    println!("status = {}", response.status());
+    println!("text = {}", response.text().await?);
+    Ok(())
+}
+```
+<!-- guide-check:quick-start:end -->
+
+请求仅在收到 2xx 响应时成功，并输出该响应的状态码和正文；具体输出取决于服务。若环境变量缺失、连接失败、响应非 2xx 或正文解码失败，程序会返回错误。如需无需外部服务的本地运行，请使用 [`examples/local_quick_start.rs`](examples/local_quick_start.rs) 和 `cargo run --example local_quick_start`。该示例会启动本地服务，输出：
 
 ```text
 status = 200 OK
