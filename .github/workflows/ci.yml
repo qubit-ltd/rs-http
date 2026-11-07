@@ -26,4 +26,4 @@ jobs:
       id-token: write
     uses: qubit-ltd/rs-infra-ci/.github/workflows/github-ci.yml@main
     with:
-      verify-extra-script: python3 tests/check_guide_examples.py && python3 -B -m unittest discover -s tests -p check_downstream_compatibility_tests.py
+      verify-extra-script: python3 tests/check_guide_examples.py

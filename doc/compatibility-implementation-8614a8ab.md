@@ -2,6 +2,8 @@
 
 Date: 2026-11-06
 
+> Scope update (2026-11-07): the repository CI and test suite no longer run or maintain the downstream compatibility runner. The recorded run below is historical evidence from the implementation commit, not a current CI gate. The downstream core/provider source migration remains in those repositories.
+
 ## Scope
 
 - HTTP-R2-001: add a repeatable source-snapshot compatibility check with a pinned SDK baseline, machine-readable result, command logs, and CI unit-test entry.

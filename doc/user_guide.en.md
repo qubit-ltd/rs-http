@@ -1264,17 +1264,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 To verify a downstream SDK upgrade, check ordinary JSON response decoding, one network attempt when the SDK owns retries, strict SSE completion, and hook retention after `rebuild_with_options()`. A small Cargo consumer can exercise these call patterns; that check does not establish that every downstream package has been upgraded.
 
-## Downstream Compatibility Check
-
-Maintainers can run the pinned SDK source check from the `rs-http` repository:
-
-```sh
-python3 tests/check_downstream_compatibility.py --source-root /data/working/qubit --output-dir /tmp/rs-http-compat-run
-```
-
-The output directory must be new. The runner copies the baseline repositories and this crate into an isolated snapshot, rewrites only the SDK snapshot's `qubit-http` dependency, checks Cargo package identity, then runs the listed focused SDK tests. It writes `result.json` and full command logs in the output directory; a failed run keeps its evidence. SDK repositories must match the commits in `tests/downstream_compatibility_baseline.json` and be clean. `--candidate-source` permits dirty SDK trees for a separately identified candidate run. Each repository record includes a full input tree digest (including non-ignored untracked inputs) and a tracked diff digest against HEAD; a clean tree has the SHA-256 digest of empty diff bytes. Candidate results do not replace fixed-baseline evidence.
-
-To update the fixed baseline, inspect each SDK and local path dependency repository, verify the intended commit and working-tree contents, update its `repo_id`, `relative_path`, and full commit in the JSON file, then run the check and review the resolved package identities and test counts. Local path dependency repositories are recorded by commit and content digest, including existing local changes. This is a targeted source compatibility check, not a registry consumption test or a claim of complete downstream compatibility.
 
 ## Further Reading
 

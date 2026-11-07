@@ -1213,17 +1213,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 验证下游 SDK 升级时，请检查普通 JSON 响应解码、SDK 拥有重试时单次网络请求、严格 SSE 完成条件，以及 `rebuild_with_options()` 后 hook 保留情况。可以用独立的小型 Cargo consumer 覆盖这些调用方式；该检查不能证明所有下游包都已完成升级。
 
-## 下游兼容性检查
-
-维护者可以在 `rs-http` 仓库中运行固定基线 SDK 源码检查：
-
-```sh
-python3 tests/check_downstream_compatibility.py --source-root /data/working/qubit --output-dir /tmp/rs-http-compat-run
-```
-
-输出目录必须是新目录。运行器会将基线仓库和本 crate 复制到隔离快照，只改写 SDK 快照中的 `qubit-http` 依赖，核对 Cargo 包身份后运行指定的 SDK 定向测试。它会在输出目录写入 `result.json` 和完整命令日志；失败时保留证据。SDK 仓库必须匹配 `tests/downstream_compatibility_baseline.json` 中的提交且工作树干净。使用 `--candidate-source` 可以单独检查包含未提交改动的候选 SDK 工作树。每个仓库记录包含完整输入树摘要（包括未忽略的未跟踪文件）和相对 HEAD 的已跟踪文件 diff 摘要；干净工作树的 diff 摘要是空字节的 SHA-256。候选结果不能替代固定基线证据。
-
-更新固定基线前，应逐个检查 SDK 和本地 path 依赖仓库，确认目标提交与工作树内容，再更新 JSON 中的 `repo_id`、`relative_path` 和完整提交号，随后运行检查并审阅解析出的包身份和测试数。本地 path 依赖仓库会记录提交和内容摘要，包括已有本地改动。这是定向源码兼容检查，不等同于 registry 正式消费测试，也不代表完整的下游兼容性。
 
 ## 延伸阅读
 
