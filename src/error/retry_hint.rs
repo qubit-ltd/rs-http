@@ -18,6 +18,9 @@ use serde::Serialize;
 /// policies. `Retryable` identifies failures that callers may retry with care;
 /// callers remain responsible for considering request idempotency and their
 /// own retry policy.
+/// Classification is based on the error category and status, not the request
+/// method, body replayability, or application-level replay safety. A retryable
+/// hint does not authorize replay; the caller's retry policy remains decisive.
 ///
 /// # Examples
 ///
@@ -35,6 +38,8 @@ pub enum RetryHint {
     /// Transient failure (timeouts, some 5xx/429, transport); callers may
     /// retry with care.
     Retryable,
-    /// Permanent or non-idempotent failure; do not retry by default.
+    /// Failure whose error category does not suggest retry by default.
+    /// This classification does not determine request idempotency or replay
+    /// safety.
     NonRetryable,
 }
