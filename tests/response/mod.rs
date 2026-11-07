@@ -5,8 +5,8 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-mod http_response_interceptor_context_tests;
 mod http_response_head_contract_tests;
+mod http_response_interceptor_context_tests;
 mod http_response_interceptors_tests;
 mod http_response_meta_tests;
 mod http_response_options_tests;

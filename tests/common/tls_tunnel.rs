@@ -99,9 +99,7 @@ impl TlsTunnel {
                 .await
                 .expect("proxy listener accept timeout")
                 .expect("proxy listener accept");
-            let (authority, authorization) = read_connect(&mut client)
-                .await
-                .expect("read CONNECT request");
+            let (authority, authorization) = read_connect(&mut client).await.expect("read CONNECT request");
             assert_eq!(
                 authorization.as_deref(),
                 Some("Basic dHVubmVsLXVzZXI6dHVubmVsLXBhc3N3b3Jk")
@@ -117,13 +115,10 @@ impl TlsTunnel {
             .await
             .expect("write CONNECT success timeout")
             .expect("write CONNECT success");
-            timeout(
-                IO_TIMEOUT,
-                tokio::io::copy_bidirectional(&mut client, &mut upstream),
-            )
-            .await
-            .expect("tunnel copy timeout")
-            .expect("copy tunnel");
+            timeout(IO_TIMEOUT, tokio::io::copy_bidirectional(&mut client, &mut upstream))
+                .await
+                .expect("tunnel copy timeout")
+                .expect("copy tunnel");
             (authority, authorization)
         });
 
@@ -148,11 +143,10 @@ impl TlsTunnel {
             .await
             .expect("proxy task join timeout")
             .expect("proxy task panicked");
-        let (tls_handshake_succeeded, application_request) =
-            timeout(IO_TIMEOUT, &mut self.tls_task)
-                .await
-                .expect("TLS task join timeout")
-                .expect("TLS task panicked");
+        let (tls_handshake_succeeded, application_request) = timeout(IO_TIMEOUT, &mut self.tls_task)
+            .await
+            .expect("TLS task join timeout")
+            .expect("TLS task panicked");
         TunnelObservation {
             connect_authority,
             proxy_authorization,
@@ -175,10 +169,7 @@ async fn read_connect(stream: &mut TcpStream) -> io::Result<(String, Option<Stri
     let method = fields.next().unwrap_or_default();
     let authority = fields.next().unwrap_or_default().to_owned();
     if method != "CONNECT" || authority.is_empty() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "expected CONNECT request",
-        ));
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "expected CONNECT request"));
     }
     let mut authorization = None;
     loop {
