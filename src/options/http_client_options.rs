@@ -91,6 +91,10 @@ pub struct HttpClientOptions {
     pub timeouts: HttpTimeoutOptions,
     /// Proxy options.
     pub proxy: ProxyOptions,
+    /// Additional DER-encoded trust roots merged with the backend's default roots.
+    /// Each entry contains one certificate. An empty list preserves the
+    /// backend's default trust configuration.
+    pub extra_root_certificates_der: Vec<bytes::Bytes>,
     /// Logging options.
     pub logging: HttpLoggingOptions,
     /// Maximum bytes captured into `HttpError.response_body_preview` for
@@ -158,6 +162,7 @@ impl Default for HttpClientOptions {
             default_headers: HeaderMap::new(),
             timeouts: HttpTimeoutOptions::default(),
             proxy: ProxyOptions::default(),
+            extra_root_certificates_der: Vec::new(),
             logging: HttpLoggingOptions::default(),
             error_response_preview_limit: DEFAULT_ERROR_RESPONSE_PREVIEW_LIMIT_BYTES,
             error_response_body_limit: DEFAULT_ERROR_RESPONSE_BODY_LIMIT_BYTES,
@@ -203,6 +208,10 @@ impl fmt::Debug for HttpClientOptions {
             .field("default_headers", &default_headers)
             .field("timeouts", &self.timeouts)
             .field("proxy", &self.proxy)
+            .field(
+                "extra_root_certificates_der_count",
+                &self.extra_root_certificates_der.len(),
+            )
             .field("logging", &self.logging)
             .field("error_response_preview_limit", &self.error_response_preview_limit)
             .field("error_response_body_limit", &self.error_response_body_limit)

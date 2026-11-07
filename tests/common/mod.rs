@@ -12,6 +12,7 @@
 mod one_shot_server;
 mod proxy_server;
 mod sensitive_choice;
+pub(crate) mod tls_tunnel;
 mod tracing_capture;
 
 pub use one_shot_server::CapturedRequest;

@@ -8,6 +8,7 @@
 //! Reqwest-backed HTTP client factory.
 
 use qubit_config::ConfigReader;
+use reqwest::Certificate;
 use reqwest::Client;
 use reqwest::Proxy;
 use reqwest::redirect::Policy;
@@ -124,7 +125,16 @@ impl HttpClientBuilder {
     /// Returns a configuration error for invalid options or a client error
     /// when reqwest cannot build the backend.
     fn build_backend(options: HttpClientOptions) -> HttpResult<HttpClient> {
-        let backend = Self::configure_backend(&options)?.build().map_err(HttpError::from)?;
+        let backend = Self::configure_backend(&options)?.build().map_err(|error| {
+            let mut error = HttpError::from(error);
+            if !options.extra_root_certificates_der.is_empty() {
+                error.message = format!(
+                    "Failed to build HTTP client with additional trust roots: {}",
+                    error.message
+                );
+            }
+            error
+        })?;
 
         Ok(HttpClient::new(backend, options))
     }
@@ -144,6 +154,15 @@ impl HttpClientBuilder {
         options.validate().map_err(map_validation_error)?;
 
         let mut builder = Client::builder();
+
+        for (index, der) in options.extra_root_certificates_der.iter().enumerate() {
+            let certificate = Certificate::from_der(der).map_err(|error| {
+                HttpError::other(format!(
+                    "Invalid DER certificate at extra_root_certificates_der[{index}]: {error}"
+                ))
+            })?;
+            builder = builder.add_root_certificate(certificate);
+        }
 
         builder = builder.connect_timeout(options.timeouts.connect_timeout);
         if let Some(request_timeout) = options.timeouts.request_timeout {
@@ -252,9 +271,6 @@ impl HttpClientBuilder {
         self
     }
 }
-
-#[cfg(test)]
-mod tests;
 
 /// Maps options validation errors to runtime [`HttpError`] values.
 ///

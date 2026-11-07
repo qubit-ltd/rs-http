@@ -18,6 +18,7 @@ mod http_client_request_body_tests;
 mod http_client_retry_override_tests;
 mod http_client_tests;
 mod http_client_timeout_tests;
+mod http_client_tls_roots_tests;
 mod http_logger_masking_tests;
 mod http_logger_policy_tests;
 mod http_logger_tests;
