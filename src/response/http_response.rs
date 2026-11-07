@@ -1379,6 +1379,35 @@ mod tests {
         );
     }
 
+    async fn make_backend(method: Method, status: u16) -> (reqwest::Response, url::Url) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            let mut byte = [0_u8; 1];
+            while !request.ends_with(b"\r\n\r\n") {
+                stream.read_exact(&mut byte).await.unwrap();
+                request.push(byte[0]);
+            }
+            stream
+                .write_all(
+                    format!("HTTP/1.1 {status} response\r\nContent-Length: 100\r\nConnection: close\r\n\r\n")
+                        .as_bytes(),
+                )
+                .await
+                .unwrap();
+            stream.flush().await.unwrap();
+        });
+        let url = url::Url::parse(&format!("http://{address}/")).unwrap();
+        let backend = reqwest::Client::new()
+            .request(method, url.clone())
+            .send()
+            .await
+            .unwrap();
+        (backend, url)
+    }
+
     #[tokio::test]
     async fn test_status_capture_stops_when_truncation_is_known() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();

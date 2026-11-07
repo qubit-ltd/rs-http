@@ -60,6 +60,7 @@ async fn test_head_contract_status_error_has_empty_complete_body_capture() {
     assert_eq!(error.kind, HttpErrorKind::Status);
     assert_eq!(error.status, Some(StatusCode::NOT_FOUND));
     let capture = error.status_response().unwrap();
+    assert_eq!(capture.headers().get("content-length").unwrap(), "100");
     assert!(capture.body().is_empty());
     assert!(!capture.is_truncated());
     assert_eq!(server.finish().await.method, "HEAD");
