@@ -24,6 +24,10 @@ flowchart LR
 
 `HttpClient::rebuild_with_options` 构造新的后端和脱敏策略快照，同时复制原客户端注册的请求头注入器、请求拦截器和响应拦截器。包括校验失败在内，原客户端始终不变；`to_builder` 则只复制选项。调用方若依赖运行时注册项，应选择保留它们的重建 API。
 
+`HttpClientOptions` 以 `Vec<Bytes>` 持有调用方提供的 DER 信任根，每项一张证书。后端默认信任来源会保留，并追加这些根；空列表表示不增加证书。无效 DER 以及后端/平台错误会在客户端构造时返回。这不会改变默认的证书或主机名校验。自定义信任根通过代码配置，不会从配置文件读取。所选 TLS 后端无法使用自定义根的平台会在构造时失败。
+
+新增此公开字段会影响下游穷举编写的 `HttpClientOptions { ... }` 字面量：必须补上 `extra_root_certificates_der`。使用 `..HttpClientOptions::default()` 的字面量无需修改。
+
 默认配置使用 `HttpClient::builder().build()`，显式选项使用 `.options(options).build()`，配置读取使用 `HttpClient::from_config(config)`。旧的 `HttpClientBuilder::create`、`create_default` 和 `create_from_config` 仍保留以保持兼容；旧 factory 方法会忽略 builder 中保存的选项。请求 timeout 初始值从创建它的客户端选项复制；值为 `None` 时，使用执行后端的默认 timeout。
 
 默认的 `SameOrigin` 策略会以配置的 base URL 校验绝对请求目标，并以初始源校验每次重定向。未配置 base URL 时，可由绝对请求 URL 确定本次请求的初始源。只有显式选择 `AnyOrigin` 才允许跨源目标及重定向。配置读取器接受 `origin_policy = "same_origin"` 或 `"any_origin"`，不支持的值会在构造客户端前报错。

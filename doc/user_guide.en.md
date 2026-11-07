@@ -184,6 +184,40 @@ let rebuilt = client.rebuild_with_options(updated)?;
 let rebuilt_from_copied_options = client.to_builder().build()?;
 ```
 
+### Additional TLS Trust Roots
+
+`HttpClientOptions::extra_root_certificates_der` lets the caller add DER-encoded
+certificates to the trust roots used by the selected TLS backend. Each
+`Bytes` value must contain exactly one DER certificate. The list is additive:
+it preserves the backend's default trust sources and does not replace them.
+An empty list adds nothing. This is programmatic configuration; there is no
+new `qubit-config` key and the library does not read certificate files
+automatically. The caller owns file loading and I/O error handling:
+
+<!-- guide-check:tls-roots:start -->
+```rust
+let mut options = qubit_http::HttpClientOptions::new();
+let certificate_der = std::fs::read("service-ca.der")?;
+options.extra_root_certificates_der.push(bytes::Bytes::from(certificate_der));
+let client = qubit_http::HttpClient::builder().options(options).build()?;
+let _ = client;
+```
+<!-- guide-check:tls-roots:end -->
+
+The selected TLS backend supplies the default trust roots (for example, its
+platform or bundled store); the additional certificates are merged with that
+default. Invalid DER is reported while `build()` constructs the client. If the
+selected TLS backend or platform cannot use an added root, client construction
+fails instead of silently ignoring it. Rebuilding from options that still
+contain the certificates keeps them; clear the list before rebuilding to
+return to the backend defaults:
+
+```rust
+let mut updated = client.options().clone();
+updated.extra_root_certificates_der.clear();
+let rebuilt = client.rebuild_with_options(updated)?;
+```
+
 ### Loading From qubit-config
 
 `HttpClientOptions::from_config` and `HttpClient::from_config` accept any `qubit_config::ConfigReader`. If you pass `config.section("http")`, all keys below are read relative to that prefix.
@@ -1247,6 +1281,7 @@ This section compares the repository's `v0.15.1` tag with `0.16.0` at commit `e9
 | Configuration | The compared source does not identify a renamed `retry`, `timeouts`, or `sse` configuration key. Current guides list the supported keys and accepted values. | Parse your actual configuration with `HttpClientOptions::from_config` or `HttpClient::from_config(...)`; treat unknown-key or invalid-value errors as actionable migration findings. |
 | Retry ownership | `execute` retries eligible failures before returning `HttpResponse`; later response-body and SSE reads are caller-owned and do not re-enter HTTP retry. An outer SDK may own a separate operation-level retry. | Keep request-level retry disabled when an SDK already retries the whole operation, as the OpenAI provider does with `disable_retry()`. Test that one application attempt does not multiply retries unexpectedly. |
 | Client hooks | In both versions, `to_builder()` copies options only; `rebuild_with_options()` creates a new backend and preserves registered injectors and interceptors. | When replacing options on a configured client, use `rebuild_with_options()` if hooks are part of the contract; do not assume `to_builder()` carries them. |
+| Options struct literals | `HttpClientOptions` has the new `extra_root_certificates_der` field. | Add the field to exhaustive struct literals. Literals using `..HttpClientOptions::default()` need no change. |
 | SSE | The 0.16 source adds explicit handling for empty `id:` resets, persistent valid SSE `retry:` hints, and normal termination on `204 No Content` before media-type validation. Strict JSON and done-marker policies remain caller-selected. | Check cursor reset and retry timing expectations. For strict JSON streams, explicitly use `SseJsonMode::Strict` and `SseCompletionPolicy::RequireDoneMarker`, then test complete and incomplete frames. |
 
 To build a client from configuration, use this complete example. It only constructs the client; it does not send a network request. For the supported keys and configuration behavior, see [Loading From qubit-config](#loading-from-qubit-config).

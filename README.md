@@ -25,8 +25,10 @@ Use `qubit-http` when you need:
 - consistent error handling through `HttpError`, `HttpErrorKind`, and `RetryHint`
 - built-in helpers for JSON, form, multipart, NDJSON, streaming, and SSE
 - config-driven client creation for service-level consistency
+- caller-supplied DER trust roots, added to the TLS backend's default roots
 
 For full examples and advanced options, read the [User Guide](doc/user_guide.en.md).
+To configure additional TLS trust roots programmatically, see [Additional TLS Trust Roots](doc/user_guide.en.md#additional-tls-trust-roots).
 
 ## Installation
 

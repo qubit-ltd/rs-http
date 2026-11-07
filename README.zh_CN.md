@@ -25,8 +25,10 @@
 - 通过 `HttpError`、`HttpErrorKind`、`RetryHint` 做一致的错误处理
 - 内置 JSON、表单、multipart、NDJSON、流式请求和 SSE 辅助能力
 - 通过配置创建客户端，让服务间行为保持一致
+- 由调用方加载 DER 信任根，并追加到 TLS 后端的默认信任根
 
 完整示例和高级选项请阅读[用户指南](doc/user_guide.zh_CN.md)。
+通过代码配置额外 TLS 信任根的说明见[额外 TLS 信任根](doc/user_guide.zh_CN.md#额外-tls-信任根)。
 
 ## 安装
 

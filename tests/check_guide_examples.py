@@ -18,7 +18,7 @@ GUIDES = {
     "en": ROOT / "doc/user_guide.en.md",
     "zh_CN": ROOT / "doc/user_guide.zh_CN.md",
 }
-SCENARIOS = ("configuration", "async-upload", "redaction", "sse-reconnect", "token-refresh")
+SCENARIOS = ("configuration", "async-upload", "redaction", "sse-reconnect", "token-refresh", "tls-roots")
 FENCE = re.compile(r"```rust\s*\n(.*?)\n```", re.DOTALL)
 DEPENDENCIES_START = "<!-- guide-dependencies:start -->"
 DEPENDENCIES_END = "<!-- guide-dependencies:end -->"

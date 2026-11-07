@@ -24,6 +24,10 @@ flowchart LR
 
 `HttpClient::rebuild_with_options` constructs a new backend and redaction snapshot while cloning the client's registered header injectors and request/response interceptors. It leaves the original client untouched, including on validation failure. `to_builder` copies options only. Callers that rebuild a configured client must choose the preserving API when runtime hooks are part of their contract.
 
+`HttpClientOptions` owns caller-supplied DER trust roots as `Vec<Bytes>`, with one certificate per entry. The backend keeps its default trust sources and adds these roots; an empty vector adds none. Invalid DER and backend/platform failures surface during client construction. This does not change default certificate or hostname verification. Custom roots are configured programmatically and are not read from configuration files. Targets whose selected TLS backend cannot use custom roots fail construction.
+
+Adding this public field affects downstream exhaustive `HttpClientOptions { ... }` literals: they must specify `extra_root_certificates_der`. Literals using `..HttpClientOptions::default()` need no change.
+
 Use `HttpClient::builder().build()` for defaults, `.options(options).build()` for explicit options, and `HttpClient::from_config(config)` for configuration. The deprecated `HttpClientBuilder::create`, `create_default`, and `create_from_config` methods remain for compatibility; the factory methods ignore options stored on their builder. A request's timeout is initially copied from its creating client's options, while `None` uses the executing backend's default timeout.
 
 The default `SameOrigin` policy checks absolute request targets against a configured base URL and checks each redirect against the initial origin. A client without a base URL may start at an absolute URL, which then defines that request's origin. `AnyOrigin` explicitly relaxes the target and redirect restriction. Configuration readers accept `origin_policy = "same_origin"` or `"any_origin"`; unsupported values fail before client construction.

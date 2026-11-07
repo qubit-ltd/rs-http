@@ -13,6 +13,12 @@ path = "target/guide_examples/src/bin/configuration-en.rs"
 name = "configuration-zh_CN"
 path = "target/guide_examples/src/bin/configuration-zh_CN.rs"
 [[bin]]
+name = "tls-roots-en"
+path = "target/guide_examples/src/bin/tls-roots-en.rs"
+[[bin]]
+name = "tls-roots-zh_CN"
+path = "target/guide_examples/src/bin/tls-roots-zh_CN.rs"
+[[bin]]
 name = "async-upload-en"
 path = "target/guide_examples/src/bin/async-upload-en.rs"
 [[bin]]

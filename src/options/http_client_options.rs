@@ -92,8 +92,11 @@ pub struct HttpClientOptions {
     /// Proxy options.
     pub proxy: ProxyOptions,
     /// Additional DER-encoded trust roots merged with the backend's default roots.
-    /// Each entry contains one certificate. An empty list preserves the
-    /// backend's default trust configuration.
+    /// Each entry contains exactly one certificate. An empty list adds no
+    /// certificates and preserves the backend's default trust configuration.
+    /// Invalid DER or a TLS backend that cannot use the supplied roots causes
+    /// client construction to fail when [`crate::HttpClientBuilder::build`] is
+    /// called.
     pub extra_root_certificates_der: Vec<bytes::Bytes>,
     /// Logging options.
     pub logging: HttpLoggingOptions,

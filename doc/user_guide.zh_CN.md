@@ -174,6 +174,35 @@ let rebuilt = client.rebuild_with_options(updated)?;
 let rebuilt_from_copied_options = client.to_builder().build()?;
 ```
 
+### 额外 TLS 信任根
+
+`HttpClientOptions::extra_root_certificates_der` 允许调用方把 DER 编码证书
+追加到所选 TLS 后端使用的信任根中。每个 `Bytes` 值必须只包含一张 DER
+证书。列表只会追加：后端默认信任来源会保留，不会被替换；空列表表示不
+增加证书。这是代码配置，不新增 `qubit-config` 配置键，库也不会自动读取
+证书文件。文件读取与 I/O 错误由调用方负责：
+
+<!-- guide-check:tls-roots:start -->
+```rust
+let mut options = qubit_http::HttpClientOptions::new();
+let certificate_der = std::fs::read("service-ca.der")?;
+options.extra_root_certificates_der.push(bytes::Bytes::from(certificate_der));
+let client = qubit_http::HttpClient::builder().options(options).build()?;
+let _ = client;
+```
+<!-- guide-check:tls-roots:end -->
+
+所选 TLS 后端提供默认信任根（例如平台或内置证书库）；额外证书会与其合并。
+无效 DER 会在 `build()` 构造客户端时报告。如果所选 TLS 后端或平台不能使用
+额外根证书，客户端构造会失败，不会静默忽略。若重建时选项仍保留这些证书，
+新客户端也会继续使用它们；清空列表后重建即可恢复为后端默认信任来源：
+
+```rust
+let mut updated = client.options().clone();
+updated.extra_root_certificates_der.clear();
+let rebuilt = client.rebuild_with_options(updated)?;
+```
+
 ### 从 qubit-config 读取
 
 `HttpClientOptions::from_config` 和 `HttpClient::from_config` 接收任意 `qubit_config::ConfigReader`。如果传入 `config.section("http")`，下面表格中的键都按相对路径读取。
@@ -1196,6 +1225,7 @@ SSE 重连使用独立的 `SseReconnectOptions.retry` 策略。普通 HTTP 重�
 | 配置 | 对比源码没有发现 `retry`、`timeouts` 或 `sse` 配置键改名。当前指南列出支持的键和值。 | 用 `HttpClientOptions::from_config` 或 `HttpClient::from_config(...)` 解析实际配置；将未知键或无效值错误作为迁移项处理。 |
 | 重试归属 | `execute` 只会在返回 `HttpResponse` 前重试符合条件的失败；返回后的响应体和 SSE 读取由调用方负责，不会重新进入 HTTP 重试。上层 SDK 可以拥有单独的操作级重试。 | 如果 SDK 已重试整个操作，保留请求级 `disable_retry()`，如 OpenAI provider 的做法。验证一次应用层尝试不会意外叠加多层重试。 |
 | 客户端 hook | 两个版本的 `to_builder()` 都只复制选项；`rebuild_with_options()` 创建新 backend 并保留已注册的注入器和拦截器。 | 修改已配置客户端的选项时，若 hook 属于契约则使用 `rebuild_with_options()`；不要假定 `to_builder()` 会复制 hook。 |
+| Options 结构体字面量 | `HttpClientOptions` 新增 `extra_root_certificates_der` 字段。 | 穷举字段的字面量需补上此字段；使用 `..HttpClientOptions::default()` 的字面量无需修改。 |
 | SSE | 0.16 源码增加对空 `id:` 重置、有效 SSE `retry:` 提示持续生效，以及 `204 No Content` 在媒体类型检查前正常结束的处理。严格 JSON 与完成标记策略仍由调用方选择。 | 检查游标重置和重试时间预期。严格 JSON 流应显式使用 `SseJsonMode::Strict` 与 `SseCompletionPolicy::RequireDoneMarker`，并测试完整帧和未完成帧。 |
 
 要从配置创建客户端，可以直接使用下面的完整示例。它只构建客户端，不会发送网络请求。支持的配置键和读取方式见[从 qubit-config 读取](#从-qubit-config-读取)。
