@@ -55,7 +55,7 @@ qubit-retry = { version = "^0.26", features = ["tokio"] }
 qubit-redact = { path = "../rs-redact", version = "0.10", default-features = false, features = ["http"] }
 
 [dev-dependencies]
-proptest = "1.11"
+proptest = "^1.11"
 tokio = { version = "^1.54", features = ["io-util", "process", "sync", "rt", "test-util"] }
 tracing-subscriber = { version = "^0.3", features = ["fmt"] }
 qubit-datatype = { version = "^0.15", default-features = false, features = ["converter"] }
