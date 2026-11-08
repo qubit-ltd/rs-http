@@ -40,7 +40,7 @@ bytes = { version = "^1.11", features = ["serde"] }
 serde = { version = "^1.0", features = ["derive"] }
 strum = { version = "^0.28", features = ["derive"] }
 parse-display = "^0.11"
-qubit-json = { path = "../rs-json", version = "0.12" }
+qubit-json = "^0.12"
 tokio = { version = "^1.54", features = ["time", "net", "macros", "rt-multi-thread"] }
 async-stream = "^0.3"
 futures-util = "^0.3"

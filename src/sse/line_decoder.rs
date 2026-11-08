@@ -230,7 +230,6 @@ fn is_line_terminator(byte: u8) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::ops::Range;
     use std::sync::Arc;
     use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering;
@@ -244,6 +243,8 @@ mod tests {
 
     use super::decode_lines;
     use crate::HttpByteStream;
+    use crate::sse::tests::chunk_layout::chunk_layouts;
+    use crate::sse::tests::chunk_layout::stream_for_layout;
 
     struct CountWake(AtomicUsize);
 
@@ -258,64 +259,6 @@ mod tests {
     }
 
     type LineCase<'a> = (&'a str, &'a [u8], usize, &'a [&'a str], Option<crate::HttpErrorKind>);
-
-    /// Builds deterministic contiguous chunk layouts for a byte sequence.
-    /// Short inputs enumerate every partition; long inputs include whole-input,
-    /// bytewise, every single split, and 64 reproducible wrapping-arithmetic
-    /// layouts.
-    fn chunk_layouts(input: &[u8]) -> Vec<Vec<Range<usize>>> {
-        let len = input.len();
-        let mut layouts = Vec::new();
-        if len <= 12 {
-            let partitions = if len <= 1 { 1 } else { 1usize << (len - 1) };
-            for mask in 0..partitions {
-                let mut cuts = vec![0];
-                for offset in 1..len {
-                    if mask & (1 << (offset - 1)) != 0 {
-                        cuts.push(offset);
-                    }
-                }
-                cuts.push(len);
-                layouts.push(cuts.windows(2).map(|pair| pair[0]..pair[1]).collect());
-            }
-            return layouts;
-        }
-
-        layouts.push(std::iter::once(0..len).collect());
-        layouts.push((0..len).map(|offset| offset..offset + 1).collect());
-        for split in 0..=len {
-            layouts.push(vec![0..split, split..len]);
-        }
-        let fixed_layout_count = layouts.len();
-        let mut state = 0x9e37_79b9_7f4a_7c15u64;
-        while layouts.len() < fixed_layout_count + 64 {
-            let mut cuts = vec![0];
-            for offset in 1..len {
-                state = state
-                    .wrapping_mul(6_364_136_223_846_793_005)
-                    .wrapping_add(1_442_695_040_888_963_407);
-                if state.is_multiple_of(5) {
-                    cuts.push(offset);
-                }
-            }
-            cuts.push(len);
-            layouts.push(cuts.windows(2).map(|pair| pair[0]..pair[1]).collect());
-        }
-        layouts
-    }
-
-    fn stream_for_layout(input: &[u8], layout: &[Range<usize>]) -> HttpByteStream {
-        let mut chunks = Vec::with_capacity(layout.len() * 2 + 2);
-        chunks.push(Ok(Bytes::new()));
-        for (index, range) in layout.iter().enumerate() {
-            chunks.push(Ok(Bytes::copy_from_slice(&input[range.clone()])));
-            if index % 2 == 0 {
-                chunks.push(Ok(Bytes::new()));
-            }
-        }
-        chunks.push(Ok(Bytes::new()));
-        Box::pin(futures_util::stream::iter(chunks))
-    }
 
     async fn decode(chunks: Vec<&'static [u8]>, limit: usize) -> crate::HttpResult<Vec<String>> {
         let chunks = chunks.into_iter().map(Bytes::from_static).map(Ok);
@@ -535,7 +478,7 @@ mod tests {
         ];
 
         for (name, source, limit, expected_lines, expected_error) in cases {
-            for (layout_index, layout) in chunk_layouts(source).iter().enumerate() {
+            for (layout_index, layout) in chunk_layouts(source, false).iter().enumerate() {
                 let actual = decode_lines(stream_for_layout(source, layout), *limit)
                     .collect::<Vec<_>>()
                     .await;

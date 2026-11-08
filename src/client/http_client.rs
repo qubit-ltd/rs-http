@@ -353,9 +353,25 @@ impl HttpClient {
     ///   string.
     ///
     /// # Returns
-    /// A new [`HttpRequestBuilder`] borrowing this client for defaults; it is
-    /// not sent until built and passed to [`HttpClient::execute`] (or related
-    /// APIs).
+    /// A new [`HttpRequestBuilder`] owning copies of the client's relevant
+    /// defaults at builder creation time. The builder does not borrow the
+    /// client; it is not sent until built and passed to [`HttpClient::execute`]
+    /// (or related APIs).
+    ///
+    /// ```
+    /// use http::Method;
+    /// use qubit_http::HttpClient;
+    ///
+    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     let builder = {
+    ///         let client = HttpClient::builder().build()?;
+    ///         client.request(Method::GET, "https://example.test/items")
+    ///     };
+    ///     let request = builder.build();
+    ///     assert_eq!(request.resolved_url()?.as_str(), "https://example.test/items");
+    ///     Ok(())
+    /// }
+    /// ```
     #[inline]
     pub fn request(&self, method: Method, path: &str) -> HttpRequestBuilder {
         HttpRequestBuilder::new(method, path, self)

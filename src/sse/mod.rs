@@ -27,6 +27,9 @@ mod sse_reconnect_runner;
 mod sse_record;
 mod sse_record_stream;
 
+#[cfg(test)]
+mod tests;
+
 pub use done_marker_policy::DoneMarkerPolicy;
 pub(crate) use json_decoder::decode_json_chunks_from_stream_with_limits;
 pub(crate) use message_decoder::decode_messages_from_stream_with_limits;

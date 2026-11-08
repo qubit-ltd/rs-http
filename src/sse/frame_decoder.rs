@@ -163,8 +163,6 @@ fn split_field_value(line: &str) -> (&str, &str) {
 
 #[cfg(test)]
 mod tests {
-    use std::ops::Range;
-
     use bytes::Bytes;
     use futures_util::StreamExt;
 
@@ -173,61 +171,10 @@ mod tests {
     use crate::sse::SseControl;
     use crate::sse::SseRecord;
     use crate::sse::line_decoder::decode_lines;
+    use crate::sse::tests::chunk_layout::chunk_layouts;
+    use crate::sse::tests::chunk_layout::stream_for_layout;
 
     type FrameCase<'a> = (&'a str, &'a [u8], usize, &'a [SseRecord], Option<crate::HttpErrorKind>);
-
-    fn chunk_layouts(input: &[u8]) -> Vec<Vec<Range<usize>>> {
-        let len = input.len();
-        if len <= 12 {
-            let partitions = if len <= 1 { 1 } else { 1usize << (len - 1) };
-            return (0..partitions)
-                .map(|mask| {
-                    let mut cuts = vec![0];
-                    for offset in 1..len {
-                        if mask & (1 << (offset - 1)) != 0 {
-                            cuts.push(offset);
-                        }
-                    }
-                    cuts.push(len);
-                    cuts.windows(2).map(|pair| pair[0]..pair[1]).collect()
-                })
-                .collect();
-        }
-
-        let mut layouts = vec![vec![0..len], (0..len).map(|offset| offset..offset + 1).collect()];
-        for split in 0..=len {
-            layouts.push(vec![0..split, split..len]);
-        }
-        let fixed_layout_count = layouts.len();
-        let mut state = 0xd1b5_4a32_d192_ed03u64;
-        while layouts.len() < fixed_layout_count + 64 {
-            let mut cuts = vec![0];
-            for offset in 1..len {
-                state = state
-                    .wrapping_mul(2_862_933_555_777_941_757)
-                    .wrapping_add(3_037_000_493);
-                if state % 7 < 2 {
-                    cuts.push(offset);
-                }
-            }
-            cuts.push(len);
-            layouts.push(cuts.windows(2).map(|pair| pair[0]..pair[1]).collect());
-        }
-        layouts
-    }
-
-    fn stream_for_layout(input: &[u8], layout: &[Range<usize>]) -> HttpByteStream {
-        let mut chunks = Vec::with_capacity(layout.len() * 2 + 2);
-        chunks.push(Ok(Bytes::new()));
-        for (index, range) in layout.iter().enumerate() {
-            chunks.push(Ok(Bytes::copy_from_slice(&input[range.clone()])));
-            if index % 2 == 0 {
-                chunks.push(Ok(Bytes::new()));
-            }
-        }
-        chunks.push(Ok(Bytes::new()));
-        Box::pin(futures_util::stream::iter(chunks))
-    }
 
     async fn decode(chunks: Vec<&'static [u8]>) -> crate::HttpResult<Vec<SseRecord>> {
         decode_with_limit(chunks, 1024).await
@@ -395,7 +342,7 @@ mod tests {
             }),
             SseRecord::Control(SseControl::ReconnectDelayMs(9)),
         ];
-        for (layout_index, layout) in chunk_layouts(source).iter().enumerate() {
+        for (layout_index, layout) in chunk_layouts(source, true).iter().enumerate() {
             let lines = decode_lines(stream_for_layout(source, layout), 64);
             let actual = decode_records(lines, 1024).collect::<Vec<_>>().await;
             assert_eq!(
@@ -464,7 +411,7 @@ mod tests {
         ];
 
         for (name, source, limit, expected_prefix, expected_error) in cases {
-            for (layout_index, layout) in chunk_layouts(source).iter().enumerate() {
+            for (layout_index, layout) in chunk_layouts(source, true).iter().enumerate() {
                 let lines = decode_lines(stream_for_layout(source, layout), 64);
                 let actual = decode_records(lines, *limit).collect::<Vec<_>>().await;
                 let context = format!("corpus={name}, limit={limit}, layout={layout_index}, chunks={layout:?}");
@@ -505,7 +452,7 @@ mod tests {
     #[tokio::test]
     async fn test_frame_decoder_transport_error_uses_fixed_logical_offset() {
         let source = b"data: first\n\n";
-        for (layout_index, layout) in chunk_layouts(source).iter().enumerate() {
+        for (layout_index, layout) in chunk_layouts(source, true).iter().enumerate() {
             let mut chunks = vec![Ok(Bytes::new())];
             for (index, range) in layout.iter().enumerate() {
                 chunks.push(Ok(Bytes::copy_from_slice(&source[range.clone()])));
