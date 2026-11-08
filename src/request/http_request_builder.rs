@@ -752,6 +752,12 @@ impl HttpRequestBuilder {
     /// Forces retry enabled for this request even if client-level retry is
     /// disabled.
     ///
+    /// This only overrides whether retry is enabled. The effective method
+    /// policy and `max_attempts` still apply. For POST/PATCH under the default
+    /// method policy, also configure
+    /// `retry_method_policy(HttpRetryMethodPolicy::AllMethods)` when replay is
+    /// safe. Retrying requires `max_attempts` greater than one.
+    ///
     /// # Returns
     /// `self` for chaining.
     #[inline]

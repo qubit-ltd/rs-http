@@ -1271,7 +1271,7 @@ The table below lists every configuration key supported by `HttpClientOptions::f
 
 ## Limitations And Best Practices
 
-- Enable global retry for read-only or idempotent APIs. Use `AllMethods` or per-request force retry for POST/PATCH only when the operation is safe to replay.
+- Enable global retry for read-only or idempotent APIs. For POST/PATCH, retry must be enabled and the effective method policy must allow replay, for example with `AllMethods`. Per-request `force_retry()` enables retry but does not override the method policy or `max_attempts`. Allow replay only when the operation is safe to repeat.
 - Set a realistic `read_timeout` for long-lived streams/SSE; too short a value turns a slow but healthy stream into `ReadTimeout`.
 - Automatic TRACE response-body logging runs before `execute` returns and reports only bodies already buffered at that point. A later body read does not add a log entry; call `HttpLogger::log_response` explicitly after buffering when needed. That call repeats the response line and any enabled headers. It does not consume an unbuffered stream or SSE body.
 - Keep `proxy.enabled = false` and `use_env_proxy = false` when you want proxying fully disabled; explicitly enable `use_env_proxy` when environment proxy inheritance is desired.

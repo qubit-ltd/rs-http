@@ -1216,7 +1216,7 @@ SSE 重连使用独立的 `SseReconnectOptions.retry` 策略。普通 HTTP 重�
 
 ## 限制与最佳实践
 
-- 对只读或幂等接口开启全局重试；对 POST/PATCH 只有在业务允许重放时才使用 `AllMethods` 或请求级强制重试。
+- 对只读或幂等接口可开启全局重试。对 POST/PATCH，必须同时启用重试并设置允许重放的方法策略，例如 `AllMethods`。请求级 `force_retry()` 只启用重试，不会覆盖方法策略或 `max_attempts`；只有业务允许重复执行时才应允许重放。
 - 对长连接/SSE 设置合理的 `read_timeout`；过短会把正常的慢流误判为 `ReadTimeout`。
 - 自动 TRACE 响应体日志在 `execute` 返回前触发，只记录当时已经缓存的 body。后续读取不会自动补记；需要时应在缓冲读取成功后显式调用 `HttpLogger::log_response`。这会再次记录响应行及已启用的响应头，也不会消费未缓存的 stream 或 SSE 响应。
 - 需要完全禁用代理时保持默认 `proxy.enabled = false` 且 `use_env_proxy = false`；需要继承环境代理时显式打开 `use_env_proxy`。

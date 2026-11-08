@@ -212,6 +212,71 @@ async fn test_request_retry_override_force_enable_and_all_methods_for_post() {
 }
 
 #[tokio_test]
+async fn test_force_retry_does_not_override_default_method_policy() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 503,
+        headers: vec![],
+        body: b"service unavailable".to_vec(),
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.retry.enabled = false;
+    options.retry.max_attempts = 2;
+    options.retry.backoff = BackoffPolicy::immediate();
+    let client = HttpClientBuilder::new()
+        .options(options)
+        .build()
+        .expect("client should be created");
+
+    let request = client.request(Method::POST, "/force-only").force_retry().build();
+    let error = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .expect_err("POST should not retry under the default method policy");
+    assert_eq!(error.kind, HttpErrorKind::Status);
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.method, "POST");
+}
+
+#[tokio_test]
+async fn test_force_retry_does_not_override_single_max_attempt() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 503,
+        headers: vec![],
+        body: b"service unavailable".to_vec(),
+    })
+    .await;
+
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.retry.enabled = false;
+    options.retry.max_attempts = 1;
+    options.retry.method_policy = HttpRetryMethodPolicy::AllMethods;
+    options.retry.backoff = BackoffPolicy::immediate();
+    let client = HttpClientBuilder::new()
+        .options(options)
+        .build()
+        .expect("client should be created");
+
+    let request = client.request(Method::POST, "/single-attempt").force_retry().build();
+    let error = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .expect_err("retry should not run with max_attempts set to one");
+    assert_eq!(error.kind, HttpErrorKind::Status);
+
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.method, "POST");
+}
+
+#[tokio_test]
 async fn test_request_retry_override_disable_retry_skips_client_retry_policy() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 503,
