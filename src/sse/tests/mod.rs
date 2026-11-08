@@ -8,3 +8,5 @@
 //! Shared test-only utilities for SSE decoding tests.
 
 pub(crate) mod chunk_layout;
+mod generated_cases;
+mod generated_properties;
