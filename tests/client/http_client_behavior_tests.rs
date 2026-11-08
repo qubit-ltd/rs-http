@@ -209,6 +209,57 @@ async fn test_same_origin_rejects_absolute_url_different_from_configured_base() 
 }
 
 #[tokio_test]
+async fn same_origin_rejects_before_sync_injector() {
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(url::Url::parse("http://127.0.0.1:1/").unwrap());
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let injector_calls = calls.clone();
+    let mut client = client;
+    client.add_header_injector(HttpHeaderInjector::new(move |_headers: &mut HeaderMap| {
+        injector_calls.fetch_add(1, Ordering::SeqCst);
+        Err(HttpError::other("sync injector should not run"))
+    }));
+
+    let error = client
+        .execute(client.request(Method::GET, "http://127.0.0.1:2/cross-origin").build())
+        .await
+        .unwrap_err();
+
+    assert_eq!(error.kind, HttpErrorKind::OriginPolicy);
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio_test]
+async fn same_origin_rejects_before_async_injector() {
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(url::Url::parse("http://127.0.0.1:1/").unwrap());
+    options.timeouts.response_header_timeout = Duration::from_millis(50);
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let injector_calls = calls.clone();
+    let mut client = client;
+    client.add_async_header_injector(AsyncHttpHeaderInjector::new(move |_headers: &mut HeaderMap| {
+        let injector_calls = injector_calls.clone();
+        Box::pin(async move {
+            injector_calls.fetch_add(1, Ordering::SeqCst);
+            std::future::pending::<qubit_http::HttpResult<()>>().await
+        })
+    }));
+
+    let error = timeout(
+        Duration::from_secs(2),
+        client.execute(client.request(Method::GET, "http://127.0.0.1:2/cross-origin").build()),
+    )
+    .await
+    .expect("origin rejection should happen before the pending injector timeout")
+    .unwrap_err();
+
+    assert_eq!(error.kind, HttpErrorKind::OriginPolicy);
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio_test]
 async fn test_same_origin_redirect_reaches_same_origin_target() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Immediate {

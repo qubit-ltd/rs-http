@@ -367,6 +367,42 @@ fn test_http_request_resolved_url_is_public() {
 }
 
 #[test]
+fn test_url_join_preserves_documented_prefix_rules() {
+    for (base, path, expected) in [
+        (
+            "https://api.example.com/v1/",
+            "events",
+            "https://api.example.com/v1/events",
+        ),
+        (
+            "https://api.example.com/v1/",
+            "/events",
+            "https://api.example.com/events",
+        ),
+        ("https://api.example.com/v1", "events", "https://api.example.com/events"),
+        (
+            "https://api.example.com/v1",
+            "/events",
+            "https://api.example.com/events",
+        ),
+    ] {
+        let mut options = HttpClientOptions::default();
+        options.set_base_url(base).expect("base URL should be valid");
+        let client = HttpClientBuilder::new()
+            .options(options)
+            .build()
+            .expect("client should be created");
+        let resolved = client
+            .request(Method::GET, path)
+            .build()
+            .resolved_url()
+            .expect("request URL should resolve");
+
+        assert_eq!(resolved.as_str(), expected);
+    }
+}
+
+#[test]
 fn test_http_request_setters_update_headers_timeout_retry_and_cancellation() {
     let mut request = new_request(Method::GET, "/v1/resources");
 

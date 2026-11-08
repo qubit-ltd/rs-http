@@ -25,7 +25,7 @@ QUICK_STARTS = {
     "quick-start-en": ROOT / "doc/user_guide.en.md",
     "quick-start-zh_CN": ROOT / "doc/user_guide.zh_CN.md",
 }
-SCENARIOS = ("configuration", "async-upload", "redaction", "sse-reconnect", "token-refresh", "tls-roots")
+SCENARIOS = ("configuration", "async-upload", "redaction", "sse-reconnect", "token-refresh", "tls-roots", "url-join")
 FENCE = re.compile(r"```rust\s*\n(.*?)\n```", re.DOTALL)
 DEPENDENCIES_START = "<!-- guide-dependencies:start -->"
 DEPENDENCIES_END = "<!-- guide-dependencies:end -->"
@@ -177,6 +177,11 @@ def generate() -> list[pathlib.Path]:
         for language, path in GUIDES.items():
             code = extract(path.read_text(encoding="utf-8"), scenario)
             source = destination / f"{scenario}-{language}.rs"
+            if scenario == "url-join":
+                # This guide block is already a complete program with its own imports and main.
+                source.write_text(code + "\n", encoding="utf-8")
+                generated.append(source)
+                continue
             if scenario == "token-refresh":
                 source.write_text(code + "\n", encoding="utf-8")
                 generated.append(source)
@@ -201,6 +206,18 @@ def generate() -> list[pathlib.Path]:
 
 
 class ExtractorTests(unittest.TestCase):
+    def test_url_join_marker_entries_exist_in_both_guides(self):
+        for language, path in GUIDES.items():
+            with self.subTest(language=language):
+                code = extract(path.read_text(encoding="utf-8"), "url-join")
+                self.assertEqual(len(re.findall(r"\bfn\s+main\s*\(", code)), 1)
+                self.assertEqual(code.count("use http::Method;"), 1)
+                self.assertEqual(code.count("use qubit_http::{HttpClient, HttpClientOptions};"), 1)
+
+    def test_url_join_missing_marker_fails(self):
+        with self.assertRaisesRegex(ValueError, "url-join: expected exactly one start and end marker"):
+            extract("```rust\nfn main() {}\n```", "url-join")
+
     def test_quick_start_entries_cover_all_documents(self):
         self.assertEqual(
             {name: path.relative_to(ROOT).as_posix() for name, path in QUICK_STARTS.items()},

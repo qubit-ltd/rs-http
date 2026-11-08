@@ -345,6 +345,39 @@ let request = client
 
 After `build()`, `HttpRequest::resolved_url()` returns the actual outbound URL: absolute `path` values stay absolute, relative paths are joined with `base_url`, query pairs already present in `path` are preserved, and builder/query-interceptor pairs are appended in order.
 
+Relative paths follow `Url::join` semantics. A path beginning with `/` starts at the host root, and a base URL without a trailing slash treats its final path segment as a file to replace. To keep an API prefix such as `/v1/`, end the base URL with `/` and use a relative path without a leading slash.
+
+| `base_url` | `path` | resolved URL |
+| --- | --- | --- |
+| `https://api.example.com/v1/` | `events` | `https://api.example.com/v1/events` |
+| `https://api.example.com/v1/` | `/events` | `https://api.example.com/events` |
+| `https://api.example.com/v1` | `events` | `https://api.example.com/events` |
+| `https://api.example.com/v1` | `/events` | `https://api.example.com/events` |
+
+This complete example checks the resolved URL for each combination without sending a request:
+
+<!-- guide-check:url-join:start -->
+```rust
+use http::Method;
+use qubit_http::{HttpClient, HttpClientOptions};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    for (base, path, expected) in [
+        ("https://api.example.com/v1/", "events", "https://api.example.com/v1/events"),
+        ("https://api.example.com/v1/", "/events", "https://api.example.com/events"),
+        ("https://api.example.com/v1", "events", "https://api.example.com/events"),
+        ("https://api.example.com/v1", "/events", "https://api.example.com/events"),
+    ] {
+        let mut options = HttpClientOptions::default();
+        options.set_base_url(base)?;
+        let client = HttpClient::builder().options(options).build()?;
+        assert_eq!(client.request(Method::GET, path).build().resolved_url()?.as_str(), expected);
+    }
+    Ok(())
+}
+```
+<!-- guide-check:url-join:end -->
+
 ```rust
 let request = client
     .request(Method::GET, "/users?active=true")

@@ -699,6 +699,11 @@ impl HttpRequest {
             }
             error.with_log_redactor(log_redactor.clone())
         })?;
+        // Reject disallowed destinations before running header injectors, which
+        // may perform I/O or produce credentials for the request.
+        let url = self.resolved_base_url()?;
+        self.validate_origin_policy(&url)?;
+        let request_url = self.resolved_url()?;
         let headers = Self::await_pre_send_future(
             self.effective_headers(),
             send_deadline.saturating_duration_since(Instant::now()),
@@ -714,9 +719,6 @@ impl HttpRequest {
         .await
         .map_err(|error| error.with_log_redactor(log_redactor.clone()))?
         .clone();
-        let url = self.resolved_base_url()?;
-        self.validate_origin_policy(&url)?;
-        let request_url = self.resolved_url()?;
         // Log the request after computing effective headers so TRACE logs
         // include the same query string used by the actual send path.
         logger.log_request(self);

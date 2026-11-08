@@ -324,6 +324,39 @@ let request = client
 
 `build()` 后可以调用 `HttpRequest::resolved_url()` 取得真实发送 URL：绝对 `path` 会保持绝对 URL；相对路径会和 `base_url` join；`path` 中已有的 query 会保留，builder 或拦截器追加的 query 会按顺序继续追加。
 
+相对路径遵循 `Url::join` 的规则：以 `/` 开头的路径从主机根目录开始；`base_url` 若没有尾斜杠，最后一段会被当作文件名并替换。要保留 `/v1/` 这样的 API 前缀，应给 `base_url` 加尾斜杠，并使用不以 `/` 开头的路径。
+
+| `base_url` | `path` | 解析后的 URL |
+| --- | --- | --- |
+| `https://api.example.com/v1/` | `events` | `https://api.example.com/v1/events` |
+| `https://api.example.com/v1/` | `/events` | `https://api.example.com/events` |
+| `https://api.example.com/v1` | `events` | `https://api.example.com/events` |
+| `https://api.example.com/v1` | `/events` | `https://api.example.com/events` |
+
+下面的完整示例逐一检查四种组合解析出的 URL，不会发送请求：
+
+<!-- guide-check:url-join:start -->
+```rust
+use http::Method;
+use qubit_http::{HttpClient, HttpClientOptions};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    for (base, path, expected) in [
+        ("https://api.example.com/v1/", "events", "https://api.example.com/v1/events"),
+        ("https://api.example.com/v1/", "/events", "https://api.example.com/events"),
+        ("https://api.example.com/v1", "events", "https://api.example.com/events"),
+        ("https://api.example.com/v1", "/events", "https://api.example.com/events"),
+    ] {
+        let mut options = HttpClientOptions::default();
+        options.set_base_url(base)?;
+        let client = HttpClient::builder().options(options).build()?;
+        assert_eq!(client.request(Method::GET, path).build().resolved_url()?.as_str(), expected);
+    }
+    Ok(())
+}
+```
+<!-- guide-check:url-join:end -->
+
 ```rust
 let request = client
     .request(Method::GET, "/users?active=true")
