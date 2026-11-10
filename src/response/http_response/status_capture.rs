@@ -145,10 +145,12 @@ impl HttpResponse {
     }
 
     /// Reads bounded preview and raw capture bytes from a response body for
-    /// status errors, tracking their truncation independently. The read
-    /// timeout is a cumulative budget starting when this capture begins; if it
-    /// expires, the caller retains the status and any partial raw body marked
-    /// incomplete.
+    /// status errors, tracking their truncation independently. When the
+    /// original declared length exceeds both capture limits, capture may stop
+    /// once both retained prefixes reach their limits; this does not verify
+    /// complete transport of the declared body. The read timeout is a
+    /// cumulative budget starting when this capture begins; if it expires, the
+    /// caller retains the status and any partial raw body marked incomplete.
     ///
     /// # Errors
     /// Returns [`HttpErrorKind::Cancelled`](crate::HttpErrorKind::Cancelled)
@@ -244,6 +246,11 @@ impl HttpResponse {
                     if captured < chunk.len() {
                         preview_truncated |= preview_remaining < chunk.len();
                         raw_truncated |= raw_remaining < chunk.len();
+                        break;
+                    }
+                    let capture_targets_satisfied = preview.len() == limit && raw.len() == raw_limit;
+                    let declared_truncation = source_len.is_some_and(|length| length > limit.max(raw_limit));
+                    if capture_targets_satisfied && declared_truncation {
                         break;
                     }
                     if capture_budget.used() == capture_limit && (preview_truncated || raw_truncated) {

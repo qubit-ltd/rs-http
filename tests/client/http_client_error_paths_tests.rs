@@ -394,6 +394,31 @@ async fn test_status_body_raw_limit_is_independent_and_exact_eof_is_complete() {
 }
 
 #[tokio_test]
+async fn test_known_status_body_length_equal_to_capture_limit_is_complete() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 429,
+        headers: vec![],
+        body: b"abcd".to_vec(),
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.error_response_preview_limit = 4;
+    options.error_response_body_limit = 4;
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
+    let error = client
+        .execute(client.request(Method::GET, "/known-exact-max").build())
+        .await
+        .unwrap_err();
+    let captured = error.status_response().unwrap();
+    assert_eq!(captured.capture_end(), HttpBodyCaptureEnd::Complete);
+    assert_eq!(captured.body().as_ref(), b"abcd");
+    assert!(!captured.is_truncated());
+    assert!(captured.capture_error().is_none());
+    timeout(Duration::from_secs(3), server.finish()).await.unwrap();
+}
+
+#[tokio_test]
 async fn test_status_body_read_timeout_keeps_partial_raw_truncated() {
     let server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
         status: 429,
@@ -687,42 +712,135 @@ async fn test_head_status_error_has_complete_empty_raw_body() {
 
 #[tokio_test]
 async fn test_error_body_capture_returns_at_known_truncation_boundary() {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let address = listener.local_addr().unwrap();
-    let (sent_tx, sent_rx) = oneshot::channel();
-    let (release_tx, release_rx) = oneshot::channel();
-    let server = tokio::spawn(async move {
-        let (mut stream, _) = listener.accept().await.unwrap();
-        let mut request = Vec::new();
-        let mut byte = [0_u8; 1];
-        while !request.ends_with(b"\r\n\r\n") {
-            stream.read_exact(&mut byte).await.unwrap();
-            request.push(byte[0]);
+    for (preview_limit, raw_limit, prefix) in [(4, 4, b"abcd".as_slice()), (4, 8, b"abcdefgh"), (8, 4, b"abcdefgh")] {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (sent_tx, sent_rx) = oneshot::channel();
+        let (release_tx, release_rx) = oneshot::channel();
+        let expected_prefix = prefix.to_vec();
+        let prefix = expected_prefix.clone();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            let mut byte = [0_u8; 1];
+            while !request.ends_with(b"\r\n\r\n") {
+                stream.read_exact(&mut byte).await.unwrap();
+                request.push(byte[0]);
+            }
+            let response = format!(
+                "HTTP/1.1 429 Too Many Requests\r\nContent-Length: 100\r\nContent-Type: text/plain\r\n\r\n{}",
+                String::from_utf8(prefix).unwrap(),
+            );
+            stream.write_all(response.as_bytes()).await.unwrap();
+            stream.flush().await.unwrap();
+            let _ = sent_tx.send(());
+            let _ = release_rx.await;
+        });
+        let mut options = HttpClientOptions::default();
+        options.base_url = Some(url::Url::parse(&format!("http://{address}/")).unwrap());
+        options.error_response_preview_limit = preview_limit;
+        options.error_response_body_limit = raw_limit;
+        options.timeouts.read_timeout = Duration::from_secs(30);
+        options.timeouts.response_header_timeout = Duration::from_secs(2);
+        let client = HttpClientBuilder::new().options(options).build().unwrap();
+        let result = timeout(
+            Duration::from_secs(2),
+            client.execute(client.request(Method::GET, "/capture-known").build()),
+        )
+        .await;
+        let sent = timeout(Duration::from_secs(2), sent_rx).await;
+        let _ = release_tx.send(());
+        let server_result = timeout(Duration::from_secs(2), server).await;
+        sent.expect("server must send capture prefix").unwrap();
+        server_result.expect("server must finish").unwrap();
+        let error = result
+            .expect("known oversized body capture must finish without EOF")
+            .unwrap_err();
+        assert_eq!(error.kind, HttpErrorKind::Status);
+        assert_eq!(error.status, Some(StatusCode::TOO_MANY_REQUESTS));
+        assert_eq!(error.method(), Some(&Method::GET));
+        assert_eq!(error.url().unwrap().path(), "/capture-known");
+        let captured = error.status_response().unwrap();
+        assert_eq!(captured.capture_end(), HttpBodyCaptureEnd::SizeLimit);
+        assert_eq!(captured.body().as_ref(), &expected_prefix[..raw_limit]);
+        assert!(captured.capture_error().is_none());
+        assert!(captured.is_truncated());
+        assert!(
+            !error
+                .response_body_preview
+                .as_deref()
+                .unwrap_or_default()
+                .contains("body unavailable")
+        );
+    }
+}
+
+#[tokio_test]
+async fn test_error_body_capture_waits_for_both_known_capture_targets() {
+    for (preview_limit, raw_limit) in [(4, 8), (8, 4)] {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (sent_tx, sent_rx) = oneshot::channel();
+        let (continue_tx, continue_rx) = oneshot::channel();
+        let (release_tx, release_rx) = oneshot::channel();
+        let mut server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            let mut byte = [0_u8; 1];
+            while !request.ends_with(b"\r\n\r\n") {
+                stream.read_exact(&mut byte).await.unwrap();
+                request.push(byte[0]);
+            }
+            stream
+                .write_all(
+                    b"HTTP/1.1 429 Too Many Requests\r\nContent-Length: 100\r\nContent-Type: text/plain\r\n\r\nabcd",
+                )
+                .await
+                .unwrap();
+            stream.flush().await.unwrap();
+            let _ = sent_tx.send(());
+            let _ = continue_rx.await;
+            stream.write_all(b"efgh").await.unwrap();
+            stream.flush().await.unwrap();
+            let _ = release_rx.await;
+        });
+        let mut options = HttpClientOptions::default();
+        options.base_url = Some(url::Url::parse(&format!("http://{address}/")).unwrap());
+        options.error_response_preview_limit = preview_limit;
+        options.error_response_body_limit = raw_limit;
+        options.timeouts.read_timeout = Duration::from_secs(30);
+        let client = HttpClientBuilder::new().options(options).build().unwrap();
+        let mut task = tokio::spawn(async move {
+            client
+                .execute(client.request(Method::GET, "/capture-both").build())
+                .await
+        });
+        let sent = timeout(Duration::from_secs(2), sent_rx).await;
+        if !sent.as_ref().is_ok_and(|result| result.is_ok()) {
+            let _ = continue_tx.send(());
+            let _ = release_tx.send(());
+            server.abort();
+            let _ = timeout(Duration::from_secs(2), &mut server).await;
+            panic!("server must send first prefix: {sent:?}");
         }
-        stream.write_all(b"HTTP/1.1 400 Bad Request\r\nTransfer-Encoding: chunked\r\nContent-Type: text/plain\r\n\r\n5\r\nabcde\r\n").await.unwrap();
-        stream.flush().await.unwrap();
-        let _ = sent_tx.send(());
-        let _ = release_rx.await;
-    });
-    let mut options = HttpClientOptions::default();
-    options.base_url = Some(url::Url::parse(&format!("http://{address}/")).unwrap());
-    options.error_response_preview_limit = 4;
-    options.error_response_body_limit = 4;
-    options.timeouts.read_timeout = Duration::from_secs(30);
-    options.timeouts.response_header_timeout = Duration::from_secs(2);
-    let client = HttpClientBuilder::new().options(options).build().unwrap();
-    let result = timeout(
-        Duration::from_secs(2),
-        client.execute(client.request(Method::GET, "/capture").build()),
-    )
-    .await;
-    sent_rx.await.unwrap();
-    let error = result.expect("capture must stop without waiting for EOF").unwrap_err();
-    assert_eq!(error.kind, HttpErrorKind::Status);
-    let captured = error.status_response().unwrap();
-    assert_eq!(captured.body().as_ref(), b"abcd");
-    assert!(captured.is_truncated());
-    assert!(!error.message.contains("body unavailable"));
-    let _ = release_tx.send(());
-    server.await.unwrap();
+        sent.unwrap().unwrap();
+        let waited_for_larger_target = timeout(Duration::from_millis(100), &mut task).await.is_err();
+        let _ = continue_tx.send(());
+        let result = timeout(Duration::from_secs(2), &mut task).await;
+        let _ = release_tx.send(());
+        let server_result = timeout(Duration::from_secs(2), server).await;
+        server_result.expect("server must finish").unwrap();
+        assert!(waited_for_larger_target, "capture must wait for the larger target");
+        let error = result
+            .expect("capture must return after second target is filled")
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(error.kind, HttpErrorKind::Status);
+        assert_eq!(error.status, Some(StatusCode::TOO_MANY_REQUESTS));
+        assert_eq!(error.method(), Some(&Method::GET));
+        assert_eq!(error.url().unwrap().path(), "/capture-both");
+        let captured = error.status_response().unwrap();
+        assert_eq!(captured.capture_end(), HttpBodyCaptureEnd::SizeLimit);
+        assert_eq!(captured.body().as_ref(), &b"abcdefgh"[..raw_limit]);
+    }
 }
