@@ -41,6 +41,20 @@ use qubit_redact::Sensitivity;
 use qubit_redact::formats::http::UrlPathPolicy;
 
 #[test]
+fn test_http_client_options_debug_includes_origin_policy() {
+    for (policy, expected) in [
+        (qubit_http::HttpOriginPolicy::SameOrigin, "origin_policy: SameOrigin"),
+        (qubit_http::HttpOriginPolicy::AnyOrigin, "origin_policy: AnyOrigin"),
+    ] {
+        let options = qubit_http::HttpClientOptions {
+            origin_policy: policy,
+            ..qubit_http::HttpClientOptions::default()
+        };
+        assert!(format!("{options:?}").contains(expected));
+    }
+}
+
+#[test]
 fn test_http_client_options_parses_origin_policy_from_scoped_config() {
     let mut config = Config::new();
     config

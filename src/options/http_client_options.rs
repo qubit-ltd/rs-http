@@ -207,6 +207,7 @@ impl fmt::Debug for HttpClientOptions {
         let default_headers = output.text(default_headers);
         formatter
             .debug_struct("HttpClientOptions")
+            .field("origin_policy", &self.origin_policy)
             .field("base_url", &base_url)
             .field("default_headers", &default_headers)
             .field("timeouts", &self.timeouts)
