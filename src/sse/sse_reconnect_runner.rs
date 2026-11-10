@@ -632,23 +632,16 @@ mod tests {
     use super::SseReconnectOptions;
     use super::apply_last_event_id_header;
     use super::operation_elapsed_exceeded_error_with_last_error;
+    use crate::HttpClient;
     use crate::HttpError;
     use crate::HttpErrorKind;
-    use crate::HttpClient;
 
     /// An unresolved request URL does not replace the invalid cursor error.
     #[test]
     fn test_invalid_cursor_keeps_primary_error_when_request_url_is_unresolved() {
         let client = HttpClient::builder().build().unwrap();
-        let mut request = client
-            .request(Method::GET, "/relative-without-base")
-            .build();
-        let error = apply_last_event_id_header(
-            &mut request,
-            "bad\x7fvalue",
-            &Redactor::default(),
-        )
-        .unwrap_err();
+        let mut request = client.request(Method::GET, "/relative-without-base").build();
+        let error = apply_last_event_id_header(&mut request, "bad\x7fvalue", &Redactor::default()).unwrap_err();
         assert_eq!(error.kind(), HttpErrorKind::Other);
         assert_eq!(error.method(), Some(&Method::GET));
         assert!(error.url().is_none());
