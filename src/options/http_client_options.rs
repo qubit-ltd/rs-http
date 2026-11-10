@@ -130,10 +130,12 @@ pub struct HttpClientOptions {
     /// Log redaction policy for URL, header, and body previews.
     pub log_redaction_policy: RedactionPolicy,
     /// Whether the local resolver filters DNS results to IPv4 and request URL
-    /// validation rejects IPv6 literal targets. Existing proxy-host literal
-    /// checks remain active. This does not constrain target addresses resolved
-    /// remotely by a proxy. Request-level overrides affect URL checks only and
-    /// cannot reconfigure the client's resolver.
+    /// validation rejects IPv6 literal targets. An explicitly configured IPv6
+    /// proxy literal is rejected, but environment proxy selection is delegated
+    /// to reqwest and its connection to that proxy is not constrained by this
+    /// option. This also does not constrain target addresses resolved remotely
+    /// by a proxy. Request-level overrides affect URL checks only and cannot
+    /// reconfigure the client's resolver.
     pub ipv4_only: bool,
     /// Default JSON handling mode used by [`crate::HttpResponse::sse_chunks`].
     pub sse_json_mode: SseJsonMode,

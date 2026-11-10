@@ -1024,7 +1024,7 @@ options.proxy.port = Some(1080);
 
 `ProxyType::Socks5` uses scheme `socks5h`, which performs remote DNS. Setting username enables proxy Basic Auth; setting password without username fails validation.
 
-When `ipv4_only = true`, the local resolver filters DNS results to IPv4, request URLs with IPv6 literal hosts are rejected, and IPv6 proxy literals and IPv6 redirect targets retain their existing checks. `ProxyType::Socks5` uses `socks5h`, so the target hostname is sent to the proxy for remote DNS. HTTP and HTTPS proxies also control target resolution and egress. The local resolver cannot constrain the proxy-to-target address family: IPv4-only is not an end-to-end guarantee across a proxy. Deployments that require IPv4 egress through a proxy must enforce it at the proxy, or use a verified direct connection.
+When `ipv4_only = true`, the local resolver filters DNS results to IPv4, request URLs with IPv6 literal hosts are rejected, explicitly configured IPv6 proxy literals are rejected during client construction, and IPv6 redirect targets retain their existing checks. Environment proxy selection remains delegated to reqwest: an IPv6 environment proxy can still be reached from the client, because the local resolver does not constrain the client-to-proxy connection. `ProxyType::Socks5` uses `socks5h`, so the target hostname is sent to the proxy for remote DNS. HTTP and HTTPS proxies also control target resolution and egress. The local resolver cannot constrain the proxy-to-target address family either, so IPv4-only is not an end-to-end guarantee across a proxy. Deployments that require IPv4 egress through a proxy must enforce it at the proxy, or disable environment proxying and use a verified direct connection.
 
 ## SSE Decoding
 

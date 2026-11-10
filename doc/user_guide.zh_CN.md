@@ -977,7 +977,7 @@ options.proxy.port = Some(1080);
 
 `ProxyType::Socks5` 使用 scheme `socks5h`，即远端 DNS。设置 username 后会启用代理 Basic Auth；只设置 password 不设置 username 会校验失败。
 
-`ipv4_only = true` 时，本地 resolver 只保留 IPv4 解析结果；请求 URL 中的 IPv6 literal host、IPv6 literal 代理地址以及现有 IPv6 重定向检查仍会被拒绝。`ProxyType::Socks5` 使用 `socks5h`，目标域名交给代理远端解析；HTTP 和 HTTPS 代理也自行控制目标解析与出口。本地 resolver 无法约束代理到目标这一段使用的地址族，因此 IPv4-only 不是跨代理链路的端到端保证。部署若要求代理出口为 IPv4，应由代理自身限制，或使用经过验证的直连配置。
+`ipv4_only = true` 时，本地 resolver 只保留 IPv4 解析结果；请求 URL 中的 IPv6 literal host、显式配置的 IPv6 literal 代理地址（在客户端构造时）以及现有 IPv6 重定向检查仍会被拒绝。环境代理的选择仍委托给 reqwest：客户端到 IPv6 环境代理的连接不受本地 resolver 限制，因此仍可能成功。`ProxyType::Socks5` 使用 `socks5h`，目标域名交给代理远端解析；HTTP 和 HTTPS 代理也自行控制目标解析与出口。本地 resolver 既无法限制客户端到代理这一段，也无法约束代理到目标这一段的地址族，因此 IPv4-only 不是跨代理链路的端到端保证。部署若要求代理出口为 IPv4，应由代理自身限制，或关闭环境代理并使用经过验证的直连配置。
 
 ## SSE 解码
 

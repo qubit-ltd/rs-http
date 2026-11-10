@@ -34,7 +34,7 @@ flowchart LR
 
 请求快照阶段的 `AnyOrigin` 允许跨源初始目标；执行后端阶段的 `AnyOrigin` 允许跨源重定向。日志脱敏和 `HeaderValue::set_sensitive(true)` 不会过滤网络请求头。允许跨源跳转时，自定义 API key header 可能继续发送，而 reqwest 会移除其固定名单中的标准认证头。携带凭证的请求应保留 `SameOrigin`；跨源请求应使用不携带这些凭证的独立客户端/请求，并由应用校验目标。
 
-base URL 在配置解析和客户端构造时校验；最终请求 URL 在解析或 join 后校验，拦截器修改后的目标也会检查。仅支持 HTTP 和 HTTPS；不支持的请求 scheme 返回 `InvalidUrl`。IPv4-only 过滤仅作用于客户端本地 resolver 和 URL literal 检查。SOCKS5 保留远端 DNS（`socks5h`），因此代理解析的目标及代理到目标这一段的地址族不受本地 IPv4 保证约束。
+base URL 在配置解析和客户端构造时校验；最终请求 URL 在解析或 join 后校验，拦截器修改后的目标也会检查。仅支持 HTTP 和 HTTPS；不支持的请求 scheme 返回 `InvalidUrl`。IPv4-only 过滤仅作用于客户端本地 resolver 和 URL literal 检查；显式配置的 IPv6 代理 literal 会在客户端构造时被拒绝。环境代理选择仍委托给 reqwest，因此 IPv4-only 不限制客户端到代理这一段的连接，包括使用 IPv6 环境代理时。SOCKS5 保留远端 DNS（`socks5h`），HTTP/HTTPS 代理也自行控制目标解析与出口，因此代理到目标这一段的地址族同样不受本地 IPv4 保证约束。
 
 ## 请求与重试边界
 
