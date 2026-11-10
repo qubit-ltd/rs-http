@@ -1050,13 +1050,23 @@ impl HttpRequest {
     /// Borrowed merged [`HeaderMap`] from the cache.
     ///
     /// # Errors
-    /// Propagates failures returned by any injector's `apply` implementation.
+    /// Propagates injector failures, filling missing method and resolved URL
+    /// context without replacing fields already supplied by the callback. URL
+    /// resolution failure preserves the original error. Diagnostic rendering
+    /// uses the request's captured redaction policy.
     pub(crate) async fn effective_headers(&mut self) -> HttpResult<&HeaderMap> {
         if self.effective_headers.is_none() {
-            let headers = self
-                .compute_effective_headers()
-                .await
-                .map_err(|error| self.with_log_redactor(error))?;
+            let headers = self.compute_effective_headers().await.map_err(|mut error| {
+                if error.method.is_none() {
+                    error.method = Some(self.method().clone());
+                }
+                if error.url.is_none() {
+                    if let Ok(url) = self.resolved_url() {
+                        error.url = Some(url);
+                    }
+                }
+                self.with_log_redactor(error)
+            })?;
             self.effective_headers = Some(headers);
         }
         Ok(self
@@ -1247,6 +1257,8 @@ mod tests {
 
     use crate::HttpClientBuilder;
     use crate::HttpClientOptions;
+    use crate::HttpError;
+    use crate::HttpHeaderInjector;
     use crate::HttpLogger;
 
     #[test]
@@ -1331,5 +1343,24 @@ mod tests {
         );
         assert!(!format!("{error}").contains("synthetic-secret"));
         assert!(!format!("{error:?}").contains("synthetic-secret"));
+    }
+
+    #[tokio::test]
+    async fn test_effective_headers_preserves_injector_error_when_url_is_invalid() {
+        let mut client = HttpClientBuilder::new().build().expect("client should be created");
+        client.add_header_injector(HttpHeaderInjector::new(|_headers: &mut http::HeaderMap| {
+            Err(HttpError::other("injector failed"))
+        }));
+        let mut request = client.request(Method::GET, "http://[invalid").build();
+
+        let error = request
+            .effective_headers()
+            .await
+            .expect_err("injector failure should be returned");
+
+        assert_eq!(error.kind, crate::HttpErrorKind::Other);
+        assert_eq!(error.method(), Some(&Method::GET));
+        assert!(error.url().is_none());
+        assert!(error.message.contains("injector failed"));
     }
 }
