@@ -1780,7 +1780,11 @@ async fn test_execute_sse_with_reconnect_reports_invalid_last_event_id_header_va
     options.timeouts.response_header_timeout = Duration::from_secs(2);
     let client = HttpClientBuilder::new().options(options).build().unwrap();
 
-    let request = client.request(Method::GET, "/sse-invalid-last-event-id").build();
+    let request = client
+        .request(Method::GET, "/sse-invalid-last-event-id")
+        .query_param("access_token", "http001-query-secret")
+        .build();
+    let expected_url = request.resolved_url().unwrap();
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
@@ -1798,11 +1802,20 @@ async fn test_execute_sse_with_reconnect_reports_invalid_last_event_id_header_va
     assert_eq!(error.kind, HttpErrorKind::Other);
     assert!(error.message.contains("Invalid Last-Event-ID"));
     assert!(!error.message.contains("bad"));
+    assert_eq!(error.method(), Some(&Method::GET));
+    assert_eq!(error.url(), Some(&expected_url));
+    assert_eq!(error.status(), None);
+    assert!(!format!("{error}").contains("http001-query-secret"));
+    assert!(!format!("{error:?}").contains("http001-query-secret"));
+    assert!(events.next().await.is_none());
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
         .expect("server finish timed out");
-    assert_eq!(captured.target, "/sse-invalid-last-event-id");
+    assert_eq!(
+        captured.target,
+        "/sse-invalid-last-event-id?access_token=http001-query-secret"
+    );
 }
 
 #[tokio_test]

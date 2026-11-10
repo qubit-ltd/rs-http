@@ -294,7 +294,8 @@ impl SseReconnectRunner {
 ///
 /// # Errors
 /// Returns [`HttpError`] when `last_event_id` cannot be represented as an HTTP
-/// header value.
+/// header value. The error includes the request method and, when its URL can be
+/// resolved, the request URL; formatted output uses the supplied redactor.
 fn apply_last_event_id_header(
     request: &mut HttpRequest,
     last_event_id: &str,
@@ -305,11 +306,16 @@ fn apply_last_event_id_header(
         return Ok(());
     }
     let header_value = HeaderValue::from_str(last_event_id).map_err(|error| {
-        HttpError::other(format!(
+        let mut mapped = HttpError::other(format!(
             "Invalid Last-Event-ID header value ({} bytes): {error}",
             last_event_id.len()
         ))
-        .with_log_redactor(log_redactor.clone())
+        .with_method(request.method())
+        .with_log_redactor(log_redactor.clone());
+        if let Ok(url) = request.resolved_url() {
+            mapped = mapped.with_url(&url);
+        }
+        mapped
     })?;
     request.set_sse_last_event_id(header_value);
     Ok(())
@@ -624,9 +630,31 @@ mod tests {
     use super::ReconnectRuntime;
     use super::ReconnectState;
     use super::SseReconnectOptions;
+    use super::apply_last_event_id_header;
     use super::operation_elapsed_exceeded_error_with_last_error;
     use crate::HttpError;
     use crate::HttpErrorKind;
+    use crate::HttpClient;
+
+    /// An unresolved request URL does not replace the invalid cursor error.
+    #[test]
+    fn test_invalid_cursor_keeps_primary_error_when_request_url_is_unresolved() {
+        let client = HttpClient::builder().build().unwrap();
+        let mut request = client
+            .request(Method::GET, "/relative-without-base")
+            .build();
+        let error = apply_last_event_id_header(
+            &mut request,
+            "bad\x7fvalue",
+            &Redactor::default(),
+        )
+        .unwrap_err();
+        assert_eq!(error.kind(), HttpErrorKind::Other);
+        assert_eq!(error.method(), Some(&Method::GET));
+        assert!(error.url().is_none());
+        assert!(error.status().is_none());
+        assert!(error.message.contains("Invalid Last-Event-ID"));
+    }
 
     /// Exhausting the operation budget retains the last response's diagnostics.
     #[test]
