@@ -6,39 +6,28 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Unified HTTP response type and helpers.
-use std::error::Error;
 use std::fmt;
-use std::sync::Arc;
 use std::time::Duration;
 
-use async_stream::stream;
 use bytes::Bytes;
-use bytes::BytesMut;
 use futures_util::StreamExt;
 use futures_util::stream as futures_stream;
 use http::HeaderMap;
-use http::HeaderValue;
 use http::Method;
 use http::StatusCode;
 use http::header::CONTENT_LENGTH;
 use http::header::CONTENT_TYPE;
-use qubit_budget::ResourceBudget;
 use qubit_budget::json::JsonValueLimits;
-use qubit_json::decode::JsonDecoder;
 use qubit_redact::Redactor;
-use qubit_redact::formats::http::BodyCapture;
 use serde::de::DeserializeOwned;
-use tokio::time::Instant;
 use url::Url;
 
 use super::HttpResponseMeta;
 use super::HttpResponseOptions;
 use super::internal::HttpResponseBodyState;
-use super::internal::http_error_body_capture::HttpErrorBodyCapture;
 use super::internal::http_response_runtime::HttpResponseRuntime;
 use super::internal::http_response_runtime::previous_body_read_error;
 use super::internal::http_response_runtime::remember_body_read_failure_state;
-use crate::HttpByteStream;
 use crate::HttpCancellationToken;
 use crate::HttpError;
 use crate::HttpErrorKind;
@@ -46,7 +35,6 @@ use crate::HttpResult;
 use crate::content_type;
 use crate::error::ReqwestErrorPhase;
 use crate::error::backend_error_mapper::map_reqwest_error;
-use crate::json_limits::json_decode_limits;
 use crate::sse::DoneMarkerPolicy;
 use crate::sse::SseChunkStream;
 use crate::sse::SseCompletionPolicy;
@@ -105,6 +93,13 @@ fn parse_content_length_hint(method: &Method, status: StatusCode, headers: &Head
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.parse::<u64>().ok())
 }
+
+// Implements bounded aggregate body reads and text/JSON decoding.
+mod aggregate;
+// Implements one-shot backend streaming and cached-body streams.
+mod streaming;
+// Implements bounded non-success response capture and diagnostics.
+mod status_capture;
 
 /// Unified HTTP response with lazily consumed body.
 ///
@@ -424,406 +419,6 @@ impl HttpResponse {
         remember_body_read_failure_state(&self.runtime.body_read_failure, error);
     }
 
-    /// Returns `Ok(self)` for success statuses, otherwise maps a status error
-    /// with `Retry-After` and response-body preview context.
-    ///
-    /// # Parameters
-    /// - `message_prefix`: Context prepended to the status error message.
-    ///
-    /// # Returns
-    /// This response when its status is successful.
-    ///
-    /// # Errors
-    /// Returns a `Status` error for unsuccessful responses. Body capture
-    /// failures and timeouts are retained in the capture diagnostics;
-    /// cancellation returns `Cancelled`.
-    pub(crate) async fn into_success_or_status_error(self, message_prefix: &str) -> HttpResult<Self> {
-        let status = self.status();
-        if status.is_success() {
-            return Ok(self);
-        }
-        let retry_after = self.retry_after_hint();
-        let method = self.meta.method().clone();
-        let url = self.request_url().clone();
-        let error_preview_limit = self.options.error_response_preview_limit;
-        let error_body_headers = self.meta.headers().clone();
-        let error_body_content_length = self.content_length_hint();
-        let error_body_limit = self.options.error_response_body_limit;
-        let log_redactor = self.log_redactor().clone();
-        let capture = self
-            .into_error_body_capture(error_preview_limit, error_body_limit)
-            .await?;
-        let redacted_url = log_redactor
-            .redact_http_url(url.as_str())
-            .into_text_or_marker("<redaction incomplete>");
-        let message = format!(
-            "{} with status {} for {} {}; response body preview: {}",
-            message_prefix, status, method, redacted_url, capture.preview
-        );
-        let mut mapped = HttpError::from_status(status, message)
-            .with_method(&method)
-            .with_url(&url)
-            .with_response_body_preview(capture.preview.clone())
-            .with_log_redactor(log_redactor.clone());
-        if let Some(retry_after) = retry_after {
-            mapped = mapped.with_retry_after(retry_after);
-        }
-        mapped = mapped.with_status_response(crate::error::HttpStatusResponse::new(
-            error_body_headers,
-            capture.raw_body,
-            capture.end,
-            capture.error,
-            error_body_content_length,
-        ));
-        Err(mapped)
-    }
-
-    /// Consumes this response and captures a bounded diagnostic preview and raw
-    /// body prefix for a status error. Preview truncation is independent of raw
-    /// capture completeness.
-    ///
-    /// # Returns
-    /// A capture containing the rendered preview, raw body prefix, capture end
-    /// reason, and an optional backend read error.
-    ///
-    /// # Errors
-    /// Returns [`HttpErrorKind::Cancelled`](crate::HttpErrorKind::Cancelled)
-    /// when the request cancellation token fires while preview bytes are being
-    /// read.
-    ///
-    /// # Parameters
-    /// - `preview_limit`: Maximum rendered preview size in bytes.
-    /// - `raw_limit`: Maximum retained raw body size in bytes.
-    ///
-    /// # Returns
-    /// Captured response body data and its terminal status.
-    async fn into_error_body_capture(
-        mut self,
-        preview_limit: usize,
-        raw_limit: usize,
-    ) -> HttpResult<HttpErrorBodyCapture> {
-        let limit = preview_limit.max(1);
-        let state = std::mem::replace(&mut self.body, HttpResponseBodyState::StreamingTaken);
-        let content_type = Self::content_type_header(self.meta.headers());
-        let backend = match state {
-            HttpResponseBodyState::Backend(backend) => backend,
-            HttpResponseBodyState::Buffered(body) => {
-                let raw_limit = raw_limit.max(1);
-                let end = if body.len() > raw_limit {
-                    crate::error::HttpBodyCaptureEnd::SizeLimit
-                } else {
-                    crate::error::HttpBodyCaptureEnd::Complete
-                };
-                let preview_truncated = body.len() > limit;
-                let raw = body.slice(..body.len().min(raw_limit));
-                let preview = Self::render_error_body_preview(
-                    &body[..body.len().min(limit)],
-                    Some(body.len()),
-                    preview_truncated,
-                    content_type.as_ref(),
-                    &self.options.log_redactor,
-                );
-                return Ok(HttpErrorBodyCapture {
-                    preview,
-                    raw_body: raw,
-                    end,
-                    error: None,
-                });
-            }
-            HttpResponseBodyState::StreamingTaken => {
-                return Ok(HttpErrorBodyCapture {
-                    preview: "<empty>".to_string(),
-                    raw_body: Bytes::new(),
-                    end: crate::error::HttpBodyCaptureEnd::BodyUnavailable,
-                    error: None,
-                });
-            }
-        };
-        self.read_error_body_preview(backend, limit, raw_limit, content_type)
-            .await
-    }
-
-    /// Returns full body bytes, consuming backend stream lazily on first call.
-    ///
-    /// # Returns
-    /// The complete body bytes, or an error if reading fails or exceeds the
-    /// configured limit. A successfully buffered body remains available to
-    /// later calls.
-    ///
-    /// # Cancellation safety
-    ///
-    /// For an unbuffered response, dropping this future after it has taken the
-    /// backend body and before buffering completes discards the backend and any
-    /// partially read bytes. Later body readers return
-    /// [`HttpErrorKind::ResponseBodyAlreadyConsumed`]. An outer
-    /// `tokio::time::timeout` or a losing `tokio::select!` branch can cause
-    /// this drop.
-    ///
-    /// Dropping a future before it is polled does not take the body. A
-    /// successfully buffered body remains reusable. Cancellation and read
-    /// timeouts returned by the built-in reader follow the existing
-    /// retained-failure behavior instead. Configure the request's read timeout
-    /// or cancellation token before sending when the reader should return a
-    /// classified failure.
-    /// Cancellation after buffering does not prevent reads of cached bytes.
-    ///
-    /// # Errors
-    /// Returns the backend read, timeout, cancellation, or body-size error.
-    pub async fn bytes(&mut self) -> HttpResult<Bytes> {
-        let body_limit = self.options.response_body_size_limit;
-        if let Some(error) = self.previous_body_read_error() {
-            return Err(error);
-        }
-        let state = std::mem::replace(&mut self.body, HttpResponseBodyState::StreamingTaken);
-        let mut backend = match state {
-            HttpResponseBodyState::Buffered(body) => {
-                if body.len() > body_limit {
-                    let error = self.response_body_size_limit_error(body.len());
-                    self.remember_body_read_failure(&error);
-                    return Err(error);
-                }
-                self.body = HttpResponseBodyState::Buffered(body.clone());
-                return Ok(body);
-            }
-            HttpResponseBodyState::Backend(backend) => backend,
-            HttpResponseBodyState::StreamingTaken => {
-                return Err(self.response_body_already_consumed_error());
-            }
-        };
-
-        let method = self.meta.method().clone();
-        let url = self.runtime.request_url.clone();
-        let status = self.meta.status();
-        let read_timeout = self.runtime.read_timeout;
-        let cancellation_token = self.runtime.cancellation_token.clone();
-        if let Some(content_length) = self.content_length_hint() {
-            let exceeds_limit = match usize::try_from(content_length) {
-                Ok(observed_size) => observed_size > body_limit,
-                Err(_) => true,
-            };
-            if exceeds_limit {
-                let observed_size = usize::try_from(content_length).unwrap_or(usize::MAX);
-                let error = self.response_body_size_limit_error(observed_size);
-                self.remember_body_read_failure(&error);
-                return Err(error);
-            }
-        }
-        let mut body = BytesMut::new();
-        let mut body_budget = ResourceBudget::new("response body", body_limit);
-
-        loop {
-            let next = if let Some(token) = &cancellation_token {
-                tokio::select! {
-                    _ = token.cancelled() => {
-                        let error = HttpError::cancelled("Request cancelled while reading response body")
-                            .with_method(&method)
-                            .with_url(&url)
-                            .with_status(status)
-                            .with_log_redactor(
-                                self.log_redactor().clone(),
-                            );
-                        self.remember_body_read_failure(&error);
-                        return Err(error);
-                    }
-                    item = tokio::time::timeout(read_timeout, backend.chunk()) => item,
-                }
-            } else {
-                tokio::time::timeout(read_timeout, backend.chunk()).await
-            };
-
-            match next {
-                Ok(Ok(Some(chunk))) => {
-                    if let Err(error) = body_budget.try_consume(chunk.len()) {
-                        let observed_size = error.used().saturating_add(error.requested());
-                        let error = self.response_body_size_limit_error(observed_size);
-                        self.remember_body_read_failure(&error);
-                        return Err(error);
-                    }
-                    body.extend_from_slice(&chunk);
-                }
-                Ok(Ok(None)) => {
-                    let body = body.freeze();
-                    self.body = HttpResponseBodyState::Buffered(body.clone());
-                    return Ok(body);
-                }
-                Ok(Err(error)) => {
-                    let error = map_response_read_error(error, method, url, status, self.log_redactor());
-                    self.remember_body_read_failure(&error);
-                    return Err(error);
-                }
-                Err(_) => {
-                    let error = HttpError::read_timeout(format!(
-                        "Read timeout after {:?} while reading response body",
-                        read_timeout
-                    ))
-                    .with_method(self.meta.method())
-                    .with_url(&self.runtime.request_url)
-                    .with_status(status)
-                    .with_log_redactor(self.log_redactor().clone());
-                    self.remember_body_read_failure(&error);
-                    return Err(error);
-                }
-            }
-        }
-    }
-
-    /// Returns body as stream; if already buffered, returns a stream backed by
-    /// cached bytes without consuming the cache. Repeated streams and byte
-    /// reads therefore return the same buffered body.
-    ///
-    /// The stream takes ownership of an unbuffered backend body. It can only be
-    /// obtained once; a buffered body can be streamed from its cached bytes.
-    ///
-    /// # Returns
-    /// A stream of body chunks. A successfully buffered body remains readable
-    /// after request cancellation; cancellation stops reads that still require
-    /// backend I/O.
-    ///
-    /// # Errors
-    /// Returns an error if the body was already consumed, an earlier read
-    /// failed, or an unbuffered response was cancelled before streaming starts.
-    pub fn stream(&mut self) -> HttpResult<HttpByteStream> {
-        if let Some(error) = self.previous_body_read_error() {
-            return Err(error);
-        }
-        if let HttpResponseBodyState::Buffered(body) = &self.body {
-            let body = body.clone();
-            return Ok(Box::pin(futures_stream::once(async move { Ok(body) })));
-        }
-        if let Some(error) = self.cancelled_error_if_needed("Streaming response cancelled before reading response body")
-        {
-            return Err(error);
-        }
-        let state = std::mem::replace(&mut self.body, HttpResponseBodyState::StreamingTaken);
-        let backend = match state {
-            HttpResponseBodyState::Buffered(_) => unreachable!("buffered body returned above"),
-            HttpResponseBodyState::Backend(backend) => backend,
-            HttpResponseBodyState::StreamingTaken => {
-                return Err(self.response_body_already_consumed_error());
-            }
-        };
-
-        let method = self.meta.method().clone();
-        let url = self.runtime.request_url.clone();
-        let status = self.meta.status();
-        let read_timeout = self.runtime.read_timeout;
-        let cancellation_token = self.runtime.cancellation_token.clone();
-        let body_read_failure = self.runtime.body_read_failure.clone();
-        let log_redactor = self.log_redactor().clone();
-        let mut stream = backend.bytes_stream();
-        let wrapped = stream! {
-            loop {
-                let next = if let Some(token) = &cancellation_token {
-                    tokio::select! {
-                        _ = token.cancelled() => {
-                            let error = HttpError::cancelled("Streaming response cancelled while reading body")
-                                .with_method(&method)
-                                .with_url(&url)
-                                .with_status(status)
-                                .with_log_redactor(log_redactor.clone());
-                            remember_body_read_failure_state(&body_read_failure, &error);
-                            yield Err(error);
-                            break;
-                        }
-                        item = tokio::time::timeout(read_timeout, stream.next()) => item,
-                    }
-                } else {
-                    tokio::time::timeout(read_timeout, stream.next()).await
-                };
-                match next {
-                    Ok(Some(Ok(bytes))) => yield Ok(bytes),
-                    Ok(Some(Err(error))) => {
-                        let mapped = map_response_read_error(
-                            error,
-                            method.clone(),
-                            url.clone(),
-                            status,
-                            &log_redactor,
-                        );
-                        remember_body_read_failure_state(&body_read_failure, &mapped);
-                        yield Err(mapped);
-                        break;
-                    }
-                    Ok(None) => break,
-                    Err(_) => {
-                        let error = HttpError::read_timeout(format!(
-                            "Read timeout after {:?} while streaming response",
-                            read_timeout
-                        ))
-                        .with_method(&method)
-                        .with_url(&url)
-                        .with_status(status)
-                        .with_log_redactor(log_redactor.clone());
-                        remember_body_read_failure_state(&body_read_failure, &error);
-                        yield Err(error);
-                        break;
-                    }
-                }
-            }
-        };
-        Ok(Box::pin(wrapped))
-    }
-
-    /// Interprets the complete response body as UTF-8 text.
-    ///
-    /// # Returns
-    /// Decoded text when the body contains valid UTF-8.
-    ///
-    /// # Errors
-    /// Returns a body read error or a decoding error for invalid UTF-8.
-    ///
-    /// # Cancellation safety
-    ///
-    /// This method aggregates through [`Self::bytes`] and has the same
-    /// cancellation-safety boundary: dropping a polled read future before
-    /// buffering completes can consume an unbuffered backend body permanently.
-    pub async fn text(&mut self) -> HttpResult<String> {
-        let body = self.bytes().await?;
-        String::from_utf8(body.to_vec()).map_err(|error| {
-            HttpError::decode(format!("Failed to decode response body as UTF-8: {}", error))
-                .with_status(self.meta.status())
-                .with_method(self.meta.method())
-                .with_url(self.request_url())
-                .with_log_redactor(self.log_redactor().clone())
-        })
-    }
-
-    /// Deserializes the complete response body as JSON into `T`.
-    ///
-    /// # Type Parameters
-    /// - `T`: Owned type to deserialize from the response JSON.
-    ///
-    /// # Returns
-    /// The decoded value when the body is valid JSON matching `T`.
-    ///
-    /// # Errors
-    /// Returns a body read error or a JSON decoding error.
-    ///
-    /// # Cancellation safety
-    ///
-    /// This method aggregates through [`Self::bytes`] and has the same
-    /// cancellation-safety boundary: dropping a polled read future before
-    /// buffering completes can consume an unbuffered backend body permanently.
-    pub async fn json<T>(&mut self) -> HttpResult<T>
-    where
-        T: DeserializeOwned,
-    {
-        let body = self.bytes().await?;
-        JsonDecoder::with_limits(json_decode_limits(
-            self.options.response_body_size_limit,
-            self.options.json_value_limits,
-        ))
-        .decode_utf8(&body)
-        .map_err(|error| {
-            HttpError::decode("Failed to decode response JSON")
-                .with_status(self.meta.status())
-                .with_method(self.meta.method())
-                .with_url(self.request_url())
-                .with_source(error)
-                .with_log_redactor(self.log_redactor().clone())
-        })
-    }
-
     /// Overrides structural and decoded-payload limits used by JSON response
     /// and SSE decoding on this response.
     ///
@@ -1043,158 +638,6 @@ impl HttpResponse {
         }
     }
 
-    /// Reads bounded preview and raw capture bytes from a response body for
-    /// status errors, tracking their truncation independently. The read
-    /// timeout is a cumulative budget starting when this capture begins; if it
-    /// expires, the caller retains the status and any partial raw body marked
-    /// incomplete.
-    ///
-    /// # Errors
-    /// Returns [`HttpErrorKind::Cancelled`](crate::HttpErrorKind::Cancelled)
-    /// when the supplied cancellation token fires while waiting for preview
-    /// bytes.
-    ///
-    /// # Parameters
-    /// - `response`: Backend response whose error body is read.
-    /// - `max_bytes`: Maximum rendered preview size in bytes.
-    /// - `raw_limit`: Maximum retained raw body size in bytes.
-    /// - `content_type`: Optional response content type used to render preview.
-    ///
-    /// # Returns
-    /// Captured response body data and its terminal status.
-    async fn read_error_body_preview(
-        &self,
-        mut response: reqwest::Response,
-        max_bytes: usize,
-        raw_limit: usize,
-        content_type: Option<HeaderValue>,
-    ) -> HttpResult<HttpErrorBodyCapture> {
-        let limit = max_bytes.max(1);
-        let read_timeout = self.runtime.read_timeout;
-        let cancellation_token = self.runtime.cancellation_token.clone();
-        let method = self.meta.method().clone();
-        let url = self.runtime.request_url.clone();
-        let status = self.meta.status();
-        let source_len = self
-            .content_length_hint()
-            .and_then(|length| usize::try_from(length).ok());
-        let mut preview = Vec::new();
-        let mut raw = Vec::new();
-        let mut preview_truncated = false;
-        let mut raw_truncated = false;
-        let mut end = crate::error::HttpBodyCaptureEnd::Complete;
-        let capture_limit = limit.max(raw_limit.max(1)).saturating_add(1);
-        let mut capture_budget = ResourceBudget::new("status error response body preview", capture_limit);
-        let capture_started_at = Instant::now();
-
-        loop {
-            if cancellation_token
-                .as_ref()
-                .is_some_and(HttpCancellationToken::is_cancelled)
-            {
-                return Err(
-                    HttpError::cancelled("Request cancelled while reading status error response body preview")
-                        .with_method(&method)
-                        .with_url(&url)
-                        .with_status(status)
-                        .with_log_redactor(self.log_redactor().clone()),
-                );
-            }
-            let remaining = read_timeout.saturating_sub(capture_started_at.elapsed());
-            if remaining.is_zero() {
-                return Ok(HttpErrorBodyCapture {
-                    preview: format!("<error body unavailable: read timeout after {:?}>", read_timeout),
-                    raw_body: Bytes::from(raw),
-                    end: crate::error::HttpBodyCaptureEnd::ReadTimeout,
-                    error: None,
-                });
-            }
-            let next = if let Some(token) = cancellation_token.as_ref() {
-                tokio::select! {
-                    _ = token.cancelled() => {
-                        return Err(HttpError::cancelled(
-                            "Request cancelled while reading status error response body preview",
-                        )
-                        .with_method(&method)
-                        .with_url(&url)
-                        .with_status(status)
-                        .with_log_redactor(
-                            self.log_redactor().clone(),
-                        ));
-                    }
-                    item = tokio::time::timeout(remaining, response.chunk()) => item,
-                }
-            } else {
-                tokio::time::timeout(remaining, response.chunk()).await
-            };
-            match next {
-                Ok(Ok(Some(chunk))) => {
-                    let captured = capture_budget.consume_available(chunk.len());
-                    let preview_remaining = limit.saturating_sub(preview.len());
-                    if preview_remaining < captured {
-                        preview_truncated = true;
-                    }
-                    preview.extend_from_slice(&chunk[..captured.min(preview_remaining)]);
-                    let raw_remaining = raw_limit.saturating_sub(raw.len());
-                    if raw_remaining < chunk.len() {
-                        raw_truncated = true;
-                    }
-                    raw.extend_from_slice(&chunk[..chunk.len().min(raw_remaining)]);
-                    if captured < chunk.len() {
-                        preview_truncated |= preview_remaining < chunk.len();
-                        raw_truncated |= raw_remaining < chunk.len();
-                        break;
-                    }
-                    if capture_budget.used() == capture_limit && (preview_truncated || raw_truncated) {
-                        break;
-                    }
-                }
-                Ok(Ok(None)) => break,
-                Ok(Err(error)) => {
-                    let error = error.without_url();
-                    let preview = "<error body unavailable: failed to read response body>".to_string();
-                    let capture_error: Arc<dyn Error + Send + Sync + 'static> = Arc::new(error);
-                    end = crate::error::HttpBodyCaptureEnd::ReadFailure;
-                    return Ok(HttpErrorBodyCapture {
-                        preview,
-                        raw_body: Bytes::from(raw),
-                        end,
-                        error: Some(capture_error),
-                    });
-                }
-                Err(_) => {
-                    return Ok(HttpErrorBodyCapture {
-                        preview: format!("<error body unavailable: read timeout after {:?}>", read_timeout),
-                        raw_body: Bytes::from(raw),
-                        end: crate::error::HttpBodyCaptureEnd::ReadTimeout,
-                        error: None,
-                    });
-                }
-            }
-        }
-        if preview.len() > limit {
-            preview.truncate(limit);
-            preview_truncated = true;
-        }
-        preview_truncated |= source_len.is_some_and(|length| length > limit);
-        raw_truncated |= source_len.is_some_and(|length| length > raw_limit);
-        if raw_truncated {
-            end = crate::error::HttpBodyCaptureEnd::SizeLimit;
-        }
-        Ok(HttpErrorBodyCapture {
-            preview: Self::render_error_body_preview(
-                &preview,
-                source_len,
-                preview_truncated,
-                content_type.as_ref(),
-                &self.options.log_redactor,
-            ),
-            raw_body: Bytes::from(raw),
-            end,
-            error: None,
-        })
-    }
-
     /// Returns a cancellation error with response read context when cancelled.
     ///
     /// # Parameters
@@ -1245,54 +688,6 @@ impl HttpResponse {
         .with_url(&self.runtime.request_url)
         .with_status(self.meta.status())
         .with_log_redactor(self.log_redactor().clone())
-    }
-
-    /// Renders captured status-error bytes through the response redactor.
-    ///
-    /// # Parameters
-    ///
-    /// * `bytes` - Captured body prefix.
-    /// * `source_len` - Exact complete source length when known.
-    /// * `truncated` - Whether source bytes were omitted from the capture.
-    /// * `content_type` - Optional native Content-Type used for parser choice.
-    /// * `log_redactor` - Response-scoped redactor and policy snapshot.
-    ///
-    /// # Returns
-    ///
-    /// `<empty>` for a complete empty body, otherwise bounded log-safe text.
-    fn render_error_body_preview(
-        bytes: &[u8],
-        source_len: Option<usize>,
-        truncated: bool,
-        content_type: Option<&HeaderValue>,
-        log_redactor: &Redactor,
-    ) -> String {
-        if bytes.is_empty() && !truncated {
-            return "<empty>".to_owned();
-        }
-        let capture = if truncated {
-            source_len.map_or_else(
-                || BodyCapture::truncated_unknown(bytes),
-                |total_len| {
-                    BodyCapture::truncated(bytes, total_len).unwrap_or_else(|_| BodyCapture::truncated_unknown(bytes))
-                },
-            )
-        } else {
-            BodyCapture::complete(bytes)
-        };
-        let body = log_redactor.redact_http_body(capture, content_type);
-        body.into_text_or_marker("<redaction incomplete>").into_string()
-    }
-
-    /// Extracts a Content-Type header value.
-    ///
-    /// # Parameters
-    /// - `headers`: Headers to inspect.
-    ///
-    /// # Returns
-    /// Owned Content-Type value when present, including non-UTF-8 values.
-    fn content_type_header(headers: &HeaderMap) -> Option<HeaderValue> {
-        headers.get(CONTENT_TYPE).cloned()
     }
 }
 
