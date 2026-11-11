@@ -708,8 +708,10 @@ impl HttpClient {
     /// - `started_at`: Monotonic start instant of the HTTP retry flow.
     /// - `max_duration`: Optional HTTP total retry budget.
     /// - `max_attempts`: Configured maximum HTTP attempts.
-    /// - `request_method`: Request method attached to cancellation errors.
-    /// - `request_url`: Resolved URL attached to cancellation errors.
+    /// - `request_method`: Request method attached to cancellation errors and
+    ///   retry budget errors raised before the first attempt.
+    /// - `request_url`: Resolved URL attached to cancellation errors and retry
+    ///   budget errors raised before the first attempt when available.
     ///
     /// # Returns
     /// A rich [`HttpError`] preserving the last attempt error when available.
@@ -757,11 +759,21 @@ impl HttpClient {
                 }
                 RetryLimitKind::OperationElapsed | RetryLimitKind::TotalElapsed => {
                     let max_duration = max_duration.expect("HTTP elapsed limit requires max_duration");
-                    application_error.map_or_else(|| {
-                        HttpError::retry_budget_exceeded(format!(
+                    application_error.map_or_else(
+                        || {
+                            let mut mapped = HttpError::retry_budget_exceeded(format!(
                             "HTTP retry max duration exceeded before a retryable error was captured: {max_duration:?}"
-                        ))
-                    }, |error| Self::append_retry_message(error, format!("retry max duration exceeded: {max_duration:?}")))
+                            ))
+                            .with_method(request_method);
+                            if let Some(url) = request_url {
+                                mapped = mapped.with_url(url);
+                            }
+                            mapped
+                        },
+                        |error| {
+                            Self::append_retry_message(error, format!("retry max duration exceeded: {max_duration:?}"))
+                        },
+                    )
                 }
             },
             _ => HttpError::other(format!(

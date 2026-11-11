@@ -1689,7 +1689,11 @@ async fn test_execute_retry_max_duration_zero_reports_no_retryable_failure() {
     options.retry.backoff = BackoffPolicy::immediate();
     let client = HttpClientBuilder::new().options(options).build().unwrap();
 
-    let request = client.request(Method::GET, "/max-duration-zero").build();
+    let request = client
+        .request(Method::GET, "/max-duration-zero")
+        .query_param("access_token", "budget-context-secret")
+        .build();
+    let expected_url = request.resolved_url().unwrap();
     let error = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")
@@ -1697,11 +1701,43 @@ async fn test_execute_retry_max_duration_zero_reports_no_retryable_failure() {
 
     assert_eq!(error.kind, HttpErrorKind::RetryBudgetExceeded);
     assert!(error.message.contains("before a retryable error was captured"));
+    assert_eq!(error.method(), Some(&Method::GET));
+    assert_eq!(error.url(), Some(&expected_url));
+    assert!(error.status().is_none());
+    let diagnostics = error.retry_diagnostics().expect("retry diagnostics");
+    assert_eq!(diagnostics.attempts(), 0);
+    assert_eq!(diagnostics.termination(), HttpRetryTermination::DurationExceeded,);
+    assert!(!error.to_string().contains("budget-context-secret"));
+    assert!(!format!("{error:?}").contains("budget-context-secret"));
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
         .expect("server finish timed out");
     assert!(captured.is_empty());
+}
+
+#[tokio_test]
+async fn test_execute_retry_max_duration_zero_keeps_error_when_url_is_unresolved() {
+    let mut options = HttpClientOptions::default();
+    options.retry.enabled = true;
+    options.retry.max_attempts = 3;
+    options.retry.max_duration = Some(Duration::ZERO);
+    options.retry.backoff = BackoffPolicy::immediate();
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
+    let request = client.request(Method::GET, "/relative-without-base").build();
+    let error = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("execute timed out")
+        .unwrap_err();
+
+    assert_eq!(error.kind, HttpErrorKind::RetryBudgetExceeded);
+    assert!(error.message.contains("before a retryable error was captured"));
+    assert_eq!(error.method(), Some(&Method::GET));
+    assert!(error.url().is_none());
+    assert!(error.status().is_none());
+    let diagnostics = error.retry_diagnostics().expect("retry diagnostics");
+    assert_eq!(diagnostics.attempts(), 0);
+    assert_eq!(diagnostics.termination(), HttpRetryTermination::DurationExceeded,);
 }
 
 #[tokio_test]
