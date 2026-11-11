@@ -30,6 +30,40 @@ fn test_http_response_meta_retry_after_only_applies_to_retryable_statuses() {
 }
 
 #[test]
+fn test_http_response_meta_retry_after_parses_standard_delta_seconds_and_dates() {
+    let cases = [
+        ("+120", None),
+        ("-1", None),
+        ("1.5", None),
+        ("1 2", None),
+        ("", None),
+        ("18446744073709551616", None),
+        ("0", Some(0)),
+        ("0007", Some(7)),
+        ("7", Some(7)),
+        (" 7 ", Some(7)),
+        ("Sun, 06 Nov 1994 08:49:37 GMT", Some(0)),
+    ];
+
+    for (value, seconds) in cases {
+        let mut headers = HeaderMap::new();
+        headers.insert(RETRY_AFTER, HeaderValue::from_str(value).expect("valid header value"));
+        let meta = HttpResponseMeta::new(
+            StatusCode::TOO_MANY_REQUESTS,
+            headers,
+            Url::parse("https://example.test/retry").expect("valid URL"),
+            Method::GET,
+        );
+
+        assert_eq!(
+            meta.retry_after_hint(),
+            seconds.map(std::time::Duration::from_secs),
+            "{value:?}"
+        );
+    }
+}
+
+#[test]
 fn test_http_response_meta_debug_masks_sensitive_values() {
     let mut headers = HeaderMap::new();
     headers.insert(SET_COOKIE, HeaderValue::from_static("session=debug-cookie-secret"));

@@ -274,8 +274,8 @@ fn parse_retry_after_value(value: &str) -> Option<Duration> {
     if trimmed.is_empty() {
         return None;
     }
-    if let Ok(seconds) = trimmed.parse::<u64>() {
-        return Some(Duration::from_secs(seconds));
+    if trimmed.bytes().all(|byte| byte.is_ascii_digit()) {
+        return trimmed.parse::<u64>().ok().map(Duration::from_secs);
     }
     let retry_at = parse_http_date(trimmed).ok()?;
     let now = SystemTime::now();
