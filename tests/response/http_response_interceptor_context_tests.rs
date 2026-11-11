@@ -8,12 +8,12 @@
 
 use std::time::Duration;
 
-use http::header::RETRY_AFTER;
-use http::header::SET_COOKIE;
 use http::HeaderMap;
 use http::HeaderValue;
 use http::Method;
 use http::StatusCode;
+use http::header::RETRY_AFTER;
+use http::header::SET_COOKIE;
 use qubit_http::HttpResponseInterceptorContext;
 use qubit_http::HttpResponseMeta;
 use url::Url;
@@ -82,10 +82,7 @@ fn test_http_response_interceptor_context_from_meta_preserves_retry_after_hint()
 #[test]
 fn test_http_response_interceptor_context_debug_masks_sensitive_values() {
     let mut headers = HeaderMap::new();
-    headers.insert(
-        SET_COOKIE,
-        HeaderValue::from_static("session=debug-cookie-secret"),
-    );
+    headers.insert(SET_COOKIE, HeaderValue::from_static("session=debug-cookie-secret"));
     let context = HttpResponseInterceptorContext::new(
         StatusCode::OK,
         headers,

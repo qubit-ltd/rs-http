@@ -21,10 +21,10 @@ use tokio::net::TcpListener;
 use tokio::test as tokio_test;
 use tokio::time::timeout;
 
-use crate::common::spawn_one_shot_server;
-use crate::common::spawn_simple_proxy_server;
 use crate::common::ProxyBehavior;
 use crate::common::ResponsePlan;
+use crate::common::spawn_one_shot_server;
+use crate::common::spawn_simple_proxy_server;
 
 #[test]
 fn test_http_proxy_rejects_path_in_host_before_building_client() {
@@ -108,54 +108,44 @@ async fn test_env_proxy_isolated_in_child_process() {
             .as_ref()
             .map(|proxy| format!("http://{}:{}", proxy.host(), proxy.port()))
             .unwrap_or_else(|| "http://127.0.0.1:1".to_string());
-        let mut child =
-            tokio::process::Command::new(std::env::current_exe().expect("test executable"))
-                .arg("--exact")
-                .arg("client::http_client_factory_proxy_tests::test_env_proxy_worker")
-                .arg("--nocapture")
-                .env_remove("HTTP_PROXY")
-                .env_remove("http_proxy")
-                .env_remove("HTTPS_PROXY")
-                .env_remove("https_proxy")
-                .env_remove("ALL_PROXY")
-                .env_remove("all_proxy")
-                .env_remove("NO_PROXY")
-                .env_remove("no_proxy")
-                .env_remove("REQUEST_METHOD")
-                .env("RS_HTTP_PROXY_WORKER", scenario)
-                .env("RS_HTTP_BACKEND_URL", backend.base_url().to_string())
-                .env("HTTP_PROXY", &proxy_url)
-                .env("HTTPS_PROXY", &proxy_url)
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn()
-                .expect("worker process should start");
+        let mut child = tokio::process::Command::new(std::env::current_exe().expect("test executable"))
+            .arg("--exact")
+            .arg("client::http_client_factory_proxy_tests::test_env_proxy_worker")
+            .arg("--nocapture")
+            .env_remove("HTTP_PROXY")
+            .env_remove("http_proxy")
+            .env_remove("HTTPS_PROXY")
+            .env_remove("https_proxy")
+            .env_remove("ALL_PROXY")
+            .env_remove("all_proxy")
+            .env_remove("NO_PROXY")
+            .env_remove("no_proxy")
+            .env_remove("REQUEST_METHOD")
+            .env("RS_HTTP_PROXY_WORKER", scenario)
+            .env("RS_HTTP_BACKEND_URL", backend.base_url().to_string())
+            .env("HTTP_PROXY", &proxy_url)
+            .env("HTTPS_PROXY", &proxy_url)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("worker process should start");
         let mut stdout = child.stdout.take().expect("child stdout is piped");
         let mut stderr = child.stderr.take().expect("child stderr is piped");
         let stdout_task = tokio::spawn(async move {
             let mut bytes = Vec::new();
-            stdout
-                .read_to_end(&mut bytes)
-                .await
-                .expect("read child stdout");
+            stdout.read_to_end(&mut bytes).await.expect("read child stdout");
             bytes
         });
         let stderr_task = tokio::spawn(async move {
             let mut bytes = Vec::new();
-            stderr
-                .read_to_end(&mut bytes)
-                .await
-                .expect("read child stderr");
+            stderr.read_to_end(&mut bytes).await.expect("read child stderr");
             bytes
         });
         let status = match timeout(Duration::from_secs(30), child.wait()).await {
             Ok(result) => result.expect("worker process should exit"),
             Err(_) => {
                 let _ = child.kill().await;
-                let _ = child
-                    .wait()
-                    .await
-                    .expect("timed-out worker should be reaped");
+                let _ = child.wait().await.expect("timed-out worker should be reaped");
                 let stdout = stdout_task.await.expect("stdout drain task should finish");
                 let stderr = stderr_task.await.expect("stderr drain task should finish");
                 panic!(
@@ -167,11 +157,7 @@ async fn test_env_proxy_isolated_in_child_process() {
         };
         let stdout = stdout_task.await.expect("stdout drain task should finish");
         let stderr = stderr_task.await.expect("stderr drain task should finish");
-        assert!(
-            status.success(),
-            "worker failed: {}",
-            String::from_utf8_lossy(&stderr)
-        );
+        assert!(status.success(), "worker failed: {}", String::from_utf8_lossy(&stderr));
         assert!(
             String::from_utf8_lossy(&stdout).contains("RS_HTTP_PROXY_WORKER_OK"),
             "worker did not run: {}",
@@ -227,28 +213,27 @@ async fn test_env_proxy_ipv6_with_ipv4_only_isolated_in_child_process() {
             .as_ref()
             .map(|backend| backend.base_url())
             .unwrap_or_else(|| url::Url::parse("http://127.0.0.1:9/").expect("IPv4 target URL"));
-        let mut child =
-            tokio::process::Command::new(std::env::current_exe().expect("test executable"))
-                .arg("--exact")
-                .arg("client::http_client_factory_proxy_tests::test_env_proxy_worker")
-                .arg("--nocapture")
-                .env_remove("HTTP_PROXY")
-                .env_remove("http_proxy")
-                .env_remove("HTTPS_PROXY")
-                .env_remove("https_proxy")
-                .env_remove("ALL_PROXY")
-                .env_remove("all_proxy")
-                .env_remove("NO_PROXY")
-                .env_remove("no_proxy")
-                .env_remove("REQUEST_METHOD")
-                .env("RS_HTTP_PROXY_WORKER", scenario)
-                .env("RS_HTTP_BACKEND_URL", backend_url.to_string())
-                .env("HTTP_PROXY", &proxy_url)
-                .env("HTTPS_PROXY", &proxy_url)
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn()
-                .expect("worker process should start");
+        let mut child = tokio::process::Command::new(std::env::current_exe().expect("test executable"))
+            .arg("--exact")
+            .arg("client::http_client_factory_proxy_tests::test_env_proxy_worker")
+            .arg("--nocapture")
+            .env_remove("HTTP_PROXY")
+            .env_remove("http_proxy")
+            .env_remove("HTTPS_PROXY")
+            .env_remove("https_proxy")
+            .env_remove("ALL_PROXY")
+            .env_remove("all_proxy")
+            .env_remove("NO_PROXY")
+            .env_remove("no_proxy")
+            .env_remove("REQUEST_METHOD")
+            .env("RS_HTTP_PROXY_WORKER", scenario)
+            .env("RS_HTTP_BACKEND_URL", backend_url.to_string())
+            .env("HTTP_PROXY", &proxy_url)
+            .env("HTTPS_PROXY", &proxy_url)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("worker process should start");
         let proxy_task = if scenario == "env_ipv6" {
             let proxy = proxy.take().expect("proxy listener");
             Some(tokio::spawn(async move {
@@ -276,9 +261,7 @@ async fn test_env_proxy_ipv6_with_ipv4_only_isolated_in_child_process() {
                 );
                 timeout(
                     Duration::from_secs(3),
-                    stream.write_all(
-                        b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok",
-                    ),
+                    stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok"),
                 )
                 .await
                 .expect("write proxy response timed out")
@@ -303,10 +286,7 @@ async fn test_env_proxy_ipv6_with_ipv4_only_isolated_in_child_process() {
             Ok(result) => result.expect("worker process should exit"),
             Err(_) => {
                 let _ = child.kill().await;
-                let _ = child
-                    .wait()
-                    .await
-                    .expect("timed-out worker should be reaped");
+                let _ = child.wait().await.expect("timed-out worker should be reaped");
                 let stdout = stdout_task.await.expect("stdout drain");
                 let stderr = stderr_task.await.expect("stderr drain");
                 panic!(
@@ -318,11 +298,7 @@ async fn test_env_proxy_ipv6_with_ipv4_only_isolated_in_child_process() {
         };
         let stdout = stdout_task.await.expect("stdout drain task");
         let stderr = stderr_task.await.expect("stderr drain task");
-        assert!(
-            status.success(),
-            "worker failed: {}",
-            String::from_utf8_lossy(&stderr)
-        );
+        assert!(status.success(), "worker failed: {}", String::from_utf8_lossy(&stderr));
         assert!(
             String::from_utf8_lossy(&stdout).contains("RS_HTTP_PROXY_WORKER_OK"),
             "worker did not run: {}",
@@ -380,8 +356,7 @@ async fn test_env_proxy_worker() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(url::Url::parse(&backend_url).expect("valid backend URL"));
     options.use_env_proxy = scenario == "proxy" || scenario == "env_ipv6";
-    options.ipv4_only =
-        scenario == "env_ipv6" || scenario == "direct_ipv4" || scenario == "explicit_ipv6";
+    options.ipv4_only = scenario == "env_ipv6" || scenario == "direct_ipv4" || scenario == "explicit_ipv6";
     if scenario == "explicit_ipv6" {
         options.proxy.enabled = true;
         options.proxy.host = Some("::1".to_string());
@@ -424,9 +399,7 @@ async fn test_https_via_http_proxy_uses_connect_tunnel() {
     options.timeouts.request_timeout = Some(Duration::from_secs(2));
 
     let client = HttpClientBuilder::new().options(options).build().unwrap();
-    let request = client
-        .request(Method::GET, "https://example.com/through-proxy")
-        .build();
+    let request = client.request(Method::GET, "https://example.com/through-proxy").build();
     let error = client.execute(request).await.unwrap_err();
     assert!(
         matches!(

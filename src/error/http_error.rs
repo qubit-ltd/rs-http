@@ -96,9 +96,7 @@ impl fmt::Display for HttpError {
 impl Error for HttpError {
     /// Returns the wrapped source error when one was attached.
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        self.source
-            .as_deref()
-            .map(|source| source as &(dyn Error + 'static))
+        self.source.as_deref().map(|source| source as &(dyn Error + 'static))
     }
 }
 

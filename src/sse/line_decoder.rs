@@ -44,11 +44,7 @@ const MAX_BYTES_SCANNED_BEFORE_YIELD: usize = 64 * 1024;
 /// Returns an SSE protocol error if the bytes exceed `max_line_bytes` after
 /// first-line BOM removal or are not valid UTF-8. The buffer is cleared on
 /// success and on either error.
-fn take_buffered_line(
-    buffer: &mut BytesMut,
-    first_line: &mut bool,
-    max_line_bytes: usize,
-) -> HttpResult<String> {
+fn take_buffered_line(buffer: &mut BytesMut, first_line: &mut bool, max_line_bytes: usize) -> HttpResult<String> {
     if *first_line {
         *first_line = false;
         if buffer.starts_with(b"\xef\xbb\xbf") {
@@ -234,9 +230,9 @@ fn is_line_terminator(byte: u8) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
     use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering;
-    use std::sync::Arc;
     use std::task::Context;
     use std::task::Poll;
     use std::task::Wake;
@@ -246,9 +242,9 @@ mod tests {
     use futures_util::StreamExt;
 
     use super::decode_lines;
+    use crate::HttpByteStream;
     use crate::sse::tests::chunk_layout::chunk_layouts;
     use crate::sse::tests::chunk_layout::stream_for_layout;
-    use crate::HttpByteStream;
 
     struct CountWake(AtomicUsize);
 
@@ -262,13 +258,7 @@ mod tests {
         }
     }
 
-    type LineCase<'a> = (
-        &'a str,
-        &'a [u8],
-        usize,
-        &'a [&'a str],
-        Option<crate::HttpErrorKind>,
-    );
+    type LineCase<'a> = (&'a str, &'a [u8], usize, &'a [&'a str], Option<crate::HttpErrorKind>);
 
     async fn decode(chunks: Vec<&'static [u8]>, limit: usize) -> crate::HttpResult<Vec<String>> {
         let chunks = chunks.into_iter().map(Bytes::from_static).map(Ok);
@@ -282,23 +272,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_decode_lines_yields_unterminated_eof_fragment() {
-        assert_eq!(
-            decode(vec![b"data: value"], 64).await.unwrap(),
-            vec!["data: value"]
-        );
-        assert_eq!(
-            decode(vec![b"data: value\n"], 64).await.unwrap(),
-            vec!["data: value"]
-        );
+        assert_eq!(decode(vec![b"data: value"], 64).await.unwrap(), vec!["data: value"]);
+        assert_eq!(decode(vec![b"data: value\n"], 64).await.unwrap(), vec!["data: value"]);
         assert_eq!(
             decode(vec![b"data: value\n\n"], 64).await.unwrap(),
             vec!["data: value", ""]
         );
         for ending in [b"\r".as_slice(), b"\n", b"\r\n"] {
-            assert_eq!(
-                decode(vec![b"line", ending], 64).await.unwrap(),
-                vec!["line"]
-            );
+            assert_eq!(decode(vec![b"line", ending], 64).await.unwrap(), vec!["line"]);
         }
     }
 
@@ -332,10 +313,7 @@ mod tests {
 
         assert!(output.as_mut().poll_next(&mut cx).is_pending());
         let observed = consumed.load(Ordering::SeqCst);
-        assert!(
-            (1..=1024).contains(&observed),
-            "consumed {observed} empty chunks"
-        );
+        assert!((1..=1024).contains(&observed), "consumed {observed} empty chunks");
         assert!(counter.0.load(Ordering::SeqCst) > 0);
         assert_eq!(output.next().await.unwrap().unwrap(), "data: ok");
         assert!(output.next().await.is_none());
@@ -346,42 +324,31 @@ mod tests {
     async fn test_decode_lines_ready_empty_chunks_then_error_terminates_once() {
         let chunks = std::iter::repeat_with(|| Ok(Bytes::new()))
             .take(4096)
-            .chain(std::iter::once(Err(crate::HttpError::sse_protocol(
-                "upstream failed",
-            ))))
+            .chain(std::iter::once(Err(crate::HttpError::sse_protocol("upstream failed"))))
             .collect::<Vec<_>>();
         let input: HttpByteStream = Box::pin(futures_util::stream::iter(chunks));
 
         let output = decode_lines(input, 64).collect::<Vec<_>>().await;
 
         assert_eq!(output.len(), 1);
-        assert_eq!(
-            output[0].as_ref().unwrap_err().kind,
-            crate::HttpErrorKind::SseProtocol
-        );
+        assert_eq!(output[0].as_ref().unwrap_err().kind, crate::HttpErrorKind::SseProtocol);
     }
 
     #[tokio::test]
     async fn test_decode_lines_ignores_one_bom_only_at_stream_start() {
         assert_eq!(
-            decode(vec![b"", b"data: empty chunk ok\n"], 64)
-                .await
-                .unwrap(),
+            decode(vec![b"", b"data: empty chunk ok\n"], 64).await.unwrap(),
             vec!["data: empty chunk ok"]
         );
         assert_eq!(
-            decode(vec![b"\xef\xbb\xbfdata: first\r\n\r\n"], 64)
-                .await
-                .unwrap(),
+            decode(vec![b"\xef\xbb\xbfdata: first\r\n\r\n"], 64).await.unwrap(),
             vec!["data: first", ""]
         );
         assert_eq!(decode(vec![b"data"], 64).await.unwrap(), vec!["data"]);
         assert_eq!(decode(vec![b"\xef\xbb\xbf\n"], 64).await.unwrap(), vec![""]);
         assert_eq!(decode(vec![b"\xef\xbb\xbf"], 64).await.unwrap(), vec![""]);
         assert_eq!(
-            decode(vec![b"\xef\xbb\xbf\xef\xbb\xbfX\n"], 64)
-                .await
-                .unwrap(),
+            decode(vec![b"\xef\xbb\xbf\xef\xbb\xbfX\n"], 64).await.unwrap(),
             vec!["\u{feff}X"]
         );
         assert_eq!(
@@ -398,9 +365,7 @@ mod tests {
     async fn test_decode_lines_real_chunk_boundaries_match_single_chunk() {
         let source = "\u{feff}data: café\r\n\r\nevent: done\ndata: second\n\n".as_bytes();
         let expected = vec!["data: café", "", "event: done", "data: second", ""];
-        let single: HttpByteStream = Box::pin(futures_util::stream::iter(vec![Ok(
-            Bytes::copy_from_slice(source),
-        )]));
+        let single: HttpByteStream = Box::pin(futures_util::stream::iter(vec![Ok(Bytes::copy_from_slice(source))]));
         let actual = decode_lines(single, 64)
             .collect::<Vec<_>>()
             .await
@@ -458,22 +423,13 @@ mod tests {
             decode(vec![b"abcde\n"], 4).await.unwrap_err().kind,
             crate::HttpErrorKind::SseProtocol
         );
+        assert_eq!(decode(vec![b"\xef\xbb\xbfabcd\n"], 4).await.unwrap(), vec!["abcd"]);
         assert_eq!(
-            decode(vec![b"\xef\xbb\xbfabcd\n"], 4).await.unwrap(),
-            vec!["abcd"]
-        );
-        assert_eq!(
-            decode(vec![b"\xef\xbb\xbfabcde\n"], 4)
-                .await
-                .unwrap_err()
-                .kind,
+            decode(vec![b"\xef\xbb\xbfabcde\n"], 4).await.unwrap_err().kind,
             crate::HttpErrorKind::SseProtocol
         );
         assert_eq!(
-            decode(vec![b"\n\xef\xbb\xbfabcd\n"], 4)
-                .await
-                .unwrap_err()
-                .kind,
+            decode(vec![b"\n\xef\xbb\xbfabcd\n"], 4).await.unwrap_err().kind,
             crate::HttpErrorKind::SseProtocol
         );
         assert_eq!(
@@ -526,20 +482,14 @@ mod tests {
                 let actual = decode_lines(stream_for_layout(source, layout), *limit)
                     .collect::<Vec<_>>()
                     .await;
-                let context = format!(
-                    "corpus={name}, limit={limit}, layout={layout_index}, chunks={layout:?}"
-                );
+                let context = format!("corpus={name}, limit={limit}, layout={layout_index}, chunks={layout:?}");
                 assert_eq!(
                     actual.len(),
                     expected_lines.len() + usize::from(expected_error.is_some()),
                     "{context}"
                 );
                 for (item, expected) in actual.iter().zip(*expected_lines) {
-                    assert_eq!(
-                        item.as_ref().expect("expected successful line"),
-                        expected,
-                        "{context}"
-                    );
+                    assert_eq!(item.as_ref().expect("expected successful line"), expected, "{context}");
                 }
                 match expected_error {
                     Some(kind) => {

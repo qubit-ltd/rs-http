@@ -11,8 +11,8 @@ use std::time::Duration;
 
 use http::HeaderValue;
 
-use crate::request::http_request_retry_override::HttpRequestRetryOverride;
 use crate::HttpCancellationToken;
+use crate::request::http_request_retry_override::HttpRequestRetryOverride;
 
 /// Per-request runtime controls copied from the builder and used while sending
 /// the request and consuming its response.

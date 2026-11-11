@@ -6,14 +6,14 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use qubit_argument::require_that;
 use qubit_argument::ArgumentResult;
+use qubit_argument::require_that;
 use qubit_config::ConfigReader;
 use qubit_config::ConfigResult;
 
+use super::HttpConfigError;
 use super::from_config_helpers::get_optional_usize;
 use super::internal::HttpLoggingConfigInput;
-use super::HttpConfigError;
 use crate::constants::DEFAULT_LOG_BODY_SIZE_LIMIT_BYTES;
 
 /// Controls TRACE-level HTTP request/response logging in [`crate::HttpLogger`].
@@ -148,9 +148,8 @@ impl HttpLoggingOptions {
             opts.body_size_limit = v;
         }
 
-        opts.validate().map_err(|error| {
-            super::from_config_helpers::resolve_component_error(config, error, "logging")
-        })?;
+        opts.validate()
+            .map_err(|error| super::from_config_helpers::resolve_component_error(config, error, "logging"))?;
         Ok(opts)
     }
 

@@ -7,11 +7,11 @@
 // =============================================================================
 
 use std::error::Error as StdError;
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
-use std::sync::Mutex;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -34,10 +34,10 @@ use tokio::test as tokio_test;
 use tokio::time::sleep;
 use tokio::time::timeout;
 
-use crate::common::spawn_multi_shot_server;
-use crate::common::spawn_one_shot_server;
 use crate::common::ResponseChunk;
 use crate::common::ResponsePlan;
+use crate::common::spawn_multi_shot_server;
+use crate::common::spawn_one_shot_server;
 
 #[tokio_test]
 async fn test_text_body_retry_without_interceptors_sends_identical_bytes() {
@@ -130,19 +130,17 @@ async fn test_text_body_retry_recreates_mutable_attempt_from_snapshot() {
 
     let observed_bodies = Arc::new(Mutex::new(Vec::new()));
     let interceptor_bodies = Arc::clone(&observed_bodies);
-    client.add_request_interceptor(HttpRequestInterceptor::new(
-        move |request: &mut HttpRequest| {
-            let HttpRequestBody::Text(body) = request.body() else {
-                panic!("text request body should remain observable to the interceptor");
-            };
-            interceptor_bodies
-                .lock()
-                .expect("body observations should be unlocked")
-                .push(body.clone());
-            request.set_body(HttpRequestBody::Text("attempt-local-text".to_string()));
-            Ok(())
-        },
-    ));
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |request: &mut HttpRequest| {
+        let HttpRequestBody::Text(body) = request.body() else {
+            panic!("text request body should remain observable to the interceptor");
+        };
+        interceptor_bodies
+            .lock()
+            .expect("body observations should be unlocked")
+            .push(body.clone());
+        request.set_body(HttpRequestBody::Text("attempt-local-text".to_string()));
+        Ok(())
+    }));
 
     let request = client
         .request(Method::POST, "/text-body-retry")
@@ -156,9 +154,7 @@ async fn test_text_body_retry_recreates_mutable_attempt_from_snapshot() {
         .expect("request should succeed after retry");
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(
-        *observed_bodies
-            .lock()
-            .expect("body observations should be unlocked"),
+        *observed_bodies.lock().expect("body observations should be unlocked"),
         vec!["original-text", "original-text"]
     );
 
@@ -234,10 +230,7 @@ async fn test_force_retry_does_not_override_default_method_policy() {
         .build()
         .expect("client should be created");
 
-    let request = client
-        .request(Method::POST, "/force-only")
-        .force_retry()
-        .build();
+    let request = client.request(Method::POST, "/force-only").force_retry().build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")
@@ -270,10 +263,7 @@ async fn test_force_retry_does_not_override_single_max_attempt() {
         .build()
         .expect("client should be created");
 
-    let request = client
-        .request(Method::POST, "/single-attempt")
-        .force_retry()
-        .build();
+    let request = client.request(Method::POST, "/single-attempt").force_retry().build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")
@@ -305,10 +295,7 @@ async fn test_request_retry_override_disable_retry_skips_client_retry_policy() {
         .build()
         .expect("client should be created");
 
-    let request = client
-        .request(Method::GET, "/disable-retry")
-        .disable_retry()
-        .build();
+    let request = client.request(Method::GET, "/disable-retry").disable_retry().build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")
@@ -651,13 +638,11 @@ async fn test_retry_eligibility_uses_intercepted_method() {
         .expect("client should be created");
     let calls = Arc::new(AtomicUsize::new(0));
     let observed = calls.clone();
-    client.add_request_interceptor(HttpRequestInterceptor::new(
-        move |request: &mut HttpRequest| {
-            observed.fetch_add(1, Ordering::SeqCst);
-            request.set_method(Method::POST);
-            Ok(())
-        },
-    ));
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |request: &mut HttpRequest| {
+        observed.fetch_add(1, Ordering::SeqCst);
+        request.set_method(Method::POST);
+        Ok(())
+    }));
     let error = client
         .execute(client.request(Method::GET, "/intercepted-post").build())
         .await
@@ -691,23 +676,16 @@ async fn test_intercepted_post_retries_when_final_override_allows_it() {
     let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     let calls = Arc::new(AtomicUsize::new(0));
     let observed = calls.clone();
-    client.add_request_interceptor(HttpRequestInterceptor::new(
-        move |request: &mut HttpRequest| {
-            observed.fetch_add(1, Ordering::SeqCst);
-            request.set_method(Method::POST);
-            request.set_retry_override(
-                qubit_http::HttpRequestRetryOverride::new()
-                    .with_method_policy(HttpRetryMethodPolicy::AllMethods),
-            );
-            Ok(())
-        },
-    ));
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |request: &mut HttpRequest| {
+        observed.fetch_add(1, Ordering::SeqCst);
+        request.set_method(Method::POST);
+        request.set_retry_override(
+            qubit_http::HttpRequestRetryOverride::new().with_method_policy(HttpRetryMethodPolicy::AllMethods),
+        );
+        Ok(())
+    }));
     let response = client
-        .execute(
-            client
-                .request(Method::GET, "/intercepted-allow-post")
-                .build(),
-        )
+        .execute(client.request(Method::GET, "/intercepted-allow-post").build())
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
@@ -733,13 +711,11 @@ async fn test_original_post_is_not_admitted_after_interceptor_changes_to_get() {
     let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     let attempts = Arc::new(AtomicUsize::new(0));
     let observed = attempts.clone();
-    client.add_request_interceptor(HttpRequestInterceptor::new(
-        move |request: &mut HttpRequest| {
-            observed.fetch_add(1, Ordering::SeqCst);
-            request.set_method(Method::GET);
-            Ok(())
-        },
-    ));
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |request: &mut HttpRequest| {
+        observed.fetch_add(1, Ordering::SeqCst);
+        request.set_method(Method::GET);
+        Ok(())
+    }));
     let error = client
         .execute(client.request(Method::POST, "/post-to-get").build())
         .await
@@ -758,19 +734,13 @@ async fn test_interceptor_transport_failure_uses_final_method_and_preserves_retr
     let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     let attempts = Arc::new(AtomicUsize::new(0));
     let observed = attempts.clone();
-    client.add_request_interceptor(HttpRequestInterceptor::new(
-        move |request: &mut HttpRequest| {
-            observed.fetch_add(1, Ordering::SeqCst);
-            request.set_method(Method::POST);
-            Err(HttpError::transport("interceptor transport failure"))
-        },
-    ));
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |request: &mut HttpRequest| {
+        observed.fetch_add(1, Ordering::SeqCst);
+        request.set_method(Method::POST);
+        Err(HttpError::transport("interceptor transport failure"))
+    }));
     let error = client
-        .execute(
-            client
-                .request(Method::GET, "http://127.0.0.1:9/final-method")
-                .build(),
-        )
+        .execute(client.request(Method::GET, "http://127.0.0.1:9/final-method").build())
         .await
         .unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::Transport);
@@ -778,9 +748,7 @@ async fn test_interceptor_transport_failure_uses_final_method_and_preserves_retr
     let retry = error
         .source
         .as_deref()
-        .and_then(|source| {
-            (source as &(dyn StdError + 'static)).downcast_ref::<RetryError<HttpError>>()
-        })
+        .and_then(|source| (source as &(dyn StdError + 'static)).downcast_ref::<RetryError<HttpError>>())
         .expect("public source retains RetryError<HttpError>");
     assert_eq!(retry.context().attempts(), 1);
 }
@@ -801,13 +769,11 @@ async fn test_interceptor_force_disable_stops_an_admitted_retry_flow() {
     let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     let attempts = Arc::new(AtomicUsize::new(0));
     let observed = attempts.clone();
-    client.add_request_interceptor(HttpRequestInterceptor::new(
-        move |request: &mut HttpRequest| {
-            observed.fetch_add(1, Ordering::SeqCst);
-            request.set_retry_override(HttpRequestRetryOverride::new().force_disable());
-            Ok(())
-        },
-    ));
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |request: &mut HttpRequest| {
+        observed.fetch_add(1, Ordering::SeqCst);
+        request.set_retry_override(HttpRequestRetryOverride::new().force_disable());
+        Ok(())
+    }));
     let error = client
         .execute(client.request(Method::GET, "/interceptor-disable").build())
         .await

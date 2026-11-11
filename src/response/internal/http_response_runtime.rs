@@ -61,10 +61,7 @@ impl HttpResponseRuntime {
 /// # Parameters
 /// - `state`: Shared failure state captured by response streams.
 /// - `error`: Error produced while reading the response body.
-pub(in crate::response) fn remember_body_read_failure_state(
-    state: &BodyReadFailureState,
-    error: &HttpError,
-) {
+pub(in crate::response) fn remember_body_read_failure_state(state: &BodyReadFailureState, error: &HttpError) {
     if let Ok(mut guard) = state.lock() {
         guard.get_or_insert_with(|| BodyReadFailure::from_error(error));
     }
@@ -77,9 +74,7 @@ pub(in crate::response) fn remember_body_read_failure_state(
 ///
 /// # Returns
 /// Reconstructed error when a prior body read failed, otherwise `None`.
-pub(in crate::response) fn previous_body_read_error(
-    state: &BodyReadFailureState,
-) -> Option<HttpError> {
+pub(in crate::response) fn previous_body_read_error(state: &BodyReadFailureState) -> Option<HttpError> {
     let guard = state.lock().ok()?;
     guard.as_ref().map(BodyReadFailure::to_error)
 }

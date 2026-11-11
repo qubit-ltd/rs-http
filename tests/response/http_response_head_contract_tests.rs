@@ -12,8 +12,8 @@ use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
 
-use crate::common::spawn_one_shot_server;
 use crate::common::ResponsePlan;
+use crate::common::spawn_one_shot_server;
 
 #[tokio::test]
 async fn test_head_contract_success_ignores_content_length_for_body_limit() {
@@ -78,10 +78,7 @@ async fn test_head_contract_get_body_limit_reads_declared_response_body() {
     options.base_url = Some(server.base_url());
     options.response_body_size_limit = 1;
     let client = HttpClientBuilder::new().options(options).build().unwrap();
-    let request = client
-        .request(Method::GET, "/get-200")
-        .disable_retry()
-        .build();
+    let request = client.request(Method::GET, "/get-200").disable_retry().build();
     let mut response = client.execute(request).await.unwrap();
 
     let error = response.bytes().await.unwrap_err();

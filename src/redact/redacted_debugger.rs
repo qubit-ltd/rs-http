@@ -34,9 +34,7 @@ impl<'redactor> RedactedDebugger<'redactor> {
     #[must_use]
     #[inline]
     pub(crate) const fn new(log_redactor: &'redactor Redactor) -> Self {
-        Self {
-            redactor: log_redactor,
-        }
+        Self { redactor: log_redactor }
     }
 
     /// Returns an optional redacted URL through the direct adapter API.
@@ -164,17 +162,13 @@ fn url_candidate_limit(text: &str, start: usize) -> usize {
     let bytes = text.as_bytes();
     let mut index = start + 1;
     while index < bytes.len() {
-        let character = text[index..]
-            .chars()
-            .next()
-            .expect("index remains on a UTF-8 boundary");
+        let character = text[index..].chars().next().expect("index remains on a UTF-8 boundary");
         if character.is_whitespace() {
             return index;
         }
         if bytes[index..].len() >= 7
             && (bytes[index..index + 7].eq_ignore_ascii_case(b"http://")
-                || (bytes[index..].len() >= 8
-                    && bytes[index..index + 8].eq_ignore_ascii_case(b"https://")))
+                || (bytes[index..].len() >= 8 && bytes[index..index + 8].eq_ignore_ascii_case(b"https://")))
         {
             return index;
         }
@@ -197,10 +191,7 @@ fn url_candidate_limit(text: &str, start: usize) -> usize {
 fn url_candidate_end(text: &str, start: usize, limit: usize) -> usize {
     let mut end = limit;
     while let Some((index, character)) = text[start..end].char_indices().next_back() {
-        if !matches!(
-            character,
-            '.' | ',' | ';' | ':' | '!' | '?' | ')' | ']' | '}'
-        ) {
+        if !matches!(character, '.' | ',' | ';' | ':' | '!' | '?' | ')' | ']' | '}') {
             break;
         }
         end = start + index;

@@ -8,17 +8,17 @@
 
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc;
-use std::sync::Arc;
-use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 
 use bytes::Bytes;
-use futures_util::stream;
 use futures_util::StreamExt;
+use futures_util::stream;
 use http::HeaderMap;
 use http::Method;
 use http::StatusCode;
@@ -31,22 +31,16 @@ use qubit_http::RetryHint;
 use qubit_retry::BackoffPolicy;
 use tokio::sync::oneshot;
 use tokio::test as tokio_test;
+use tokio::time::Instant as TokioInstant;
 use tokio::time::sleep;
 use tokio::time::timeout;
-use tokio::time::Instant as TokioInstant;
 
-use crate::common::spawn_multi_shot_server;
-use crate::common::spawn_one_shot_server;
 use crate::common::ResponseChunk;
 use crate::common::ResponsePlan;
+use crate::common::spawn_multi_shot_server;
+use crate::common::spawn_one_shot_server;
 
-fn spawn_test_watchdog(
-    timeout: Duration,
-) -> (
-    mpsc::Sender<()>,
-    oneshot::Receiver<()>,
-    thread::JoinHandle<()>,
-) {
+fn spawn_test_watchdog(timeout: Duration) -> (mpsc::Sender<()>, oneshot::Receiver<()>, thread::JoinHandle<()>) {
     let (done_tx, done_rx) = mpsc::channel();
     let (expired_tx, expired_rx) = oneshot::channel();
     let watchdog_thread = thread::spawn(move || {
@@ -59,8 +53,7 @@ fn spawn_test_watchdog(
 
 #[tokio_test(flavor = "current_thread")]
 async fn test_retry_max_duration_watchdog_signals_and_cleans_up_tasks() {
-    let (_watchdog_done_tx, mut watchdog_expired_rx, watchdog_thread) =
-        spawn_test_watchdog(Duration::from_millis(10));
+    let (_watchdog_done_tx, mut watchdog_expired_rx, watchdog_thread) = spawn_test_watchdog(Duration::from_millis(10));
     let keepalive = tokio::spawn(async {
         loop {
             tokio::task::yield_now().await;
@@ -73,19 +66,21 @@ async fn test_retry_max_duration_watchdog_signals_and_cleans_up_tasks() {
         .expect("watchdog signal should arrive before the test timeout")
         .expect("watchdog thread should report expiration");
 
-    watchdog_thread
-        .join()
-        .expect("expired watchdog thread should exit");
+    watchdog_thread.join().expect("expired watchdog thread should exit");
     keepalive.abort();
-    assert!(keepalive
-        .await
-        .expect_err("keepalive should be cancelled")
-        .is_cancelled());
+    assert!(
+        keepalive
+            .await
+            .expect_err("keepalive should be cancelled")
+            .is_cancelled()
+    );
     controller.abort();
-    assert!(controller
-        .await
-        .expect_err("controller should be cancelled")
-        .is_cancelled());
+    assert!(
+        controller
+            .await
+            .expect_err("controller should be cancelled")
+            .is_cancelled()
+    );
 }
 
 #[tokio_test]
@@ -108,9 +103,7 @@ async fn test_async_header_injector_preparation_is_outside_request_timeout() {
         })
     }));
 
-    let request = client
-        .request(Method::GET, "/slow-header-preparation")
-        .build();
+    let request = client.request(Method::GET, "/slow-header-preparation").build();
     let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")
@@ -140,8 +133,7 @@ async fn test_streaming_body_preparation_is_outside_request_timeout() {
     let factory = || -> Pin<Box<dyn Future<Output = HttpRequestBodyByteStream> + Send>> {
         Box::pin(async move {
             sleep(Duration::from_millis(300)).await;
-            Box::pin(stream::iter([Ok(Bytes::from_static(b"payload"))]))
-                as HttpRequestBodyByteStream
+            Box::pin(stream::iter([Ok(Bytes::from_static(b"payload"))])) as HttpRequestBodyByteStream
         })
     };
     let request = client
@@ -175,9 +167,7 @@ async fn test_async_header_preparation_uses_response_header_timeout() {
         })
     }));
 
-    let request = client
-        .request(Method::GET, "/header-preparation-timeout")
-        .build();
+    let request = client.request(Method::GET, "/header-preparation-timeout").build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")
@@ -201,8 +191,7 @@ async fn test_streaming_body_preparation_uses_response_header_timeout() {
     let factory = || -> Pin<Box<dyn Future<Output = HttpRequestBodyByteStream> + Send>> {
         Box::pin(async move {
             sleep(Duration::from_millis(300)).await;
-            Box::pin(stream::iter([Ok(Bytes::from_static(b"payload"))]))
-                as HttpRequestBodyByteStream
+            Box::pin(stream::iter([Ok(Bytes::from_static(b"payload"))])) as HttpRequestBodyByteStream
         })
     };
     let request = client
@@ -239,8 +228,7 @@ async fn test_retry_max_duration_allows_admitted_request_to_finish_after_budget(
     const WATCHDOG_TIMEOUT: Duration = Duration::from_secs(15);
     let max_duration = Duration::from_millis(500);
 
-    let (watchdog_done_tx, mut watchdog_expired_rx, watchdog_thread) =
-        spawn_test_watchdog(WATCHDOG_TIMEOUT);
+    let (watchdog_done_tx, mut watchdog_expired_rx, watchdog_thread) = spawn_test_watchdog(WATCHDOG_TIMEOUT);
 
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Immediate {
@@ -295,9 +283,7 @@ async fn test_retry_max_duration_allows_admitted_request_to_finish_after_budget(
                     admitted_tx
                         .send(())
                         .expect("test controller should wait for second attempt");
-                    release_rx
-                        .await
-                        .expect("test controller should release second attempt");
+                    release_rx.await.expect("test controller should release second attempt");
                     Ok(())
                 })
             } else {
@@ -322,9 +308,7 @@ async fn test_retry_max_duration_allows_admitted_request_to_finish_after_budget(
     });
 
     let started_at = TokioInstant::now();
-    let request = client
-        .request(Method::GET, "/admitted-after-budget")
-        .build();
+    let request = client.request(Method::GET, "/admitted-after-budget").build();
     let run_result = tokio::select! {
         result = async {
             let mut response = client.execute(request).await.map_err(|_| "HTTP execution failed")?;
@@ -345,19 +329,21 @@ async fn test_retry_max_duration_allows_admitted_request_to_finish_after_budget(
         controller.await
     };
     let _ = watchdog_done_tx.send(());
-    watchdog_thread
-        .join()
-        .expect("real-time watchdog thread should exit");
+    watchdog_thread.join().expect("real-time watchdog thread should exit");
 
-    assert!(keepalive_result
-        .expect_err("keepalive should be cancelled")
-        .is_cancelled());
+    assert!(
+        keepalive_result
+            .expect_err("keepalive should be cancelled")
+            .is_cancelled()
+    );
     if run_result.is_ok() {
         controller_result.expect("admission controller should complete successfully");
     } else {
-        assert!(controller_result
-            .expect_err("admission controller should be cancelled")
-            .is_cancelled());
+        assert!(
+            controller_result
+                .expect_err("admission controller should be cancelled")
+                .is_cancelled()
+        );
     }
     let (status, body, captured) = run_result.expect("test flow should complete before watchdog");
     assert_eq!(status, StatusCode::OK);
@@ -368,9 +354,11 @@ async fn test_retry_max_duration_allows_admitted_request_to_finish_after_budget(
     );
     assert_eq!(captured.len(), 2);
     assert!(captured.iter().all(|request| request.method == "GET"));
-    assert!(captured
-        .iter()
-        .all(|request| request.target == "/admitted-after-budget"));
+    assert!(
+        captured
+            .iter()
+            .all(|request| request.target == "/admitted-after-budget")
+    );
 }
 
 #[tokio_test]
@@ -506,9 +494,7 @@ async fn test_timeout_classification_is_retryable_in_deterministic_path() {
     options.timeouts.request_timeout = Some(Duration::from_millis(80));
 
     let client = HttpClientBuilder::new().options(options).build().unwrap();
-    let request = client
-        .request(Method::GET, "/deterministic-timeout")
-        .build();
+    let request = client.request(Method::GET, "/deterministic-timeout").build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")
@@ -535,9 +521,7 @@ async fn test_truncated_body_with_request_timeout_context_is_transport_error() {
     options.timeouts.request_timeout = Some(Duration::from_secs(5));
 
     let client = HttpClientBuilder::new().options(options).build().unwrap();
-    let request = client
-        .request(Method::GET, "/request-timeout-read-phase")
-        .build();
+    let request = client.request(Method::GET, "/request-timeout-read-phase").build();
     let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")
@@ -574,9 +558,7 @@ async fn test_reqwest_timeout_during_body_chunk_is_classified_as_read_timeout() 
     options.timeouts.request_timeout = Some(Duration::from_millis(80));
 
     let client = HttpClientBuilder::new().options(options).build().unwrap();
-    let request = client
-        .request(Method::GET, "/request-timeout-body-chunk")
-        .build();
+    let request = client.request(Method::GET, "/request-timeout-body-chunk").build();
     let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")
@@ -699,17 +681,12 @@ async fn test_buffered_bytes_read_timeout_is_applied_per_chunk_wait() {
     options.timeouts.read_timeout = Duration::from_secs(2);
     let client = HttpClientBuilder::new().options(options).build().unwrap();
 
-    let request = client
-        .request(Method::GET, "/bytes-per-chunk-timeout")
-        .build();
+    let request = client.request(Method::GET, "/bytes-per-chunk-timeout").build();
     let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")
         .expect("request should start");
-    let body = response
-        .bytes()
-        .await
-        .expect("buffered body should be readable");
+    let body = response.bytes().await.expect("buffered body should be readable");
     assert_eq!(body, b"firstsecond".as_slice());
 
     let _ = timeout(Duration::from_secs(3), server.finish())

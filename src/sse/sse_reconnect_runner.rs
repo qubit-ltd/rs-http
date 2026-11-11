@@ -16,9 +16,9 @@ use std::time::Duration;
 
 use async_stream::stream;
 use futures_util::StreamExt;
-use http::header::HeaderValue;
 use http::Method;
 use http::StatusCode;
+use http::header::HeaderValue;
 use qubit_clock::StdMonotonicClock;
 use qubit_redact::Redactor;
 use qubit_retry::RetryBudget;
@@ -30,12 +30,11 @@ use url::Url;
 use self::internal::reconnect_action::ReconnectAction;
 use self::internal::reconnect_runtime::ReconnectRuntime;
 use self::internal::reconnect_state::ReconnectState;
-use super::sse_reconnect_options::DEFAULT_SSE_MAX_RECONNECT_DELAY;
 use super::SseControl;
 use super::SseMessageStream;
 use super::SseReconnectOptions;
 use super::SseRecord;
-use crate::client::HttpAttemptFailure;
+use super::sse_reconnect_options::DEFAULT_SSE_MAX_RECONNECT_DELAY;
 use crate::HttpCancellationToken;
 use crate::HttpClient;
 use crate::HttpError;
@@ -43,6 +42,7 @@ use crate::HttpErrorKind;
 use crate::HttpRequest;
 use crate::HttpResult;
 use crate::RetryHint;
+use crate::client::HttpAttemptFailure;
 
 /// Stateful SSE reconnect runner for one stream invocation.
 pub(crate) struct SseReconnectRunner {
@@ -66,11 +66,7 @@ impl SseReconnectRunner {
     /// # Returns
     /// New SSE reconnect runner.
     #[must_use]
-    pub(crate) fn new(
-        client: HttpClient,
-        request: HttpRequest,
-        options: SseReconnectOptions,
-    ) -> Self {
+    pub(crate) fn new(client: HttpClient, request: HttpRequest, options: SseReconnectOptions) -> Self {
         Self {
             client,
             request_template: request,
@@ -393,11 +389,7 @@ async fn sleep_reconnect_delay(
 ///
 /// # Returns
 /// Capped reconnect delay from server retry value.
-fn server_retry_delay(
-    retry_ms: u64,
-    retry_policy: &RetryPolicy,
-    options: &SseReconnectOptions,
-) -> Duration {
+fn server_retry_delay(retry_ms: u64, retry_policy: &RetryPolicy, options: &SseReconnectOptions) -> Duration {
     let raw = Duration::from_millis(retry_ms.max(1));
     let cap = server_retry_max_delay(retry_policy, options);
     raw.min(cap).max(Duration::from_millis(1))
@@ -481,13 +473,7 @@ fn max_elapsed_exceeded_error_with_last_error(
     request_url: Option<&Url>,
     log_redactor: &Redactor,
 ) -> HttpError {
-    let error = max_elapsed_exceeded_error(
-        elapsed,
-        max_elapsed,
-        request_method,
-        request_url,
-        log_redactor,
-    );
+    let error = max_elapsed_exceeded_error(elapsed, max_elapsed, request_method, request_url, log_redactor);
     attach_last_retryable_error(error, last_error)
 }
 
@@ -509,8 +495,7 @@ fn operation_elapsed_exceeded_error(
     request_url: Option<&Url>,
     log_redactor: &Redactor,
 ) -> HttpError {
-    let max_elapsed =
-        max_elapsed.expect("operation budget exhaustion requires a configured operation limit");
+    let max_elapsed = max_elapsed.expect("operation budget exhaustion requires a configured operation limit");
     let mut error = HttpError::retry_budget_exceeded(format!(
         "SSE reconnect max operation duration exceeded: {elapsed:?}/{max_elapsed:?}"
     ))
@@ -541,13 +526,7 @@ fn operation_elapsed_exceeded_error_with_last_error(
     request_url: Option<&Url>,
     log_redactor: &Redactor,
 ) -> HttpError {
-    let error = operation_elapsed_exceeded_error(
-        elapsed,
-        max_elapsed,
-        request_method,
-        request_url,
-        log_redactor,
-    );
+    let error = operation_elapsed_exceeded_error(elapsed, max_elapsed, request_method, request_url, log_redactor);
     attach_last_retryable_error(error, last_error)
 }
 
@@ -569,10 +548,7 @@ fn attach_last_retryable_error(mut error: HttpError, last_error: HttpError) -> H
     if let Some(status) = last_error.status {
         error = error.with_status(status);
     }
-    let mut message = format!(
-        "{}; last retryable error: {}",
-        error.message, last_error.message
-    );
+    let mut message = format!("{}; last retryable error: {}", error.message, last_error.message);
     if let Some(status) = last_error.status {
         message = format!("{message} (status: {status})");
     }
@@ -651,11 +627,11 @@ mod tests {
     use qubit_retry::RetryRandomSource;
     use url::Url;
 
-    use super::apply_last_event_id_header;
-    use super::operation_elapsed_exceeded_error_with_last_error;
     use super::ReconnectRuntime;
     use super::ReconnectState;
     use super::SseReconnectOptions;
+    use super::apply_last_event_id_header;
+    use super::operation_elapsed_exceeded_error_with_last_error;
     use crate::HttpClient;
     use crate::HttpError;
     use crate::HttpErrorKind;
@@ -664,11 +640,8 @@ mod tests {
     #[test]
     fn test_invalid_cursor_keeps_primary_error_when_request_url_is_unresolved() {
         let client = HttpClient::builder().build().unwrap();
-        let mut request = client
-            .request(Method::GET, "/relative-without-base")
-            .build();
-        let error = apply_last_event_id_header(&mut request, "bad\x7fvalue", &Redactor::default())
-            .unwrap_err();
+        let mut request = client.request(Method::GET, "/relative-without-base").build();
+        let error = apply_last_event_id_header(&mut request, "bad\x7fvalue", &Redactor::default()).unwrap_err();
         assert_eq!(error.kind(), HttpErrorKind::Other);
         assert_eq!(error.method(), Some(&Method::GET));
         assert!(error.url().is_none());
@@ -732,9 +705,7 @@ mod tests {
             log_redactor: &redactor,
         };
         let mut state = ReconnectState::new(&policy);
-        state.backoff = policy
-            .backoff()
-            .start_with_random_source(Arc::new(MaximumRandom));
+        state.backoff = policy.backoff().start_with_random_source(Arc::new(MaximumRandom));
         state.set_server_retry_delay(Duration::from_secs(10));
         assert_eq!(state.sleep_delay(&runtime, None), Duration::from_secs(10));
     }
@@ -769,9 +740,7 @@ mod tests {
                     log_redactor: &redactor,
                 };
                 let mut state = ReconnectState::new(&policy);
-                state.backoff = policy
-                    .backoff()
-                    .start_with_random_source(Arc::new(MaximumRandom));
+                state.backoff = policy.backoff().start_with_random_source(Arc::new(MaximumRandom));
                 assert_eq!(state.sleep_delay(&runtime, None), Duration::from_millis(1));
                 state.set_server_retry_delay(hint);
                 assert_eq!(state.sleep_delay(&runtime, None), Duration::from_millis(1));

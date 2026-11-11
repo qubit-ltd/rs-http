@@ -63,10 +63,7 @@ pub(crate) fn default_json_encode_limits() -> JsonEncodeLimits {
 ///
 /// Complete limits for one normalizing JSON decoder.
 #[must_use]
-pub(crate) fn json_decode_limits(
-    max_input_bytes: usize,
-    value_limits: JsonValueLimits,
-) -> JsonDecodeLimits {
+pub(crate) fn json_decode_limits(max_input_bytes: usize, value_limits: JsonValueLimits) -> JsonDecodeLimits {
     JsonDecodeLimits::builder()
         .max_input_bytes(max_input_bytes)
         .max_normalized_input_bytes(max_input_bytes.saturating_mul(MAX_NORMALIZED_BYTE_EXPANSION))

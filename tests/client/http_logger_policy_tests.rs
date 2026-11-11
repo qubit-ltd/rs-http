@@ -7,17 +7,15 @@
 // =============================================================================
 
 use bytes::Bytes;
-use futures_util::stream;
 use futures_util::StreamExt;
-use http::header::AUTHORIZATION;
-use http::header::CONTENT_TYPE;
-use http::header::SET_COOKIE;
+use futures_util::stream;
 use http::HeaderMap;
 use http::HeaderValue;
 use http::Method;
 use http::StatusCode;
-use qubit_http::sse::SseJsonMode;
-use qubit_http::sse::SseReconnectOptions;
+use http::header::AUTHORIZATION;
+use http::header::CONTENT_TYPE;
+use http::header::SET_COOKIE;
 use qubit_http::HttpCancellationToken;
 use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
@@ -31,26 +29,23 @@ use qubit_http::HttpRequestBodyByteStream;
 use qubit_http::HttpRequestInterceptor;
 use qubit_http::HttpResponse;
 use qubit_http::HttpResponseMeta;
-use qubit_redact::formats::http::TextBodyPolicy;
+use qubit_http::sse::SseJsonMode;
+use qubit_http::sse::SseReconnectOptions;
 use qubit_redact::RedactionPolicy;
+use qubit_redact::formats::http::TextBodyPolicy;
 use qubit_retry::BackoffPolicy;
 use qubit_retry::RetryError;
 use tokio::runtime::Builder;
 use tokio::time::timeout;
 use url::Url;
 
+use crate::common::ResponseChunk;
+use crate::common::ResponsePlan;
 use crate::common::capture_trace_logs;
 use crate::common::spawn_multi_shot_server;
 use crate::common::spawn_one_shot_server;
-use crate::common::ResponseChunk;
-use crate::common::ResponsePlan;
 
-fn logging_request(
-    method: Method,
-    path: &str,
-    headers: HeaderMap,
-    body: HttpRequestBody,
-) -> HttpRequest {
+fn logging_request(method: Method, path: &str, headers: HeaderMap, body: HttpRequestBody) -> HttpRequest {
     let client = HttpClientBuilder::new()
         .build()
         .expect("default options should create client");
@@ -58,9 +53,7 @@ fn logging_request(
     match body {
         HttpRequestBody::Empty => base.build(),
         HttpRequestBody::Text(text) => base.text_body(text).build(),
-        HttpRequestBody::Json(bytes) | HttpRequestBody::Bytes(bytes) => {
-            base.bytes_body(bytes).build()
-        }
+        HttpRequestBody::Json(bytes) | HttpRequestBody::Bytes(bytes) => base.bytes_body(bytes).build(),
         HttpRequestBody::Stream(chunks) => base.stream_body(chunks).build(),
         other => {
             panic!("logging_request: unsupported body variant: {:?}", other)
@@ -120,10 +113,7 @@ fn test_log_request_toggles_header_and_body() {
 fn test_log_response_masks_sensitive_headers() {
     let mut headers = HeaderMap::new();
     headers.insert(SET_COOKIE, HeaderValue::from_static("session-token-value"));
-    headers.insert(
-        AUTHORIZATION,
-        HeaderValue::from_static("Bearer very-secret-token"),
-    );
+    headers.insert(AUTHORIZATION, HeaderValue::from_static("Bearer very-secret-token"));
     let options = HttpLoggingOptions::default();
     let mut client_options = HttpClientOptions::default();
     client_options.logging = options;
@@ -174,9 +164,7 @@ fn test_log_response_masks_sensitive_response_url() {
             .expect("response logging should succeed");
     });
 
-    assert!(
-        logs.contains("<-- 200 https://example.com/data?password=%3Credacted%3E&access_token=****")
-    );
+    assert!(logs.contains("<-- 200 https://example.com/data?password=%3Credacted%3E&access_token=****"));
     assert!(!logs.contains("secret"));
 }
 
@@ -198,9 +186,7 @@ fn test_log_stream_response_headers_masks_sensitive_response_url() {
         logger.log_stream_response_headers(&response_meta);
     });
 
-    assert!(logs.contains(
-        "<-- 200 https://example.com/stream?password=%3Credacted%3E&access_token=**** (stream)"
-    ));
+    assert!(logs.contains("<-- 200 https://example.com/stream?password=%3Credacted%3E&access_token=**** (stream)"));
     assert!(!logs.contains("secret"));
 }
 
@@ -288,9 +274,7 @@ fn test_log_request_text_body() {
             http.text_body(TextBodyPolicy::PassThrough);
         })
         .expect("test policy should be valid");
-    client_options.log_redaction_policy = policy_builder
-        .build()
-        .expect("log redaction policy should be valid");
+    client_options.log_redaction_policy = policy_builder.build().expect("log redaction policy should be valid");
     let logger = HttpLogger::new(&client_options);
 
     let request = logging_request(
@@ -317,10 +301,7 @@ fn test_log_request_text_and_retry_bytes_share_content_type_and_redacted_preview
         HttpRequestBody::Text("trace-shared-text-secret".to_string()),
     );
     let mut bytes_headers = HeaderMap::new();
-    bytes_headers.insert(
-        CONTENT_TYPE,
-        HeaderValue::from_static("text/plain; charset=utf-8"),
-    );
+    bytes_headers.insert(CONTENT_TYPE, HeaderValue::from_static("text/plain; charset=utf-8"));
     let bytes_request = logging_request(
         Method::POST,
         "https://example.com/text-retry",
@@ -372,8 +353,7 @@ fn test_log_request_non_utf8_content_type_redacts_body() {
     let mut headers = HeaderMap::new();
     headers.insert(
         CONTENT_TYPE,
-        HeaderValue::from_bytes(b"application/json; charset=\xFF")
-            .expect("non-UTF-8 header value should be accepted"),
+        HeaderValue::from_bytes(b"application/json; charset=\xFF").expect("non-UTF-8 header value should be accepted"),
     );
     let client_options = HttpClientOptions::default();
     let logger = HttpLogger::new(&client_options);
@@ -381,9 +361,7 @@ fn test_log_request_non_utf8_content_type_redacts_body() {
         Method::POST,
         "https://example.com/non-utf8-content-type",
         headers,
-        HttpRequestBody::Json(Bytes::from_static(
-            br#"{"note":"unclassified-request-secret"}"#,
-        )),
+        HttpRequestBody::Json(Bytes::from_static(br#"{"note":"unclassified-request-secret"}"#)),
     );
 
     let logs = capture_trace_logs(|| {
@@ -457,8 +435,7 @@ fn test_log_request_streaming_body_logged_as_skipped() {
         .request(Method::POST, "https://example.com/streaming-upload")
         .streaming_body(|| {
             Box::pin(async move {
-                Box::pin(stream::iter([Ok(Bytes::from_static(b"secret-stream"))]))
-                    as HttpRequestBodyByteStream
+                Box::pin(stream::iter([Ok(Bytes::from_static(b"secret-stream"))])) as HttpRequestBodyByteStream
             })
         })
         .build();
@@ -515,9 +492,7 @@ fn test_execute_returns_body_read_error_from_response_logging() {
                 .build()
                 .expect("client should be created");
 
-            let request = client
-                .request(Method::GET, "/trace-body-read-error")
-                .build();
+            let request = client.request(Method::GET, "/trace-body-read-error").build();
             let response = timeout(std::time::Duration::from_secs(3), client.execute(request))
                 .await
                 .expect("execute timed out")
@@ -603,10 +578,7 @@ fn test_execute_logs_response_body_when_content_type_only_has_sse_prefix() {
         runtime.block_on(async {
             let server = spawn_one_shot_server(ResponsePlan::Immediate {
                 status: 200,
-                headers: vec![(
-                    "Content-Type".to_string(),
-                    "text/event-streamish".to_string(),
-                )],
+                headers: vec![("Content-Type".to_string(), "text/event-streamish".to_string())],
                 body: b"not an sse response".to_vec(),
             })
             .await;
@@ -620,9 +592,7 @@ fn test_execute_logs_response_body_when_content_type_only_has_sse_prefix() {
                     http.text_body(TextBodyPolicy::PassThrough);
                 })
                 .expect("test policy should be valid");
-            options.log_redaction_policy = policy_builder
-                .build()
-                .expect("log redaction policy should be valid");
+            options.log_redaction_policy = policy_builder.build().expect("log redaction policy should be valid");
             let client = HttpClientBuilder::new()
                 .options(options)
                 .build()
@@ -745,10 +715,7 @@ fn test_log_request_logs_json_form_multipart_ndjson_and_empty_bodies() {
 
     let multipart_request = client
         .request(Method::POST, "https://example.com/multipart-body")
-        .multipart_body(
-            Bytes::from_static(b"--b\r\n\r\nraw-multipart-value\r\n--b--"),
-            "b",
-        )
+        .multipart_body(Bytes::from_static(b"--b\r\n\r\nraw-multipart-value\r\n--b--"), "b")
         .expect("multipart body should be accepted")
         .build();
     let multipart_logs = capture_trace_logs(|| {
@@ -769,9 +736,7 @@ fn test_log_request_logs_json_form_multipart_ndjson_and_empty_bodies() {
     assert!(ndjson_logs.contains("Request body: {\"id\":1}"));
     assert!(ndjson_logs.contains("{\"id\":2}"));
 
-    let empty_request = client
-        .request(Method::GET, "https://example.com/empty-body")
-        .build();
+    let empty_request = client.request(Method::GET, "https://example.com/empty-body").build();
     let empty_logs = capture_trace_logs(|| {
         logger.log_request(&empty_request);
     });
@@ -826,14 +791,8 @@ fn test_execute_logs_response_body_from_backend_when_trace_enabled() {
                 .build()
                 .expect("client should be created");
             let request = client.request(Method::GET, "/logger-backend-path").build();
-            let mut response = client
-                .execute(request)
-                .await
-                .expect("request should succeed");
-            let text = response
-                .text()
-                .await
-                .expect("response text should be readable");
+            let mut response = client.execute(request).await.expect("request should succeed");
+            let text = response.text().await.expect("response text should be readable");
             assert_eq!(text, "backend-log-body");
 
             let captured = server.finish().await;
@@ -886,10 +845,7 @@ fn test_log_response_skips_body_when_backend_already_consumed() {
                 .build()
                 .expect("client should be created");
             let request = client.request(Method::GET, "/consumed-backend").build();
-            let mut response = client
-                .execute(request)
-                .await
-                .expect("request should succeed");
+            let mut response = client.execute(request).await.expect("request should succeed");
 
             let mut stream = response.stream().expect("stream should be available");
             let _ = stream
@@ -942,10 +898,7 @@ fn test_log_response_skips_body_for_sse_content_type() {
                 .build()
                 .expect("client should be created");
             let request = client.request(Method::GET, "/sse-log-skip").build();
-            let mut response = client
-                .execute(request)
-                .await
-                .expect("request should succeed");
+            let mut response = client.execute(request).await.expect("request should succeed");
 
             let mut logger_options = HttpClientOptions::default();
             logger_options.logging = HttpLoggingOptions::default();
@@ -964,10 +917,7 @@ fn test_log_response_skips_body_for_sse_content_type() {
 
 #[test]
 fn test_cross_client_redaction_success_logs_follow_request_snapshot() {
-    for (request_policy, expected_visible) in [
-        (RedactionPolicy::strict(), false),
-        (RedactionPolicy::default(), true),
-    ] {
+    for (request_policy, expected_visible) in [(RedactionPolicy::strict(), false), (RedactionPolicy::default(), true)] {
         let runtime = Builder::new_current_thread()
             .enable_all()
             .build()
@@ -998,10 +948,7 @@ fn test_cross_client_redaction_success_logs_follow_request_snapshot() {
                 let request = request_client
                     .request(Method::GET, "/cross-client-policy-sentinel")
                     .build();
-                let _response = execute_client
-                    .execute(request)
-                    .await
-                    .expect("request should succeed");
+                let _response = execute_client.execute(request).await.expect("request should succeed");
 
                 let captured = server.finish().await;
                 assert_eq!(captured.target, "/cross-client-policy-sentinel");
@@ -1010,10 +957,7 @@ fn test_cross_client_redaction_success_logs_follow_request_snapshot() {
 
         assert!(logs.contains("--> GET"));
         assert!(logs.contains("<-- 200"));
-        assert_eq!(
-            logs.contains("cross-client-policy-sentinel"),
-            expected_visible
-        );
+        assert_eq!(logs.contains("cross-client-policy-sentinel"), expected_visible);
     }
 }
 
@@ -1023,50 +967,41 @@ fn test_cross_client_redaction_rebuilt_client_keeps_old_and_new_snapshots() {
         .enable_all()
         .build()
         .expect("failed to build tokio runtime");
-    let (old_server, new_server, rebuilt_client, old_request, new_request) =
-        runtime.block_on(async {
-            let old_server = spawn_one_shot_server(ResponsePlan::Immediate {
-                status: 200,
-                headers: vec![],
-                body: b"old".to_vec(),
-            })
-            .await;
-            let new_server = spawn_one_shot_server(ResponsePlan::Immediate {
-                status: 200,
-                headers: vec![],
-                body: b"new".to_vec(),
-            })
-            .await;
+    let (old_server, new_server, rebuilt_client, old_request, new_request) = runtime.block_on(async {
+        let old_server = spawn_one_shot_server(ResponsePlan::Immediate {
+            status: 200,
+            headers: vec![],
+            body: b"old".to_vec(),
+        })
+        .await;
+        let new_server = spawn_one_shot_server(ResponsePlan::Immediate {
+            status: 200,
+            headers: vec![],
+            body: b"new".to_vec(),
+        })
+        .await;
 
-            let mut old_options = HttpClientOptions::default();
-            old_options.base_url = Some(old_server.base_url());
-            old_options.log_redaction_policy = RedactionPolicy::strict();
-            let old_client = HttpClientBuilder::new()
-                .options(old_options)
-                .build()
-                .expect("old client should be created");
-            let old_request = old_client
-                .request(Method::GET, "/cross-client-policy-sentinel")
-                .build();
+        let mut old_options = HttpClientOptions::default();
+        old_options.base_url = Some(old_server.base_url());
+        old_options.log_redaction_policy = RedactionPolicy::strict();
+        let old_client = HttpClientBuilder::new()
+            .options(old_options)
+            .build()
+            .expect("old client should be created");
+        let old_request = old_client.request(Method::GET, "/cross-client-policy-sentinel").build();
 
-            let mut new_options = HttpClientOptions::default();
-            new_options.base_url = Some(new_server.base_url());
-            new_options.log_redaction_policy = RedactionPolicy::default();
-            let rebuilt_client = old_client
-                .rebuild_with_options(new_options)
-                .expect("client should be rebuilt");
-            let new_request = rebuilt_client
-                .request(Method::GET, "/cross-client-policy-sentinel")
-                .build();
+        let mut new_options = HttpClientOptions::default();
+        new_options.base_url = Some(new_server.base_url());
+        new_options.log_redaction_policy = RedactionPolicy::default();
+        let rebuilt_client = old_client
+            .rebuild_with_options(new_options)
+            .expect("client should be rebuilt");
+        let new_request = rebuilt_client
+            .request(Method::GET, "/cross-client-policy-sentinel")
+            .build();
 
-            (
-                old_server,
-                new_server,
-                rebuilt_client,
-                old_request,
-                new_request,
-            )
-        });
+        (old_server, new_server, rebuilt_client, old_request, new_request)
+    });
 
     let old_logs = capture_trace_logs(|| {
         runtime.block_on(async {
@@ -1100,10 +1035,7 @@ fn test_cross_client_redaction_rebuilt_client_keeps_old_and_new_snapshots() {
 
 #[test]
 fn test_cross_client_redaction_status_errors_follow_request_snapshot() {
-    for (request_policy, expected_visible) in [
-        (RedactionPolicy::strict(), false),
-        (RedactionPolicy::default(), true),
-    ] {
+    for (request_policy, expected_visible) in [(RedactionPolicy::strict(), false), (RedactionPolicy::default(), true)] {
         let runtime = Builder::new_current_thread()
             .enable_all()
             .build()
@@ -1141,10 +1073,7 @@ fn test_cross_client_redaction_status_errors_follow_request_snapshot() {
 
             assert_eq!(error.kind(), HttpErrorKind::Status);
             assert_eq!(error.status(), Some(StatusCode::SERVICE_UNAVAILABLE));
-            assert_eq!(
-                error.status_response().unwrap().body().as_ref(),
-                b"retry later"
-            );
+            assert_eq!(error.status_response().unwrap().body().as_ref(), b"retry later");
             assert_eq!(
                 format!("{error:?}").contains("cross-client-policy-sentinel"),
                 expected_visible
@@ -1157,10 +1086,7 @@ fn test_cross_client_redaction_status_errors_follow_request_snapshot() {
 
 #[test]
 fn test_cross_client_redaction_retry_exhaustion_preserves_error_context() {
-    for (request_policy, expected_visible) in [
-        (RedactionPolicy::strict(), false),
-        (RedactionPolicy::default(), true),
-    ] {
+    for (request_policy, expected_visible) in [(RedactionPolicy::strict(), false), (RedactionPolicy::default(), true)] {
         let runtime = Builder::new_current_thread()
             .enable_all()
             .build()
@@ -1203,16 +1129,12 @@ fn test_cross_client_redaction_retry_exhaustion_preserves_error_context() {
                 .expect_err("503 status should exhaust retry budget");
 
             assert_eq!(error.kind(), HttpErrorKind::Status);
-            let diagnostics = error
-                .retry_diagnostics()
-                .expect("retry diagnostics should be retained");
+            let diagnostics = error.retry_diagnostics().expect("retry diagnostics should be retained");
             assert_eq!(diagnostics.attempts(), 2);
             let retry = std::error::Error::source(&error)
                 .and_then(|source| source.downcast_ref::<RetryError<HttpError>>())
                 .expect("RetryError<HttpError> source should be retained");
-            let last_error = retry
-                .last_error()
-                .expect("last HTTP error should be retained");
+            let last_error = retry.last_error().expect("last HTTP error should be retained");
             assert_eq!(last_error.status(), Some(StatusCode::SERVICE_UNAVAILABLE));
             assert_eq!(
                 format!("{last_error:?}").contains("cross-client-policy-sentinel"),
@@ -1220,19 +1142,18 @@ fn test_cross_client_redaction_retry_exhaustion_preserves_error_context() {
             );
             let captured = server.finish().await;
             assert_eq!(captured.len(), 2);
-            assert!(captured
-                .iter()
-                .all(|request| request.target == "/cross-client-policy-sentinel"));
+            assert!(
+                captured
+                    .iter()
+                    .all(|request| request.target == "/cross-client-policy-sentinel")
+            );
         });
     }
 }
 
 #[test]
 fn test_cross_client_redaction_retry_wait_cancellation_preserves_context() {
-    for (request_policy, expected_visible) in [
-        (RedactionPolicy::strict(), false),
-        (RedactionPolicy::default(), true),
-    ] {
+    for (request_policy, expected_visible) in [(RedactionPolicy::strict(), false), (RedactionPolicy::default(), true)] {
         let runtime = Builder::new_current_thread()
             .enable_all()
             .build()
@@ -1309,10 +1230,7 @@ fn test_cross_client_redaction_retry_wait_cancellation_preserves_context() {
 
 #[test]
 fn test_cross_client_redaction_sse_handshake_errors_follow_request_snapshot() {
-    for (request_policy, expected_visible) in [
-        (RedactionPolicy::strict(), false),
-        (RedactionPolicy::default(), true),
-    ] {
+    for (request_policy, expected_visible) in [(RedactionPolicy::strict(), false), (RedactionPolicy::default(), true)] {
         let runtime = Builder::new_current_thread()
             .enable_all()
             .build()
@@ -1342,8 +1260,7 @@ fn test_cross_client_redaction_sse_handshake_errors_follow_request_snapshot() {
             let request = request_client
                 .request(Method::GET, "/cross-client-policy-sentinel")
                 .build();
-            let mut events =
-                execute_client.execute_sse_with_reconnect(request, SseReconnectOptions::default());
+            let mut events = execute_client.execute_sse_with_reconnect(request, SseReconnectOptions::default());
             let error = timeout(std::time::Duration::from_secs(3), events.next())
                 .await
                 .expect("SSE handshake timed out")
@@ -1364,10 +1281,7 @@ fn test_cross_client_redaction_sse_handshake_errors_follow_request_snapshot() {
 
 #[test]
 fn test_cross_client_redaction_sse_decode_errors_follow_request_snapshot() {
-    for (request_policy, expected_visible) in [
-        (RedactionPolicy::strict(), false),
-        (RedactionPolicy::default(), true),
-    ] {
+    for (request_policy, expected_visible) in [(RedactionPolicy::strict(), false), (RedactionPolicy::default(), true)] {
         let runtime = Builder::new_current_thread()
             .enable_all()
             .build()
@@ -1428,10 +1342,7 @@ fn test_cross_client_redaction_sse_decode_errors_follow_request_snapshot() {
 
 #[test]
 fn test_cross_client_redaction_read_timeout_errors_follow_request_snapshot() {
-    for (request_policy, expected_visible) in [
-        (RedactionPolicy::strict(), false),
-        (RedactionPolicy::default(), true),
-    ] {
+    for (request_policy, expected_visible) in [(RedactionPolicy::strict(), false), (RedactionPolicy::default(), true)] {
         let runtime = Builder::new_current_thread()
             .enable_all()
             .build()
@@ -1465,13 +1376,10 @@ fn test_cross_client_redaction_read_timeout_errors_follow_request_snapshot() {
             let request = request_client
                 .request(Method::GET, "/cross-client-policy-sentinel")
                 .build();
-            let mut response = timeout(
-                std::time::Duration::from_secs(3),
-                execute_client.execute(request),
-            )
-            .await
-            .expect("execute timed out")
-            .expect("response headers should arrive");
+            let mut response = timeout(std::time::Duration::from_secs(3), execute_client.execute(request))
+                .await
+                .expect("execute timed out")
+                .expect("response headers should arrive");
             let error = timeout(std::time::Duration::from_secs(3), response.text())
                 .await
                 .expect("body read timed out")

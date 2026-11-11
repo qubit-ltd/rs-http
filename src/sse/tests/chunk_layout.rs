@@ -40,11 +40,7 @@ pub(crate) fn chunk_layouts(input: &[u8], frame_profile: bool) -> Vec<Vec<Range<
     }
     let fixed_layout_count = layouts.len();
     let (mut state, multiplier, increment) = if frame_profile {
-        (
-            0xd1b5_4a32_d192_ed03u64,
-            2_862_933_555_777_941_757,
-            3_037_000_493,
-        )
+        (0xd1b5_4a32_d192_ed03u64, 2_862_933_555_777_941_757, 3_037_000_493)
     } else {
         (
             0x9e37_79b9_7f4a_7c15u64,

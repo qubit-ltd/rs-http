@@ -26,9 +26,7 @@ use crate::HttpResult;
 /// Returns [`HttpError`] when `timeout` is zero.
 pub(crate) fn validate_positive_timeout(name: &str, timeout: Duration) -> HttpResult<()> {
     if timeout.is_zero() {
-        return Err(HttpError::other(format!(
-            "{name} must be greater than zero"
-        )));
+        return Err(HttpError::other(format!("{name} must be greater than zero")));
     }
     Ok(())
 }

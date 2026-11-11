@@ -29,8 +29,8 @@ use tokio::sync::oneshot;
 use tokio::test as tokio_test;
 use tokio::time::timeout;
 
-use crate::common::spawn_one_shot_server;
 use crate::common::ResponsePlan;
+use crate::common::spawn_one_shot_server;
 
 #[tokio_test]
 async fn test_non_http_scheme_does_not_retry() {
@@ -40,17 +40,11 @@ async fn test_non_http_scheme_does_not_retry() {
     options.retry.backoff = BackoffPolicy::immediate();
     let client = HttpClientBuilder::new().options(options).build().unwrap();
     let error = client
-        .execute(
-            client
-                .request(Method::GET, "ftp://sensitive.invalid/path")
-                .build(),
-        )
+        .execute(client.request(Method::GET, "ftp://sensitive.invalid/path").build())
         .await
         .unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::InvalidUrl);
-    let diagnostics = error
-        .retry_diagnostics()
-        .expect("retry diagnostics should be attached");
+    let diagnostics = error.retry_diagnostics().expect("retry diagnostics should be attached");
     assert_eq!(diagnostics.attempts(), 1);
     assert_eq!(diagnostics.termination(), HttpRetryTermination::Aborted);
     assert!(!error.message.contains("sensitive.invalid"));
@@ -65,25 +59,17 @@ async fn test_interceptor_non_http_scheme_does_not_retry() {
     let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     let calls = std::sync::Arc::new(AtomicUsize::new(0));
     let captured = calls.clone();
-    client.add_request_interceptor(HttpRequestInterceptor::new(
-        move |request: &mut HttpRequest| {
-            captured.fetch_add(1, Ordering::SeqCst);
-            request.set_path("ftp://sensitive.invalid/path");
-            Ok(())
-        },
-    ));
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |request: &mut HttpRequest| {
+        captured.fetch_add(1, Ordering::SeqCst);
+        request.set_path("ftp://sensitive.invalid/path");
+        Ok(())
+    }));
     let error = client
-        .execute(
-            client
-                .request(Method::GET, "http://example.invalid/")
-                .build(),
-        )
+        .execute(client.request(Method::GET, "http://example.invalid/").build())
         .await
         .unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::InvalidUrl);
-    let diagnostics = error
-        .retry_diagnostics()
-        .expect("retry diagnostics should be attached");
+    let diagnostics = error.retry_diagnostics().expect("retry diagnostics should be attached");
     assert_eq!(diagnostics.attempts(), 1);
     assert_eq!(diagnostics.termination(), HttpRetryTermination::Aborted);
     assert_eq!(calls.load(Ordering::SeqCst), 1);
@@ -151,9 +137,7 @@ async fn test_execute_parses_retry_after_http_date_for_service_unavailable() {
 
     assert_eq!(error.kind, HttpErrorKind::Status);
     assert_eq!(error.status, Some(StatusCode::SERVICE_UNAVAILABLE));
-    let retry_after = error
-        .retry_after
-        .expect("Retry-After HTTP-date should be parsed");
+    let retry_after = error.retry_after.expect("Retry-After HTTP-date should be parsed");
     assert!(
         retry_after <= Duration::from_secs(3),
         "retry_after={retry_after:?} should not exceed remaining date delta"
@@ -242,9 +226,7 @@ async fn test_execute_rejects_ipv6_url_when_ipv4_only() {
         .build()
         .expect("client should be created");
 
-    let request = client
-        .request(Method::GET, "http://[::1]:18080/reject-ipv6")
-        .build();
+    let request = client.request(Method::GET, "http://[::1]:18080/reject-ipv6").build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")
@@ -272,9 +254,7 @@ async fn test_execute_status_error_preview_reports_body_read_failure() {
         .options(options)
         .build()
         .expect("client should be created");
-    let request = client
-        .request(Method::GET, "/status-preview-read-error")
-        .build();
+    let request = client.request(Method::GET, "/status-preview-read-error").build();
 
     let error = timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -287,9 +267,7 @@ async fn test_execute_status_error_preview_reports_body_read_failure() {
         .as_ref()
         .expect("response body preview should be recorded");
     assert!(preview.contains("failed to read response body"));
-    let capture = error
-        .status_response()
-        .expect("status snapshot should be retained");
+    let capture = error.status_response().expect("status snapshot should be retained");
     assert_eq!(capture.capture_end(), HttpBodyCaptureEnd::ReadFailure);
     assert!(capture.is_truncated());
     assert!(capture.capture_error().is_some());
@@ -334,9 +312,7 @@ async fn test_status_body_preview_truncation_does_not_truncate_raw() {
     assert!(!raw.is_truncated());
     let value: serde_json::Value = serde_json::from_slice(raw.body()).unwrap();
     assert_eq!(value["error"]["code"], "quota_exceeded");
-    timeout(Duration::from_secs(3), server.finish())
-        .await
-        .unwrap();
+    timeout(Duration::from_secs(3), server.finish()).await.unwrap();
 }
 
 #[tokio_test]
@@ -413,9 +389,7 @@ async fn test_status_body_raw_limit_is_independent_and_exact_eof_is_complete() {
             }
         );
         assert!(raw.capture_error().is_none());
-        timeout(Duration::from_secs(3), server.finish())
-            .await
-            .unwrap();
+        timeout(Duration::from_secs(3), server.finish()).await.unwrap();
     }
 }
 
@@ -441,9 +415,7 @@ async fn test_known_status_body_length_equal_to_capture_limit_is_complete() {
     assert_eq!(captured.body().as_ref(), b"abcd");
     assert!(!captured.is_truncated());
     assert!(captured.capture_error().is_none());
-    timeout(Duration::from_secs(3), server.finish())
-        .await
-        .unwrap();
+    timeout(Duration::from_secs(3), server.finish()).await.unwrap();
 }
 
 #[tokio_test]
@@ -468,18 +440,12 @@ async fn test_status_body_read_timeout_keeps_partial_raw_truncated() {
     .unwrap()
     .unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::Status);
-    assert!(error
-        .response_body_preview
-        .as_ref()
-        .unwrap()
-        .contains("read timeout"));
+    assert!(error.response_body_preview.as_ref().unwrap().contains("read timeout"));
     let capture = error.status_response().unwrap();
     assert!(capture.is_truncated());
     assert_eq!(capture.capture_end(), HttpBodyCaptureEnd::ReadTimeout);
     assert!(capture.capture_error().is_none());
-    timeout(Duration::from_secs(3), server.finish())
-        .await
-        .unwrap();
+    timeout(Duration::from_secs(3), server.finish()).await.unwrap();
 }
 
 #[tokio_test]
@@ -506,9 +472,7 @@ async fn test_status_capture_read_failure_takes_precedence_after_raw_limit() {
     assert_eq!(capture.capture_end(), HttpBodyCaptureEnd::ReadFailure);
     assert!(capture.is_truncated());
     assert!(capture.capture_error().is_some());
-    timeout(Duration::from_secs(3), server.finish())
-        .await
-        .unwrap();
+    timeout(Duration::from_secs(3), server.finish()).await.unwrap();
 }
 
 #[tokio_test]
@@ -535,15 +499,15 @@ async fn test_status_capture_backend_request_timeout_is_read_failure() {
     .unwrap_err();
     let capture = error.status_response().unwrap();
     assert_eq!(capture.capture_end(), HttpBodyCaptureEnd::ReadFailure);
-    assert!(capture
-        .capture_error()
-        .unwrap()
-        .downcast_ref::<reqwest::Error>()
-        .unwrap()
-        .is_timeout());
-    timeout(Duration::from_secs(3), server.finish())
-        .await
-        .unwrap();
+    assert!(
+        capture
+            .capture_error()
+            .unwrap()
+            .downcast_ref::<reqwest::Error>()
+            .unwrap()
+            .is_timeout()
+    );
+    timeout(Duration::from_secs(3), server.finish()).await.unwrap();
 }
 
 #[tokio_test]
@@ -594,9 +558,7 @@ async fn test_status_body_read_timeout_is_cumulative() {
     options.error_response_body_limit = 256;
     options.retry.enabled = false;
     let client = HttpClientBuilder::new().options(options).build().unwrap();
-    let request = client
-        .request(Method::GET, "/status-body-cumulative")
-        .build();
+    let request = client.request(Method::GET, "/status-body-cumulative").build();
     let result = tokio::spawn(async move { client.execute(request).await });
     timeout(Duration::from_secs(2), headers_sent_rx)
         .await
@@ -611,22 +573,20 @@ async fn test_status_body_read_timeout_is_cumulative() {
     assert_eq!(error.status, Some(StatusCode::TOO_MANY_REQUESTS));
     assert_eq!(error.retry_after, Some(Duration::from_secs(1)));
     assert_eq!(error.method, Some(Method::GET));
-    assert!(error
-        .url
-        .as_ref()
-        .unwrap()
-        .as_str()
-        .ends_with("/status-body-cumulative"));
+    assert!(
+        error
+            .url
+            .as_ref()
+            .unwrap()
+            .as_str()
+            .ends_with("/status-body-cumulative")
+    );
     let status = error.status_response().unwrap();
     assert_eq!(status.headers().get("x-test").unwrap(), "preserved");
     assert!(status.body().starts_with(b"first"));
     assert!(status.body().len() < b"firstxxxxxxxxxxx".len());
     assert!(status.is_truncated());
-    assert!(error
-        .response_body_preview
-        .as_ref()
-        .unwrap()
-        .contains("read timeout"));
+    assert!(error.response_body_preview.as_ref().unwrap().contains("read timeout"));
     server.await.unwrap();
 }
 
@@ -703,9 +663,7 @@ async fn test_status_body_cancellation_remains_cancelled() {
         .unwrap()
         .unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::Cancelled);
-    timeout(Duration::from_secs(3), server.finish())
-        .await
-        .unwrap();
+    timeout(Duration::from_secs(3), server.finish()).await.unwrap();
 }
 
 #[tokio_test]
@@ -754,11 +712,7 @@ async fn test_head_status_error_has_complete_empty_raw_body() {
 
 #[tokio_test]
 async fn test_error_body_capture_returns_at_known_truncation_boundary() {
-    for (preview_limit, raw_limit, prefix) in [
-        (4, 4, b"abcd".as_slice()),
-        (4, 8, b"abcdefgh"),
-        (8, 4, b"abcdefgh"),
-    ] {
+    for (preview_limit, raw_limit, prefix) in [(4, 4, b"abcd".as_slice()), (4, 8, b"abcdefgh"), (8, 4, b"abcdefgh")] {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let (sent_tx, sent_rx) = oneshot::channel();
@@ -811,11 +765,13 @@ async fn test_error_body_capture_returns_at_known_truncation_boundary() {
         assert_eq!(captured.body().as_ref(), &expected_prefix[..raw_limit]);
         assert!(captured.capture_error().is_none());
         assert!(captured.is_truncated());
-        assert!(!error
-            .response_body_preview
-            .as_deref()
-            .unwrap_or_default()
-            .contains("body unavailable"));
+        assert!(
+            !error
+                .response_body_preview
+                .as_deref()
+                .unwrap_or_default()
+                .contains("body unavailable")
+        );
     }
 }
 
@@ -868,18 +824,13 @@ async fn test_error_body_capture_waits_for_both_known_capture_targets() {
             panic!("server must send first prefix: {sent:?}");
         }
         sent.unwrap().unwrap();
-        let waited_for_larger_target = timeout(Duration::from_millis(100), &mut task)
-            .await
-            .is_err();
+        let waited_for_larger_target = timeout(Duration::from_millis(100), &mut task).await.is_err();
         let _ = continue_tx.send(());
         let result = timeout(Duration::from_secs(2), &mut task).await;
         let _ = release_tx.send(());
         let server_result = timeout(Duration::from_secs(2), server).await;
         server_result.expect("server must finish").unwrap();
-        assert!(
-            waited_for_larger_target,
-            "capture must wait for the larger target"
-        );
+        assert!(waited_for_larger_target, "capture must wait for the larger target");
         let error = result
             .expect("capture must return after second target is filled")
             .unwrap()

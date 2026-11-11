@@ -10,21 +10,21 @@
 //! Converts SSE events into typed JSON chunks.
 
 use async_stream::stream;
-use futures_util::stream::once;
 use futures_util::StreamExt;
+use futures_util::stream::once;
 use qubit_budget::json::JsonValueLimits;
 use serde::de::DeserializeOwned;
 
-use super::decode_messages_from_stream_with_limits;
-use super::internal::decode_poll_budget::DecodePollBudget;
 use super::DoneMarkerPolicy;
 use super::SseChunk;
 use super::SseChunkStream;
 use super::SseCompletionPolicy;
 use super::SseJsonMode;
-use crate::json_limits::json_decode_limits;
+use super::decode_messages_from_stream_with_limits;
+use super::internal::decode_poll_budget::DecodePollBudget;
 use crate::HttpByteStream;
 use crate::HttpError;
+use crate::json_limits::json_decode_limits;
 
 /// Parses SSE JSON payloads with selectable strictness and explicit line/frame
 /// size limits.
@@ -59,17 +59,14 @@ pub(crate) fn decode_json_chunks_from_stream_with_limits<T>(
 where
     T: DeserializeOwned + Send + 'static,
 {
-    if matches!(completion_policy, SseCompletionPolicy::RequireDoneMarker)
-        && !done_policy.has_usable_done_marker()
-    {
+    if matches!(completion_policy, SseCompletionPolicy::RequireDoneMarker) && !done_policy.has_usable_done_marker() {
         return Box::pin(once(async {
             Err(HttpError::sse_protocol(
                 "RequireDoneMarker needs a non-empty enabled done marker",
             ))
         }));
     }
-    let mut messages =
-        decode_messages_from_stream_with_limits(stream, max_line_bytes, max_frame_bytes);
+    let mut messages = decode_messages_from_stream_with_limits(stream, max_line_bytes, max_frame_bytes);
     let output = stream! {
         let mut poll_budget = DecodePollBudget::default();
         while let Some(item) = messages.next().await {
@@ -114,9 +111,9 @@ where
 
 #[cfg(test)]
 mod poll_audit_tests {
+    use std::sync::Arc;
     use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering;
-    use std::sync::Arc;
     use std::task::Wake;
     use std::task::Waker;
 
@@ -124,12 +121,12 @@ mod poll_audit_tests {
     use futures_util::StreamExt;
 
     use super::decode_json_chunks_from_stream_with_limits;
+    use crate::HttpByteStream;
     use crate::json_limits::default_json_value_limits;
     use crate::sse::DoneMarkerPolicy;
     use crate::sse::SseChunk;
     use crate::sse::SseCompletionPolicy;
     use crate::sse::SseJsonMode;
-    use crate::HttpByteStream;
 
     struct CountWake(AtomicUsize);
 
@@ -174,10 +171,7 @@ mod poll_audit_tests {
         let wake_counter = Arc::new(CountWake(AtomicUsize::new(0)));
         let waker = Waker::from(Arc::clone(&wake_counter));
         let mut context = std::task::Context::from_waker(&waker);
-        let polled = std::future::poll_fn(|_| {
-            std::task::Poll::Ready(output.as_mut().poll_next(&mut context))
-        })
-        .await;
+        let polled = std::future::poll_fn(|_| std::task::Poll::Ready(output.as_mut().poll_next(&mut context))).await;
         assert!(polled.is_pending());
         let first_poll_consumed = consumed.load(Ordering::SeqCst);
         assert!(

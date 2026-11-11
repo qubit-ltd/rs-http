@@ -23,8 +23,8 @@ use tokio::pin;
 use tokio::test as tokio_test;
 use tokio::time::timeout;
 
-use crate::common::spawn_one_shot_server;
 use crate::common::ResponsePlan;
+use crate::common::spawn_one_shot_server;
 
 #[tokio_test]
 async fn test_retry_success_hands_flow_token_to_response() {

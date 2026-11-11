@@ -40,15 +40,11 @@ async fn serve_one_request(listener: TcpListener) -> io::Result<()> {
         ));
     }
     let has_client_id = lines.any(|line| {
-        line.split_once(':').is_some_and(|(name, value)| {
-            name.eq_ignore_ascii_case("x-client-id") && value.trim() == "demo"
-        })
+        line.split_once(':')
+            .is_some_and(|(name, value)| name.eq_ignore_ascii_case("x-client-id") && value.trim() == "demo")
     });
     if !has_client_id {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "missing x-client-id: demo",
-        ));
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "missing x-client-id: demo"));
     }
 
     socket
@@ -119,11 +115,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
         Ok(join_result) => join_result??,
         Err(_) => {
             let _ = server.await;
-            return Err(io::Error::new(
-                io::ErrorKind::TimedOut,
-                "server task did not finish in time",
-            )
-            .into());
+            return Err(io::Error::new(io::ErrorKind::TimedOut, "server task did not finish in time").into());
         }
     }
     Ok(())
@@ -139,8 +131,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
 mod tests {
     #[tokio::test]
     async fn test_run_serves_a_local_request_and_completes() {
-        super::run()
-            .await
-            .expect("local quick start should complete");
+        super::run().await.expect("local quick start should complete");
     }
 }

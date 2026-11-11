@@ -14,13 +14,13 @@ use http::HeaderMap;
 use http::Method;
 use http::StatusCode;
 use qubit_budget::json::JsonValueLimits;
+use qubit_http::HttpErrorKind;
+use qubit_http::HttpResponse;
+use qubit_http::HttpResult;
 use qubit_http::sse::DoneMarkerPolicy;
 use qubit_http::sse::SseChunk;
 use qubit_http::sse::SseCompletionPolicy;
 use qubit_http::sse::SseJsonMode;
-use qubit_http::HttpErrorKind;
-use qubit_http::HttpResponse;
-use qubit_http::HttpResult;
 use qubit_json::decode::JsonDecodeError;
 use tokio::test as tokio_test;
 
@@ -64,11 +64,8 @@ async fn test_decode_json_chunks_lenient_skips_bad_json_and_respects_done() {
 
 #[tokio_test]
 async fn test_decode_json_chunks_strict_fails_on_bad_json() {
-    let response =
-        stream_response_from_chunks(vec!["data: {\"value\": 1}\n\n", "data: malformed-json\n\n"]);
-    let mut stream = response
-        .sse_json_mode(SseJsonMode::Strict)
-        .sse_chunks::<TestChunk>();
+    let response = stream_response_from_chunks(vec!["data: {\"value\": 1}\n\n", "data: malformed-json\n\n"]);
+    let mut stream = response.sse_json_mode(SseJsonMode::Strict).sse_chunks::<TestChunk>();
 
     let first = stream.next().await.unwrap().unwrap();
     assert_eq!(first, SseChunk::Data(TestChunk { value: 1 }));
@@ -88,9 +85,7 @@ async fn test_decode_json_chunks_strict_error_redacts_message_context() {
         "id: PRIVATE_CURSOR_TOKEN\n",
         "data: PRIVATE_PAYLOAD_TOKEN\n\n",
     ]);
-    let mut stream = response
-        .sse_json_mode(SseJsonMode::Strict)
-        .sse_chunks::<TestChunk>();
+    let mut stream = response.sse_json_mode(SseJsonMode::Strict).sse_chunks::<TestChunk>();
 
     let error = stream.next().await.unwrap().unwrap_err();
 
@@ -124,11 +119,7 @@ async fn test_decode_json_chunks_with_custom_done_marker() {
 
 #[tokio_test]
 async fn test_decode_json_chunks_with_limits_reports_sse_protocol_error() {
-    let response = stream_response_from_chunks(vec![
-        "data: {\"value\": 1}\n",
-        "data: {\"value\": 2}\n",
-        "\n",
-    ]);
+    let response = stream_response_from_chunks(vec!["data: {\"value\": 1}\n", "data: {\"value\": 2}\n", "\n"]);
     let mut stream = response
         .sse_json_mode(SseJsonMode::Strict)
         .sse_max_line_bytes(256)
@@ -176,8 +167,7 @@ async fn test_require_done_marker_reports_protocol_error_once_after_eof() {
 
 #[tokio_test]
 async fn test_require_done_marker_accepts_explicit_done() {
-    let response =
-        stream_response_from_chunks(vec!["data: {\"value\": 1}\n\n", "data: [DONE]\n\n"]);
+    let response = stream_response_from_chunks(vec!["data: {\"value\": 1}\n\n", "data: [DONE]\n\n"]);
     let mut stream = response
         .sse_completion_policy(SseCompletionPolicy::RequireDoneMarker)
         .sse_chunks::<TestChunk>();

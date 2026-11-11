@@ -34,9 +34,9 @@ mod request;
 mod response;
 pub mod sse;
 
-pub use client::http_logger::HttpLogger;
 pub use client::HttpClient;
 pub use client::HttpClientBuilder;
+pub use client::http_logger::HttpLogger;
 pub use error::HttpBodyCaptureEnd;
 pub use error::HttpError;
 pub use error::HttpErrorKind;

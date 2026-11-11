@@ -8,14 +8,14 @@
 
 use std::time::Duration;
 
-use qubit_argument::require_that;
 use qubit_argument::ArgumentResult;
 use qubit_argument::OptionArgument;
+use qubit_argument::require_that;
 use qubit_config::ConfigReader;
 use qubit_config::ConfigResult;
 
-use super::internal::TimeoutConfigInput;
 use super::HttpConfigError;
+use super::internal::TimeoutConfigInput;
 use crate::constants::DEFAULT_CONNECT_TIMEOUT_SECS;
 use crate::constants::DEFAULT_READ_TIMEOUT_SECS;
 use crate::constants::DEFAULT_SEND_TIMEOUT_SECS;
@@ -142,9 +142,8 @@ impl HttpTimeoutOptions {
             "supported_deadline",
             "Timeout value exceeds the supported deadline range",
         )?;
-        self.request_timeout.validate_some(|request_timeout| {
-            validate_positive_duration("request_timeout", request_timeout)
-        })?;
+        self.request_timeout
+            .validate_some(|request_timeout| validate_positive_duration("request_timeout", request_timeout))?;
         Ok(())
     }
 

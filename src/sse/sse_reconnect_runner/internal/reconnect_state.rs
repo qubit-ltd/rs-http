@@ -18,6 +18,7 @@ use qubit_retry::RetryPolicy;
 
 use super::reconnect_action::ReconnectAction;
 use super::reconnect_runtime::ReconnectRuntime;
+use crate::HttpError;
 use crate::sse::sse_reconnect_runner::max_elapsed_exceeded_error;
 use crate::sse::sse_reconnect_runner::max_elapsed_exceeded_error_with_last_error;
 use crate::sse::sse_reconnect_runner::operation_elapsed_exceeded_error;
@@ -25,7 +26,6 @@ use crate::sse::sse_reconnect_runner::operation_elapsed_exceeded_error_with_last
 use crate::sse::sse_reconnect_runner::reconnect_budget_error;
 use crate::sse::sse_reconnect_runner::server_retry_max_delay;
 use crate::sse::sse_reconnect_runner::sleep_reconnect_delay;
-use crate::HttpError;
 
 /// Mutable reconnect backoff and pending retry delay state.
 pub(in crate::sse) struct ReconnectState {
@@ -99,17 +99,12 @@ impl ReconnectState {
         };
         match decision {
             Ok(()) => self.sleep_and_advance(sleep_delay, runtime).await,
-            Err(RetryBudgetError::Exhausted(RetryBudgetExhausted::Attempts)) => {
-                ReconnectAction::Fail(Box::new(error))
-            }
+            Err(RetryBudgetError::Exhausted(RetryBudgetExhausted::Attempts)) => ReconnectAction::Fail(Box::new(error)),
             Err(RetryBudgetError::Exhausted(RetryBudgetExhausted::OperationElapsed)) => {
                 ReconnectAction::Fail(Box::new(operation_elapsed_exceeded_error_with_last_error(
                     error,
                     snapshot.operation_elapsed(),
-                    runtime
-                        .retry_policy
-                        .admission_limits()
-                        .operation_time_budget(),
+                    runtime.retry_policy.admission_limits().operation_time_budget(),
                     runtime.request_method,
                     runtime.request_url,
                     runtime.log_redactor,
@@ -163,16 +158,11 @@ impl ReconnectState {
         };
         match decision {
             Ok(()) => self.sleep_and_advance(sleep_delay, runtime).await,
-            Err(RetryBudgetError::Exhausted(RetryBudgetExhausted::Attempts)) => {
-                ReconnectAction::Stop
-            }
+            Err(RetryBudgetError::Exhausted(RetryBudgetExhausted::Attempts)) => ReconnectAction::Stop,
             Err(RetryBudgetError::Exhausted(RetryBudgetExhausted::OperationElapsed)) => {
                 ReconnectAction::Fail(Box::new(operation_elapsed_exceeded_error(
                     snapshot.operation_elapsed(),
-                    runtime
-                        .retry_policy
-                        .admission_limits()
-                        .operation_time_budget(),
+                    runtime.retry_policy.admission_limits().operation_time_budget(),
                     runtime.request_method,
                     runtime.request_url,
                     runtime.log_redactor,
@@ -232,10 +222,7 @@ impl ReconnectState {
             .effective_delay()
             .max(Duration::from_millis(1));
         if from_sse {
-            delay.min(server_retry_max_delay(
-                runtime.retry_policy,
-                runtime.options,
-            ))
+            delay.min(server_retry_max_delay(runtime.retry_policy, runtime.options))
         } else {
             delay
         }
@@ -253,11 +240,7 @@ impl ReconnectState {
     ///
     /// # Side effects
     /// Sleeps asynchronously while preserving the latest server retry delay.
-    async fn sleep_and_advance(
-        &mut self,
-        sleep_delay: Duration,
-        runtime: &ReconnectRuntime<'_>,
-    ) -> ReconnectAction {
+    async fn sleep_and_advance(&mut self, sleep_delay: Duration, runtime: &ReconnectRuntime<'_>) -> ReconnectAction {
         if let Err(error) = sleep_reconnect_delay(
             sleep_delay,
             runtime.cancellation_token,
@@ -292,9 +275,9 @@ impl ReconnectState {
 fn http_retry_after(error: &HttpError, honor_retry_after: bool) -> Option<Duration> {
     if honor_retry_after
         && error.kind() == crate::HttpErrorKind::Status
-        && error.status().is_some_and(|status| {
-            status == http::StatusCode::TOO_MANY_REQUESTS || status.is_server_error()
-        })
+        && error
+            .status()
+            .is_some_and(|status| status == http::StatusCode::TOO_MANY_REQUESTS || status.is_server_error())
     {
         error.retry_after()
     } else {
@@ -313,15 +296,11 @@ mod tests {
     use qubit_retry::RetryBudget;
 
     use super::ReconnectState;
-    use crate::sse::sse_reconnect_runner::internal::reconnect_runtime::ReconnectRuntime;
-    use crate::sse::SseReconnectOptions;
     use crate::HttpError;
+    use crate::sse::SseReconnectOptions;
+    use crate::sse::sse_reconnect_runner::internal::reconnect_runtime::ReconnectRuntime;
 
-    fn delay_for_hint(
-        retry: qubit_retry::RetryPolicy,
-        options: SseReconnectOptions,
-        hint: Duration,
-    ) -> Duration {
+    fn delay_for_hint(retry: qubit_retry::RetryPolicy, options: SseReconnectOptions, hint: Duration) -> Duration {
         let mut state = ReconnectState::new(&retry);
         state.set_server_retry_delay(hint);
         let method = Method::GET;
@@ -488,8 +467,7 @@ mod tests {
         }
         let error = HttpError::transport("retry").with_retry_after(retry_after);
         assert_eq!(super::http_retry_after(&error, true), None);
-        let error = HttpError::from_status(http::StatusCode::BAD_REQUEST, "retry")
-            .with_retry_after(retry_after);
+        let error = HttpError::from_status(http::StatusCode::BAD_REQUEST, "retry").with_retry_after(retry_after);
         assert_eq!(super::http_retry_after(&error, true), None);
     }
 
@@ -497,14 +475,7 @@ mod tests {
     async fn test_wait_preserves_server_retry_and_advances_backoff() {
         let policy = qubit_retry::RetryPolicy::builder()
             .max_attempts(3)
-            .backoff(
-                BackoffPolicy::exponential(
-                    Duration::from_millis(40),
-                    2.0,
-                    Duration::from_millis(200),
-                )
-                .unwrap(),
-            )
+            .backoff(BackoffPolicy::exponential(Duration::from_millis(40), 2.0, Duration::from_millis(200)).unwrap())
             .build()
             .unwrap();
         let options = SseReconnectOptions {
@@ -565,22 +536,13 @@ mod tests {
         };
         let mut state = ReconnectState::new(&policy);
         state.set_server_retry_delay(Duration::from_millis(120));
-        assert_eq!(
-            state.sleep_delay(&runtime, None),
-            Duration::from_millis(120)
-        );
-        assert_eq!(
-            state.sleep_delay(&runtime, None),
-            Duration::from_millis(120)
-        );
+        assert_eq!(state.sleep_delay(&runtime, None), Duration::from_millis(120));
+        assert_eq!(state.sleep_delay(&runtime, None), Duration::from_millis(120));
         assert_eq!(
             state.sleep_delay(&runtime, Some(Duration::from_millis(250))),
             Duration::from_millis(250),
         );
-        assert_eq!(
-            state.sleep_delay(&runtime, None),
-            Duration::from_millis(120)
-        );
+        assert_eq!(state.sleep_delay(&runtime, None), Duration::from_millis(120));
         state.set_server_retry_delay(Duration::from_millis(40));
         assert_eq!(state.sleep_delay(&runtime, None), Duration::from_millis(40));
     }

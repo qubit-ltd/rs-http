@@ -12,11 +12,11 @@
 use async_stream::stream;
 use futures_util::StreamExt;
 
-use super::line_decoder::SseLineStream;
 use super::SseControl;
 use super::SseMessage;
 use super::SseRecord;
 use super::SseRecordStream;
+use super::line_decoder::SseLineStream;
 
 /// Groups newline-delimited SSE fields into internal [`SseRecord`] values.
 ///
@@ -175,20 +175,14 @@ mod tests {
     use futures_util::StreamExt;
 
     use super::decode_records;
+    use crate::HttpByteStream;
+    use crate::sse::SseControl;
+    use crate::sse::SseRecord;
     use crate::sse::line_decoder::decode_lines;
     use crate::sse::tests::chunk_layout::chunk_layouts;
     use crate::sse::tests::chunk_layout::stream_for_layout;
-    use crate::sse::SseControl;
-    use crate::sse::SseRecord;
-    use crate::HttpByteStream;
 
-    type FrameCase<'a> = (
-        &'a str,
-        &'a [u8],
-        usize,
-        &'a [SseRecord],
-        Option<crate::HttpErrorKind>,
-    );
+    type FrameCase<'a> = (&'a str, &'a [u8], usize, &'a [SseRecord], Option<crate::HttpErrorKind>);
 
     async fn decode(chunks: Vec<&'static [u8]>) -> crate::HttpResult<Vec<SseRecord>> {
         decode_with_limit(chunks, 1024).await
@@ -231,9 +225,7 @@ mod tests {
             ]
         );
 
-        let records = decode(vec![b"id: pending\ndata: incomplete"])
-            .await
-            .unwrap();
+        let records = decode(vec![b"id: pending\ndata: incomplete"]).await.unwrap();
         assert!(records.is_empty());
     }
 
@@ -286,9 +278,7 @@ mod tests {
         ];
 
         for case in cases {
-            let eof_input: HttpByteStream = Box::pin(futures_util::stream::iter([Ok(
-                Bytes::from_static(case.prefix),
-            )]));
+            let eof_input: HttpByteStream = Box::pin(futures_util::stream::iter([Ok(Bytes::from_static(case.prefix))]));
             let eof_records = decode_records(decode_lines(eof_input, 64), 1024)
                 .collect::<Vec<_>>()
                 .await
@@ -298,9 +288,7 @@ mod tests {
             match case.expected_eof_id {
                 Some(id) => assert_eq!(
                     eof_records,
-                    vec![SseRecord::Control(SseControl::LastEventId(
-                        (*id).to_owned()
-                    ))],
+                    vec![SseRecord::Control(SseControl::LastEventId((*id).to_owned()))],
                     "EOF case={}",
                     case.name
                 ),
@@ -317,16 +305,9 @@ mod tests {
                     }),
                 ];
                 let input: HttpByteStream = Box::pin(futures_util::stream::iter(chunks));
-                let actual = decode_records(decode_lines(input, 64), 1024)
-                    .collect::<Vec<_>>()
-                    .await;
+                let actual = decode_records(decode_lines(input, 64), 1024).collect::<Vec<_>>().await;
                 let expected_len = usize::from(case.expected_error_id.is_some()) + 1;
-                assert_eq!(
-                    actual.len(),
-                    expected_len,
-                    "case={}, timeout={use_timeout}",
-                    case.name
-                );
+                assert_eq!(actual.len(), expected_len, "case={}, timeout={use_timeout}", case.name);
                 if let Some(id) = case.expected_error_id {
                     assert_eq!(
                         actual[0].as_ref().unwrap(),
@@ -371,13 +352,8 @@ mod tests {
             assert!(records.is_empty(), "retry value {retry:?} must be ignored");
         }
 
-        for (line, expected) in [
-            (b"retry: 0\n\n" as &'static [u8], 0),
-            (b"retry: 120\n\n", 120),
-        ] {
-            let records = decode(vec![line])
-                .await
-                .expect("valid retry value should decode");
+        for (line, expected) in [(b"retry: 0\n\n" as &'static [u8], 0), (b"retry: 120\n\n", 120)] {
+            let records = decode(vec![line]).await.expect("valid retry value should decode");
             assert_eq!(
                 records,
                 vec![SseRecord::Control(SseControl::ReconnectDelayMs(expected))]
@@ -387,10 +363,7 @@ mod tests {
         let records = decode(vec![b"retry: 120\nretry: +120\n\n"])
             .await
             .expect("an invalid retry must not fail decoding");
-        assert_eq!(
-            records,
-            vec![SseRecord::Control(SseControl::ReconnectDelayMs(120))]
-        );
+        assert_eq!(records, vec![SseRecord::Control(SseControl::ReconnectDelayMs(120))]);
     }
 
     #[tokio::test]
@@ -430,10 +403,7 @@ mod tests {
         let source = b"x: 1\ndata: a\n\n";
         assert_eq!(decode_with_limit(vec![source], 11).await.unwrap().len(), 1);
         assert_eq!(
-            decode_with_limit(vec![source], 10)
-                .await
-                .unwrap_err()
-                .kind(),
+            decode_with_limit(vec![source], 10).await.unwrap_err().kind(),
             crate::HttpErrorKind::SseProtocol,
         );
         let source = "data: é\n\n".as_bytes();
@@ -539,9 +509,7 @@ mod tests {
                 "eof-id-control",
                 b"id: eof",
                 64,
-                &[SseRecord::Control(SseControl::LastEventId(
-                    "eof".to_owned(),
-                ))],
+                &[SseRecord::Control(SseControl::LastEventId("eof".to_owned()))],
                 None,
             ),
             (
@@ -561,9 +529,7 @@ mod tests {
             for (layout_index, layout) in chunk_layouts(source, true).iter().enumerate() {
                 let lines = decode_lines(stream_for_layout(source, layout), 64);
                 let actual = decode_records(lines, *limit).collect::<Vec<_>>().await;
-                let context = format!(
-                    "corpus={name}, limit={limit}, layout={layout_index}, chunks={layout:?}"
-                );
+                let context = format!("corpus={name}, limit={limit}, layout={layout_index}, chunks={layout:?}");
                 assert_eq!(
                     actual.len(),
                     expected_prefix.len() + usize::from(expected_error.is_some()),
@@ -614,9 +580,7 @@ mod tests {
                 "injected transport error",
             )));
             let input: HttpByteStream = Box::pin(futures_util::stream::iter(chunks));
-            let actual = decode_records(decode_lines(input, 64), 1024)
-                .collect::<Vec<_>>()
-                .await;
+            let actual = decode_records(decode_lines(input, 64), 1024).collect::<Vec<_>>().await;
             assert_eq!(
                 actual.len(),
                 2,
@@ -631,10 +595,7 @@ mod tests {
                     last_event_id: None,
                 })
             );
-            assert_eq!(
-                actual[1].as_ref().unwrap_err().kind(),
-                crate::HttpErrorKind::Transport
-            );
+            assert_eq!(actual[1].as_ref().unwrap_err().kind(), crate::HttpErrorKind::Transport);
         }
     }
 }

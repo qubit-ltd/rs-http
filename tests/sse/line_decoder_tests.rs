@@ -29,10 +29,7 @@ fn buffered_response_from_parts(chunks: Vec<String>) -> HttpResponse {
 #[tokio_test]
 async fn test_decode_events_accepts_cr_only_line_endings() {
     let response = buffered_response_from_parts(vec!["data: one\r\rdata: two\r\r".to_string()]);
-    let mut events = response
-        .sse_max_line_bytes(64)
-        .sse_max_frame_bytes(1024)
-        .sse_messages();
+    let mut events = response.sse_max_line_bytes(64).sse_max_frame_bytes(1024).sse_messages();
 
     let first = events.next().await.unwrap().unwrap();
     let second = events.next().await.unwrap().unwrap();
@@ -50,10 +47,7 @@ async fn test_decode_events_accepts_crlf_from_buffered_input() {
         "\n\r".to_string(),
         "\n".to_string(),
     ]);
-    let mut events = response
-        .sse_max_line_bytes(64)
-        .sse_max_frame_bytes(1024)
-        .sse_messages();
+    let mut events = response.sse_max_line_bytes(64).sse_max_frame_bytes(1024).sse_messages();
 
     let first = events.next().await.unwrap().unwrap();
     let second = events.next().await.unwrap().unwrap();
@@ -64,13 +58,9 @@ async fn test_decode_events_accepts_crlf_from_buffered_input() {
 
 #[tokio_test]
 async fn test_decode_events_accepts_dense_mixed_line_endings_in_one_chunk() {
-    let response = buffered_response_from_parts(vec![
-        "event: add\ndata: one\n\revent: add\rdata: two\r\r\n".to_string(),
-    ]);
-    let mut events = response
-        .sse_max_line_bytes(64)
-        .sse_max_frame_bytes(1024)
-        .sse_messages();
+    let response =
+        buffered_response_from_parts(vec!["event: add\ndata: one\n\revent: add\rdata: two\r\r\n".to_string()]);
+    let mut events = response.sse_max_line_bytes(64).sse_max_frame_bytes(1024).sse_messages();
 
     let first = events.next().await.unwrap().unwrap();
     let second = events.next().await.unwrap().unwrap();
@@ -86,10 +76,7 @@ async fn test_decode_events_accepts_dense_mixed_line_endings_in_one_chunk() {
 async fn test_decode_events_with_limits_rejects_line_exceeding_max_bytes() {
     let long_line = format!("data: {}\n\n", "a".repeat(64));
     let response = buffered_response_from_parts(vec![long_line]);
-    let mut events = response
-        .sse_max_line_bytes(16)
-        .sse_max_frame_bytes(1024)
-        .sse_messages();
+    let mut events = response.sse_max_line_bytes(16).sse_max_frame_bytes(1024).sse_messages();
 
     let error = events.next().await.unwrap().unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::SseProtocol);
@@ -105,10 +92,7 @@ async fn test_decode_events_rejects_invalid_utf8_line() {
         url::Url::parse("https://example.com/stream").expect("valid URL"),
         Method::GET,
     );
-    let mut events = response
-        .sse_max_line_bytes(64)
-        .sse_max_frame_bytes(1024)
-        .sse_messages();
+    let mut events = response.sse_max_line_bytes(64).sse_max_frame_bytes(1024).sse_messages();
 
     let error = events.next().await.unwrap().unwrap_err();
 
@@ -119,10 +103,7 @@ async fn test_decode_events_rejects_invalid_utf8_line() {
 #[tokio_test]
 async fn test_decode_events_with_limits_accepts_line_within_max_bytes() {
     let response = buffered_response_from_parts(vec!["data: ok\n\n".to_string()]);
-    let mut events = response
-        .sse_max_line_bytes(64)
-        .sse_max_frame_bytes(1024)
-        .sse_messages();
+    let mut events = response.sse_max_line_bytes(64).sse_max_frame_bytes(1024).sse_messages();
 
     let event = events.next().await.unwrap().unwrap();
     assert_eq!(event.data, "ok");

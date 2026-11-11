@@ -17,10 +17,10 @@ use qubit_json::decode::NormalizingJsonDecoder;
 use serde::de::DeserializeOwned;
 
 use super::SseJsonMode;
-use crate::json_limits::default_json_value_limits;
-use crate::json_limits::json_decode_limits;
 use crate::HttpError;
 use crate::HttpResult;
+use crate::json_limits::default_json_value_limits;
+use crate::json_limits::json_decode_limits;
 
 /// One EventSource-style message dispatch after `data:` line reassembly.
 ///
@@ -67,10 +67,7 @@ impl SseMessage {
     where
         T: DeserializeOwned,
     {
-        self.decode_json_with_limits(json_decode_limits(
-            self.data.len(),
-            default_json_value_limits(),
-        ))
+        self.decode_json_with_limits(json_decode_limits(self.data.len(), default_json_value_limits()))
     }
 
     /// Decodes strict JSON using explicit resource limits.
@@ -125,10 +122,7 @@ impl SseMessage {
     where
         T: DeserializeOwned,
     {
-        self.decode_json_with_mode_and_limits(
-            mode,
-            json_decode_limits(self.data.len(), default_json_value_limits()),
-        )
+        self.decode_json_with_mode_and_limits(mode, json_decode_limits(self.data.len(), default_json_value_limits()))
     }
 
     /// Decodes JSON with selectable normalization and explicit limits.
@@ -160,16 +154,11 @@ impl SseMessage {
         match mode {
             SseJsonMode::Strict => self.decode_json_with_limits::<T>(limits).map(Some),
             SseJsonMode::Lenient => {
-                match NormalizingJsonDecoder::with_limits(
-                    NormalizingJsonDecodePolicy::lenient(),
-                    limits,
-                )
-                .decode_str::<T>(&self.data)
+                match NormalizingJsonDecoder::with_limits(NormalizingJsonDecodePolicy::lenient(), limits)
+                    .decode_str::<T>(&self.data)
                 {
                     Ok(value) => Ok(Some(value)),
-                    Err(error) if error.kind() == JsonDecodeErrorKind::Budget => {
-                        Err(self.json_decode_error(error))
-                    }
+                    Err(error) if error.kind() == JsonDecodeErrorKind::Budget => Err(self.json_decode_error(error)),
                     Err(error) => {
                         tracing::debug!(
                             error_kind = %error.kind(),

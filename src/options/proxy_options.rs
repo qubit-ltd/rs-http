@@ -10,16 +10,16 @@ use std::fmt;
 use std::net::Ipv6Addr;
 use std::str::FromStr;
 
-use qubit_argument::require_that;
 use qubit_argument::ArgumentResult;
+use qubit_argument::require_that;
 use qubit_config::ConfigReader;
 use qubit_config::ConfigResult;
 use url::Host;
 use url::Url;
 
+use super::HttpConfigError;
 use super::internal::ProxyConfigInput;
 use super::proxy_type::ProxyType;
-use super::HttpConfigError;
 
 /// Outbound proxy settings used when building the reqwest client.
 ///
@@ -119,14 +119,7 @@ where
 {
     super::from_config_helpers::ensure_known_config_keys(
         config,
-        &[
-            "enabled",
-            "proxy_type",
-            "host",
-            "port",
-            "username",
-            "password",
-        ],
+        &["enabled", "proxy_type", "host", "port", "username", "password"],
         &[],
     )?;
     Ok(ProxyConfigInput {
@@ -183,9 +176,8 @@ impl ProxyOptions {
         opts.username = raw.username;
         opts.password = raw.password;
 
-        opts.validate().map_err(|error| {
-            super::from_config_helpers::resolve_component_error(config, error, "proxy")
-        })?;
+        opts.validate()
+            .map_err(|error| super::from_config_helpers::resolve_component_error(config, error, "proxy"))?;
         Ok(opts)
     }
 
@@ -357,10 +349,7 @@ fn parse_proxy_type(path: &str, s: &str) -> Result<ProxyType, HttpConfigError> {
     ProxyType::from_str(s.trim()).map_err(|_| {
         HttpConfigError::invalid_value(
             path,
-            format!(
-                "Unknown proxy type '{}'; expected http, https, or socks5",
-                s,
-            ),
+            format!("Unknown proxy type '{}'; expected http, https, or socks5", s,),
         )
     })
 }

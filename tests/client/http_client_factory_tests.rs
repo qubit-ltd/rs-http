@@ -28,10 +28,7 @@ fn test_builder_build_uses_stored_options() {
         .options(options_with_user_agent("saved-options/1.0"))
         .build()
         .expect("stored options should build client");
-    assert_eq!(
-        client.options().user_agent.as_deref(),
-        Some("saved-options/1.0")
-    );
+    assert_eq!(client.options().user_agent.as_deref(), Some("saved-options/1.0"));
 }
 
 #[test]
@@ -39,10 +36,7 @@ fn test_builder_build_without_stored_options_uses_defaults() {
     let client = HttpClientBuilder::new()
         .build()
         .expect("default options should build client");
-    assert_eq!(
-        client.options().user_agent,
-        HttpClientOptions::default().user_agent
-    );
+    assert_eq!(client.options().user_agent, HttpClientOptions::default().user_agent);
 }
 
 #[test]
@@ -52,10 +46,7 @@ fn test_factory_create_default_ignores_stored_options() {
         .options(options_with_user_agent("saved-options/1.0"))
         .create_default()
         .expect("default options should build client");
-    assert_eq!(
-        client.options().user_agent,
-        HttpClientOptions::default().user_agent
-    );
+    assert_eq!(client.options().user_agent, HttpClientOptions::default().user_agent);
 }
 
 #[test]
@@ -65,10 +56,7 @@ fn test_factory_create_uses_explicit_options_instead_of_stored_options() {
         .options(options_with_user_agent("saved-options/1.0"))
         .create(options_with_user_agent("explicit-options/1.0"))
         .expect("explicit options should build client");
-    assert_eq!(
-        client.options().user_agent.as_deref(),
-        Some("explicit-options/1.0")
-    );
+    assert_eq!(client.options().user_agent.as_deref(), Some("explicit-options/1.0"));
 }
 
 #[test]
@@ -82,10 +70,7 @@ fn test_factory_create_from_config_uses_config_instead_of_stored_options() {
         .options(options_with_user_agent("saved-options/1.0"))
         .create_from_config(&config)
         .expect("configured options should build client");
-    assert_eq!(
-        client.options().user_agent.as_deref(),
-        Some("configured-options/1.0")
-    );
+    assert_eq!(client.options().user_agent.as_deref(), Some("configured-options/1.0"));
 }
 
 #[test]
@@ -96,15 +81,11 @@ fn test_from_config_matches_deprecated_factory_and_preserves_error_path() {
         .set("user_agent", "configured-options/1.0".to_string())
         .expect("test config should set user_agent");
 
-    let recommended =
-        qubit_http::HttpClient::from_config(&config).expect("valid config should build a client");
+    let recommended = qubit_http::HttpClient::from_config(&config).expect("valid config should build a client");
     let deprecated = HttpClientBuilder::new()
         .create_from_config(&config)
         .expect("deprecated entry point should preserve behavior");
-    assert_eq!(
-        recommended.options().user_agent,
-        deprecated.options().user_agent
-    );
+    assert_eq!(recommended.options().user_agent, deprecated.options().user_agent);
     assert_eq!(
         recommended.options().timeouts.connect_timeout,
         deprecated.options().timeouts.connect_timeout
@@ -116,9 +97,7 @@ fn test_from_config_matches_deprecated_factory_and_preserves_error_path() {
         .set("timeouts.connect_timeout", true)
         .expect("test config should accept invalid typed value");
     let recommended_error = qubit_http::HttpClient::from_config(&invalid).unwrap_err();
-    let deprecated_error = HttpClientBuilder::new()
-        .create_from_config(&invalid)
-        .unwrap_err();
+    let deprecated_error = HttpClientBuilder::new().create_from_config(&invalid).unwrap_err();
     assert_eq!(recommended_error.kind, deprecated_error.kind);
     assert_eq!(recommended_error.path, deprecated_error.path);
     assert_eq!(recommended_error.path, "timeouts.connect_timeout");
@@ -128,9 +107,7 @@ fn test_from_config_matches_deprecated_factory_and_preserves_error_path() {
 #[allow(deprecated)]
 fn test_factory_create_uses_default_options() {
     let factory = HttpClientBuilder::new();
-    let client = factory
-        .create_default()
-        .expect("default options should create client");
+    let client = factory.create_default().expect("default options should create client");
 
     assert!(!client.options().ipv4_only);
     assert!(!client.options().proxy.enabled);
@@ -152,22 +129,11 @@ fn test_factory_create_preserves_options() {
     options.pool_idle_timeout = Some(Duration::from_secs(20));
     options.pool_max_idle_per_host = Some(24);
     options.use_env_proxy = true;
-    let client = factory
-        .create(options)
-        .expect("explicit options should create client");
-    assert_eq!(
-        client.options().timeouts.request_timeout,
-        Some(Duration::from_secs(2))
-    );
-    assert_eq!(
-        client.options().user_agent.as_deref(),
-        Some("qubit-http-tests/1.0")
-    );
+    let client = factory.create(options).expect("explicit options should create client");
+    assert_eq!(client.options().timeouts.request_timeout, Some(Duration::from_secs(2)));
+    assert_eq!(client.options().user_agent.as_deref(), Some("qubit-http-tests/1.0"));
     assert_eq!(client.options().max_redirects, Some(5));
-    assert_eq!(
-        client.options().pool_idle_timeout,
-        Some(Duration::from_secs(20))
-    );
+    assert_eq!(client.options().pool_idle_timeout, Some(Duration::from_secs(20)));
     assert_eq!(client.options().pool_max_idle_per_host, Some(24));
     assert!(client.options().use_env_proxy);
 }
@@ -366,24 +332,12 @@ fn test_factory_create_from_config_full() {
     let client = factory
         .create_from_config(&svc)
         .expect("full config should create client");
-    assert_eq!(
-        client.options().timeouts.connect_timeout,
-        Duration::from_secs(3)
-    );
-    assert_eq!(
-        client.options().timeouts.read_timeout,
-        Duration::from_secs(30)
-    );
+    assert_eq!(client.options().timeouts.connect_timeout, Duration::from_secs(3));
+    assert_eq!(client.options().timeouts.read_timeout, Duration::from_secs(30));
     assert_eq!(client.options().logging.body_size_limit, 4096);
-    assert_eq!(
-        client.options().user_agent.as_deref(),
-        Some("qubit-http-tests/1.0")
-    );
+    assert_eq!(client.options().user_agent.as_deref(), Some("qubit-http-tests/1.0"));
     assert_eq!(client.options().max_redirects, Some(4));
-    assert_eq!(
-        client.options().pool_idle_timeout,
-        Some(Duration::from_secs(10))
-    );
+    assert_eq!(client.options().pool_idle_timeout, Some(Duration::from_secs(10)));
     assert_eq!(client.options().pool_max_idle_per_host, Some(16));
 }
 
@@ -449,10 +403,7 @@ fn test_factory_create_accepts_proxy_without_auth_and_request_timeout() {
         .create(options)
         .expect("valid proxy config should create client");
 
-    assert_eq!(
-        client.options().timeouts.request_timeout,
-        Some(Duration::from_secs(2))
-    );
+    assert_eq!(client.options().timeouts.request_timeout, Some(Duration::from_secs(2)));
 }
 
 #[test]

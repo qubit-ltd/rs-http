@@ -52,17 +52,11 @@ fn test_http_defaults_use_installed_global_policy() {
     let _ = Redactor::replace_application_default(Redactor::new(RedactionPolicy::default()));
     let mut old_options = options.clone();
     let options_error = old_options
-        .add_header(
-            "https://example.test/?tenant_secret=raw-tenant-secret",
-            "value",
-        )
+        .add_header("https://example.test/?tenant_secret=raw-tenant-secret", "value")
         .expect_err("URL-shaped header name should be rejected");
     let client_error = client
         .request(Method::GET, "/resource")
-        .header(
-            "https://example.test/?tenant_secret=raw-tenant-secret",
-            "value",
-        )
+        .header("https://example.test/?tenant_secret=raw-tenant-secret", "value")
         .expect_err("URL-shaped header name should be rejected");
 
     assert_eq!(options.log_redaction_policy, policy);

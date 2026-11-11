@@ -10,12 +10,12 @@
 use async_stream::stream;
 use futures_util::StreamExt;
 
-use super::frame_decoder;
-use super::internal::decode_poll_budget::DecodePollBudget;
-use super::line_decoder;
 use super::SseMessageStream;
 use super::SseRecord;
 use super::SseRecordStream;
+use super::frame_decoder;
+use super::internal::decode_poll_budget::DecodePollBudget;
+use super::line_decoder;
 use crate::HttpByteStream;
 
 /// Parses internal SSE records from a body byte stream with explicit size
@@ -54,8 +54,7 @@ pub(crate) fn decode_messages_from_stream_with_limits(
     max_line_bytes: usize,
     max_frame_bytes: usize,
 ) -> SseMessageStream {
-    let mut records =
-        decode_records_from_stream_with_limits(stream, max_line_bytes, max_frame_bytes);
+    let mut records = decode_records_from_stream_with_limits(stream, max_line_bytes, max_frame_bytes);
     let output = stream! {
         let mut poll_budget = DecodePollBudget::default();
         while let Some(item) = records.next().await {
@@ -79,9 +78,9 @@ pub(crate) fn decode_messages_from_stream_with_limits(
 
 #[cfg(test)]
 mod poll_audit_tests {
+    use std::sync::Arc;
     use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering;
-    use std::sync::Arc;
     use std::task::Wake;
     use std::task::Waker;
 
@@ -140,10 +139,7 @@ mod poll_audit_tests {
         })
         .await;
 
-        assert!(
-            polled.is_pending(),
-            "decoder should yield before draining the input"
-        );
+        assert!(polled.is_pending(), "decoder should yield before draining the input");
         let first_poll_consumed = consumed.load(Ordering::SeqCst);
         assert!(
             (1..=1024).contains(&first_poll_consumed),

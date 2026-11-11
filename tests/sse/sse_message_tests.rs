@@ -7,18 +7,18 @@
 // =============================================================================
 //! Tests for `src/sse/sse_message.rs`.
 
-use qubit_budget::json::JsonResource;
 use qubit_budget::BudgetError;
 use qubit_budget::MeasuredBudgetError;
+use qubit_budget::json::JsonResource;
+use qubit_http::HttpErrorKind;
 use qubit_http::sse::SseJsonMode;
 use qubit_http::sse::SseMessage;
-use qubit_http::HttpErrorKind;
 use qubit_json::decode::DiagnosticPolicy;
 use qubit_json::decode::JsonDecodeError;
 use qubit_json::decode::JsonDecodeErrorKind;
 
-use crate::common::capture_trace_logs;
 use crate::common::SensitiveChoice;
+use crate::common::capture_trace_logs;
 
 #[derive(Debug, serde::Deserialize, PartialEq, Eq)]
 struct TestPayload {
@@ -82,8 +82,7 @@ fn test_sse_message_decode_json_error_redacts_message_metadata() {
         assert!(!format!("{error:?}").contains(secret));
     }
 
-    let source = std::error::Error::source(&error)
-        .expect("SSE JSON decode errors must retain the JSON decoder source");
+    let source = std::error::Error::source(&error).expect("SSE JSON decode errors must retain the JSON decoder source");
     let decode_error = source
         .downcast_ref::<JsonDecodeError>()
         .expect("source should be a JSON decode error");
@@ -108,8 +107,7 @@ fn test_sse_message_decode_json_uses_safe_default_depth_limit() {
     let error = message
         .decode_json::<serde_json::Value>()
         .expect_err("default SSE JSON depth limit must reject deep input");
-    let source = std::error::Error::source(&error)
-        .expect("SSE JSON budget failure should retain its source");
+    let source = std::error::Error::source(&error).expect("SSE JSON budget failure should retain its source");
     let decode_error = source
         .downcast_ref::<JsonDecodeError>()
         .expect("source should be a JSON decode error");
@@ -143,8 +141,7 @@ fn test_sse_message_decode_json_with_mode_lenient_propagates_budget_error() {
     let error = message
         .decode_json_with_mode::<serde_json::Value>(SseJsonMode::Lenient)
         .expect_err("lenient mode must propagate JSON budget failures");
-    let source =
-        std::error::Error::source(&error).expect("the SSE error must retain its JSON source");
+    let source = std::error::Error::source(&error).expect("the SSE error must retain its JSON source");
     let decode_error = source
         .downcast_ref::<JsonDecodeError>()
         .expect("the source must be a JSON decode error");
@@ -274,8 +271,8 @@ fn test_sse_message_decode_json_redacts_deserializer_value() {
     assert!(!error.message.contains(SECRET));
     assert!(!error.message.contains("secure.event"));
     assert!(!error.message.contains("evt-secret"));
-    let source = std::error::Error::source(&error)
-        .expect("SSE JSON decode errors must retain the redacted decoder source");
+    let source =
+        std::error::Error::source(&error).expect("SSE JSON decode errors must retain the redacted decoder source");
     let decode_error = source
         .downcast_ref::<JsonDecodeError>()
         .expect("SSE JSON decode source must be JsonDecodeError");

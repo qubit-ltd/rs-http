@@ -8,10 +8,10 @@
 
 use std::error::Error as _;
 use std::future::Future;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::task::Context;
 use std::task::Poll;
 use std::task::Wake;
@@ -43,11 +43,11 @@ use tokio::test as tokio_test;
 use tokio::time::advance;
 use tokio::time::timeout;
 
+use crate::common::ResponseChunk;
+use crate::common::ResponsePlan;
 use crate::common::spawn_blocked_one_shot_server;
 use crate::common::spawn_multi_shot_server;
 use crate::common::spawn_one_shot_server;
-use crate::common::ResponseChunk;
-use crate::common::ResponsePlan;
 
 /// Wakes a deterministic test barrier when the polled HTTP future is ready to
 /// make progress.
@@ -136,12 +136,10 @@ async fn test_execute_request_with_pre_cancelled_token_skips_request_interceptor
         .expect("client should be created");
     let interceptor_calls = Arc::new(AtomicUsize::new(0));
     let interceptor_calls_clone = Arc::clone(&interceptor_calls);
-    client.add_request_interceptor(HttpRequestInterceptor::new(
-        move |_request: &mut HttpRequest| {
-            interceptor_calls_clone.fetch_add(1, Ordering::Relaxed);
-            Ok(())
-        },
-    ));
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
+        interceptor_calls_clone.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+    }));
 
     let token = HttpCancellationToken::new();
     token.cancel();
@@ -185,12 +183,10 @@ async fn test_execute_request_cancelled_by_interceptor_stops_before_send() {
 
     let token = HttpCancellationToken::new();
     let interceptor_token = token.clone();
-    client.add_request_interceptor(HttpRequestInterceptor::new(
-        move |_request: &mut HttpRequest| {
-            interceptor_token.cancel();
-            Ok(())
-        },
-    ));
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
+        interceptor_token.cancel();
+        Ok(())
+    }));
 
     let request = client
         .request(Method::GET, "/cancelled-by-interceptor")
@@ -243,16 +239,14 @@ async fn test_execute_request_can_be_cancelled_while_preparing_async_headers() {
         );
         Ok(())
     }));
-    client.add_async_header_injector(AsyncHttpHeaderInjector::new(
-        move |_headers: &mut HeaderMap| {
-            let injector_token = injector_token.clone();
-            injector_attempt_calls.fetch_add(1, Ordering::SeqCst);
-            Box::pin(async move {
-                injector_token.cancel();
-                std::future::pending::<HttpResult<()>>().await
-            })
-        },
-    ));
+    client.add_async_header_injector(AsyncHttpHeaderInjector::new(move |_headers: &mut HeaderMap| {
+        let injector_token = injector_token.clone();
+        injector_attempt_calls.fetch_add(1, Ordering::SeqCst);
+        Box::pin(async move {
+            injector_token.cancel();
+            std::future::pending::<HttpResult<()>>().await
+        })
+    }));
 
     let request = client
         .request(Method::GET, "/cancel-preparing-headers")
@@ -368,9 +362,7 @@ async fn test_execute_request_can_be_cancelled_while_reading_status_error_previe
             panic!("request completed before server response: {result:?}");
         }
     }
-    let notify_wake = Arc::new(NotifyWake {
-        notify: Notify::new(),
-    });
+    let notify_wake = Arc::new(NotifyWake { notify: Notify::new() });
     let waker = Waker::from(Arc::clone(&notify_wake));
     let mut context = Context::from_waker(&waker);
     assert!(
@@ -462,17 +454,10 @@ async fn test_execute_retry_sleep_can_be_cancelled() {
         "/cancel-retry-sleep"
     );
     assert_eq!(retry_error(&error).context().attempts(), 1);
-    let diagnostics = error
-        .retry_diagnostics()
-        .expect("cancelled retry diagnostics");
-    assert_eq!(
-        diagnostics.termination(),
-        qubit_http::HttpRetryTermination::Cancelled
-    );
+    let diagnostics = error.retry_diagnostics().expect("cancelled retry diagnostics");
+    assert_eq!(diagnostics.termination(), qubit_http::HttpRetryTermination::Cancelled);
     let retry = retry_error(&error);
-    let last_error = retry
-        .last_error()
-        .expect("cancelled retry keeps prior failure");
+    let last_error = retry.last_error().expect("cancelled retry keeps prior failure");
     assert_eq!(last_error.kind, HttpErrorKind::Transport);
     assert_ne!(error.kind, last_error.kind);
     assert_eq!(attempt_calls.load(Ordering::SeqCst), 1);

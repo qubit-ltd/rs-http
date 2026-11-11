@@ -9,27 +9,27 @@
 //!
 //! Encapsulates request and response logging behavior.
 
-use http::header::CONTENT_TYPE;
 use http::HeaderMap;
 use http::HeaderValue;
+use http::header::CONTENT_TYPE;
 use qubit_redact::Redactor;
+use tracing::Level;
+use tracing::Metadata;
 use tracing::callsite::DefaultCallsite;
 use tracing::dispatcher::get_default;
 use tracing::metadata;
 use tracing::metadata::Kind;
 use tracing::trace;
-use tracing::Level;
-use tracing::Metadata;
 
 use self::internal::RequestBodyLogPreview;
-use crate::redact::BodyPreview;
-use crate::redact::RedactedLogger;
 use crate::HttpClientOptions;
 use crate::HttpLoggingOptions;
 use crate::HttpRequest;
 use crate::HttpRequestBody;
 use crate::HttpResponse;
 use crate::HttpResponseMeta;
+use crate::redact::BodyPreview;
+use crate::redact::RedactedLogger;
 
 /// Placeholder emitted when a prepared request has no resolved URL.
 const UNRESOLVED_REQUEST_URL: &str = "<unresolved request URL>";
@@ -43,8 +43,7 @@ mod internal;
 /// Callsite metadata used to query the current dispatcher directly, bypassing
 /// shared interest caching that can change while thread-local subscribers are
 /// installed concurrently.
-static HTTP_LOGGER_ENABLED_CALLSITE: DefaultCallsite =
-    DefaultCallsite::new(&HTTP_LOGGER_ENABLED_METADATA);
+static HTTP_LOGGER_ENABLED_CALLSITE: DefaultCallsite = DefaultCallsite::new(&HTTP_LOGGER_ENABLED_METADATA);
 /// Metadata queried to determine whether the HTTP logger's TRACE event is
 /// enabled.
 static HTTP_LOGGER_ENABLED_METADATA: Metadata<'static> = metadata! {
@@ -103,10 +102,7 @@ impl<'a> HttpLogger<'a> {
     ///
     /// A logger that shares the caller's immutable redactor snapshot.
     #[must_use]
-    pub(crate) fn from_options_with_redactor(
-        options: &'a HttpClientOptions,
-        log_redactor: Redactor,
-    ) -> Self {
+    pub(crate) fn from_options_with_redactor(options: &'a HttpClientOptions, log_redactor: Redactor) -> Self {
         Self {
             options: &options.logging,
             redacted_logger: RedactedLogger::from_options_with_redactor(options, log_redactor),
@@ -121,8 +117,7 @@ impl<'a> HttpLogger<'a> {
     #[must_use]
     #[inline]
     pub fn is_trace_enabled(&self) -> bool {
-        self.options.enabled
-            && get_default(|dispatcher| dispatcher.enabled(&HTTP_LOGGER_ENABLED_METADATA))
+        self.options.enabled && get_default(|dispatcher| dispatcher.enabled(&HTTP_LOGGER_ENABLED_METADATA))
     }
 
     /// Emits TRACE logs for an outbound request when logging is enabled and
@@ -139,9 +134,7 @@ impl<'a> HttpLogger<'a> {
             return;
         }
 
-        let headers = request
-            .effective_headers_cached()
-            .unwrap_or_else(|| request.headers());
+        let headers = request.effective_headers_cached().unwrap_or_else(|| request.headers());
         let mut batch = self.redacted_logger.redactor().diagnostic_batch();
         let url_handle = request
             .resolved_url()
@@ -224,11 +217,7 @@ impl<'a> HttpLogger<'a> {
                 None
             };
             let diagnostics = batch.finish();
-            trace!(
-                "<-- {} {}",
-                response.status().as_u16(),
-                diagnostics.text(url_handle)
-            );
+            trace!("<-- {} {}", response.status().as_u16(), diagnostics.text(url_handle));
             if let Some(handle) = header_handle {
                 trace!("{}", diagnostics.text(handle));
             }
@@ -241,11 +230,7 @@ impl<'a> HttpLogger<'a> {
             }
         } else {
             let diagnostics = batch.finish();
-            trace!(
-                "<-- {} {}",
-                response.status().as_u16(),
-                diagnostics.text(url_handle)
-            );
+            trace!("<-- {} {}", response.status().as_u16(), diagnostics.text(url_handle));
             if let Some(handle) = header_handle {
                 trace!("{}", diagnostics.text(handle));
             }
@@ -304,9 +289,7 @@ impl<'a> HttpLogger<'a> {
             | HttpRequestBody::Multipart(bytes)
             | HttpRequestBody::Ndjson(bytes) => RequestBodyLogPreview::Bytes(bytes.as_ref()),
             HttpRequestBody::Text(text) => RequestBodyLogPreview::Bytes(text.as_bytes()),
-            HttpRequestBody::Stream(_) => {
-                RequestBodyLogPreview::Skipped(STREAMING_REQUEST_BODY_SKIPPED)
-            }
+            HttpRequestBody::Stream(_) => RequestBodyLogPreview::Skipped(STREAMING_REQUEST_BODY_SKIPPED),
             HttpRequestBody::Empty => RequestBodyLogPreview::Empty,
         }
     }

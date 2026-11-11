@@ -36,9 +36,6 @@ use super::internal::http_request_execution_options::HttpRequestExecutionOptions
 use super::parse_header;
 use super::validate_positive_timeout;
 use super::validate_response_header_timeout;
-use crate::error::backend_error_mapper::map_reqwest_error;
-use crate::error::ReqwestErrorPhase;
-use crate::http_url::same_origin;
 use crate::HttpCancellationToken;
 use crate::HttpError;
 use crate::HttpErrorKind;
@@ -46,6 +43,9 @@ use crate::HttpLogger;
 use crate::HttpOriginPolicy;
 use crate::HttpRequestStreamingBody;
 use crate::HttpResult;
+use crate::error::ReqwestErrorPhase;
+use crate::error::backend_error_mapper::map_reqwest_error;
+use crate::http_url::same_origin;
 
 /// Mutable snapshot of a single HTTP call produced by
 /// [`crate::HttpRequestBuilder`]. It captures client defaults when built and
@@ -102,10 +102,7 @@ impl fmt::Debug for HttpRequest {
     /// Result from writing the redacted request representation.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut batch = self.context.log_redactor.diagnostic_batch();
-        let url = self
-            .resolved_url()
-            .ok()
-            .map(|url| batch.redact_http_url(url.as_str()));
+        let url = self.resolved_url().ok().map(|url| batch.redact_http_url(url.as_str()));
         let base_url = self
             .context
             .base_url
@@ -122,10 +119,7 @@ impl fmt::Debug for HttpRequest {
             .field("url", &url)
             .field("headers", &headers)
             .field("body", &self.body)
-            .field(
-                "streaming_body",
-                &self.streaming_body.as_ref().map(|_| "present"),
-            )
+            .field("streaming_body", &self.streaming_body.as_ref().map(|_| "present"))
             .field("request_timeout", &self.execution_options.request_timeout)
             .field(
                 "response_header_timeout",
@@ -291,8 +285,7 @@ impl HttpRequest {
     /// HTTP tokens.
     #[inline]
     pub fn set_header(&mut self, name: &str, value: &str) -> Result<&mut Self, HttpError> {
-        let (header_name, header_value) =
-            parse_header(name, value).map_err(|error| self.with_log_redactor(error))?;
+        let (header_name, header_value) = parse_header(name, value).map_err(|error| self.with_log_redactor(error))?;
         self.headers.insert(header_name, header_value);
         self.invalidate_effective_headers_cache();
         Ok(self)
@@ -441,8 +434,7 @@ impl HttpRequest {
     /// Returns [`HttpError`] when `timeout` is zero.
     #[inline]
     pub fn set_request_timeout(&mut self, timeout: Duration) -> HttpResult<&mut Self> {
-        validate_positive_timeout("request_timeout", timeout)
-            .map_err(|error| self.with_log_redactor(error))?;
+        validate_positive_timeout("request_timeout", timeout).map_err(|error| self.with_log_redactor(error))?;
         self.execution_options.request_timeout = Some(timeout);
         Ok(self)
     }
@@ -514,8 +506,7 @@ impl HttpRequest {
     /// Returns [`HttpError`] when `timeout` is zero.
     #[inline]
     pub fn set_read_timeout(&mut self, timeout: Duration) -> HttpResult<&mut Self> {
-        validate_positive_timeout("read_timeout", timeout)
-            .map_err(|error| self.with_log_redactor(error))?;
+        validate_positive_timeout("read_timeout", timeout).map_err(|error| self.with_log_redactor(error))?;
         self.execution_options.read_timeout = timeout;
         Ok(self)
     }
@@ -701,18 +692,14 @@ impl HttpRequest {
         let method = self.method().clone();
         let request_url_context = self.resolved_url().ok();
         let response_header_timeout = self.execution_options.response_header_timeout;
-        let send_deadline = Instant::now()
-            .checked_add(response_header_timeout)
-            .ok_or_else(|| {
-                let mut error = HttpError::other(
-                    "response_header_timeout exceeds the supported deadline range",
-                )
-                .with_method(&method);
-                if let Some(url) = request_url_context.as_ref() {
-                    error = error.with_url(url);
-                }
-                error.with_log_redactor(log_redactor.clone())
-            })?;
+        let send_deadline = Instant::now().checked_add(response_header_timeout).ok_or_else(|| {
+            let mut error =
+                HttpError::other("response_header_timeout exceeds the supported deadline range").with_method(&method);
+            if let Some(url) = request_url_context.as_ref() {
+                error = error.with_url(url);
+            }
+            error.with_log_redactor(log_redactor.clone())
+        })?;
         // Reject disallowed destinations before running header injectors, which
         // may perform I/O or produce credentials for the request.
         let url = self.resolved_base_url()?;
@@ -764,10 +751,7 @@ impl HttpRequest {
             builder = Self::apply_request_body(builder, self.take_body());
         }
 
-        let send_future = tokio::time::timeout(
-            send_deadline.saturating_duration_since(Instant::now()),
-            builder.send(),
-        );
+        let send_future = tokio::time::timeout(send_deadline.saturating_duration_since(Instant::now()), builder.send());
         let next = if let Some(token) = cancellation_token.as_ref() {
             tokio::select! {
                 _ = token.cancelled() => {
@@ -873,11 +857,7 @@ impl HttpRequest {
     ///
     /// # Returns
     /// Cancellation [`HttpError`] with request context attached.
-    fn pre_send_cancelled_error(
-        message: &str,
-        method: &Method,
-        request_url: Option<&Url>,
-    ) -> HttpError {
+    fn pre_send_cancelled_error(message: &str, method: &Method, request_url: Option<&Url>) -> HttpError {
         let mut error = HttpError::cancelled(message).with_method(method);
         if let Some(request_url) = request_url {
             error = error.with_url(request_url);
@@ -921,8 +901,7 @@ impl HttpRequest {
         let cached = match self.resolved_url.read() {
             Ok(guard) => guard.clone(),
             Err(_) => {
-                return Err(self
-                    .with_log_redactor(HttpError::other("Resolved URL cache read lock poisoned")));
+                return Err(self.with_log_redactor(HttpError::other("Resolved URL cache read lock poisoned")));
             }
         };
         if let Some(url) = cached.as_ref() {
@@ -934,9 +913,7 @@ impl HttpRequest {
         match self.resolved_url.write() {
             Ok(mut guard) => *guard = Some(resolved.clone()),
             Err(_) => {
-                return Err(self.with_log_redactor(HttpError::other(
-                    "Resolved URL cache write lock poisoned",
-                )));
+                return Err(self.with_log_redactor(HttpError::other("Resolved URL cache write lock poisoned")));
             }
         }
         Ok(resolved)
@@ -972,10 +949,7 @@ impl HttpRequest {
     /// Cached URL without builder query pairs, or `None` when URL resolution
     /// has not succeeded for the current request fields.
     fn resolved_base_url_cached(&self) -> Option<Url> {
-        self.resolved_url
-            .read()
-            .map(|guard| guard.clone())
-            .unwrap_or_default()
+        self.resolved_url.read().map(|guard| guard.clone()).unwrap_or_default()
     }
 
     /// Recomputes and stores the current resolved URL.
@@ -992,13 +966,14 @@ impl HttpRequest {
             return Ok(url);
         }
 
-        let base = self.context.base_url.as_ref().ok_or_else(|| {
-            HttpError::invalid_url("Cannot resolve relative request path without base_url")
-        })?;
+        let base = self
+            .context
+            .base_url
+            .as_ref()
+            .ok_or_else(|| HttpError::invalid_url("Cannot resolve relative request path without base_url"))?;
 
         let url = base.join(&self.path).map_err(|error| {
-            HttpError::invalid_url("Failed to resolve request path against base URL")
-                .with_source(error)
+            HttpError::invalid_url("Failed to resolve request path against base URL").with_source(error)
         })?;
         self.validate_resolved_url(&url)?;
         Ok(url)
@@ -1082,20 +1057,17 @@ impl HttpRequest {
     /// uses the request's captured redaction policy.
     pub(crate) async fn effective_headers(&mut self) -> HttpResult<&HeaderMap> {
         if self.effective_headers.is_none() {
-            let headers = self
-                .compute_effective_headers()
-                .await
-                .map_err(|mut error| {
-                    if error.method.is_none() {
-                        error.method = Some(self.method().clone());
+            let headers = self.compute_effective_headers().await.map_err(|mut error| {
+                if error.method.is_none() {
+                    error.method = Some(self.method().clone());
+                }
+                if error.url.is_none() {
+                    if let Ok(url) = self.resolved_url() {
+                        error.url = Some(url);
                     }
-                    if error.url.is_none() {
-                        if let Ok(url) = self.resolved_url() {
-                            error.url = Some(url);
-                        }
-                    }
-                    self.with_log_redactor(error)
-                })?;
+                }
+                self.with_log_redactor(error)
+            })?;
             self.effective_headers = Some(headers);
         }
         Ok(self
@@ -1219,9 +1191,7 @@ impl HttpRequest {
             | HttpRequestBody::Multipart(bytes)
             | HttpRequestBody::Ndjson(bytes) => builder.body(bytes),
             HttpRequestBody::Stream(chunks) => {
-                let body_stream = futures_stream::iter(
-                    chunks.into_iter().map(Result::<Bytes, std::io::Error>::Ok),
-                );
+                let body_stream = futures_stream::iter(chunks.into_iter().map(Result::<Bytes, std::io::Error>::Ok));
                 builder.body(Body::wrap_stream(body_stream))
             }
             HttpRequestBody::Text(text) => builder.body(text),
@@ -1280,14 +1250,12 @@ mod tests {
 
     #[test]
     fn test_retry_snapshot_normalizes_only_text_body_and_preserves_headers() {
-        use http::header::CONTENT_TYPE;
         use http::HeaderValue;
+        use http::header::CONTENT_TYPE;
 
         use super::super::http_request_body::HttpRequestBody;
 
-        let client = HttpClientBuilder::new()
-            .build()
-            .expect("client should be created");
+        let client = HttpClientBuilder::new().build().expect("client should be created");
         let mut request = client
             .request(Method::POST, "https://example.test/")
             .text_body("retry body")
@@ -1307,9 +1275,7 @@ mod tests {
         assert_eq!(bytes.as_ptr(), cloned_bytes.as_ptr());
         assert_eq!(request.headers.get(CONTENT_TYPE).unwrap(), "text/custom");
 
-        let mut request = client
-            .request(Method::POST, "https://example.test/")
-            .build();
+        let mut request = client.request(Method::POST, "https://example.test/").build();
         request.set_body(HttpRequestBody::Json(bytes::Bytes::from_static(b"{}")));
         request.share_text_body_for_retry();
         assert!(matches!(request.body(), HttpRequestBody::Json(_)));
@@ -1317,9 +1283,7 @@ mod tests {
         let mut request = client
             .request(Method::POST, "https://example.test/")
             .streaming_body(|| {
-                Box::pin(async {
-                    Box::pin(futures_util::stream::empty()) as crate::HttpRequestBodyByteStream
-                })
+                Box::pin(async { Box::pin(futures_util::stream::empty()) as crate::HttpRequestBodyByteStream })
             })
             .build();
         let before = request.has_streaming_body();
@@ -1370,9 +1334,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_effective_headers_preserves_injector_error_when_url_is_invalid() {
-        let mut client = HttpClientBuilder::new()
-            .build()
-            .expect("client should be created");
+        let mut client = HttpClientBuilder::new().build().expect("client should be created");
         client.add_header_injector(HttpHeaderInjector::new(|_headers: &mut http::HeaderMap| {
             Err(HttpError::other("injector failed"))
         }));

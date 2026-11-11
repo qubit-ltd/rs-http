@@ -23,8 +23,8 @@ use tokio::test as tokio_test;
 use tokio::time::timeout;
 use url::Url;
 
-use crate::common::spawn_one_shot_server;
 use crate::common::ResponsePlan;
+use crate::common::spawn_one_shot_server;
 
 const CONSUMED_CONTEXT_SECRET: &str = "consumed-context-secret";
 
@@ -68,21 +68,22 @@ async fn response_with_gated_body() -> (
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let (release_tx, release_rx) = tokio::sync::oneshot::channel();
-    let server = tokio::spawn(async move {
-        let (mut socket, _) = listener.accept().await.unwrap();
-        let mut request = Vec::new();
-        let mut byte = [0_u8; 1];
-        while !request.ends_with(b"\r\n\r\n") {
-            socket.read_exact(&mut byte).await.unwrap();
-            request.push(byte[0]);
-        }
-        socket.write_all(
+    let server =
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            let mut byte = [0_u8; 1];
+            while !request.ends_with(b"\r\n\r\n") {
+                socket.read_exact(&mut byte).await.unwrap();
+                request.push(byte[0]);
+            }
+            socket.write_all(
             b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n",
         ).await.unwrap();
-        socket.flush().await.unwrap();
-        let _ = release_rx.await;
-        let _ = socket.write_all(b"{}").await;
-    });
+            socket.flush().await.unwrap();
+            let _ = release_rx.await;
+            let _ = socket.write_all(b"{}").await;
+        });
     let mut options = HttpClientOptions::default();
     options.log_redaction_policy = consumed_context_policy();
     let client = HttpClientBuilder::new().options(options).build().unwrap();
@@ -106,41 +107,24 @@ async fn test_dropped_pending_aggregate_read_consumes_backend() {
         let expected_method = response.meta().method().clone();
         let expected_url = response.request_url().clone();
         let expected_status = response.status();
-        let mut future: std::pin::Pin<
-            Box<dyn std::future::Future<Output = qubit_http::HttpResult<()>> + '_>,
-        > = match reader {
-            0 => Box::pin(async { response.bytes().await.map(|_| ()) }),
-            1 => Box::pin(async { response.text().await.map(|_| ()) }),
-            _ => Box::pin(async { response.json::<serde_json::Value>().await.map(|_| ()) }),
-        };
-        assert!(matches!(
-            futures_util::poll!(future.as_mut()),
-            std::task::Poll::Pending
-        ));
+        let mut future: std::pin::Pin<Box<dyn std::future::Future<Output = qubit_http::HttpResult<()>> + '_>> =
+            match reader {
+                0 => Box::pin(async { response.bytes().await.map(|_| ()) }),
+                1 => Box::pin(async { response.text().await.map(|_| ()) }),
+                _ => Box::pin(async { response.json::<serde_json::Value>().await.map(|_| ()) }),
+            };
+        assert!(matches!(futures_util::poll!(future.as_mut()), std::task::Poll::Pending));
         drop(future);
         let bytes_error = response.bytes().await.unwrap_err();
-        assert_consumed_error_context(
-            &bytes_error,
-            &expected_method,
-            &expected_url,
-            expected_status,
-        );
+        assert_consumed_error_context(&bytes_error, &expected_method, &expected_url, expected_status);
         let stream_error = match response.stream() {
             Err(error) => error,
             Ok(_) => panic!("dropped aggregation must not restore the backend"),
         };
-        assert_consumed_error_context(
-            &stream_error,
-            &expected_method,
-            &expected_url,
-            expected_status,
-        );
+        assert_consumed_error_context(&stream_error, &expected_method, &expected_url, expected_status);
         drop(response);
         let _ = release.send(());
-        timeout(Duration::from_secs(3), server)
-            .await
-            .unwrap()
-            .unwrap();
+        timeout(Duration::from_secs(3), server).await.unwrap().unwrap();
     }
 }
 
@@ -155,10 +139,7 @@ async fn test_unpolled_aggregate_read_does_not_consume_backend() {
         .unwrap()
         .unwrap();
     assert_eq!(body.as_ref(), b"{}");
-    timeout(Duration::from_secs(3), server)
-        .await
-        .unwrap()
-        .unwrap();
+    timeout(Duration::from_secs(3), server).await.unwrap().unwrap();
 }
 
 #[test]
@@ -222,17 +203,12 @@ async fn test_http_stream_response_backend_taken_then_repeated_reads_fail() {
             &format!("/stream-take-backend?tenant_marker={CONSUMED_CONTEXT_SECRET}"),
         )
         .build();
-    let mut response = client
-        .execute(request)
-        .await
-        .expect("request should succeed");
+    let mut response = client.execute(request).await.expect("request should succeed");
     let expected_method = response.meta().method().clone();
     let expected_url = response.request_url().clone();
     let expected_status = response.status();
 
-    let mut first_stream = response
-        .stream()
-        .expect("first stream should take backend response");
+    let mut first_stream = response.stream().expect("first stream should take backend response");
     let mut collected = Vec::new();
     while let Some(item) = first_stream.next().await {
         collected.extend_from_slice(&item.expect("backend stream item should succeed"));
@@ -243,22 +219,12 @@ async fn test_http_stream_response_backend_taken_then_repeated_reads_fail() {
         Err(error) => error,
         Ok(_) => panic!("second stream must report consumed body"),
     };
-    assert_consumed_error_context(
-        &second_error,
-        &expected_method,
-        &expected_url,
-        expected_status,
-    );
+    assert_consumed_error_context(&second_error, &expected_method, &expected_url, expected_status);
     let bytes_error = response
         .bytes()
         .await
         .expect_err("bytes after stream must report consumed body");
-    assert_consumed_error_context(
-        &bytes_error,
-        &expected_method,
-        &expected_url,
-        expected_status,
-    );
+    assert_consumed_error_context(&bytes_error, &expected_method, &expected_url, expected_status);
 
     let captured = server.finish().await;
     assert_eq!(
@@ -304,9 +270,7 @@ async fn test_http_response_bytes_remembers_read_failure() {
         .expect_err("second read should preserve the prior body read failure");
     assert_eq!(second_error.kind, HttpErrorKind::Transport);
     assert_eq!(second_error.status, Some(StatusCode::OK));
-    assert!(second_error
-        .message
-        .contains("previous response body read failed"));
+    assert!(second_error.message.contains("previous response body read failed"));
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
@@ -361,9 +325,7 @@ async fn test_http_response_stream_remembers_read_failure() {
         .expect_err("bytes after stream failure should preserve the read failure");
     assert_eq!(second_error.kind, HttpErrorKind::Transport);
     assert_eq!(second_error.status, Some(StatusCode::OK));
-    assert!(second_error
-        .message
-        .contains("previous response body read failed"));
+    assert!(second_error.message.contains("previous response body read failed"));
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
@@ -390,9 +352,7 @@ async fn test_http_response_stream_reports_prior_bytes_read_failure() {
         .build()
         .expect("client should be created");
 
-    let request = client
-        .request(Method::GET, "/stream-after-bytes-failure")
-        .build();
+    let request = client.request(Method::GET, "/stream-after-bytes-failure").build();
     let mut response = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .expect("execute timed out")
@@ -409,9 +369,7 @@ async fn test_http_response_stream_reports_prior_bytes_read_failure() {
     };
     assert_eq!(stream_error.kind, HttpErrorKind::Transport);
     assert_eq!(stream_error.status, Some(StatusCode::OK));
-    assert!(stream_error
-        .message
-        .contains("previous response body read failed"));
+    assert!(stream_error.message.contains("previous response body read failed"));
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await

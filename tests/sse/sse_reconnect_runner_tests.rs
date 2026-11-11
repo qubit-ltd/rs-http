@@ -11,10 +11,10 @@
 
 use std::future::Future;
 use std::io::Error as IoError;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::task::Context;
 use std::task::Poll;
 use std::task::Waker;
@@ -26,7 +26,6 @@ use futures_util::StreamExt;
 use http::HeaderName;
 use http::Method;
 use http::StatusCode;
-use qubit_http::sse::SseReconnectOptions;
 use qubit_http::AsyncHttpHeaderInjector;
 use qubit_http::HttpCancellationToken;
 use qubit_http::HttpClientBuilder;
@@ -39,6 +38,7 @@ use qubit_http::HttpRequestInterceptor;
 use qubit_http::HttpRequestRetryOverride;
 use qubit_http::HttpResponseInterceptor;
 use qubit_http::HttpResponseInterceptorContext;
+use qubit_http::sse::SseReconnectOptions;
 use qubit_retry::BackoffPolicy;
 use qubit_retry::RetryPolicy;
 use tokio::io::AsyncReadExt;
@@ -51,11 +51,11 @@ use tokio::test as tokio_test;
 use tokio::time::timeout;
 use url::Url;
 
-use crate::common::spawn_multi_shot_server;
-use crate::common::spawn_one_shot_server;
 use crate::common::CapturedRequest;
 use crate::common::ResponseChunk;
 use crate::common::ResponsePlan;
+use crate::common::spawn_multi_shot_server;
+use crate::common::spawn_one_shot_server;
 
 #[tokio_test]
 async fn test_sse_reconnect_replays_post_after_eof_with_http_retry_disabled() {
@@ -100,10 +100,12 @@ async fn test_sse_reconnect_replays_post_after_eof_with_http_retry_disabled() {
         .expect("expected event")
         .expect("event should parse");
     assert_eq!(first.data, "first");
-    assert!(timeout(Duration::from_secs(3), events.next())
-        .await
-        .expect("SSE completion timed out")
-        .is_none());
+    assert!(
+        timeout(Duration::from_secs(3), events.next())
+            .await
+            .expect("SSE completion timed out")
+            .is_none()
+    );
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
         .expect("server finish timed out");
@@ -126,12 +128,7 @@ async fn test_sse_reconnect_cursor_after_eof_and_truncated_body() {
             true,
             Some("error-cursor"),
         ),
-        (
-            "truncated-empty-reset",
-            b"id: old\n\nid:\n".as_slice(),
-            true,
-            None,
-        ),
+        ("truncated-empty-reset", b"id: old\n\nid:\n".as_slice(), true, None),
         (
             "truncated-unfinished-data",
             b"id: old\n\nid: pending\ndata: unfinished\n".as_slice(),
@@ -196,10 +193,7 @@ async fn test_sse_reconnect_cursor_after_eof_and_truncated_body() {
         })
         .await
         .unwrap_or_else(|_| panic!("case={name}: SSE reconnect timed out"));
-        assert!(
-            messages.is_empty(),
-            "case={name}: no pending data event is dispatched"
-        );
+        assert!(messages.is_empty(), "case={name}: no pending data event is dispatched");
         let requests = server.finish().await;
         assert_eq!(requests.len(), 2, "case={name}");
         assert_eq!(
@@ -246,10 +240,12 @@ async fn test_sse_reconnect_replays_post_after_status_with_http_retry_disabled()
         ..SseReconnectOptions::default()
     };
     let mut events = client.execute_sse_with_reconnect(request, reconnect);
-    assert!(timeout(Duration::from_secs(3), events.next())
-        .await
-        .expect("SSE completion timed out")
-        .is_none());
+    assert!(
+        timeout(Duration::from_secs(3), events.next())
+            .await
+            .expect("SSE completion timed out")
+            .is_none()
+    );
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
         .expect("server finish timed out");
@@ -271,10 +267,7 @@ async fn test_sse_content_type_error_omits_sensitive_header_value() {
     for native_sensitive in [true, false] {
         let server = spawn_one_shot_server(ResponsePlan::Immediate {
             status: 200,
-            headers: vec![(
-                "Content-Type".to_owned(),
-                format!("text/plain; token={SECRET}"),
-            )],
+            headers: vec![("Content-Type".to_owned(), format!("text/plain; token={SECRET}"))],
             body: Vec::new(),
         })
         .await;
@@ -284,9 +277,7 @@ async fn test_sse_content_type_error_omits_sensitive_header_value() {
             options.log_redaction_policy = qubit_redact::RedactionPolicy::default()
                 .to_builder()
                 .http(|http| {
-                    let _ = http
-                        .header()
-                        .raise("content-type", qubit_redact::Sensitivity::Secret);
+                    let _ = http.header().raise("content-type", qubit_redact::Sensitivity::Secret);
                 })
                 .unwrap()
                 .build()
@@ -320,17 +311,11 @@ async fn test_sse_content_type_error_omits_sensitive_header_value() {
             error.message(),
             "Expected Content-Type 'text/event-stream' for SSE response"
         );
-        for output in [
-            error.message().to_owned(),
-            error.to_string(),
-            format!("{error:?}"),
-        ] {
+        for output in [error.message().to_owned(), error.to_string(), format!("{error:?}")] {
             assert!(!output.contains(SECRET), "sensitive Content-Type leaked");
         }
         assert!(events.next().await.is_none());
-        let captured = timeout(Duration::from_secs(3), server.finish())
-            .await
-            .unwrap();
+        let captured = timeout(Duration::from_secs(3), server.finish()).await.unwrap();
         assert_eq!(captured.target, "/sse-header-secret");
     }
 }
@@ -359,30 +344,26 @@ async fn test_sse_nonempty_cursor_wins_after_request_interceptors() {
             headers.insert("last-event-id", "sync-old".parse().unwrap());
             Ok(())
         }));
-        client.add_async_header_injector(AsyncHttpHeaderInjector::new(
-            |headers: &mut http::HeaderMap| {
-                Box::pin(async move {
-                    headers.insert("last-event-id", "async-old".parse().unwrap());
-                    Ok(())
-                })
-            },
-        ));
-        client.add_request_interceptor(HttpRequestInterceptor::new(
-            move |request: &mut HttpRequest| {
-                match mutation {
-                    0 => {
-                        request.set_header("last-event-id", "interceptor-old")?;
-                    }
-                    1 => {
-                        request.clear_headers();
-                    }
-                    _ => {
-                        request.remove_header(&HeaderName::from_static("last-event-id"));
-                    }
-                }
+        client.add_async_header_injector(AsyncHttpHeaderInjector::new(|headers: &mut http::HeaderMap| {
+            Box::pin(async move {
+                headers.insert("last-event-id", "async-old".parse().unwrap());
                 Ok(())
-            },
-        ));
+            })
+        }));
+        client.add_request_interceptor(HttpRequestInterceptor::new(move |request: &mut HttpRequest| {
+            match mutation {
+                0 => {
+                    request.set_header("last-event-id", "interceptor-old")?;
+                }
+                1 => {
+                    request.clear_headers();
+                }
+                _ => {
+                    request.remove_header(&HeaderName::from_static("last-event-id"));
+                }
+            }
+            Ok(())
+        }));
         let request = client
             .request(Method::GET, "/sse-cursor-authority")
             .header("last-event-id", "template-old")
@@ -405,9 +386,7 @@ async fn test_sse_nonempty_cursor_wins_after_request_interceptors() {
             assert_eq!(message.last_event_id.as_deref(), Some("fresh"));
         }
         assert!(events.next().await.is_none());
-        let requests = timeout(Duration::from_secs(3), server.finish())
-            .await
-            .unwrap();
+        let requests = timeout(Duration::from_secs(3), server.finish()).await.unwrap();
         assert_eq!(requests.len(), 2);
         assert_eq!(
             requests[1].headers.get("last-event-id").map(String::as_str),
@@ -448,14 +427,8 @@ fn build_retry_options_with_max_elapsed(
 
 /// Builds a retry policy from the reconnect limit, optional time budget, and
 /// backoff.
-fn build_retry_policy(
-    max_reconnects: u32,
-    max_elapsed: Option<Duration>,
-    backoff: BackoffPolicy,
-) -> RetryPolicy {
-    let mut builder = RetryPolicy::builder()
-        .max_attempts(max_reconnects + 1)
-        .backoff(backoff);
+fn build_retry_policy(max_reconnects: u32, max_elapsed: Option<Duration>, backoff: BackoffPolicy) -> RetryPolicy {
+    let mut builder = RetryPolicy::builder().max_attempts(max_reconnects + 1).backoff(backoff);
     if let Some(max_elapsed) = max_elapsed {
         builder = builder.total_time_budget(max_elapsed);
     }
@@ -483,15 +456,12 @@ async fn run_retry_after_sse_reconnect(
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     let mut client = HttpClientBuilder::new().options(options).build().unwrap();
-    client.add_request_interceptor(HttpRequestInterceptor::new(
-        move |request: &mut HttpRequest| {
-            request.set_retry_override(
-                HttpRequestRetryOverride::default()
-                    .with_honor_retry_after(interceptor_honor_retry_after),
-            );
-            Ok(())
-        },
-    ));
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |request: &mut HttpRequest| {
+        request.set_retry_override(
+            HttpRequestRetryOverride::default().with_honor_retry_after(interceptor_honor_retry_after),
+        );
+        Ok(())
+    }));
     let request = client
         .request(Method::GET, "/sse-retry-after")
         .honor_retry_after(template_honor_retry_after)
@@ -508,9 +478,7 @@ async fn run_retry_after_sse_reconnect(
     let started = Instant::now();
     assert_eq!(events.next().await.unwrap().unwrap().data, "connected");
     assert!(events.next().await.is_none());
-    let requests = timeout(Duration::from_secs(3), server.finish())
-        .await
-        .unwrap();
+    let requests = timeout(Duration::from_secs(3), server.finish()).await.unwrap();
     assert_eq!(requests.len(), 2);
     started.elapsed()
 }
@@ -537,14 +505,12 @@ async fn run_sse_reset_header_layers(first_body: &'static [u8], reset: bool) {
         headers.insert("last-event-id", "sync-old".parse().unwrap());
         Ok(())
     }));
-    client.add_async_header_injector(AsyncHttpHeaderInjector::new(
-        |headers: &mut http::HeaderMap| {
-            Box::pin(async move {
-                headers.insert("last-event-id", "async-old".parse().unwrap());
-                Ok(())
-            })
-        },
-    ));
+    client.add_async_header_injector(AsyncHttpHeaderInjector::new(|headers: &mut http::HeaderMap| {
+        Box::pin(async move {
+            headers.insert("last-event-id", "async-old".parse().unwrap());
+            Ok(())
+        })
+    }));
     client.add_request_interceptor(HttpRequestInterceptor::new(|request: &mut HttpRequest| {
         request.set_header("last-event-id", "interceptor-old")?;
         Ok(())
@@ -624,24 +590,15 @@ async fn test_execute_sse_with_reconnect_stops_normally_on_204() {
         let mut client = HttpClientBuilder::new().options(options).build().unwrap();
         let attempts = Arc::new(AtomicUsize::new(0));
         let observed = attempts.clone();
-        client.add_request_interceptor(HttpRequestInterceptor::new(
-            move |_request: &mut HttpRequest| {
-                observed.fetch_add(1, Ordering::SeqCst);
-                Ok(())
-            },
-        ));
+        client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
+            observed.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }));
         let request = client.request(Method::GET, "/sse-stop").build();
         let mut events = client.execute_sse_with_reconnect(request, SseReconnectOptions::default());
-        let item = timeout(Duration::from_secs(3), events.next())
-            .await
-            .unwrap();
-        assert!(
-            item.is_none(),
-            "204 must terminate normally without an SSE error"
-        );
-        let captured = timeout(Duration::from_secs(3), server.finish())
-            .await
-            .unwrap();
+        let item = timeout(Duration::from_secs(3), events.next()).await.unwrap();
+        assert!(item.is_none(), "204 must terminate normally without an SSE error");
+        let captured = timeout(Duration::from_secs(3), server.finish()).await.unwrap();
         assert_eq!(captured.target, "/sse-stop");
         assert_eq!(attempts.load(Ordering::SeqCst), 1);
     }
@@ -667,15 +624,11 @@ async fn test_execute_sse_with_reconnect_stops_on_204_after_reconnect() {
     let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     let attempts = Arc::new(AtomicUsize::new(0));
     let observed = attempts.clone();
-    client.add_request_interceptor(HttpRequestInterceptor::new(
-        move |_request: &mut HttpRequest| {
-            observed.fetch_add(1, Ordering::SeqCst);
-            Ok(())
-        },
-    ));
-    let request = client
-        .request(Method::GET, "/sse-stop-after-reconnect")
-        .build();
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
+        observed.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }));
+    let request = client.request(Method::GET, "/sse-stop-after-reconnect").build();
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
@@ -686,9 +639,7 @@ async fn test_execute_sse_with_reconnect_stops_on_204_after_reconnect() {
     );
     assert_eq!(events.next().await.unwrap().unwrap().data, "once");
     assert!(events.next().await.is_none());
-    let requests = timeout(Duration::from_secs(3), server.finish())
-        .await
-        .unwrap();
+    let requests = timeout(Duration::from_secs(3), server.finish()).await.unwrap();
     assert_eq!(requests.len(), 2);
     assert_eq!(attempts.load(Ordering::SeqCst), 2);
 }
@@ -705,10 +656,7 @@ async fn test_execute_sse_reconnect_ignores_invalid_and_past_http_dates() {
     let past = httpdate::fmt_http_date(SystemTime::now() - Duration::from_secs(2));
     for value in ["invalid-date", past.as_str()] {
         let elapsed = run_retry_after_sse_reconnect(value, false, true).await;
-        assert!(
-            elapsed < Duration::from_millis(650),
-            "{value}: elapsed={elapsed:?}"
-        );
+        assert!(elapsed < Duration::from_millis(650), "{value}: elapsed={elapsed:?}");
     }
 }
 
@@ -769,9 +717,7 @@ async fn test_execute_sse_with_reconnect_propagates_and_resets_last_event_id() {
         assert_eq!(message.last_event_id.as_deref(), id);
     }
     assert!(events.next().await.is_none());
-    let requests = timeout(Duration::from_secs(3), server.finish())
-        .await
-        .unwrap();
+    let requests = timeout(Duration::from_secs(3), server.finish()).await.unwrap();
     assert_eq!(requests.len(), 8);
     assert_eq!(
         requests[1].headers.get("last-event-id").map(String::as_str),
@@ -911,12 +857,8 @@ async fn test_execute_sse_with_reconnect_preserves_server_retry_across_reconnect
         SseReconnectOptions {
             retry: build_retry_options(
                 4,
-                BackoffPolicy::exponential(
-                    Duration::from_millis(40),
-                    2.0,
-                    Duration::from_millis(200),
-                )
-                .expect("test backoff should be valid"),
+                BackoffPolicy::exponential(Duration::from_millis(40), 2.0, Duration::from_millis(200))
+                    .expect("test backoff should be valid"),
             ),
             reconnect_on_eof: true,
             honor_server_retry: true,
@@ -1019,9 +961,7 @@ async fn test_execute_sse_with_reconnect_derives_server_retry_cap_from_delay_str
     options.timeouts.response_header_timeout = Duration::from_secs(2);
     let client = HttpClientBuilder::new().options(options).build().unwrap();
 
-    let request = client
-        .request(Method::GET, "/sse-server-retry-derived-cap")
-        .build();
+    let request = client.request(Method::GET, "/sse-server-retry-derived-cap").build();
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
@@ -1079,9 +1019,7 @@ async fn test_execute_sse_with_reconnect_can_disable_server_retry_jitter() {
     options.timeouts.response_header_timeout = Duration::from_secs(2);
     let client = HttpClientBuilder::new().options(options).build().unwrap();
 
-    let request = client
-        .request(Method::GET, "/sse-disable-server-retry-jitter")
-        .build();
+    let request = client.request(Method::GET, "/sse-disable-server-retry-jitter").build();
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
@@ -1158,14 +1096,9 @@ async fn test_execute_sse_with_reconnect_respects_retry_max_elapsed() {
         .expect_err("stream should fail when max_elapsed is exhausted");
     assert_eq!(error.kind, HttpErrorKind::RetryBudgetExceeded);
     assert_eq!(error.status, Some(StatusCode::INTERNAL_SERVER_ERROR));
+    assert!(error.source.is_some(), "last retryable error should be chained");
     assert!(
-        error.source.is_some(),
-        "last retryable error should be chained"
-    );
-    assert!(
-        error
-            .message
-            .contains("SSE reconnect max duration exceeded"),
+        error.message.contains("SSE reconnect max duration exceeded"),
         "error message should mention max elapsed budget: {}",
         error.message
     );
@@ -1221,9 +1154,7 @@ async fn test_execute_sse_with_reconnect_checks_max_elapsed_before_eof_reconnect
         .expect_err("max_elapsed should block reconnect sleep before second request");
     assert_eq!(error.kind, HttpErrorKind::RetryBudgetExceeded);
     assert!(
-        error
-            .message
-            .contains("SSE reconnect max duration exceeded"),
+        error.message.contains("SSE reconnect max duration exceeded"),
         "error message should mention max elapsed budget: {}",
         error.message
     );
@@ -1244,9 +1175,7 @@ async fn test_sse_operation_budget_excludes_stream_consumption_for_eof_and_body_
         options.timeouts.request_timeout = Some(Duration::from_secs(4));
         options.timeouts.response_header_timeout = Duration::from_secs(4);
         let client = HttpClientBuilder::new().options(options).build().unwrap();
-        let request = client
-            .request(Method::GET, "/operation-budget-lifecycle")
-            .build();
+        let request = client.request(Method::GET, "/operation-budget-lifecycle").build();
         let retry = RetryPolicy::builder()
             .max_attempts(2)
             .operation_time_budget(Duration::from_millis(250))
@@ -1289,10 +1218,12 @@ async fn test_sse_operation_budget_excludes_stream_consumption_for_eof_and_body_
             .expect("operation-only budget should admit a second connection")
             .expect("second event should decode");
         assert_eq!(second.data, "second");
-        assert!(timeout(Duration::from_secs(3), events.next())
-            .await
-            .expect("reconnect stream completion timed out")
-            .is_none());
+        assert!(
+            timeout(Duration::from_secs(3), events.next())
+                .await
+                .expect("reconnect stream completion timed out")
+                .is_none()
+        );
         assert_eq!(server.accepted.load(Ordering::SeqCst), 2);
         server.join_handle.abort();
     }
@@ -1307,9 +1238,7 @@ async fn test_sse_total_budget_counts_live_stream_and_paused_consumer_without_in
     options.timeouts.request_timeout = Some(Duration::from_secs(4));
     options.timeouts.response_header_timeout = Duration::from_secs(4);
     let client = HttpClientBuilder::new().options(options).build().unwrap();
-    let request = client
-        .request(Method::GET, "/total-budget-lifecycle")
-        .build();
+    let request = client.request(Method::GET, "/total-budget-lifecycle").build();
     let retry = RetryPolicy::builder()
         .max_attempts(2)
         .total_time_budget(Duration::from_millis(180))
@@ -1339,9 +1268,7 @@ async fn test_sse_total_budget_counts_live_stream_and_paused_consumer_without_in
     // Pausing polling keeps the stream active. Total elapsed passes, but the
     // admission budget must not cancel the currently open response.
     tokio::time::sleep(Duration::from_millis(420)).await;
-    assert!(timeout(Duration::from_millis(80), events.next())
-        .await
-        .is_err());
+    assert!(timeout(Duration::from_millis(80), events.next()).await.is_err());
     assert_eq!(server.accepted.load(Ordering::SeqCst), 1);
     let _ = server.release_first_tx.send(());
 
@@ -1358,9 +1285,7 @@ async fn test_sse_total_budget_counts_live_stream_and_paused_consumer_without_in
         .expect("total budget exhaustion should yield an error")
         .expect_err("total budget should reject the reconnect after EOF");
     assert_eq!(error.kind, HttpErrorKind::RetryBudgetExceeded);
-    assert!(error
-        .message
-        .contains("SSE reconnect max duration exceeded"));
+    assert!(error.message.contains("SSE reconnect max duration exceeded"));
     assert_eq!(server.accepted.load(Ordering::SeqCst), 1);
     server.join_handle.abort();
 }
@@ -1418,14 +1343,8 @@ async fn spawn_budget_lifecycle_server(body_failure: bool) -> BudgetLifecycleSer
             }
             stream.flush().await.unwrap();
             if is_first {
-                let _ = first_body_sent_tx
-                    .take()
-                    .expect("first notification sender")
-                    .send(());
-                let _ = release_first_rx
-                    .take()
-                    .expect("first release receiver")
-                    .await;
+                let _ = first_body_sent_tx.take().expect("first notification sender").send(());
+                let _ = release_first_rx.take().expect("first release receiver").await;
                 let alive_event = b"data: still-alive\n\n";
                 if failure {
                     stream.write_all(alive_event).await.unwrap();
@@ -1474,12 +1393,10 @@ async fn test_execute_sse_with_reconnect_sleep_can_be_cancelled() {
     let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     let attempts = Arc::new(AtomicUsize::new(0));
     let observed = attempts.clone();
-    client.add_request_interceptor(HttpRequestInterceptor::new(
-        move |_request: &mut HttpRequest| {
-            observed.fetch_add(1, Ordering::SeqCst);
-            Ok(())
-        },
-    ));
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
+        observed.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }));
 
     let token = HttpCancellationToken::new();
 
@@ -1549,16 +1466,12 @@ async fn test_execute_sse_with_reconnect_disables_inner_http_retry() {
 
     let attempts = Arc::new(AtomicUsize::new(0));
     let attempts_for_interceptor = Arc::clone(&attempts);
-    client.add_request_interceptor(HttpRequestInterceptor::new(
-        move |_request: &mut HttpRequest| {
-            attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
-            Err(HttpError::transport("injector transient transport failure"))
-        },
-    ));
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
+        attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
+        Err(HttpError::transport("injector transient transport failure"))
+    }));
 
-    let request = client
-        .request(Method::GET, "/sse-disable-inner-retry")
-        .build();
+    let request = client.request(Method::GET, "/sse-disable-inner-retry").build();
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
@@ -1597,9 +1510,7 @@ async fn test_execute_sse_with_reconnect_fails_fast_on_non_sse_content_type() {
     options.timeouts.response_header_timeout = Duration::from_secs(2);
     let client = HttpClientBuilder::new().options(options).build().unwrap();
 
-    let request = client
-        .request(Method::GET, "/sse-content-type-check")
-        .build();
+    let request = client.request(Method::GET, "/sse-content-type-check").build();
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
@@ -1639,9 +1550,7 @@ async fn test_execute_sse_with_reconnect_fails_fast_on_missing_content_type() {
     options.timeouts.response_header_timeout = Duration::from_secs(2);
     let client = HttpClientBuilder::new().options(options).build().unwrap();
 
-    let request = client
-        .request(Method::GET, "/sse-missing-content-type")
-        .build();
+    let request = client.request(Method::GET, "/sse-missing-content-type").build();
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
@@ -1681,9 +1590,7 @@ async fn test_execute_sse_with_reconnect_fails_fast_on_non_utf8_content_type() {
     options.timeouts.response_header_timeout = Duration::from_secs(2);
     let client = HttpClientBuilder::new().options(options).build().unwrap();
 
-    let request = client
-        .request(Method::GET, "/sse-non-utf8-content-type")
-        .build();
+    let request = client.request(Method::GET, "/sse-non-utf8-content-type").build();
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
@@ -1702,10 +1609,12 @@ async fn test_execute_sse_with_reconnect_fails_fast_on_non_utf8_content_type() {
     assert_eq!(error.kind, HttpErrorKind::SseProtocol);
     assert!(error.message.contains("non-UTF8 Content-Type"));
     assert_eq!(error.method, Some(Method::GET));
-    assert!(error
-        .url
-        .as_ref()
-        .is_some_and(|url| url.path() == "/sse-non-utf8-content-type"));
+    assert!(
+        error
+            .url
+            .as_ref()
+            .is_some_and(|url| url.path() == "/sse-non-utf8-content-type")
+    );
 
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
@@ -1797,12 +1706,8 @@ async fn test_execute_sse_with_reconnect_uses_custom_backoff_parameters() {
         SseReconnectOptions {
             retry: build_retry_options(
                 2,
-                BackoffPolicy::exponential(
-                    Duration::from_millis(80),
-                    3.0,
-                    Duration::from_millis(200),
-                )
-                .expect("test backoff should be valid"),
+                BackoffPolicy::exponential(Duration::from_millis(80), 3.0, Duration::from_millis(200))
+                    .expect("test backoff should be valid"),
             ),
             reconnect_on_eof: true,
             honor_server_retry: false,
@@ -1837,12 +1742,10 @@ async fn test_execute_sse_with_reconnect_does_not_retry_non_retryable_protocol_e
     let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     let attempts = Arc::new(AtomicUsize::new(0));
     let attempts_for_interceptor = Arc::clone(&attempts);
-    client.add_request_interceptor(HttpRequestInterceptor::new(
-        move |_request: &mut HttpRequest| {
-            attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
-            Ok(())
-        },
-    ));
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
+        attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+    }));
 
     let request = client.request(Method::GET, "/sse-protocol-error").build();
     let mut events = client.execute_sse_with_reconnect(
@@ -1894,24 +1797,21 @@ async fn test_execute_sse_with_reconnect_does_not_retry_nonretryable_eof_errors(
             let mut client = HttpClientBuilder::new().options(options).build().unwrap();
             let attempts = Arc::new(AtomicUsize::new(0));
             let attempts_for_interceptor = Arc::clone(&attempts);
-            client.add_request_interceptor(HttpRequestInterceptor::new(
-                move |_request: &mut HttpRequest| {
-                    attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
-                    let mut error = match source_mode {
-                        0 => HttpError::new(kind, "unexpected eof in application protocol"),
-                        1 => HttpError::new(kind, "application protocol failure")
-                            .with_source(IoError::other("unexpected eof from source")),
-                        2 => HttpError::new(kind, "application protocol failure").with_source(
-                            IoError::new(std::io::ErrorKind::UnexpectedEof, "stream ended"),
-                        ),
-                        _ => unreachable!("test matrix only defines three source modes"),
-                    };
-                    if let Some(status) = expected_status {
-                        error = error.with_status(status);
-                    }
-                    Err(error)
-                },
-            ));
+            client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
+                attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
+                let mut error = match source_mode {
+                    0 => HttpError::new(kind, "unexpected eof in application protocol"),
+                    1 => HttpError::new(kind, "application protocol failure")
+                        .with_source(IoError::other("unexpected eof from source")),
+                    2 => HttpError::new(kind, "application protocol failure")
+                        .with_source(IoError::new(std::io::ErrorKind::UnexpectedEof, "stream ended")),
+                    _ => unreachable!("test matrix only defines three source modes"),
+                };
+                if let Some(status) = expected_status {
+                    error = error.with_status(status);
+                }
+                Err(error)
+            }));
 
             let request = client.request(Method::GET, "/sse-nonretryable-eof").build();
             let mut events = client.execute_sse_with_reconnect(
@@ -2030,18 +1930,14 @@ async fn test_execute_sse_with_reconnect_retries_on_unexpected_eof_message() {
 
     let attempts = Arc::new(AtomicUsize::new(0));
     let attempts_for_interceptor = Arc::clone(&attempts);
-    client.add_request_interceptor(HttpRequestInterceptor::new(
-        move |_request: &mut HttpRequest| {
-            let current = attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
-            if current == 0 {
-                Err(HttpError::other(
-                    "unexpected eof while preparing local SSE pipeline",
-                ))
-            } else {
-                Ok(())
-            }
-        },
-    ));
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
+        let current = attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
+        if current == 0 {
+            Err(HttpError::other("unexpected eof while preparing local SSE pipeline"))
+        } else {
+            Ok(())
+        }
+    }));
 
     let request = client.request(Method::GET, "/sse-unexpected-eof").build();
     let mut events = client.execute_sse_with_reconnect(
@@ -2086,21 +1982,17 @@ async fn test_execute_sse_with_reconnect_retries_on_unexpected_eof_source_messag
 
     let attempts = Arc::new(AtomicUsize::new(0));
     let attempts_for_interceptor = Arc::clone(&attempts);
-    client.add_request_interceptor(HttpRequestInterceptor::new(
-        move |_request: &mut HttpRequest| {
-            let current = attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
-            if current == 0 {
-                Err(HttpError::other("local SSE source failure")
-                    .with_source(IoError::other("unexpected eof from wrapped source")))
-            } else {
-                Ok(())
-            }
-        },
-    ));
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
+        let current = attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
+        if current == 0 {
+            Err(HttpError::other("local SSE source failure")
+                .with_source(IoError::other("unexpected eof from wrapped source")))
+        } else {
+            Ok(())
+        }
+    }));
 
-    let request = client
-        .request(Method::GET, "/sse-unexpected-eof-source")
-        .build();
+    let request = client.request(Method::GET, "/sse-unexpected-eof-source").build();
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
@@ -2134,13 +2026,10 @@ async fn test_execute_sse_with_reconnect_does_not_retry_non_eof_source_error() {
 
     let attempts = Arc::new(AtomicUsize::new(0));
     let attempts_for_interceptor = Arc::clone(&attempts);
-    client.add_request_interceptor(HttpRequestInterceptor::new(
-        move |_request: &mut HttpRequest| {
-            attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
-            Err(HttpError::other("local SSE non-EOF failure")
-                .with_source(IoError::other("ordinary source error")))
-        },
-    ));
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
+        attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
+        Err(HttpError::other("local SSE non-EOF failure").with_source(IoError::other("ordinary source error")))
+    }));
 
     let request = client.request(Method::GET, "/sse-non-eof-source").build();
     let mut events = client.execute_sse_with_reconnect(
@@ -2188,15 +2077,11 @@ async fn test_retry_control_applies_after_unterminated_retry_line_at_eof() {
     let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     let attempts = Arc::new(AtomicUsize::new(0));
     let observed = attempts.clone();
-    client.add_request_interceptor(HttpRequestInterceptor::new(
-        move |_request: &mut HttpRequest| {
-            observed.fetch_add(1, Ordering::SeqCst);
-            Ok(())
-        },
-    ));
-    let request = client
-        .request(Method::GET, "/retry-control-eof-fragment")
-        .build();
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
+        observed.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }));
+    let request = client.request(Method::GET, "/retry-control-eof-fragment").build();
     let started = Instant::now();
     let mut events = client.execute_sse_with_reconnect(
         request,
@@ -2238,15 +2123,11 @@ async fn test_retry_control_timeout_reconnect_honors_complete_retry_line() {
     let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     let attempts = Arc::new(Mutex::new(Vec::new()));
     let observed = attempts.clone();
-    client.add_request_interceptor(HttpRequestInterceptor::new(
-        move |_request: &mut HttpRequest| {
-            observed.lock().unwrap().push(Instant::now());
-            Ok(())
-        },
-    ));
-    let request = client
-        .request(Method::GET, "/retry-control-read-timeout")
-        .build();
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
+        observed.lock().unwrap().push(Instant::now());
+        Ok(())
+    }));
+    let request = client.request(Method::GET, "/retry-control-read-timeout").build();
     let mut events = client.execute_sse_with_reconnect(
         request,
         SseReconnectOptions {
@@ -2291,12 +2172,10 @@ async fn test_execute_sse_with_reconnect_does_not_retry_cancelled_error() {
 
     let attempts = Arc::new(AtomicUsize::new(0));
     let attempts_for_interceptor = Arc::clone(&attempts);
-    client.add_request_interceptor(HttpRequestInterceptor::new(
-        move |_request: &mut HttpRequest| {
-            attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
-            Err(HttpError::cancelled("cancelled before SSE send"))
-        },
-    ));
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
+        attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
+        Err(HttpError::cancelled("cancelled before SSE send"))
+    }));
 
     let request = client.request(Method::GET, "/sse-cancelled").build();
     let mut events = client.execute_sse_with_reconnect(
@@ -2334,12 +2213,10 @@ async fn test_execute_sse_with_reconnect_reports_cancelled_stream_before_reading
     let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     let attempts = Arc::new(AtomicUsize::new(0));
     let observed = attempts.clone();
-    client.add_request_interceptor(HttpRequestInterceptor::new(
-        move |_request: &mut HttpRequest| {
-            observed.fetch_add(1, Ordering::SeqCst);
-            Ok(())
-        },
-    ));
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
+        observed.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }));
 
     let token = HttpCancellationToken::new();
     let token_for_interceptor = token.clone();
@@ -2413,13 +2290,11 @@ async fn test_sse_reconnect_replacement_token_cancels_current_body_read() {
     let attempts = Arc::new(AtomicUsize::new(0));
     let observed = attempts.clone();
     let replacement = token_b.clone();
-    client.add_request_interceptor(HttpRequestInterceptor::new(
-        move |request: &mut HttpRequest| {
-            observed.fetch_add(1, Ordering::SeqCst);
-            request.set_cancellation_token(replacement.clone());
-            Ok(())
-        },
-    ));
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |request: &mut HttpRequest| {
+        observed.fetch_add(1, Ordering::SeqCst);
+        request.set_cancellation_token(replacement.clone());
+        Ok(())
+    }));
     let request = client
         .request(Method::GET, "/replace-token-b")
         .cancellation_token(token_a)
@@ -2469,13 +2344,11 @@ async fn test_sse_reconnect_replacement_keeps_original_token_for_reconnect_wait(
     let attempts = Arc::new(AtomicUsize::new(0));
     let observed = attempts.clone();
     let replacement = token_b.clone();
-    client.add_request_interceptor(HttpRequestInterceptor::new(
-        move |request: &mut HttpRequest| {
-            observed.fetch_add(1, Ordering::SeqCst);
-            request.set_cancellation_token(replacement.clone());
-            Ok(())
-        },
-    ));
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |request: &mut HttpRequest| {
+        observed.fetch_add(1, Ordering::SeqCst);
+        request.set_cancellation_token(replacement.clone());
+        Ok(())
+    }));
     let cancel_flow = token_a.clone();
     client.add_response_interceptor(HttpResponseInterceptor::new(
         move |_meta: &mut HttpResponseInterceptorContext| {
@@ -2577,13 +2450,11 @@ async fn test_sse_reconnect_original_token_cancels_after_interceptor_before_send
     let cancel = token_a.clone();
     let attempts = Arc::new(AtomicUsize::new(0));
     let observed = attempts.clone();
-    client.add_request_interceptor(HttpRequestInterceptor::new(
-        move |_request: &mut HttpRequest| {
-            observed.fetch_add(1, Ordering::SeqCst);
-            cancel.cancel();
-            Ok(())
-        },
-    ));
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
+        observed.fetch_add(1, Ordering::SeqCst);
+        cancel.cancel();
+        Ok(())
+    }));
     let request = client
         .request(Method::GET, "/cancel-before-send")
         .cancellation_token(token_a)

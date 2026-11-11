@@ -91,11 +91,7 @@ where
 ///
 /// # Type Parameters
 /// - `R`: Configuration reader type.
-pub(crate) fn ensure_known_config_keys<R>(
-    config: &R,
-    fields: &[&str],
-    sections: &[&str],
-) -> ConfigResult<()>
+pub(crate) fn ensure_known_config_keys<R>(config: &R, fields: &[&str], sections: &[&str]) -> ConfigResult<()>
 where
     R: ConfigReader + ?Sized,
 {
@@ -116,11 +112,7 @@ where
 ///
 /// # Type Parameters
 /// - `R`: Configuration reader type.
-pub(crate) fn resolve_component_error<R>(
-    config: &R,
-    mut error: HttpConfigError,
-    component: &str,
-) -> HttpConfigError
+pub(crate) fn resolve_component_error<R>(config: &R, mut error: HttpConfigError, component: &str) -> HttpConfigError
 where
     R: ConfigReader + ?Sized,
 {
@@ -171,20 +163,14 @@ where
 /// # Errors
 /// Returns [`HttpConfigError`] with the concrete header entry path when a
 /// header name or value is invalid.
-pub(crate) fn hashmap_to_headermap(
-    path: &str,
-    map: HashMap<String, String>,
-) -> Result<HeaderMap, HttpConfigError> {
+pub(crate) fn hashmap_to_headermap(path: &str, map: HashMap<String, String>) -> Result<HeaderMap, HttpConfigError> {
     let mut header_map = HeaderMap::new();
     let mut entries = map.into_iter().collect::<Vec<_>>();
     entries.sort_by(|(left_name, _), (right_name, _)| left_name.cmp(right_name));
     for (name, value) in entries {
         let entry_path = format!("{path}.{name}");
         let header_name = HeaderName::from_bytes(name.as_bytes()).map_err(|e| {
-            HttpConfigError::invalid_header(
-                entry_path.clone(),
-                format!("Invalid header name '{}': {}", name, e),
-            )
+            HttpConfigError::invalid_header(entry_path.clone(), format!("Invalid header name '{}': {}", name, e))
         })?;
         if header_map.contains_key(&header_name) {
             return Err(HttpConfigError::invalid_value(
@@ -193,10 +179,7 @@ pub(crate) fn hashmap_to_headermap(
             ));
         }
         let header_value = HeaderValue::from_str(&value).map_err(|e| {
-            HttpConfigError::invalid_header(
-                entry_path,
-                format!("Invalid header value for '{}': {}", name, e),
-            )
+            HttpConfigError::invalid_header(entry_path, format!("Invalid header value for '{}': {}", name, e))
         })?;
         header_map.insert(header_name, header_value);
     }

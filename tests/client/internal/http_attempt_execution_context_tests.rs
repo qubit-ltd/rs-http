@@ -8,9 +8,9 @@
 //! Public behavior coverage for private attempt cancellation routing.
 
 use std::error::Error as _;
+use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::time::Duration;
 
 use http::HeaderMap;

@@ -14,10 +14,10 @@ use reqwest::Error as ReqwestError;
 use url::Url;
 
 use super::ReqwestErrorPhase;
-use crate::client::RedirectIpv6Violation;
-use crate::client::RedirectOriginViolation;
 use crate::HttpError;
 use crate::HttpErrorKind;
+use crate::client::RedirectIpv6Violation;
+use crate::client::RedirectOriginViolation;
 
 /// Maps a [`ReqwestError`] into [`HttpError`] with phase-aware timeout
 /// classification and optional context.
@@ -67,10 +67,7 @@ pub(crate) fn map_reqwest_error(
 fn contains_redirect_origin_violation(error: &ReqwestError) -> bool {
     let mut source = error.source();
     while let Some(candidate) = source {
-        if candidate
-            .downcast_ref::<RedirectOriginViolation>()
-            .is_some()
-        {
+        if candidate.downcast_ref::<RedirectOriginViolation>().is_some() {
             return true;
         }
         source = candidate.source();

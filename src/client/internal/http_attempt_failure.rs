@@ -33,11 +33,7 @@ impl HttpAttemptFailure {
     ///
     /// # Returns
     /// Failure metadata for the completed attempt.
-    pub(in crate::client) fn new(
-        error: HttpError,
-        retry_allowed: bool,
-        honor_retry_after: bool,
-    ) -> Self {
+    pub(in crate::client) fn new(error: HttpError, retry_allowed: bool, honor_retry_after: bool) -> Self {
         Self {
             error,
             retry_allowed,

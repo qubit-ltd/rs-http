@@ -19,8 +19,8 @@ use tokio::io::AsyncWriteExt;
 use tokio::test as tokio_test;
 use tokio::time::timeout;
 
-use crate::common::spawn_one_shot_server;
 use crate::common::ResponsePlan;
+use crate::common::spawn_one_shot_server;
 
 #[test]
 fn test_ipv4_only_option_is_preserved_in_client_options() {
@@ -68,9 +68,7 @@ async fn test_ipv4_only_rejects_ipv6_literal_request_url() {
     options.timeouts.read_timeout = Duration::from_secs(1);
 
     let client = HttpClientBuilder::new().options(options).build().unwrap();
-    let request = client
-        .request(Method::GET, "http://[::1]:18080/ipv6")
-        .build();
+    let request = client.request(Method::GET, "http://[::1]:18080/ipv6").build();
     let error = client.execute(request).await.unwrap_err();
 
     assert_eq!(error.kind, HttpErrorKind::InvalidUrl);
@@ -86,10 +84,7 @@ fn test_ipv4_only_rejects_ipv6_literal_proxy_host() {
         options.proxy.host = Some(host.to_string());
         options.proxy.port = Some(8080);
 
-        let error = HttpClientBuilder::new()
-            .options(options)
-            .build()
-            .unwrap_err();
+        let error = HttpClientBuilder::new().options(options).build().unwrap_err();
 
         assert_eq!(error.kind, HttpErrorKind::ProxyConfig);
         assert!(error.message.contains("not allowed when ipv4_only=true"));
@@ -100,10 +95,7 @@ fn test_ipv4_only_rejects_ipv6_literal_proxy_host() {
 async fn test_ipv4_only_rejects_ipv6_redirect_target_as_invalid_url() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 302,
-        headers: vec![(
-            "Location".to_string(),
-            "http://[::1]:9/redirect-target".to_string(),
-        )],
+        headers: vec![("Location".to_string(), "http://[::1]:9/redirect-target".to_string())],
         body: vec![],
     })
     .await;
@@ -138,10 +130,7 @@ async fn test_ipv4_only_rejects_ipv6_redirect_target_as_invalid_url() {
 async fn test_ipv4_only_rejects_ipv4_mapped_ipv6_redirect() {
     let source = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 302,
-        headers: vec![(
-            "Location".to_string(),
-            "http://[::ffff:127.0.0.1]:9/mapped".to_string(),
-        )],
+        headers: vec![("Location".to_string(), "http://[::ffff:127.0.0.1]:9/mapped".to_string())],
         body: vec![],
     })
     .await;
@@ -183,12 +172,7 @@ async fn test_ipv4_only_redirect_never_connects_to_ipv6_target() {
     }
     let location = target
         .as_ref()
-        .map(|listener| {
-            format!(
-                "http://[::1]:{}/target",
-                listener.local_addr().unwrap().port()
-            )
-        })
+        .map(|listener| format!("http://[::1]:{}/target", listener.local_addr().unwrap().port()))
         .unwrap_or_else(|| "http://[::1]:9/target".to_string());
     let source = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 302,
@@ -221,12 +205,7 @@ async fn test_ipv4_only_disabled_allows_ipv6_redirect_policy() {
     let target = tokio::net::TcpListener::bind("[::1]:0").await.ok();
     let location = target
         .as_ref()
-        .map(|listener| {
-            format!(
-                "http://[::1]:{}/target",
-                listener.local_addr().unwrap().port()
-            )
-        })
+        .map(|listener| format!("http://[::1]:{}/target", listener.local_addr().unwrap().port()))
         .unwrap_or_else(|| "http://[::1]:9/target".to_string());
     let source = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 302,
@@ -252,11 +231,7 @@ async fn test_ipv4_only_disabled_allows_ipv6_redirect_policy() {
     let client = HttpClientBuilder::new().options(options).build().unwrap();
     let result = timeout(
         Duration::from_secs(3),
-        client.execute(
-            client
-                .request(Method::GET, "/redirect-ipv6-disabled")
-                .build(),
-        ),
+        client.execute(client.request(Method::GET, "/redirect-ipv6-disabled").build()),
     )
     .await
     .expect("redirect should finish");
@@ -269,10 +244,7 @@ async fn test_ipv4_only_disabled_allows_ipv6_redirect_policy() {
         ),
     }
     if let Some(task) = target_task.as_mut() {
-        timeout(Duration::from_secs(3), task)
-            .await
-            .unwrap()
-            .unwrap();
+        timeout(Duration::from_secs(3), task).await.unwrap().unwrap();
     }
     let _ = source.finish().await;
 }

@@ -9,10 +9,10 @@
 use std::error::Error as StdError;
 use std::io::ErrorKind;
 use std::net::TcpListener;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use http::HeaderMap;
@@ -36,15 +36,12 @@ use qubit_retry::RetryError;
 use tokio::test as tokio_test;
 use tokio::time::timeout;
 
+use crate::common::ResponsePlan;
 use crate::common::spawn_multi_shot_server;
 use crate::common::spawn_one_shot_server;
-use crate::common::ResponsePlan;
 
 fn retry_abort_inner_http(error: &HttpError) -> &HttpError {
-    let boxed = error
-        .source
-        .as_ref()
-        .expect("retry abort should chain inner error");
+    let boxed = error.source.as_ref().expect("retry abort should chain inner error");
     (boxed.as_ref() as &(dyn StdError + 'static))
         .downcast_ref::<RetryError<HttpError>>()
         .expect("source should retain the complete retry error")
@@ -78,18 +75,12 @@ async fn test_rebuild_with_options_preserves_registered_hooks() {
         .build()
         .expect("default client should be created");
     client.add_header_injector(HttpHeaderInjector::new(|headers: &mut HeaderMap| {
-        headers.insert(
-            HeaderName::from_static("x-sync"),
-            HeaderValue::from_static("yes"),
-        );
+        headers.insert(HeaderName::from_static("x-sync"), HeaderValue::from_static("yes"));
         Ok(())
     }));
     client.add_async_header_injector(AsyncHttpHeaderInjector::new(|headers: &mut HeaderMap| {
         Box::pin(async move {
-            headers.insert(
-                HeaderName::from_static("x-async"),
-                HeaderValue::from_static("yes"),
-            );
+            headers.insert(HeaderName::from_static("x-async"), HeaderValue::from_static("yes"));
             Ok(())
         })
     }));
@@ -99,10 +90,9 @@ async fn test_rebuild_with_options_preserves_registered_hooks() {
     }));
     client.add_response_interceptor(HttpResponseInterceptor::new(
         |context: &mut HttpResponseInterceptorContext| {
-            context.headers_mut().insert(
-                HeaderName::from_static("x-response"),
-                HeaderValue::from_static("yes"),
-            );
+            context
+                .headers_mut()
+                .insert(HeaderName::from_static("x-response"), HeaderValue::from_static("yes"));
             Ok(())
         },
     ));
@@ -127,18 +117,9 @@ async fn test_rebuild_with_options_preserves_registered_hooks() {
         Some(&HeaderValue::from_static("yes"))
     );
     let captured = server.finish().await;
-    assert_eq!(
-        captured.headers.get("x-sync").map(String::as_str),
-        Some("yes")
-    );
-    assert_eq!(
-        captured.headers.get("x-async").map(String::as_str),
-        Some("yes")
-    );
-    assert_eq!(
-        captured.headers.get("x-request").map(String::as_str),
-        Some("yes")
-    );
+    assert_eq!(captured.headers.get("x-sync").map(String::as_str), Some("yes"));
+    assert_eq!(captured.headers.get("x-async").map(String::as_str), Some("yes"));
+    assert_eq!(captured.headers.get("x-request").map(String::as_str), Some("yes"));
 }
 
 #[test]
@@ -151,10 +132,7 @@ fn test_rebuild_with_options_rejects_invalid_options_without_changing_client() {
 
     let result = client.rebuild_with_options(invalid);
 
-    assert!(
-        result.is_err(),
-        "invalid options must not create a new client"
-    );
+    assert!(result.is_err(), "invalid options must not create a new client");
     assert!(client.options().timeouts.connect_timeout > Duration::ZERO);
 }
 
@@ -198,10 +176,7 @@ async fn test_default_client_executes_absolute_url_without_base_url() {
     .await;
     let client = HttpClientBuilder::new().build().unwrap();
     let request = client
-        .request(
-            Method::GET,
-            &format!("{}absolute-default", server.base_url()),
-        )
+        .request(Method::GET, &format!("{}absolute-default", server.base_url()))
         .build();
     let response = timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -227,11 +202,7 @@ async fn test_same_origin_rejects_absolute_url_different_from_configured_base() 
     options.base_url = Some(url::Url::parse("http://127.0.0.1:1/").unwrap());
     let client = HttpClientBuilder::new().options(options).build().unwrap();
     let error = client
-        .execute(
-            client
-                .request(Method::GET, "http://127.0.0.1:2/cross-origin")
-                .build(),
-        )
+        .execute(client.request(Method::GET, "http://127.0.0.1:2/cross-origin").build())
         .await
         .unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::OriginPolicy);
@@ -251,11 +222,7 @@ async fn same_origin_rejects_before_sync_injector() {
     }));
 
     let error = client
-        .execute(
-            client
-                .request(Method::GET, "http://127.0.0.1:2/cross-origin")
-                .build(),
-        )
+        .execute(client.request(Method::GET, "http://127.0.0.1:2/cross-origin").build())
         .await
         .unwrap_err();
 
@@ -272,23 +239,17 @@ async fn same_origin_rejects_before_async_injector() {
     let calls = Arc::new(AtomicUsize::new(0));
     let injector_calls = calls.clone();
     let mut client = client;
-    client.add_async_header_injector(AsyncHttpHeaderInjector::new(
-        move |_headers: &mut HeaderMap| {
-            let injector_calls = injector_calls.clone();
-            Box::pin(async move {
-                injector_calls.fetch_add(1, Ordering::SeqCst);
-                std::future::pending::<qubit_http::HttpResult<()>>().await
-            })
-        },
-    ));
+    client.add_async_header_injector(AsyncHttpHeaderInjector::new(move |_headers: &mut HeaderMap| {
+        let injector_calls = injector_calls.clone();
+        Box::pin(async move {
+            injector_calls.fetch_add(1, Ordering::SeqCst);
+            std::future::pending::<qubit_http::HttpResult<()>>().await
+        })
+    }));
 
     let error = timeout(
         Duration::from_secs(2),
-        client.execute(
-            client
-                .request(Method::GET, "http://127.0.0.1:2/cross-origin")
-                .build(),
-        ),
+        client.execute(client.request(Method::GET, "http://127.0.0.1:2/cross-origin").build()),
     )
     .await
     .expect("origin rejection should happen before the pending injector timeout")
@@ -510,9 +471,7 @@ async fn test_same_origin_redirect_preserves_custom_header() {
     .await;
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    options
-        .add_header("x-api-key", "same-origin-api-key")
-        .unwrap();
+    options.add_header("x-api-key", "same-origin-api-key").unwrap();
     let client = HttpClientBuilder::new().options(options).build().unwrap();
 
     timeout(
@@ -526,9 +485,11 @@ async fn test_same_origin_redirect_preserves_custom_header() {
         .await
         .expect("same-origin redirect server did not finish");
     assert_eq!(captured.len(), 2);
-    assert!(captured.iter().all(|request| {
-        request.headers.get("x-api-key").map(String::as_str) == Some("same-origin-api-key")
-    }));
+    assert!(
+        captured
+            .iter()
+            .all(|request| { request.headers.get("x-api-key").map(String::as_str) == Some("same-origin-api-key") })
+    );
 }
 
 #[tokio_test]
@@ -564,10 +525,7 @@ async fn test_same_origin_redirect_honors_max_redirects() {
     .await
     .expect("redirect-limited request timed out");
 
-    assert!(
-        result.is_err(),
-        "redirect beyond the configured limit should fail"
-    );
+    assert!(result.is_err(), "redirect beyond the configured limit should fail");
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
         .expect("redirect server did not finish");
@@ -578,9 +536,7 @@ async fn test_same_origin_redirect_honors_max_redirects() {
 #[tokio_test]
 async fn test_execute_returns_invalid_url_for_bad_relative_path() {
     let mut options = HttpClientOptions::default();
-    options.base_url = Some(
-        url::Url::parse("https://example.com/api/").expect("static base_url in test should parse"),
-    );
+    options.base_url = Some(url::Url::parse("https://example.com/api/").expect("static base_url in test should parse"));
     let client = HttpClientBuilder::new()
         .options(options)
         .build()
@@ -593,9 +549,11 @@ async fn test_execute_returns_invalid_url_for_bad_relative_path() {
         .expect_err("invalid relative path should fail before request is sent");
 
     assert_eq!(error.kind, HttpErrorKind::InvalidUrl);
-    assert!(error
-        .message
-        .contains("Failed to resolve request path against base URL"));
+    assert!(
+        error
+            .message
+            .contains("Failed to resolve request path against base URL")
+    );
 }
 
 #[tokio_test]
@@ -610,17 +568,11 @@ async fn test_header_injector_order_is_stable_and_clear_works() {
     options.base_url = Some(server1.base_url());
     let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     client.add_header_injector(HttpHeaderInjector::new(|headers: &mut HeaderMap| {
-        headers.insert(
-            HeaderName::from_static("x-seq"),
-            HeaderValue::from_static("A"),
-        );
+        headers.insert(HeaderName::from_static("x-seq"), HeaderValue::from_static("A"));
         Ok(())
     }));
     client.add_header_injector(HttpHeaderInjector::new(|headers: &mut HeaderMap| {
-        headers.insert(
-            HeaderName::from_static("x-seq"),
-            HeaderValue::from_static("B"),
-        );
+        headers.insert(HeaderName::from_static("x-seq"), HeaderValue::from_static("B"));
         Ok(())
     }));
 
@@ -639,10 +591,7 @@ async fn test_header_injector_order_is_stable_and_clear_works() {
     options2.base_url = Some(server2.base_url());
     let mut client2 = HttpClientBuilder::new().options(options2).build().unwrap();
     client2.add_header_injector(HttpHeaderInjector::new(|headers: &mut HeaderMap| {
-        headers.insert(
-            HeaderName::from_static("x-seq"),
-            HeaderValue::from_static("A"),
-        );
+        headers.insert(HeaderName::from_static("x-seq"), HeaderValue::from_static("A"));
         Ok(())
     }));
     client2.clear_header_injectors();
@@ -685,18 +634,12 @@ async fn test_request_interceptor_order_is_stable_and_clear_works() {
     options.base_url = Some(server1.base_url());
     let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     client.add_request_interceptor(HttpRequestInterceptor::new(|request: &mut HttpRequest| {
-        request.set_typed_header(
-            HeaderName::from_static("x-request-seq"),
-            HeaderValue::from_static("A"),
-        );
+        request.set_typed_header(HeaderName::from_static("x-request-seq"), HeaderValue::from_static("A"));
         request.add_query_param("request_interceptor", "first");
         Ok(())
     }));
     client.add_request_interceptor(HttpRequestInterceptor::new(|request: &mut HttpRequest| {
-        request.set_typed_header(
-            HeaderName::from_static("x-request-seq"),
-            HeaderValue::from_static("B"),
-        );
+        request.set_typed_header(HeaderName::from_static("x-request-seq"), HeaderValue::from_static("B"));
         request.add_query_param("request_interceptor", "second");
         Ok(())
     }));
@@ -707,10 +650,7 @@ async fn test_request_interceptor_order_is_stable_and_clear_works() {
         .build();
     let _ = client.execute(request).await.unwrap();
     let captured = server1.finish().await;
-    assert_eq!(
-        captured.headers.get("x-request-seq"),
-        Some(&"B".to_string())
-    );
+    assert_eq!(captured.headers.get("x-request-seq"), Some(&"B".to_string()));
     assert!(captured.target.contains("initial=1"));
     assert!(captured.target.contains("request_interceptor=first"));
     assert!(captured.target.contains("request_interceptor=second"));
@@ -749,22 +689,14 @@ async fn test_failing_request_interceptor_short_circuits_before_url_resolution()
     }));
 
     let request = client
-        .request(
-            Method::GET,
-            "http://127.0.0.1:1/request-interceptor-blocked",
-        )
+        .request(Method::GET, "http://127.0.0.1:1/request-interceptor-blocked")
         .build();
     let error = client.execute(request).await.unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::Other);
     assert!(error.message.contains("request blocked by interceptor"));
     assert_eq!(error.method, Some(Method::GET));
-    let error_url = error
-        .url
-        .expect("request interceptor error should include URL");
-    assert_eq!(
-        error_url.as_str(),
-        "http://127.0.0.1:1/request-interceptor-blocked"
-    );
+    let error_url = error.url.expect("request interceptor error should include URL");
+    assert_eq!(error_url.as_str(), "http://127.0.0.1:1/request-interceptor-blocked");
 }
 
 #[tokio_test]
@@ -809,9 +741,7 @@ async fn test_response_interceptor_order_is_stable_and_short_circuits() {
     assert!(error.url.is_some());
     assert!(error.message.contains("response blocked by interceptor"));
     assert_eq!(
-        *events
-            .lock()
-            .expect("lock response interceptor events for assertion"),
+        *events.lock().expect("lock response interceptor events for assertion"),
         vec!["first".to_string(), "second".to_string()]
     );
 }
@@ -858,9 +788,7 @@ async fn test_execute_applies_response_interceptor_for_unconsumed_body() {
         },
     ));
 
-    let request = client
-        .request(Method::GET, "/stream-response-interceptor")
-        .build();
+    let request = client.request(Method::GET, "/stream-response-interceptor").build();
     let response = client.execute(request).await.unwrap();
     assert_eq!(response.status().as_u16(), 200);
     assert_eq!(called.load(Ordering::Relaxed), 1);
@@ -889,11 +817,7 @@ async fn test_original_content_length_header_increase_does_not_reject_small_body
     ));
 
     let mut response = client
-        .execute(
-            client
-                .request(Method::GET, "/original-content-length-increase")
-                .build(),
-        )
+        .execute(client.request(Method::GET, "/original-content-length-increase").build())
         .await
         .unwrap();
     assert_eq!(response.headers().get("content-length").unwrap(), "999");
@@ -915,20 +839,15 @@ async fn test_original_content_length_still_rejects_when_header_is_reduced() {
     let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     client.add_response_interceptor(HttpResponseInterceptor::new(
         |context: &mut HttpResponseInterceptorContext| {
-            context.headers_mut().insert(
-                HeaderName::from_static("content-length"),
-                HeaderValue::from_static("1"),
-            );
+            context
+                .headers_mut()
+                .insert(HeaderName::from_static("content-length"), HeaderValue::from_static("1"));
             Ok(())
         },
     ));
 
     let mut response = client
-        .execute(
-            client
-                .request(Method::GET, "/original-content-length-reduced")
-                .build(),
-        )
+        .execute(client.request(Method::GET, "/original-content-length-reduced").build())
         .await
         .unwrap();
     let first_error = response.bytes().await.unwrap_err();
@@ -959,11 +878,7 @@ async fn test_original_content_length_still_rejects_when_header_is_removed() {
     ));
 
     let mut response = client
-        .execute(
-            client
-                .request(Method::GET, "/original-content-length-removed")
-                .build(),
-        )
+        .execute(client.request(Method::GET, "/original-content-length-removed").build())
         .await
         .unwrap();
     let first_error = response.bytes().await.unwrap_err();
@@ -992,20 +907,15 @@ async fn test_original_content_length_chunked_without_length_still_enforces_limi
     let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     client.add_response_interceptor(HttpResponseInterceptor::new(
         |context: &mut HttpResponseInterceptorContext| {
-            context.headers_mut().insert(
-                HeaderName::from_static("content-length"),
-                HeaderValue::from_static("1"),
-            );
+            context
+                .headers_mut()
+                .insert(HeaderName::from_static("content-length"), HeaderValue::from_static("1"));
             Ok(())
         },
     ));
 
     let mut response = client
-        .execute(
-            client
-                .request(Method::GET, "/original-content-length-chunked")
-                .build(),
-        )
+        .execute(client.request(Method::GET, "/original-content-length-chunked").build())
         .await
         .unwrap();
     let first_error = response.bytes().await.unwrap_err();
@@ -1029,8 +939,8 @@ async fn test_request_url_can_differ_from_response_meta_url() {
         .options(options)
         .build()
         .expect("valid options should create client");
-    let rewritten_url = url::Url::parse("https://interceptor.example/rewritten")
-        .expect("static interceptor URL should parse");
+    let rewritten_url =
+        url::Url::parse("https://interceptor.example/rewritten").expect("static interceptor URL should parse");
     let rewritten_url_for_interceptor = rewritten_url.clone();
     client.add_response_interceptor(HttpResponseInterceptor::new(
         move |context: &mut HttpResponseInterceptorContext| {
@@ -1040,10 +950,7 @@ async fn test_request_url_can_differ_from_response_meta_url() {
     ));
 
     let request = client.request(Method::GET, "/request-url-diff").build();
-    let response = client
-        .execute(request)
-        .await
-        .expect("request should succeed");
+    let response = client.execute(request).await.expect("request should succeed");
     let expected_request_url = server
         .base_url()
         .join("request-url-diff")
@@ -1076,25 +983,17 @@ async fn test_request_url_includes_builder_query_params() {
         .request(Method::GET, "/request-url-query?existing=1")
         .query_param("added", "two words")
         .build();
-    let response = client
-        .execute(request)
-        .await
-        .expect("request should succeed");
+    let response = client.execute(request).await.expect("request should succeed");
     let mut expected_request_url = server
         .base_url()
         .join("request-url-query?existing=1")
         .expect("request URL should join");
-    expected_request_url
-        .query_pairs_mut()
-        .append_pair("added", "two words");
+    expected_request_url.query_pairs_mut().append_pair("added", "two words");
 
     assert_eq!(response.request_url(), &expected_request_url);
 
     let captured = server.finish().await;
-    assert_eq!(
-        captured.target,
-        "/request-url-query?existing=1&added=two+words"
-    );
+    assert_eq!(captured.target, "/request-url-query?existing=1&added=two+words");
 }
 
 #[tokio_test]
@@ -1173,10 +1072,7 @@ async fn test_request_url_is_used_in_buffered_read_error() {
 
     let request = client.request(Method::GET, "/context-url-timeout").build();
     let mut response = client.execute(request).await.expect("request should start");
-    let error = response
-        .bytes()
-        .await
-        .expect_err("buffered read should timeout");
+    let error = response.bytes().await.expect_err("buffered read should timeout");
 
     assert_eq!(error.kind, HttpErrorKind::ReadTimeout);
     assert_eq!(error.url, Some(expected_request_url));
@@ -1201,12 +1097,10 @@ async fn test_retry_status_code_allowlist_can_disable_retry_for_503() {
     let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     let attempts = Arc::new(AtomicUsize::new(0));
     let attempts_for_interceptor = Arc::clone(&attempts);
-    client.add_request_interceptor(HttpRequestInterceptor::new(
-        move |_request: &mut HttpRequest| {
-            attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
-            Ok(())
-        },
-    ));
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
+        attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+    }));
 
     let request = client.request(Method::GET, "/retry-status-filter").build();
     let error = client.execute(request).await.unwrap_err();
@@ -1235,12 +1129,10 @@ async fn test_retry_status_code_allowlist_can_enable_retry_for_503() {
     let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     let attempts = Arc::new(AtomicUsize::new(0));
     let attempts_for_interceptor = Arc::clone(&attempts);
-    client.add_request_interceptor(HttpRequestInterceptor::new(
-        move |_request: &mut HttpRequest| {
-            attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
-            Ok(())
-        },
-    ));
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
+        attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+    }));
 
     let request = client.request(Method::GET, "/retry-status-allow").build();
     let error = client.execute(request).await.unwrap_err();
@@ -1261,12 +1153,10 @@ async fn test_retry_error_kind_allowlist_can_disable_transport_retry() {
     let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     let attempts = Arc::new(AtomicUsize::new(0));
     let attempts_for_interceptor = Arc::clone(&attempts);
-    client.add_request_interceptor(HttpRequestInterceptor::new(
-        move |_request: &mut HttpRequest| {
-            attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
-            Ok(())
-        },
-    ));
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
+        attempts_for_interceptor.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+    }));
 
     let request = client
         .request(Method::GET, "http://127.0.0.1:9/retry-kind-filter")
@@ -1297,10 +1187,7 @@ async fn test_add_header_applies_client_default_header() {
     let request = client.request(Method::GET, "/default-header").build();
     let _ = client.execute(request).await.unwrap();
     let captured = server.finish().await;
-    assert_eq!(
-        captured.headers.get("x-client"),
-        Some(&"default".to_string())
-    );
+    assert_eq!(captured.headers.get("x-client"), Some(&"default".to_string()));
 }
 
 #[tokio_test]
@@ -1329,18 +1216,9 @@ async fn test_add_headers_is_atomic_and_request_header_still_overrides() {
         .build();
     let _ = client.execute(request).await.unwrap();
     let captured = server.finish().await;
-    assert_eq!(
-        captured.headers.get("x-batch-a"),
-        Some(&"value-a".to_string())
-    );
-    assert_eq!(
-        captured.headers.get("x-batch-b"),
-        Some(&"value-b".to_string())
-    );
-    assert_eq!(
-        captured.headers.get("x-order"),
-        Some(&"request".to_string())
-    );
+    assert_eq!(captured.headers.get("x-batch-a"), Some(&"value-a".to_string()));
+    assert_eq!(captured.headers.get("x-batch-b"), Some(&"value-b".to_string()));
+    assert_eq!(captured.headers.get("x-order"), Some(&"request".to_string()));
 }
 
 #[tokio_test]
@@ -1402,20 +1280,14 @@ async fn test_add_header_injector_still_overrides_client_default_header() {
     let mut client = HttpClientBuilder::new().options(options).build().unwrap();
     client.add_header("x-order", "client").unwrap();
     client.add_header_injector(HttpHeaderInjector::new(|headers: &mut HeaderMap| {
-        headers.insert(
-            HeaderName::from_static("x-order"),
-            HeaderValue::from_static("injector"),
-        );
+        headers.insert(HeaderName::from_static("x-order"), HeaderValue::from_static("injector"));
         Ok(())
     }));
 
     let request = client.request(Method::GET, "/injector-overrides").build();
     let _ = client.execute(request).await.unwrap();
     let captured = server.finish().await;
-    assert_eq!(
-        captured.headers.get("x-order"),
-        Some(&"injector".to_string())
-    );
+    assert_eq!(captured.headers.get("x-order"), Some(&"injector".to_string()));
 }
 
 #[tokio_test]
@@ -1435,10 +1307,7 @@ async fn test_clone_default_headers_are_independent_after_creation() {
 
     let mut client_options = HttpClientOptions::default();
     client_options.origin_policy = HttpOriginPolicy::AnyOrigin;
-    let mut client = HttpClientBuilder::new()
-        .options(client_options)
-        .build()
-        .unwrap();
+    let mut client = HttpClientBuilder::new().options(client_options).build().unwrap();
     client.add_header("x-shared", "base").unwrap();
 
     let mut cloned = client.clone();
@@ -1456,23 +1325,11 @@ async fn test_clone_default_headers_are_independent_after_creation() {
     let captured_original = server_original.finish().await;
     let captured_clone = server_clone.finish().await;
 
-    assert_eq!(
-        captured_original.headers.get("x-shared"),
-        Some(&"base".to_string())
-    );
-    assert_eq!(
-        captured_clone.headers.get("x-shared"),
-        Some(&"base".to_string())
-    );
-    assert_eq!(
-        captured_original.headers.get("x-origin-only"),
-        Some(&"yes".to_string())
-    );
+    assert_eq!(captured_original.headers.get("x-shared"), Some(&"base".to_string()));
+    assert_eq!(captured_clone.headers.get("x-shared"), Some(&"base".to_string()));
+    assert_eq!(captured_original.headers.get("x-origin-only"), Some(&"yes".to_string()));
     assert!(!captured_original.headers.contains_key("x-clone-only"));
-    assert_eq!(
-        captured_clone.headers.get("x-clone-only"),
-        Some(&"yes".to_string())
-    );
+    assert_eq!(captured_clone.headers.get("x-clone-only"), Some(&"yes".to_string()));
     assert!(!captured_clone.headers.contains_key("x-origin-only"));
 }
 
@@ -1495,10 +1352,7 @@ async fn test_review_contract_retry_after_error_and_success_interceptor() {
 
     let mut error_options = HttpClientOptions::default();
     error_options.base_url = Some(error_server.base_url());
-    let mut error_client = HttpClientBuilder::new()
-        .options(error_options)
-        .build()
-        .unwrap();
+    let mut error_client = HttpClientBuilder::new().options(error_options).build().unwrap();
     let error_calls_for_interceptor = Arc::clone(&error_calls);
     error_client.add_response_interceptor(HttpResponseInterceptor::new(
         move |_context: &mut HttpResponseInterceptorContext| {
@@ -1517,10 +1371,7 @@ async fn test_review_contract_retry_after_error_and_success_interceptor() {
 
     let mut success_options = HttpClientOptions::default();
     success_options.base_url = Some(success_server.base_url());
-    let mut success_client = HttpClientBuilder::new()
-        .options(success_options)
-        .build()
-        .unwrap();
+    let mut success_client = HttpClientBuilder::new().options(success_options).build().unwrap();
     let success_calls_for_interceptor = Arc::clone(&success_calls);
     success_client.add_response_interceptor(HttpResponseInterceptor::new(
         move |_context: &mut HttpResponseInterceptorContext| {
@@ -1555,10 +1406,7 @@ async fn test_review_contract_cross_client_snapshot() {
     let mut origin_options = HttpClientOptions::default();
     origin_options.base_url = Some(originating_server.base_url());
     origin_options.origin_policy = HttpOriginPolicy::AnyOrigin;
-    let mut origin = HttpClientBuilder::new()
-        .options(origin_options)
-        .build()
-        .unwrap();
+    let mut origin = HttpClientBuilder::new().options(origin_options).build().unwrap();
     origin.add_header("x-client", "origin").unwrap();
     origin.add_header_injector(HttpHeaderInjector::new(|headers: &mut HeaderMap| {
         headers.insert("x-injector", HeaderValue::from_static("origin"));
@@ -1571,19 +1419,14 @@ async fn test_review_contract_cross_client_snapshot() {
     executor_options.retry.enabled = true;
     executor_options.retry.max_attempts = 2;
     executor_options.retry.backoff = BackoffPolicy::immediate();
-    let mut executor = HttpClientBuilder::new()
-        .options(executor_options)
-        .build()
-        .unwrap();
+    let mut executor = HttpClientBuilder::new().options(executor_options).build().unwrap();
     executor.add_header("x-client", "executor").unwrap();
     let request_calls = Arc::new(AtomicUsize::new(0));
     let request_calls_for_interceptor = Arc::clone(&request_calls);
-    executor.add_request_interceptor(HttpRequestInterceptor::new(
-        move |_request: &mut HttpRequest| {
-            request_calls_for_interceptor.fetch_add(1, Ordering::Relaxed);
-            Ok(())
-        },
-    ));
+    executor.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
+        request_calls_for_interceptor.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+    }));
     let response_calls = Arc::new(AtomicUsize::new(0));
     let response_calls_for_interceptor = Arc::clone(&response_calls);
     executor.add_response_interceptor(HttpResponseInterceptor::new(
@@ -1593,10 +1436,7 @@ async fn test_review_contract_cross_client_snapshot() {
         },
     ));
 
-    let response = executor
-        .execute(request)
-        .await
-        .expect("executor should send snapshot");
+    let response = executor.execute(request).await.expect("executor should send snapshot");
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(request_calls.load(Ordering::Relaxed), 2);
     assert_eq!(response_calls.load(Ordering::Relaxed), 1);
@@ -1604,10 +1444,7 @@ async fn test_review_contract_cross_client_snapshot() {
     assert_eq!(captured.len(), 2);
     assert_eq!(captured[0].target, "/snapshot");
     assert_eq!(captured[1].target, "/snapshot");
-    assert_eq!(
-        captured[1].headers.get("x-client").map(String::as_str),
-        Some("origin")
-    );
+    assert_eq!(captured[1].headers.get("x-client").map(String::as_str), Some("origin"));
     assert_eq!(
         captured[1].headers.get("x-injector").map(String::as_str),
         Some("origin")
@@ -1623,10 +1460,7 @@ async fn test_review_contract_cross_client_snapshot() {
     })
     .await;
     let redirect_request = origin
-        .request(
-            Method::GET,
-            &format!("{}redirect", redirect_origin.base_url()),
-        )
+        .request(Method::GET, &format!("{}redirect", redirect_origin.base_url()))
         .build();
     let redirect_error = executor
         .execute(redirect_request)
@@ -1634,10 +1468,7 @@ async fn test_review_contract_cross_client_snapshot() {
         .expect_err("executor SameOrigin policy should reject cross-origin redirect");
     assert_eq!(redirect_error.kind, HttpErrorKind::OriginPolicy);
     redirect_origin.finish().await;
-    assert_eq!(
-        redirect_target.accept().unwrap_err().kind(),
-        ErrorKind::WouldBlock
-    );
+    assert_eq!(redirect_target.accept().unwrap_err().kind(), ErrorKind::WouldBlock);
 }
 
 #[tokio_test]
@@ -1656,10 +1487,7 @@ async fn test_review_contract_rebuild_does_not_rebind_old_request() {
     .await;
     let mut old_options = HttpClientOptions::default();
     old_options.base_url = Some(old_server.base_url());
-    let old_client = HttpClientBuilder::new()
-        .options(old_options)
-        .build()
-        .unwrap();
+    let old_client = HttpClientBuilder::new().options(old_options).build().unwrap();
     let old_request = old_client.request(Method::GET, "/old-request").build();
 
     let mut new_options = old_client.options().clone();

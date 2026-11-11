@@ -6,6 +6,10 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
+use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+
 use bytes::Bytes;
 use futures_util::stream;
 use http::Method;
@@ -13,17 +17,13 @@ use qubit_http::HttpClientBuilder;
 use qubit_http::HttpRequestBody;
 use qubit_http::HttpRequestBodyByteStream;
 use qubit_http::HttpRequestStreamingBody;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
 
 #[test]
 fn test_http_request_streaming_body_sets_request_body_to_empty_placeholder() {
     let streaming_body = HttpRequestStreamingBody::new(|| {
-        Box::pin(async move {
-            Box::pin(stream::iter(vec![Ok(Bytes::from_static(b"chunk"))]))
-                as HttpRequestBodyByteStream
-        })
+        Box::pin(
+            async move { Box::pin(stream::iter(vec![Ok(Bytes::from_static(b"chunk"))])) as HttpRequestBodyByteStream },
+        )
     });
     assert!(format!("{streaming_body:?}").contains("HttpRequestStreamingBody"));
 
@@ -34,8 +34,7 @@ fn test_http_request_streaming_body_sets_request_body_to_empty_placeholder() {
         .request(Method::POST, "https://example.com/upload")
         .streaming_body(move || {
             Box::pin(async move {
-                Box::pin(stream::iter(vec![Ok(Bytes::from_static(b"chunk"))]))
-                    as HttpRequestBodyByteStream
+                Box::pin(stream::iter(vec![Ok(Bytes::from_static(b"chunk"))])) as HttpRequestBodyByteStream
             })
         })
         .build();
@@ -63,9 +62,7 @@ fn test_try_streaming_body_replaces_body_and_content_type_like_existing_helper()
         .request(Method::POST, "https://example.com/upload")
         .json_body(&serde_json::json!({"old": true}))
         .unwrap()
-        .try_streaming_body(|| {
-            Box::pin(async { Ok(Box::pin(stream::empty()) as HttpRequestBodyByteStream) })
-        })
+        .try_streaming_body(|| Box::pin(async { Ok(Box::pin(stream::empty()) as HttpRequestBodyByteStream) }))
         .build();
     assert_eq!(generated.body(), &HttpRequestBody::Empty);
     assert!(!generated.headers().contains_key(http::header::CONTENT_TYPE));
@@ -74,17 +71,12 @@ fn test_try_streaming_body_replaces_body_and_content_type_like_existing_helper()
         .request(Method::POST, "https://example.com/upload")
         .header("content-type", "application/custom")
         .unwrap()
-        .try_streaming_body(|| {
-            Box::pin(async { Ok(Box::pin(stream::empty()) as HttpRequestBodyByteStream) })
-        })
+        .try_streaming_body(|| Box::pin(async { Ok(Box::pin(stream::empty()) as HttpRequestBodyByteStream) }))
         .bytes_body(Bytes::from_static(b"replacement"))
         .build();
     assert_eq!(
         explicit.body(),
         &HttpRequestBody::Bytes(Bytes::from_static(b"replacement"))
     );
-    assert_eq!(
-        explicit.headers()[http::header::CONTENT_TYPE],
-        "application/custom"
-    );
+    assert_eq!(explicit.headers()[http::header::CONTENT_TYPE], "application/custom");
 }

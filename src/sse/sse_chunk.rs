@@ -7,9 +7,9 @@
 // =============================================================================
 //! Decoded JSON chunk or explicit SSE stream end marker.
 
-use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use strum::Display;
 use strum::EnumString;
 
