@@ -46,6 +46,14 @@ pub(crate) fn decode_records(mut lines: SseLineStream, max_frame_bytes: usize) -
             let line = match item {
                 Ok(line) => line,
                 Err(error) => {
+                    // Commit a complete control-only id before forwarding a
+                    // read failure. An id attached to unfinished data stays
+                    // uncommitted with that event.
+                    if !has_data {
+                        if let Some(id) = current_id.take() {
+                            yield Ok(SseRecord::Control(SseControl::LastEventId(id)));
+                        }
+                    }
                     yield Err(error);
                     return;
                 }
@@ -219,6 +227,113 @@ mod tests {
 
         let records = decode(vec![b"id: pending\ndata: incomplete"]).await.unwrap();
         assert!(records.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_frame_decoder_commits_control_id_before_read_errors_only_without_pending_data() {
+        struct CursorCase {
+            name: &'static str,
+            prefix: &'static [u8],
+            expected_error_id: Option<&'static str>,
+            expected_eof_id: Option<&'static str>,
+        }
+
+        let cases = [
+            CursorCase {
+                name: "new id line",
+                prefix: b"id: new\n",
+                expected_error_id: Some("new"),
+                expected_eof_id: Some("new"),
+            },
+            CursorCase {
+                name: "empty id line",
+                prefix: b"id:\n",
+                expected_error_id: Some(""),
+                expected_eof_id: Some(""),
+            },
+            CursorCase {
+                name: "complete control frame",
+                prefix: b"id: new\n\n",
+                expected_error_id: Some("new"),
+                expected_eof_id: Some("new"),
+            },
+            CursorCase {
+                name: "unfinished data",
+                prefix: b"id: new\ndata: pending\n",
+                expected_error_id: None,
+                expected_eof_id: None,
+            },
+            CursorCase {
+                name: "unterminated fragment",
+                prefix: b"id: fragment",
+                expected_error_id: None,
+                expected_eof_id: Some("fragment"),
+            },
+            CursorCase {
+                name: "NUL id",
+                prefix: b"id: bad\0id\n",
+                expected_error_id: None,
+                expected_eof_id: None,
+            },
+        ];
+
+        for case in cases {
+            let eof_input: HttpByteStream = Box::pin(futures_util::stream::iter([Ok(Bytes::from_static(case.prefix))]));
+            let eof_records = decode_records(decode_lines(eof_input, 64), 1024)
+                .collect::<Vec<_>>()
+                .await
+                .into_iter()
+                .map(|item| item.expect("normal EOF should not produce an error"))
+                .collect::<Vec<_>>();
+            match case.expected_eof_id {
+                Some(id) => assert_eq!(
+                    eof_records,
+                    vec![SseRecord::Control(SseControl::LastEventId((*id).to_owned()))],
+                    "EOF case={}",
+                    case.name
+                ),
+                None => assert!(eof_records.is_empty(), "EOF case={}", case.name),
+            }
+
+            for use_timeout in [false, true] {
+                let chunks: Vec<crate::HttpResult<Bytes>> = vec![
+                    Ok(Bytes::from_static(case.prefix)),
+                    Err(if use_timeout {
+                        crate::HttpError::read_timeout("injected read timeout")
+                    } else {
+                        crate::HttpError::transport("injected read failure")
+                    }),
+                ];
+                let input: HttpByteStream = Box::pin(futures_util::stream::iter(chunks));
+                let actual = decode_records(decode_lines(input, 64), 1024).collect::<Vec<_>>().await;
+                let expected_len = usize::from(case.expected_error_id.is_some()) + 1;
+                assert_eq!(actual.len(), expected_len, "case={}, timeout={use_timeout}", case.name);
+                if let Some(id) = case.expected_error_id {
+                    assert_eq!(
+                        actual[0].as_ref().unwrap(),
+                        &SseRecord::Control(SseControl::LastEventId((*id).to_owned())),
+                        "case={}, timeout={use_timeout}",
+                        case.name
+                    );
+                }
+                assert_eq!(
+                    actual.last().unwrap().as_ref().unwrap_err().kind(),
+                    if use_timeout {
+                        crate::HttpErrorKind::ReadTimeout
+                    } else {
+                        crate::HttpErrorKind::Transport
+                    },
+                    "case={}",
+                    case.name
+                );
+                assert_eq!(
+                    actual.iter().filter(|item| item.is_err()).count(),
+                    1,
+                    "case={}",
+                    case.name
+                );
+            }
+        }
     }
 
     #[tokio::test]

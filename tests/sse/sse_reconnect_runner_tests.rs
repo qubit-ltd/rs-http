@@ -114,6 +114,97 @@ async fn test_sse_reconnect_replays_post_after_eof_with_http_retry_disabled() {
 }
 
 #[tokio_test]
+async fn test_sse_reconnect_cursor_after_eof_and_truncated_body() {
+    let cases = [
+        (
+            "eof-control-id",
+            b"id: eof-cursor\n".as_slice(),
+            false,
+            Some("eof-cursor"),
+        ),
+        (
+            "truncated-control-id",
+            b"id: error-cursor\n".as_slice(),
+            true,
+            Some("error-cursor"),
+        ),
+        ("truncated-empty-reset", b"id: old\n\nid:\n".as_slice(), true, None),
+        (
+            "truncated-unfinished-data",
+            b"id: old\n\nid: pending\ndata: unfinished\n".as_slice(),
+            true,
+            Some("old"),
+        ),
+        (
+            "truncated-complete-frame",
+            b"id: frame-cursor\n\n".as_slice(),
+            true,
+            Some("frame-cursor"),
+        ),
+    ];
+
+    for (name, prefix, truncated, expected_header) in cases {
+        let first_response = if truncated {
+            ResponsePlan::PartialThenDelay {
+                status: 200,
+                headers: vec![("Content-Type".to_owned(), "text/event-stream".to_owned())],
+                total_length: prefix.len() + 1,
+                prefix: prefix.to_vec(),
+                delay: Duration::from_millis(10),
+            }
+        } else {
+            ResponsePlan::Immediate {
+                status: 200,
+                headers: vec![("Content-Type".to_owned(), "text/event-stream".to_owned())],
+                body: prefix.to_vec(),
+            }
+        };
+        let server = spawn_multi_shot_server(vec![
+            first_response,
+            ResponsePlan::Immediate {
+                status: 204,
+                headers: vec![],
+                body: Vec::new(),
+            },
+        ])
+        .await;
+        let mut options = HttpClientOptions::default();
+        options.base_url = Some(server.base_url());
+        options.retry.enabled = false;
+        let client = HttpClientBuilder::new()
+            .options(options)
+            .build()
+            .expect("client should be created");
+        let request = client.request(Method::GET, "/events").build();
+        let reconnect = SseReconnectOptions {
+            reconnect_on_eof: true,
+            retry: RetryPolicy::builder()
+                .max_attempts(2)
+                .backoff(BackoffPolicy::immediate())
+                .build()
+                .expect("retry policy should be valid"),
+            ..SseReconnectOptions::default()
+        };
+        let messages = timeout(Duration::from_secs(3), async {
+            client
+                .execute_sse_with_reconnect(request, reconnect)
+                .collect::<Vec<_>>()
+                .await
+        })
+        .await
+        .unwrap_or_else(|_| panic!("case={name}: SSE reconnect timed out"));
+        assert!(messages.is_empty(), "case={name}: no pending data event is dispatched");
+        let requests = server.finish().await;
+        assert_eq!(requests.len(), 2, "case={name}");
+        assert_eq!(
+            requests[1].headers.get("last-event-id").map(String::as_str),
+            expected_header,
+            "case={name}"
+        );
+    }
+}
+
+#[tokio_test]
 async fn test_sse_reconnect_replays_post_after_status_with_http_retry_disabled() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Immediate {

@@ -1231,6 +1231,8 @@ over replay.
 
 Once the server supplies an event ID, the reconnect runner owns the final `Last-Event-ID` header. Its non-empty cursor wins after default headers, injectors, and request interceptors have been merged; an empty ID removes the header. Before any server ID is received, ordinary header precedence continues to apply. Applications that intentionally control every reconnect cursor should manage individual requests through `execute` instead.
 
+Cursor updates follow the decoder's commit boundary. A complete `id:` line in a control-only frame is retained before either normal EOF or a body read failure/timeout, so the next reconnect uses it; `id:` with an empty value clears the cursor and removes the header. An ID attached to data is committed only when its blank-line terminator dispatches that event. If the stream fails before that boundary, the incomplete data is discarded and its ID does not replace the previous cursor. A final unterminated `id:` fragment can be processed at normal EOF, while a fragment cut off by a read error is not a complete line and is ignored. IDs containing NUL are ignored.
+
 ## Configuration Reference
 
 The table below lists every configuration key supported by `HttpClientOptions::from_config`. If you pass `config.section("http")`, these keys are read relative to that prefix.

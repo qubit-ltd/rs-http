@@ -73,6 +73,10 @@ base URL 在配置解析和客户端构造时校验；最终请求 URL 在解析
 
 重连执行器禁用内层普通 HTTP 重试，打开响应、解码 SSE record、保存最近的事件 ID 和服务端 `retry:` 延迟，然后依照 `SseReconnectOptions` 再次建立连接。该 API 使用独立的 `SseReconnectOptions.retry` 策略；普通 HTTP 重试设置、方法策略和请求级 `disable_retry()` 都不会禁止外层 SSE 重连。原请求可能被重复发送，包括 `POST` 或 `PATCH`；调用方须确保操作和请求体在业务幂等保证下可以安全重复。工厂能生成新的请求体流只代表技术上可重放，并不保证业务幂等。优先使用 `GET`；需要完全控制重放时，可直接通过 `execute` 管理连接。消息未提供新 ID 时继承最近游标，control-only ID 更新和显式空 ID 重置同样生效。服务端提供 ID 后，重连执行器的非空游标会在默认 header、注入器、拦截器和 request-local header 合并后覆盖最终值；空 ID 会删除最终 header。首个服务端 ID 到达前仍遵循普通 header 优先级。有效的 `retry:` 字段在其所在行解码后即产出控制记录，无需等待事件终结空行。启用服务端 retry 提示时，已经应用的延迟不会因后续 body 读取失败而撤销，并持续生效，直到新的有效 `retry:` 将其替换；`honor_server_retry = false` 会忽略服务端提示。204 响应会正常结束重连流，不检查媒体类型、不读取 body，也不再发起连接。这些是有意的行为变化，不代表完整实现 EventSource。取消与协议错误默认不会重连。重连预算覆盖尝试和等待；最终延迟上限及 SSE 的一毫秒最小等待由重连策略处理。
 
+解码器会在正常 EOF 或 body 读取失败/超时前保留完整的 control-only `id:` 行，因此两种终止路径的重连都会沿用新值。空 ID 会清空游标并抑制 `Last-Event-ID`。附带 data 的 ID 只有在空行派发事件后才提交；若先发生读取失败，未完成 data 及其 ID 都会丢弃。正常 EOF 时，行解码器会处理末尾未终止的 `id:` 残片；读取错误截断的残片不会作为完整行输出。含 NUL 的 ID 会忽略。此游标行为定义了库的恢复契约，不提供应用层消息交付或 exactly-once 保证。
+
+规范对照：2026-11-11 查阅了 WHATWG [HTML Standard 的 Server-sent events 章节](https://html.spec.whatwg.org/multipage/server-sent-events.html)，页面标注 “Last Updated 9 November 2026”。9.2.6 节的 “process the field” 规则规定：`id` 值不含 NUL 时设置 last-event-ID buffer；其文件结束规则会丢弃待处理 data。浏览器派发算法步骤 1 将 buffer 复制到 EventSource last-event-ID string；步骤 2–3 按需清空或裁剪 data buffer。9.2.3 节重新建立连接算法步骤 3（子步骤 3.1–3.2）在该字符串非空时设置 `Last-Event-ID`。本库沿用字段有效性和未完成 data 边界，同时由显式控制记录 API 在读取错误前提交仅含控制字段的 ID；本库不声称完整实现 EventSource。
+
 `SseReconnectOptions.retry` 中的时间预算是后续连接的准入限额，并非正在读取流的硬截止时间：
 
 | 阶段 | operation 时间 | total 时间 |
