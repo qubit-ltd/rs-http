@@ -19,8 +19,7 @@ type HttpRequestBodyStreamFactoryFuture =
     Pin<Box<dyn Future<Output = HttpResult<HttpRequestBodyByteStream>> + Send + 'static>>;
 
 /// Factory callback that produces a fresh stream for each request attempt.
-type HttpRequestBodyStreamFactoryFn =
-    dyn Fn() -> HttpRequestBodyStreamFactoryFuture + Send + Sync + 'static;
+type HttpRequestBodyStreamFactoryFn = dyn Fn() -> HttpRequestBodyStreamFactoryFuture + Send + Sync + 'static;
 
 /// Deferred streaming upload body source.
 ///
@@ -65,8 +64,7 @@ impl std::fmt::Debug for HttpRequestStreamingBody {
     /// # Returns
     /// Formatting result.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("HttpRequestStreamingBody")
-            .finish_non_exhaustive()
+        f.debug_struct("HttpRequestStreamingBody").finish_non_exhaustive()
     }
 }
 
@@ -84,10 +82,7 @@ impl HttpRequestStreamingBody {
     /// - `F`: Thread-safe factory that creates a fresh stream for one attempt.
     pub fn new<F>(factory: F) -> Self
     where
-        F: Fn() -> Pin<Box<dyn Future<Output = HttpRequestBodyByteStream> + Send + 'static>>
-            + Send
-            + Sync
-            + 'static,
+        F: Fn() -> Pin<Box<dyn Future<Output = HttpRequestBodyByteStream> + Send + 'static>> + Send + Sync + 'static,
     {
         Self::try_new(move || {
             let future = factory();
@@ -102,6 +97,17 @@ impl HttpRequestStreamingBody {
     /// returned directly with their original kind and source. Existing
     /// [`Self::new`] callers do not need to migrate.
     ///
+    /// # Parameters
+    /// - `factory`: Async factory that prepares a fresh byte stream for one
+    ///   send attempt.
+    ///
+    /// # Returns
+    /// New deferred streaming body wrapper.
+    ///
+    /// # Type Parameters
+    /// - `F`: Thread-safe factory that creates a future returning a fresh
+    ///   stream or an [`crate::HttpError`].
+    ///
     /// # Examples
     ///
     /// ```
@@ -109,8 +115,13 @@ impl HttpRequestStreamingBody {
     /// use qubit_http::HttpRequestBodyByteStream;
     /// use qubit_http::HttpRequestStreamingBody;
     ///
+    /// async fn prepare_upload() -> Result<HttpRequestBodyByteStream, HttpError> {
+    ///     Ok(Box::pin(futures_util::stream::empty()))
+    /// }
+    ///
     /// let body = HttpRequestStreamingBody::try_new(|| Box::pin(async {
-    ///     Ok(Box::pin(futures_util::stream::empty()) as HttpRequestBodyByteStream)
+    ///     let stream = prepare_upload().await?;
+    ///     Ok(stream)
     /// }));
     /// let failing_body = HttpRequestStreamingBody::try_new(|| Box::pin(async {
     ///     Err(HttpError::other("upload preparation failed"))
