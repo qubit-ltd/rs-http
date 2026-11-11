@@ -86,6 +86,8 @@ opaque identifiers; sensitive query values, headers, and structured body
 fields follow their configured rules. `HttpError` applies the same policy to
 `Debug` and `Display`. See the [Logging Redaction guide](doc/user_guide.en.md#logging-redaction)
 for policy floors, snapshots, budgets, configuration, and examples.
+Requests retain the redaction policy captured when they were built, even when
+executed by another client. Build a new request to apply a new policy.
 
 ## Common Next Steps
 

@@ -795,6 +795,13 @@ For non-2xx errors, the redacted preview and retained raw body have independent 
 | Response body | `ResponseBodyTooLarge`, `ResponseBodyAlreadyConsumed` | Whole-body aggregation exceeded its configured limit, or a body stream was already taken |
 | Cancellation / fallback | `Cancelled`, `Other` | The request was cancelled, or the failure does not fit another category |
 
+Timeout kinds follow the phase in which the failure is observed, rather than
+identifying one timeout setting. If `request_timeout` expires while reading a
+successful response body after headers have arrived, the error is
+`ReadTimeout`, not `RequestTimeout`. A `ReadTimeout` alone does not identify
+which timeout setting expired. Non-success response-body capture follows the
+separate `Status` and capture diagnostics rules described above.
+
 Ordinary HTTP retry and SSE reconnect have separate terminal-error contracts:
 
 | Path | Terminal condition | Result and direct source |

@@ -38,11 +38,15 @@ pub enum HttpErrorKind {
     ProxyConfig,
     /// Connect timeout.
     ConnectTimeout,
-    /// Read timeout.
+    /// Response-body read timeout, including a reqwest request deadline that
+    /// expires during body reading. This category does not identify which
+    /// timeout setting expired.
     ReadTimeout,
     /// Request preparation and header-response timeout.
     ResponseHeaderTimeout,
-    /// Reqwest per-attempt network request and response-body deadline expired.
+    /// Non-connect reqwest timeout observed during the send phase.
+    /// The request deadline covers network execution and response-body reads,
+    /// but expiry during body reading is classified as `ReadTimeout`.
     /// This deadline excludes asynchronous header injection and streaming-body
     /// factory preparation; use `response_header_timeout` for those phases.
     RequestTimeout,

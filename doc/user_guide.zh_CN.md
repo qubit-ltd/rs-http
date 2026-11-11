@@ -766,6 +766,11 @@ match client.execute(request).await {
 | 响应体 | `ResponseBodyTooLarge`, `ResponseBodyAlreadyConsumed` | 整包聚合超出配置上限，或响应体流已经被取走 |
 | 取消 / 兜底 | `Cancelled`, `Other` | 请求取消，或无法归入其它分类的错误 |
 
+超时类别按观察到失败的阶段划分，并不对应唯一的超时配置。收到响应头后
+读取成功响应体时，即使到期的是 `request_timeout`，错误类别仍为
+`ReadTimeout`，而非 `RequestTimeout`。仅凭 `ReadTimeout` 无法判断具体是哪项
+超时配置到期。非成功响应的错误体采集遵循上文独立的 `Status` 和采集诊断规则。
+
 普通 HTTP 自动重试与 SSE 自动重连有不同的终止错误契约：
 
 | 路径 | 终止条件 | 返回结果与直接 source |
