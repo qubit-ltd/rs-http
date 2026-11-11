@@ -148,12 +148,12 @@ async fn test_downstream_contract_outer_two_attempts_disable_internal_http_retri
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Immediate {
             status: 429,
-            headers: vec![],
+            headers: vec![("Connection".into(), "close".into())],
             body: b"first".to_vec(),
         },
         ResponsePlan::Immediate {
             status: 429,
-            headers: vec![],
+            headers: vec![("Connection".into(), "close".into())],
             body: b"second".to_vec(),
         },
     ])

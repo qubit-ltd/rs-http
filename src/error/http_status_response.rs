@@ -48,7 +48,7 @@ pub struct HttpStatusResponse {
     capture_end: HttpBodyCaptureEnd,
     /// Backend body-read failure, retained for explicit diagnostics.
     capture_error: Option<Arc<dyn Error + Send + Sync + 'static>>,
-    /// Complete body length advertised by the server, if known.
+    /// Normalized response-body length hint; HEAD and 304 responses use zero.
     content_length: Option<u64>,
 }
 
@@ -60,8 +60,9 @@ impl HttpStatusResponse {
     /// - `body`: Retained prefix of the response body.
     /// - `capture_end`: Final reason status-body capture ended.
     /// - `capture_error`: Backend body-read error, if capture failed.
-    /// - `content_length`: Complete body length advertised by the server, if
-    ///   known.
+    /// - `content_length`: Normalized response-body length hint; HEAD and 304
+    ///   responses use `Some(0)`. Other responses use the parsed
+    ///   Content-Length, or `None` when absent or invalid.
     ///
     /// # Returns
     /// A response snapshot containing the supplied headers and body metadata.
@@ -133,12 +134,18 @@ impl HttpStatusResponse {
     pub fn capture_error(&self) -> Option<&(dyn Error + Send + Sync + 'static)> {
         self.capture_error.as_deref()
     }
-    /// Returns the complete body length advertised by the server, if known.
+    /// Returns the normalized response-body length hint.
     ///
-    /// `None` means that no complete length was available from the response.
+    /// HEAD responses and 304 Not Modified responses use `Some(0)`, even when
+    /// the original `Content-Length` header is missing or nonzero. For other
+    /// responses, this is the parsed `Content-Length`, or `None` when absent
+    /// or invalid. It does not prove that the body was completely received
+    /// and is not the length of the retained prefix returned by [`Self::body`].
+    /// Read `Content-Length` through [`Self::headers`] for the original
+    /// header value.
     ///
     /// # Returns
-    /// The advertised complete body length, or `None` when it is unknown.
+    /// The normalized length hint, when available.
     #[inline]
     pub fn content_length(&self) -> Option<u64> {
         self.content_length

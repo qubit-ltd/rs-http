@@ -626,7 +626,7 @@ async fn test_retry_multi_attempt_response_uses_success_replacement_token() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Immediate {
             status: 503,
-            headers: vec![],
+            headers: vec![("Connection".into(), "close".into())],
             body: b"retry".to_vec(),
         },
         ResponsePlan::PartialThenDelay {
@@ -710,7 +710,7 @@ async fn test_retry_multi_attempt_failed_clear_does_not_leak_to_response() {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Immediate {
             status: 503,
-            headers: vec![],
+            headers: vec![("Connection".into(), "close".into())],
             body: b"retry".to_vec(),
         },
         ResponsePlan::PartialThenDelay {
