@@ -45,14 +45,14 @@ tokio = { version = "^1.54", features = ["time", "net", "macros", "rt-multi-thre
 async-stream = "^0.3"
 futures-util = "^0.3"
 
-qubit-config = { path = "../rs-config", version = "0.15", default-features = false }
+qubit-config = { path = "../rs-config", version = "^0.15", default-features = false }
 qubit-budget = { version = "^0.10", features = ["json"] }
 qubit-clock = "^0.13"
 qubit-argument = "^0.4"
 qubit-error = "^0.2"
 qubit-function = "^0.18"
 qubit-retry = { version = "^0.26", features = ["tokio"] }
-qubit-redact = { path = "../rs-redact", version = "0.10", default-features = false, features = ["http"] }
+qubit-redact = { version = "^0.10", default-features = false, features = ["http"] }
 
 [dev-dependencies]
 proptest = "^1.11"
