@@ -14,8 +14,10 @@ use std::time::Duration;
 use bytes::Bytes;
 use futures_util::stream;
 use http::Method;
+use qubit_http::HttpCancellationToken;
 use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
+use qubit_http::HttpError;
 use qubit_http::HttpErrorKind;
 use qubit_http::HttpRequestBodyByteStream;
 use qubit_http::HttpRetryMethodPolicy;
@@ -32,6 +34,169 @@ use crate::common::spawn_multi_shot_server;
 use crate::common::spawn_one_shot_server;
 use crate::common::CapturedRequest;
 use crate::common::ResponsePlan;
+
+#[tokio_test]
+async fn test_try_streaming_body_preparation_error_sends_nothing() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/upload", listener.local_addr().unwrap());
+    let client = HttpClientBuilder::new().build().unwrap();
+    let request = client
+        .request(Method::POST, &url)
+        .try_streaming_body(|| {
+            Box::pin(async {
+                Err(HttpError::decode(
+                    "failed to prepare https://alice:pwsecret@example.test/?access_token=tokensecret",
+                )
+                .with_source(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "cannot open upload",
+                )))
+            })
+        })
+        .disable_retry()
+        .build();
+    let error = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(error.kind(), HttpErrorKind::Decode);
+    assert!(std::error::Error::source(&error).is_some());
+    assert!(!format!("{error}\n{error:?}").contains("pwsecret"));
+    assert!(!format!("{error}\n{error:?}").contains("tokensecret"));
+    assert!(timeout(Duration::from_millis(100), listener.accept())
+        .await
+        .is_err());
+}
+
+#[tokio_test]
+async fn test_try_streaming_body_pending_preparation_times_out_without_connecting() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/upload", listener.local_addr().unwrap());
+    let mut options = HttpClientOptions::default();
+    options.timeouts.response_header_timeout = Duration::from_millis(50);
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
+    let request = client
+        .request(Method::POST, &url)
+        .try_streaming_body(|| {
+            Box::pin(async {
+                std::future::pending::<qubit_http::HttpResult<HttpRequestBodyByteStream>>().await
+            })
+        })
+        .disable_retry()
+        .build();
+    let error = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(error.kind(), HttpErrorKind::ResponseHeaderTimeout);
+    assert!(timeout(Duration::from_millis(100), listener.accept())
+        .await
+        .is_err());
+}
+
+#[tokio_test]
+async fn test_try_streaming_body_upload_and_factory_runs_once() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 200,
+        headers: vec![],
+        body: b"ok".to_vec(),
+    })
+    .await;
+    let calls = Arc::new(AtomicUsize::new(0));
+    let calls_for_factory = Arc::clone(&calls);
+    let client = HttpClientBuilder::new().build().unwrap();
+    let request = client
+        .request(Method::POST, server.base_url().as_str())
+        .try_streaming_body(move || {
+            calls_for_factory.fetch_add(1, Ordering::Relaxed);
+            Box::pin(async {
+                Ok(Box::pin(stream::iter([Ok(Bytes::from_static(b"upload"))]))
+                    as HttpRequestBodyByteStream)
+            })
+        })
+        .disable_retry()
+        .build();
+    timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .unwrap()
+        .unwrap();
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .unwrap();
+    assert_eq!(captured.body, b"upload");
+    assert_eq!(calls.load(Ordering::Relaxed), 1);
+}
+
+#[tokio_test]
+async fn test_try_streaming_body_pending_preparation_is_cancelled_without_connecting() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/upload", listener.local_addr().unwrap());
+    let token = HttpCancellationToken::new();
+    let client = HttpClientBuilder::new().build().unwrap();
+    let request = client
+        .request(Method::POST, &url)
+        .try_streaming_body(|| {
+            Box::pin(async {
+                std::future::pending::<qubit_http::HttpResult<HttpRequestBodyByteStream>>().await
+            })
+        })
+        .cancellation_token(token.clone())
+        .disable_retry()
+        .build();
+    let execute = tokio::spawn(async move { client.execute(request).await });
+    sleep(Duration::from_millis(20)).await;
+    token.cancel();
+    let error = timeout(Duration::from_secs(3), execute)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(error.kind(), HttpErrorKind::Cancelled);
+    assert!(timeout(Duration::from_millis(100), listener.accept())
+        .await
+        .is_err());
+}
+
+#[tokio_test]
+async fn test_try_streaming_body_transport_preparation_retries_factory() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 200,
+        headers: vec![],
+        body: b"ok".to_vec(),
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.retry.enabled = true;
+    options.retry.max_attempts = 2;
+    options.retry.backoff = BackoffPolicy::immediate();
+    options.retry.method_policy = HttpRetryMethodPolicy::AllMethods;
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let calls_for_factory = Arc::clone(&calls);
+    let request = client
+        .request(Method::POST, server.base_url().as_str())
+        .try_streaming_body(move || {
+            let attempt = calls_for_factory.fetch_add(1, Ordering::Relaxed);
+            Box::pin(async move {
+                if attempt == 0 {
+                    Err(HttpError::transport("temporary preparation failure"))
+                } else {
+                    Ok(Box::pin(stream::iter([Ok(Bytes::from_static(b"upload"))]))
+                        as HttpRequestBodyByteStream)
+                }
+            })
+        })
+        .build();
+    timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(calls.load(Ordering::Relaxed), 2);
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .unwrap();
+    assert_eq!(captured.body, b"upload");
+}
 
 #[tokio_test]
 async fn test_upload_redirect_307_bytes_body_follows_and_preserves_post() {

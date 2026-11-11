@@ -13,11 +13,11 @@ use reqwest::Certificate;
 use reqwest::Client;
 use reqwest::Proxy;
 use url::Host;
-use url::Url;
 
 use super::internal::Ipv4OnlyResolver;
 use super::RedirectIpv6Violation;
 use super::RedirectOriginViolation;
+use crate::http_url::same_origin;
 use crate::HttpClient;
 use crate::HttpClientOptions;
 use crate::HttpConfigError;
@@ -291,18 +291,4 @@ fn map_validation_error(error: HttpConfigError) -> HttpError {
     } else {
         HttpError::other(format!("Invalid HTTP client options: {error}"))
     }
-}
-
-/// Returns whether two URLs share scheme, host, and effective port.
-///
-/// # Parameters
-/// - `left`: First URL to compare.
-/// - `right`: Second URL to compare.
-///
-/// # Returns
-/// `true` when both URLs have the same scheme, host, and effective port.
-fn same_origin(left: &Url, right: &Url) -> bool {
-    left.scheme() == right.scheme()
-        && left.host() == right.host()
-        && left.port_or_known_default() == right.port_or_known_default()
 }

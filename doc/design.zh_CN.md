@@ -44,7 +44,9 @@ base URL 在配置解析和客户端构造时校验；最终请求 URL 在解析
 
 每次重试都会克隆请求。缓冲请求体可以重放；延迟生成的流式请求体由工厂为每次外层尝试重新创建。`stream_body`（即使已提前收集到内存）和 `streaming_body` 都会表示为 reqwest 流式 body，无法通过内部 307/308 重定向重放；此类重定向也不会再次调用工厂。优先使用最终上传 URL；载荷符合应用内存预算时可改用 `bytes_body`。原始请求决定是否准入重试流程；流程内则依据拦截器修改后的每次请求重新计算续试资格和 `Retry-After` 偏好。外层尝试次数和时长预算保持固定。`max_duration` 控制是否继续尝试，并非已经开始的请求的硬截止时间；response-header 超时从异步请求准备开始，累计至收到响应头；同步 request interceptor 在期限开始前执行。连接、响应头、读取和 `request_timeout` 仍分别配置。`request_timeout` 是 reqwest 单次网络请求及响应体读取期限，不包含异步 header 注入、流式 body 工厂准备、重试等待及其他尝试；`response_header_timeout` 覆盖异步准备直到收到响应头；`read_timeout` 限制每次正常 body 读取及完整的非成功错误体采集。最终 `HttpError` 保留重试诊断信息和完整的 `RetryError<HttpError>` 错误来源链。
 
-`HttpRequestBuilder` 会在内部记录请求级 `Content-Type` 是否由正文 helper 自动生成。后续带类型的 helper 会更新这个自动值；`bytes_body`、`stream_body` 和 `streaming_body` 会将其移除。通过 `header` 或包含 `Content-Type` 的 `headers` map 设置的值属于显式配置，即使字节内容与自动值相同也会保留。multipart helper 会替换自身生成的 boundary；显式值仍沿用现有校验和不匹配错误。移除自动生成的请求级值不会改动客户端默认 header 或注入器，正常合并时这些来源可能重新生效。低层 `HttpRequest::set_body` 和 `set_streaming_body` 保留 header，也不会推断媒体类型；需要时应配套调用 `set_header` 或 `remove_header`。
+`HttpRequestStreamingBody::try_new` 和 `HttpRequestBuilder::try_streaming_body` 允许异步准备工厂返回 `HttpResult<HttpRequestBodyByteStream>`。准备错误会保留类型、消息、source、请求上下文和捕获的 redactor，并在本次尝试调用 `reqwest::RequestBuilder::send` 前返回。工厂是惰性的，按外层尝试执行。准备阶段沿用 response-header 超时和取消路径；流创建后的错误沿用现有发送错误映射。原有不可失败工厂 API 保持兼容，无需迁移。重试分类、工厂可能被重新调用，以及流式 body 对 307/308 的限制均不变。
+
+`HttpRequestBuilder` 会在内部记录请求级 `Content-Type` 是否由正文 helper 自动生成。后续带类型的 helper 会更新这个自动值；`bytes_body`、`stream_body`、`streaming_body` 和 `try_streaming_body` 会将其移除。通过 `header` 或包含 `Content-Type` 的 `headers` map 设置的值属于显式配置，即使字节内容与自动值相同也会保留。multipart helper 会替换自身生成的 boundary；显式值仍沿用现有校验和不匹配错误。移除自动生成的请求级值不会改动客户端默认 header 或注入器，正常合并时这些来源可能重新生效。低层 `HttpRequest::set_body` 和 `set_streaming_body` 保留 header，也不会推断媒体类型；需要时应配套调用 `set_header` 或 `remove_header`。
 
 | 超时 | 限制范围 |
 | --- | --- |

@@ -12,10 +12,11 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use super::http_request_body_byte_stream::HttpRequestBodyByteStream;
+use crate::HttpResult;
 
 /// Future that produces one request-body byte stream.
 type HttpRequestBodyStreamFactoryFuture =
-    Pin<Box<dyn Future<Output = HttpRequestBodyByteStream> + Send + 'static>>;
+    Pin<Box<dyn Future<Output = HttpResult<HttpRequestBodyByteStream>> + Send + 'static>>;
 
 /// Factory callback that produces a fresh stream for each request attempt.
 type HttpRequestBodyStreamFactoryFn =
@@ -83,6 +84,42 @@ impl HttpRequestStreamingBody {
     /// - `F`: Thread-safe factory that creates a fresh stream for one attempt.
     pub fn new<F>(factory: F) -> Self
     where
+        F: Fn() -> Pin<Box<dyn Future<Output = HttpRequestBodyByteStream> + Send + 'static>>
+            + Send
+            + Sync
+            + 'static,
+    {
+        Self::try_new(move || {
+            let future = factory();
+            Box::pin(async move { Ok(future.await) })
+        })
+    }
+
+    /// Creates a deferred streaming body from a fallible async factory.
+    ///
+    /// The factory future runs only when a request attempt is sent. This
+    /// constructor does not run or validate it. Preparation errors are
+    /// returned directly with their original kind and source. Existing
+    /// [`Self::new`] callers do not need to migrate.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use qubit_http::HttpError;
+    /// use qubit_http::HttpRequestBodyByteStream;
+    /// use qubit_http::HttpRequestStreamingBody;
+    ///
+    /// let body = HttpRequestStreamingBody::try_new(|| Box::pin(async {
+    ///     Ok(Box::pin(futures_util::stream::empty()) as HttpRequestBodyByteStream)
+    /// }));
+    /// let failing_body = HttpRequestStreamingBody::try_new(|| Box::pin(async {
+    ///     Err(HttpError::other("upload preparation failed"))
+    /// }));
+    /// assert!(format!("{body:?}").contains("HttpRequestStreamingBody"));
+    /// assert!(format!("{failing_body:?}").contains("HttpRequestStreamingBody"));
+    /// ```
+    pub fn try_new<F>(factory: F) -> Self
+    where
         F: Fn() -> HttpRequestBodyStreamFactoryFuture + Send + Sync + 'static,
     {
         Self {
@@ -94,8 +131,8 @@ impl HttpRequestStreamingBody {
     ///
     /// # Returns
     /// New [`reqwest::Body`] stream instance for one send attempt.
-    pub(crate) async fn to_reqwest_body(&self) -> reqwest::Body {
-        let stream = (self.factory)().await;
-        reqwest::Body::wrap_stream(stream)
+    pub(crate) async fn to_reqwest_body(&self) -> HttpResult<reqwest::Body> {
+        let stream = (self.factory)().await?;
+        Ok(reqwest::Body::wrap_stream(stream))
     }
 }

@@ -38,6 +38,7 @@ use super::validate_positive_timeout;
 use super::validate_response_header_timeout;
 use crate::error::backend_error_mapper::map_reqwest_error;
 use crate::error::ReqwestErrorPhase;
+use crate::http_url::same_origin;
 use crate::HttpCancellationToken;
 use crate::HttpError;
 use crate::HttpErrorKind;
@@ -745,7 +746,7 @@ impl HttpRequest {
         }
         if let Some(streaming_body) = self.streaming_body.as_ref() {
             let body = Self::await_pre_send_future(
-                async { Ok(streaming_body.to_reqwest_body().await) },
+                streaming_body.to_reqwest_body(),
                 send_deadline.saturating_duration_since(Instant::now()),
                 cancellation_token.clone(),
                 &method,
@@ -1240,20 +1241,6 @@ impl HttpRequest {
     fn with_log_redactor(&self, error: HttpError) -> HttpError {
         error.with_log_redactor(self.log_redactor().clone())
     }
-}
-
-/// Determines whether two URLs have the same web origin.
-///
-/// # Parameters
-/// - `left`: First URL to compare.
-/// - `right`: Second URL to compare.
-///
-/// # Returns
-/// `true` when scheme, host, and effective port match.
-fn same_origin(left: &Url, right: &Url) -> bool {
-    left.scheme() == right.scheme()
-        && left.host() == right.host()
-        && left.port_or_known_default() == right.port_or_known_default()
 }
 
 /// Clones the request payload, execution context, and cached diagnostics.

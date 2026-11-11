@@ -398,6 +398,7 @@ Request body builders:
 | `bytes_body` | Raw bytes; does not infer a media type and removes a previous builder-generated `Content-Type` |
 | `stream_body` | Eagerly collects a finite iterator into memory during this call, then sends the ordered chunks through reqwest streaming body support; memory grows with the total payload. Despite the collection, reqwest treats it as streaming and cannot replay it across an internal 307/308 redirect; removes a previous builder-generated `Content-Type` |
 | `streaming_body` | Installs an async factory that creates a fresh byte stream for each outer send attempt; it is not called again for an internal 307/308 redirect, which is not followed for streaming bodies; removes a previous builder-generated `Content-Type` |
+| `try_streaming_body` | Like `streaming_body`, but the async preparation factory returns `HttpResult` so setup errors retain their kind and source; removes a previous builder-generated `Content-Type` |
 | `text_body` | Text body; sets or refreshes the builder-generated `text/plain; charset=utf-8` value |
 | `json_body` | Serializes JSON; sets or refreshes the builder-generated `application/json` value |
 | `json_body_with_limits` | Serializes JSON with per-request value and output-byte limits |
@@ -406,7 +407,7 @@ Request body builders:
 | `ndjson_body` | One JSON record per line; sets or refreshes the builder-generated `application/x-ndjson` value |
 | `ndjson_body_with_limits` | Serializes an NDJSON sequence with one aggregate output budget, including line terminators |
 
-Typed body helpers update the `Content-Type` they previously generated when you replace one typed body with another. `bytes_body`, `stream_body`, and `streaming_body` remove a builder-generated value because they do not infer a media type. A request-local value supplied with `header` or `headers` is explicit—even when it matches a generated value—and body helpers preserve it. You can set that value before or after a body helper. When an opaque body removes a generated request-local value, the normal merge can expose a client default or injector value again; those client-level sources are not cleared.
+Typed body helpers update the `Content-Type` they previously generated when you replace one typed body with another. `bytes_body`, `stream_body`, `streaming_body`, and `try_streaming_body` remove a builder-generated value because they do not infer a media type. A request-local value supplied with `header` or `headers` is explicit—even when it matches a generated value—and body helpers preserve it. You can set that value before or after a body helper. When an opaque body removes a generated request-local value, the normal merge can expose a client default or injector value again; those client-level sources are not cleared.
 
 If an existing chain relied on an earlier helper's generated value surviving a later body replacement, make that choice explicit:
 
@@ -476,16 +477,20 @@ client.add_async_header_injector(AsyncHttpHeaderInjector::new(|headers| {
 
 let upload = client
     .request(http::Method::POST, "https://api.example.com/upload")
-    .streaming_body(|| {
+    .try_streaming_body(|| {
         Box::pin(async move {
-            Box::pin(futures_util::stream::iter(vec![Ok(bytes::Bytes::from_static(b"chunk"))]))
-                as qubit_http::HttpRequestBodyByteStream
+            // Open or prepare the upload here; `?` returns preparation errors
+            // directly from the request attempt.
+            Ok(Box::pin(futures_util::stream::iter(vec![Ok(bytes::Bytes::from_static(b"chunk"))]))
+                as qubit_http::HttpRequestBodyByteStream)
         })
     })
     .build();
 let _ = upload;
 ```
 <!-- guide-check:async-upload:end -->
+
+`try_streaming_body` runs its factory for each outer send attempt. An error while opening or preparing the upload is returned directly with its `HttpError` kind and source; an error emitted later by the byte stream follows the normal reqwest send-error mapping. Preparation is covered by `response_header_timeout` and the request cancellation token, but not `request_timeout`. Existing `streaming_body` callers can stay unchanged; migrate when preparation needs to use `?` or preserve a specific error kind. Retries still follow the configured error classification and may call the factory again. Streaming bodies are not replayed for internal 307/308 redirects.
 
 Async injectors can resolve headers immediately before sending, including authentication tokens. This complete example reuses a fresh cached token and refreshes it when it expires. When automatic retry is enabled, the injector runs before each send attempt. Concurrent cache misses wait on a refresh lock and check the cache again before refreshing. A failed refresh is not cached, so a later call can retry. The one-hour lifetime is illustrative; use the expiry returned by the auth service. Cancellation releases the local lock, but cannot undo a refresh already performed by the service, so this does not promise exactly-once remote effects.
 

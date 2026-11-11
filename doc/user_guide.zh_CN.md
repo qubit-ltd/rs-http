@@ -377,6 +377,7 @@ assert_eq!(
 | `bytes_body` | 原始字节体，不推断媒体类型；会移除之前由 builder 自动生成的 `Content-Type` |
 | `stream_body` | 调用时会把有限迭代器完整收集到内存，再通过 reqwest streaming body 按顺序发送；内存占用随总载荷增长。虽然已收集到内存，reqwest 仍将其视为流式 body，无法在内部 307/308 重定向中重放；会移除之前由 builder 自动生成的 `Content-Type` |
 | `streaming_body` | 设置异步工厂，每次外层发送尝试生成新的字节流；内部 307/308 重定向不会再次调用工厂，流式 body 不会自动跟随此类重定向；会移除之前由 builder 自动生成的 `Content-Type` |
+| `try_streaming_body` | 与 `streaming_body` 相同，但异步准备工厂返回 `HttpResult`，因此准备错误保留类型和 source；会移除之前由 builder 自动生成的 `Content-Type` |
 | `text_body` | 文本体；设置或更新 builder 自动生成的 `text/plain; charset=utf-8` |
 | `json_body` | 序列化 JSON；设置或更新 builder 自动生成的 `application/json` |
 | `json_body_with_limits` | 使用本请求的 value 与输出字节上限序列化 JSON |
@@ -385,7 +386,7 @@ assert_eq!(
 | `ndjson_body` | 每条记录一行 JSON；设置或更新 builder 自动生成的 `application/x-ndjson` |
 | `ndjson_body_with_limits` | 使用一个累计输出预算序列化 NDJSON，且包含行结束符 |
 
-带媒体类型的 body helper 互相替换时，会更新前一个 helper 自动生成的 `Content-Type`。`bytes_body`、`stream_body` 和 `streaming_body` 不推断媒体类型，因此会清除 builder 自动生成的值。通过 `header` 或 `headers` 传入的请求级值始终视为显式设置，即使它和自动值相同也会保留；可以在 body helper 前或后设置。清除自动生成的请求级值后，客户端默认 header 或注入器可能重新生效，builder 不会清除这些来源。
+带媒体类型的 body helper 互相替换时，会更新前一个 helper 自动生成的 `Content-Type`。`bytes_body`、`stream_body`、`streaming_body` 和 `try_streaming_body` 不推断媒体类型，因此会清除 builder 自动生成的值。通过 `header` 或 `headers` 传入的请求级值始终视为显式设置，即使它和自动值相同也会保留；可以在 body helper 前或后设置。清除自动生成的请求级值后，客户端默认 header 或注入器可能重新生效，builder 不会清除这些来源。
 
 如果旧链式调用依赖前一个 body helper 留下的媒体类型，应显式设置它：
 
@@ -455,16 +456,19 @@ client.add_async_header_injector(AsyncHttpHeaderInjector::new(|headers| {
 
 let upload = client
     .request(http::Method::POST, "https://api.example.com/upload")
-    .streaming_body(|| {
+    .try_streaming_body(|| {
         Box::pin(async move {
-            Box::pin(futures_util::stream::iter(vec![Ok(bytes::Bytes::from_static(b"chunk"))]))
-                as qubit_http::HttpRequestBodyByteStream
+            // 在这里打开或准备上传；`?` 会将准备错误直接返回给本次请求尝试。
+            Ok(Box::pin(futures_util::stream::iter(vec![Ok(bytes::Bytes::from_static(b"chunk"))]))
+                as qubit_http::HttpRequestBodyByteStream)
         })
     })
     .build();
 let _ = upload;
 ```
 <!-- guide-check:async-upload:end -->
+
+`try_streaming_body` 会在每次外层发送尝试时执行工厂。打开或准备上传时发生的错误会直接返回，并保留 `HttpError` 类型和 source；字节流开始发送后产生的错误则沿用 reqwest 发送错误映射。准备阶段受 `response_header_timeout` 和请求取消 token 限制，但不受 `request_timeout` 限制。现有 `streaming_body` 调用无需迁移；需要在准备过程中使用 `?` 或保留特定错误类型时再迁移。重试仍按已配置的错误分类执行，可能再次调用工厂。内部 307/308 重定向不会重放流式 body。
 
 异步注入器可以在发送前动态获取请求头，例如认证 token。此完整示例会复用有效缓存，并在 token 过期时刷新。启用自动重试时，注入器会在每次发送尝试前运行。多个请求同时遇到缓存失效时会等待刷新锁，并在锁内再次检查缓存。刷新失败不会写入缓存，因此后续调用可以重试。一小时有效期仅为示例值；实际应用应使用认证服务返回的有效期。取消会释放本地锁，但无法撤销认证服务已经执行的刷新，因此本示例不保证远端副作用恰好执行一次。
 
