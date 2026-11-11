@@ -8,8 +8,13 @@
 
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+use std::sync::mpsc;
+use std::thread;
 use std::time::Duration;
-use std::time::Instant;
 
 use bytes::Bytes;
 use futures_util::StreamExt;
@@ -24,7 +29,9 @@ use qubit_http::HttpErrorKind;
 use qubit_http::HttpRequestBodyByteStream;
 use qubit_http::RetryHint;
 use qubit_retry::BackoffPolicy;
+use tokio::sync::oneshot;
 use tokio::test as tokio_test;
+use tokio::time::Instant as TokioInstant;
 use tokio::time::sleep;
 use tokio::time::timeout;
 
@@ -32,6 +39,49 @@ use crate::common::ResponseChunk;
 use crate::common::ResponsePlan;
 use crate::common::spawn_multi_shot_server;
 use crate::common::spawn_one_shot_server;
+
+fn spawn_test_watchdog(timeout: Duration) -> (mpsc::Sender<()>, oneshot::Receiver<()>, thread::JoinHandle<()>) {
+    let (done_tx, done_rx) = mpsc::channel();
+    let (expired_tx, expired_rx) = oneshot::channel();
+    let watchdog_thread = thread::spawn(move || {
+        if done_rx.recv_timeout(timeout).is_err() {
+            let _ = expired_tx.send(());
+        }
+    });
+    (done_tx, expired_rx, watchdog_thread)
+}
+
+#[tokio_test(flavor = "current_thread")]
+async fn test_retry_max_duration_watchdog_signals_and_cleans_up_tasks() {
+    let (_watchdog_done_tx, mut watchdog_expired_rx, watchdog_thread) = spawn_test_watchdog(Duration::from_millis(10));
+    let keepalive = tokio::spawn(async {
+        loop {
+            tokio::task::yield_now().await;
+        }
+    });
+    let controller = tokio::spawn(std::future::pending::<()>());
+
+    timeout(Duration::from_secs(2), &mut watchdog_expired_rx)
+        .await
+        .expect("watchdog signal should arrive before the test timeout")
+        .expect("watchdog thread should report expiration");
+
+    watchdog_thread.join().expect("expired watchdog thread should exit");
+    keepalive.abort();
+    assert!(
+        keepalive
+            .await
+            .expect_err("keepalive should be cancelled")
+            .is_cancelled()
+    );
+    controller.abort();
+    assert!(
+        controller
+            .await
+            .expect_err("controller should be cancelled")
+            .is_cancelled()
+    );
+}
 
 #[tokio_test]
 async fn test_async_header_injector_preparation_is_outside_request_timeout() {
@@ -173,53 +223,135 @@ fn test_client_builder_rejects_unrepresentable_response_header_deadline() {
     assert!(error.message.contains("response_header_timeout"));
 }
 
-#[tokio_test]
+#[tokio_test(flavor = "current_thread", start_paused = true)]
 async fn test_retry_max_duration_allows_admitted_request_to_finish_after_budget() {
-    let retry_delay = Duration::from_millis(50);
+    const WATCHDOG_TIMEOUT: Duration = Duration::from_secs(15);
     let max_duration = Duration::from_millis(500);
-    let response_delay = Duration::from_millis(700);
+
+    let (watchdog_done_tx, mut watchdog_expired_rx, watchdog_thread) = spawn_test_watchdog(WATCHDOG_TIMEOUT);
+
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Immediate {
             status: 503,
             headers: vec![],
             body: b"retryable failure".to_vec(),
         },
-        ResponsePlan::DelayedStart {
-            delay: response_delay,
+        ResponsePlan::Immediate {
             status: 200,
             headers: vec![],
-            body: b"late success".to_vec(),
+            body: b"success".to_vec(),
         },
     ])
     .await;
 
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    options.timeouts.request_timeout = Some(Duration::from_secs(2));
+    options.timeouts.request_timeout = Some(Duration::from_secs(30));
+    options.timeouts.response_header_timeout = Duration::from_secs(30);
     options.retry.enabled = true;
     options.retry.max_attempts = 2;
     options.retry.max_duration = Some(max_duration);
-    options.retry.backoff = BackoffPolicy::fixed(retry_delay);
-    let client = HttpClientBuilder::new()
+    options.retry.backoff = BackoffPolicy::fixed(Duration::ZERO);
+    let mut client = HttpClientBuilder::new()
         .options(options)
         .build()
         .expect("client should be created");
 
-    let started_at = Instant::now();
-    let request = client.request(Method::GET, "/admitted-after-budget").build();
-    let response = timeout(Duration::from_secs(3), client.execute(request))
-        .await
-        .expect("execute timed out")
-        .expect("an admitted retry may finish after max_duration");
+    let attempt_count = Arc::new(AtomicUsize::new(0));
+    let (admitted_tx, admitted_rx) = oneshot::channel();
+    let (release_tx, release_rx) = oneshot::channel();
+    let admitted_tx = Arc::new(Mutex::new(Some(admitted_tx)));
+    let release_rx = Arc::new(Mutex::new(Some(release_rx)));
+    client.add_async_header_injector(AsyncHttpHeaderInjector::new({
+        let attempt_count = Arc::clone(&attempt_count);
+        let admitted_tx = Arc::clone(&admitted_tx);
+        let release_rx = Arc::clone(&release_rx);
+        move |_headers: &mut HeaderMap| {
+            let attempt = attempt_count.fetch_add(1, Ordering::SeqCst);
+            if attempt == 1 {
+                let admitted_tx = admitted_tx
+                    .lock()
+                    .expect("admission signal mutex poisoned")
+                    .take()
+                    .expect("second attempt admission signal should be available");
+                let release_rx = release_rx
+                    .lock()
+                    .expect("release signal mutex poisoned")
+                    .take()
+                    .expect("second attempt release signal should be available");
+                Box::pin(async move {
+                    admitted_tx
+                        .send(())
+                        .expect("test controller should wait for second attempt");
+                    release_rx.await.expect("test controller should release second attempt");
+                    Ok(())
+                })
+            } else {
+                Box::pin(async { Ok(()) })
+            }
+        }
+    }));
 
-    assert_eq!(response.status(), StatusCode::OK);
+    let controller = tokio::spawn(async move {
+        admitted_rx
+            .await
+            .expect("second attempt should reach the async header injector");
+        tokio::time::advance(Duration::from_millis(700)).await;
+        release_tx
+            .send(())
+            .expect("second attempt should still be waiting for release");
+    });
+    let keepalive = tokio::spawn(async {
+        loop {
+            tokio::task::yield_now().await;
+        }
+    });
+
+    let started_at = TokioInstant::now();
+    let request = client.request(Method::GET, "/admitted-after-budget").build();
+    let run_result = tokio::select! {
+        result = async {
+            let mut response = client.execute(request).await.map_err(|_| "HTTP execution failed")?;
+            let status = response.status();
+            let body = response.bytes().await.map_err(|_| "reading response body failed")?;
+            let captured = server.finish().await;
+            Ok::<_, &'static str>((status, body.to_vec(), captured))
+        } => result,
+        _ = &mut watchdog_expired_rx => Err("real-time watchdog expired"),
+    };
+
+    keepalive.abort();
+    let keepalive_result = keepalive.await;
+    let controller_result = if run_result.is_ok() {
+        controller.await
+    } else {
+        controller.abort();
+        controller.await
+    };
+    let _ = watchdog_done_tx.send(());
+    watchdog_thread.join().expect("real-time watchdog thread should exit");
+
     assert!(
-        started_at.elapsed() > max_duration,
-        "the admitted retry should complete after max_duration"
+        keepalive_result
+            .expect_err("keepalive should be cancelled")
+            .is_cancelled()
     );
-    let captured = timeout(Duration::from_secs(3), server.finish())
-        .await
-        .expect("server finish timed out");
+    if run_result.is_ok() {
+        controller_result.expect("admission controller should complete successfully");
+    } else {
+        assert!(
+            controller_result
+                .expect_err("admission controller should be cancelled")
+                .is_cancelled()
+        );
+    }
+    let (status, body, captured) = run_result.expect("test flow should complete before watchdog");
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, b"success");
+    assert!(
+        TokioInstant::now().duration_since(started_at) >= Duration::from_millis(700),
+        "virtual elapsed time should pass the retry budget"
+    );
     assert_eq!(captured.len(), 2);
     assert!(captured.iter().all(|request| request.method == "GET"));
     assert!(

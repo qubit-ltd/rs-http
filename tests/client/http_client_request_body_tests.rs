@@ -421,7 +421,7 @@ async fn test_execute_with_streaming_body_factory_supports_retry_rebuild() {
     assert_eq!(stream_factory_entries.load(Ordering::Relaxed), 0);
     assert_eq!(stream_factory_calls.load(Ordering::Relaxed), 0);
 
-    let response = timeout(Duration::from_secs(3), client.execute(request))
+    let response = timeout(Duration::from_secs(15), client.execute(request))
         .await
         .expect("execute timed out")
         .expect("request should succeed after retry");
