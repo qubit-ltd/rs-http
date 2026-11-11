@@ -31,12 +31,12 @@
 <!-- guide-dependencies:start -->
 ```toml
 [dependencies]
-qubit-http = "0.16.0"
-qubit-redact = "0.10"
+qubit-http = "^0.16"
+qubit-redact = "^0.10"
 http = "1.4"
-qubit-config = { version = "0.15", default-features = false }
-qubit-retry = "0.26"
-qubit-budget = { version = "0.10", features = ["json"] }
+qubit-config = { version = "^0.15", default-features = false }
+qubit-retry = "^0.26"
+qubit-budget = { version = "^0.10", features = ["json"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
