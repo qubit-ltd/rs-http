@@ -16,9 +16,9 @@ use futures_util::StreamExt as _;
 use http::HeaderMap;
 use http::Method;
 use http::StatusCode;
+use qubit_http::sse::SseReconnectOptions;
 use qubit_http::HttpResponse;
 use qubit_http::HttpResult;
-use qubit_http::sse::SseReconnectOptions;
 use tokio::test as tokio_test;
 
 async fn collect_results<T>(stream: impl Stream<Item = HttpResult<T>>) -> Vec<T> {
@@ -54,7 +54,8 @@ async fn test_decode_messages_parses_fields_and_multiline_data() {
 
 #[tokio_test]
 async fn test_decode_messages_ignores_comment_lines() {
-    let response = stream_response_from_chunks(vec![": keep-alive\n", "data: {\"value\": 7}\n", "\n"]);
+    let response =
+        stream_response_from_chunks(vec![": keep-alive\n", "data: {\"value\": 7}\n", "\n"]);
     let events = collect_results(response.sse_messages()).await;
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].data, "{\"value\": 7}");
@@ -69,7 +70,10 @@ fn test_sse_reconnect_options_new_matches_default() {
 fn test_sse_reconnect_options_default_backoff_parameters() {
     let options = SseReconnectOptions::default();
     assert_eq!(options.retry.admission_limits().max_attempts().get(), 4);
-    assert_eq!(options.retry.backoff().maximum_delay(), Some(Duration::from_secs(30)),);
+    assert_eq!(
+        options.retry.backoff().maximum_delay(),
+        Some(Duration::from_secs(30)),
+    );
 }
 
 #[test]
@@ -89,6 +93,9 @@ fn test_sse_reconnect_options_can_override_server_retry_controls() {
         ..SseReconnectOptions::default()
     };
     assert!(!options.honor_server_retry);
-    assert_eq!(options.server_retry_max_delay, Some(Duration::from_millis(250)));
+    assert_eq!(
+        options.server_retry_max_delay,
+        Some(Duration::from_millis(250))
+    );
     assert!(!options.apply_jitter_to_server_retry);
 }

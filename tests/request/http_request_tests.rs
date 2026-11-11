@@ -25,9 +25,9 @@ use qubit_http::HttpRequestBodyByteStream;
 use qubit_http::HttpRequestRetryOverride;
 use qubit_http::HttpRequestStreamingBody;
 use qubit_http::HttpRetryMethodPolicy;
+use qubit_redact::formats::http::UrlPathPolicy;
 use qubit_redact::RedactionPolicy;
 use qubit_redact::Sensitivity;
-use qubit_redact::formats::http::UrlPathPolicy;
 use url::Url;
 
 fn new_request(method: Method, path: &str) -> HttpRequest {
@@ -57,7 +57,9 @@ fn test_http_request_rejects_non_http_schemes() {
         assert!(new_request(Method::GET, target).resolved_url().is_ok());
     }
     let mut options = HttpClientOptions::new();
-    options.set_base_url("https://example.invalid/api/").unwrap();
+    options
+        .set_base_url("https://example.invalid/api/")
+        .unwrap();
     let client = HttpClientBuilder::new().options(options).build().unwrap();
     assert_eq!(
         client
@@ -70,10 +72,16 @@ fn test_http_request_rejects_non_http_schemes() {
     );
     let mut request = new_request(Method::GET, "https://example.invalid/ok");
     request.set_path("ftp://example.invalid/file");
-    assert_eq!(request.resolved_url().unwrap_err().kind(), HttpErrorKind::InvalidUrl);
+    assert_eq!(
+        request.resolved_url().unwrap_err().kind(),
+        HttpErrorKind::InvalidUrl
+    );
     let mut request = new_request(Method::GET, "items");
     request.set_base_url(Url::parse("ftp://example.invalid/api/").unwrap());
-    assert_eq!(request.resolved_url().unwrap_err().kind(), HttpErrorKind::InvalidUrl);
+    assert_eq!(
+        request.resolved_url().unwrap_err().kind(),
+        HttpErrorKind::InvalidUrl
+    );
 }
 
 #[test]
@@ -86,7 +94,9 @@ fn test_http_request_setters_update_method_path_query_and_body() {
     assert_eq!(request.method(), &Method::POST);
     assert_eq!(request.path(), "/v2/orders");
 
-    request.add_query_param("page", "1").add_query_param("limit", "10");
+    request
+        .add_query_param("page", "1")
+        .add_query_param("limit", "10");
     assert_eq!(
         request.query(),
         vec![
@@ -154,11 +164,18 @@ fn test_http_request_debug_masks_sensitive_values() {
 async fn test_relative_url_error_does_not_expose_query_or_fragment() {
     let client = HttpClientBuilder::new().build().unwrap();
     let request = client
-        .request(Method::GET, "/v1?access_token=PRIVATE_QUERY#PRIVATE_FRAGMENT")
+        .request(
+            Method::GET,
+            "/v1?access_token=PRIVATE_QUERY#PRIVATE_FRAGMENT",
+        )
         .build();
     let error = request.resolved_url().unwrap_err();
     assert_eq!(error.kind(), HttpErrorKind::InvalidUrl);
-    for rendered in [error.message().to_owned(), error.to_string(), format!("{error:?}")] {
+    for rendered in [
+        error.message().to_owned(),
+        error.to_string(),
+        format!("{error:?}"),
+    ] {
         assert!(!rendered.contains("PRIVATE_QUERY"));
         assert!(!rendered.contains("PRIVATE_FRAGMENT"));
     }
@@ -181,7 +198,11 @@ fn test_failed_base_url_join_keeps_safe_summary_and_parse_source() {
         .unwrap_err();
     assert_eq!(error.kind(), HttpErrorKind::InvalidUrl);
     assert!(error.source().unwrap().is::<url::ParseError>());
-    for rendered in [error.message().to_owned(), error.to_string(), format!("{error:?}")] {
+    for rendered in [
+        error.message().to_owned(),
+        error.to_string(),
+        format!("{error:?}"),
+    ] {
         assert!(!rendered.contains("PRIVATE_QUERY"));
         assert!(rendered.contains("Failed to resolve request path against base URL"));
     }
@@ -248,7 +269,9 @@ fn test_http_request_debug_honors_url_path_redaction_policy() {
             http.url_path(UrlPathPolicy::Redact);
         })
         .expect("test policy should be valid");
-    options.log_redaction_policy = policy_builder.build().expect("log redaction policy should be valid");
+    options.log_redaction_policy = policy_builder
+        .build()
+        .expect("log redaction policy should be valid");
     let client = HttpClientBuilder::new()
         .options(options)
         .build()
@@ -279,13 +302,18 @@ fn test_http_request_debug_honors_explicit_default_field_exclusion() {
             let _ = http.query().allow_exact("SIG");
         })
         .expect("the test policy input should be valid");
-    options.log_redaction_policy = builder.build().expect("log redaction policy should be valid");
+    options.log_redaction_policy = builder
+        .build()
+        .expect("log redaction policy should be valid");
     let client = HttpClientBuilder::new()
         .options(options)
         .build()
         .expect("client should be created");
     let request = client
-        .request(Method::GET, "https://example.com/callback?sig=known-false-positive")
+        .request(
+            Method::GET,
+            "https://example.com/callback?sig=known-false-positive",
+        )
         .build();
 
     let debug = format!("{request:?}");
@@ -302,7 +330,9 @@ fn test_http_request_debug_suffix_allow_wins_over_sensitive_suffix() {
             let _ = http.query().allow_suffix("access_token");
         })
         .expect("the test policy input should be valid");
-    options.log_redaction_policy = builder.build().expect("log redaction policy should be valid");
+    options.log_redaction_policy = builder
+        .build()
+        .expect("log redaction policy should be valid");
     let client = HttpClientBuilder::new()
         .options(options)
         .build()
@@ -329,13 +359,18 @@ fn test_http_request_debug_allow_rule_wins_independent_of_builder_order() {
             let _ = http.query().raise("SIG", Sensitivity::Secret);
         })
         .expect("the test policy input should be valid");
-    options.log_redaction_policy = builder.build().expect("log redaction policy should be valid");
+    options.log_redaction_policy = builder
+        .build()
+        .expect("log redaction policy should be valid");
     let client = HttpClientBuilder::new()
         .options(options)
         .build()
         .expect("client should be created");
     let request = client
-        .request(Method::GET, "https://example.com/callback?sig=must-be-redacted")
+        .request(
+            Method::GET,
+            "https://example.com/callback?sig=must-be-redacted",
+        )
         .build();
 
     let debug = format!("{request:?}");
@@ -358,7 +393,9 @@ fn test_http_request_resolved_url_is_public() {
         .query_param("added", "two words")
         .build();
 
-    let url = request.resolved_url().expect("resolved request URL should be public");
+    let url = request
+        .resolved_url()
+        .expect("resolved request URL should be public");
 
     assert_eq!(
         url.as_str(),
@@ -379,7 +416,11 @@ fn test_url_join_preserves_documented_prefix_rules() {
             "/events",
             "https://api.example.com/events",
         ),
-        ("https://api.example.com/v1", "events", "https://api.example.com/events"),
+        (
+            "https://api.example.com/v1",
+            "events",
+            "https://api.example.com/events",
+        ),
         (
             "https://api.example.com/v1",
             "/events",
@@ -387,7 +428,9 @@ fn test_url_join_preserves_documented_prefix_rules() {
         ),
     ] {
         let mut options = HttpClientOptions::default();
-        options.set_base_url(base).expect("base URL should be valid");
+        options
+            .set_base_url(base)
+            .expect("base URL should be valid");
         let client = HttpClientBuilder::new()
             .options(options)
             .build()
@@ -409,7 +452,10 @@ fn test_http_request_setters_update_headers_timeout_retry_and_cancellation() {
     request
         .set_header("x-trace-id", "trace-1")
         .expect("valid header should be accepted");
-    request.set_typed_header(HeaderName::from_static("x-role"), HeaderValue::from_static("tester"));
+    request.set_typed_header(
+        HeaderName::from_static("x-role"),
+        HeaderValue::from_static("tester"),
+    );
     assert_eq!(
         request
             .headers()
@@ -418,7 +464,10 @@ fn test_http_request_setters_update_headers_timeout_retry_and_cancellation() {
         "trace-1"
     );
     assert_eq!(
-        request.headers().get("x-role").expect("x-role header should exist"),
+        request
+            .headers()
+            .get("x-role")
+            .expect("x-role header should exist"),
         "tester"
     );
 
@@ -448,7 +497,10 @@ fn test_http_request_setters_update_headers_timeout_retry_and_cancellation() {
     request
         .set_read_timeout(Duration::from_millis(750))
         .expect("positive read timeout should be accepted");
-    assert_eq!(request.response_header_timeout(), Duration::from_millis(250));
+    assert_eq!(
+        request.response_header_timeout(),
+        Duration::from_millis(250)
+    );
     assert_eq!(request.read_timeout(), Duration::from_millis(750));
 
     let token = HttpCancellationToken::new();
@@ -489,12 +541,13 @@ fn test_http_request_timeout_setters_reject_zero_and_keep_previous_values() {
         .set_response_header_timeout(Duration::ZERO)
         .expect_err("zero write timeout should be rejected");
     assert_eq!(response_header_timeout_error.kind, HttpErrorKind::Other);
-    assert!(
-        response_header_timeout_error
-            .message
-            .contains("response_header_timeout")
+    assert!(response_header_timeout_error
+        .message
+        .contains("response_header_timeout"));
+    assert_eq!(
+        request.response_header_timeout(),
+        Duration::from_millis(250)
     );
-    assert_eq!(request.response_header_timeout(), Duration::from_millis(250));
 
     let read_timeout_error = request
         .set_read_timeout(Duration::ZERO)
@@ -531,7 +584,10 @@ fn test_http_request_setters_update_resolved_url_for_base_url_and_ipv4_only() {
     let mut request = client.request(Method::GET, "users").build();
 
     assert_eq!(
-        request.resolved_url().expect("request URL should resolve").as_str(),
+        request
+            .resolved_url()
+            .expect("request URL should resolve")
+            .as_str(),
         "https://api.example.com/v1/users"
     );
 

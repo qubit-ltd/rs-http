@@ -15,22 +15,22 @@ use http::HeaderMap;
 use http::Method;
 use http::StatusCode;
 use qubit_budget::json::JsonValueLimits;
-use qubit_http::HttpClientBuilder;
-use qubit_http::HttpClientOptions;
-use qubit_http::HttpErrorKind;
-use qubit_http::HttpResponse;
 use qubit_http::sse::DoneMarkerPolicy;
 use qubit_http::sse::SseChunk;
 use qubit_http::sse::SseCompletionPolicy;
 use qubit_http::sse::SseJsonMode;
+use qubit_http::HttpClientBuilder;
+use qubit_http::HttpClientOptions;
+use qubit_http::HttpErrorKind;
+use qubit_http::HttpResponse;
 use qubit_redact::RedactionPolicy;
 use qubit_redact::Sensitivity;
 use tokio::test as tokio_test;
 use tokio::time::timeout;
 
+use crate::common::spawn_one_shot_server;
 use crate::common::ResponseChunk;
 use crate::common::ResponsePlan;
-use crate::common::spawn_one_shot_server;
 
 #[derive(Debug, serde::Deserialize, PartialEq, Eq)]
 struct TestChunk {
@@ -56,7 +56,10 @@ async fn test_decode_events_reports_sse_protocol_error_on_non_utf8_line() {
     assert_eq!(error.kind, HttpErrorKind::SseProtocol);
     assert_eq!(error.method(), Some(&Method::GET));
     assert_eq!(error.status(), Some(StatusCode::OK));
-    assert_eq!(error.url().unwrap().query(), Some("access_token=SSE_PRIVATE"));
+    assert_eq!(
+        error.url().unwrap().query(),
+        Some("access_token=SSE_PRIVATE")
+    );
     assert!(!error.to_string().contains("SSE_PRIVATE"));
     assert!(!format!("{error:?}").contains("SSE_PRIVATE"));
 }
@@ -81,12 +84,18 @@ async fn test_decode_events_decodes_buffered_body_with_complete_frames() {
 #[tokio_test]
 async fn test_decode_events_reports_frame_limit_error() {
     let response = buffered_response_from_parts(vec![b"data: one\ndata: two\n\n".to_vec()]);
-    let mut events = response.sse_max_line_bytes(1024).sse_max_frame_bytes(8).sse_messages();
+    let mut events = response
+        .sse_max_line_bytes(1024)
+        .sse_max_frame_bytes(8)
+        .sse_messages();
     let error = events.next().await.unwrap().unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::SseProtocol);
     assert_eq!(error.method(), Some(&Method::GET));
     assert_eq!(error.status(), Some(StatusCode::OK));
-    assert_eq!(error.url().unwrap().query(), Some("access_token=SSE_PRIVATE"));
+    assert_eq!(
+        error.url().unwrap().query(),
+        Some("access_token=SSE_PRIVATE")
+    );
     assert!(!format!("{error:?}").contains("SSE_PRIVATE"));
 }
 
@@ -98,7 +107,10 @@ async fn test_decode_events_reports_line_limit_with_http_context() {
     assert_eq!(error.kind, HttpErrorKind::SseProtocol);
     assert_eq!(error.method(), Some(&Method::GET));
     assert_eq!(error.status(), Some(StatusCode::OK));
-    assert_eq!(error.url().unwrap().query(), Some("access_token=SSE_PRIVATE"));
+    assert_eq!(
+        error.url().unwrap().query(),
+        Some("access_token=SSE_PRIVATE")
+    );
     assert!(!format!("{error:?}").contains("SSE_PRIVATE"));
 }
 
@@ -117,7 +129,10 @@ async fn test_sse_missing_done_marker_error_has_http_context() {
     assert_eq!(error.kind, HttpErrorKind::SseProtocol);
     assert_eq!(error.method(), Some(&Method::GET));
     assert_eq!(error.status(), Some(StatusCode::OK));
-    assert_eq!(error.url().unwrap().query(), Some("access_token=SSE_PRIVATE"));
+    assert_eq!(
+        error.url().unwrap().query(),
+        Some("access_token=SSE_PRIVATE")
+    );
     assert!(!format!("{error:?}").contains("SSE_PRIVATE"));
 }
 
@@ -261,7 +276,10 @@ async fn test_execute_stream_decode_events_reports_read_timeout_when_interrupted
     assert_eq!(error.method, Some(Method::GET));
     assert_eq!(error.url.as_ref().map(url::Url::path), Some("/sse-timeout"));
     assert_eq!(error.status, Some(StatusCode::OK));
-    assert!(error.source().is_none(), "timeout wrapper has no backend source");
+    assert!(
+        error.source().is_none(),
+        "timeout wrapper has no backend source"
+    );
 }
 
 #[tokio_test]
@@ -292,7 +310,9 @@ async fn test_execute_stream_decode_json_chunks_uses_client_default_strict_mode(
             let _ = http.body().raise("sse_decode_secret", Sensitivity::Secret);
         })
         .expect("the test policy input should be valid");
-    let expected_policy = builder.build().expect("the custom HTTP policy should be valid");
+    let expected_policy = builder
+        .build()
+        .expect("the custom HTTP policy should be valid");
     options.log_redaction_policy = expected_policy.clone();
     options.timeouts.read_timeout = Duration::from_secs(2);
     options.timeouts.response_header_timeout = Duration::from_secs(2);
@@ -310,13 +330,15 @@ async fn test_execute_stream_decode_json_chunks_uses_client_default_strict_mode(
     assert_eq!(error.log_redactor.policy(), &expected_policy);
     assert_eq!(error.method(), Some(&Method::GET));
     assert_eq!(error.status(), Some(StatusCode::OK));
-    assert_eq!(error.url(), Some(&server.base_url().join("/sse-strict").unwrap()));
-    assert!(
-        error
-            .source
-            .as_deref()
-            .is_some_and(|source| { source.downcast_ref::<qubit_json::decode::JsonDecodeError>().is_some() })
+    assert_eq!(
+        error.url(),
+        Some(&server.base_url().join("/sse-strict").unwrap())
     );
+    assert!(error.source.as_deref().is_some_and(|source| {
+        source
+            .downcast_ref::<qubit_json::decode::JsonDecodeError>()
+            .is_some()
+    }));
 }
 
 #[tokio_test]
@@ -405,10 +427,14 @@ async fn test_sse_decode_error_preserves_client_redactor_policy() {
     let builder = RedactionPolicy::default()
         .to_builder()
         .http(|http| {
-            let _ = http.query().raise("tenant_stream_secret", Sensitivity::Secret);
+            let _ = http
+                .query()
+                .raise("tenant_stream_secret", Sensitivity::Secret);
         })
         .expect("the test policy input should be valid");
-    let expected_policy = builder.build().expect("the custom HTTP policy should be valid");
+    let expected_policy = builder
+        .build()
+        .expect("the custom HTTP policy should be valid");
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.log_redaction_policy = expected_policy.clone();
@@ -418,7 +444,10 @@ async fn test_sse_decode_error_preserves_client_redactor_policy() {
         .expect("the client should be created");
 
     let request = client.request(Method::GET, "/sse-invalid-utf8").build();
-    let response = client.execute(request).await.expect("the response should open");
+    let response = client
+        .execute(request)
+        .await
+        .expect("the response should open");
     let mut events = response.sse_messages();
     let error = events
         .next()

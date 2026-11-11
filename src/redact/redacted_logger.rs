@@ -30,7 +30,9 @@ impl RedactedLogger {
     /// A safe TRACE rendering helper.
     #[inline]
     pub(crate) fn new(log_redactor: Redactor) -> Self {
-        Self { redactor: log_redactor }
+        Self {
+            redactor: log_redactor,
+        }
     }
 
     /// Creates a logger for a client option snapshot using its shared redactor.
@@ -44,7 +46,10 @@ impl RedactedLogger {
     ///
     /// A helper using the supplied immutable redactor snapshot.
     #[inline]
-    pub(crate) fn from_options_with_redactor(_options: &HttpClientOptions, log_redactor: Redactor) -> Self {
+    pub(crate) fn from_options_with_redactor(
+        _options: &HttpClientOptions,
+        log_redactor: Redactor,
+    ) -> Self {
         Self::new(log_redactor)
     }
 

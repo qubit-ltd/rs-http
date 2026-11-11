@@ -8,23 +8,23 @@
 //! Generated SSE invariants with bounded inputs and deterministic seeds.
 
 use futures_util::StreamExt;
+use proptest::prelude::any;
 use proptest::prelude::Just;
 use proptest::prelude::Strategy;
-use proptest::prelude::any;
 use proptest::prop_assert_eq;
 use proptest::test_runner::Config as ProptestConfig;
 use proptest::test_runner::RngSeed;
 use proptest::test_runner::TestRunner;
 
-use super::generated_cases::GeneratedCase;
 use super::generated_cases::case_strategy;
 use super::generated_cases::stream_for_case;
 use super::generated_cases::stream_with_error;
-use crate::HttpErrorKind;
+use super::generated_cases::GeneratedCase;
+use crate::sse::decode_records_from_stream_with_limits;
 use crate::sse::SseControl;
 use crate::sse::SseMessage;
 use crate::sse::SseRecord;
-use crate::sse::decode_records_from_stream_with_limits;
+use crate::HttpErrorKind;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Outcome {
@@ -33,7 +33,12 @@ enum Outcome {
 }
 
 fn decode(runtime: &tokio::runtime::Runtime, case: &GeneratedCase, cuts: &[usize]) -> Vec<Outcome> {
-    decode_stream(runtime, stream_for_case(case, cuts), case.line_limit, case.frame_limit)
+    decode_stream(
+        runtime,
+        stream_for_case(case, cuts),
+        case.line_limit,
+        case.frame_limit,
+    )
 }
 
 fn decode_stream(
@@ -50,7 +55,10 @@ fn decode_stream(
                 Ok(record) => output.push(Outcome::Record(record)),
                 Err(error) => {
                     output.push(Outcome::Error(error.kind));
-                    assert!(stream.next().await.is_none(), "decoder emitted an item after an error");
+                    assert!(
+                        stream.next().await.is_none(),
+                        "decoder emitted an item after an error"
+                    );
                     break;
                 }
             }
@@ -103,7 +111,9 @@ fn test_generated_structured_messages_match_independent_expected_records() {
             } else {
                 String::new()
             };
-            let bytes = format!("event: {event}{ending}data: {first}{ending}data: {second}{suffix}").into_bytes();
+            let bytes =
+                format!("event: {event}{ending}data: {first}{ending}data: {second}{suffix}")
+                    .into_bytes();
             (bytes, event, first, second, terminated)
         });
     let mut runner = runner(20261109);
@@ -151,7 +161,18 @@ fn test_generated_field_semantics_match_independent_expected_records() {
         ending,
     )
         .prop_map(
-            |(prior_id, event, first, second, has_prior_id, valid_retry, id_mode, retry_mode, bom, ending)| {
+            |(
+                prior_id,
+                event,
+                first,
+                second,
+                has_prior_id,
+                valid_retry,
+                id_mode,
+                retry_mode,
+                bom,
+                ending,
+            )| {
                 let mut input = String::new();
                 if bom {
                     input.push('\u{feff}');
@@ -217,14 +238,14 @@ fn test_generated_field_semantics_match_independent_expected_records() {
 
                 let mut expected = Vec::new();
                 if retry_mode == 1 {
-                    expected.push(Outcome::Record(SseRecord::Control(SseControl::ReconnectDelayMs(
-                        valid_retry,
-                    ))));
+                    expected.push(Outcome::Record(SseRecord::Control(
+                        SseControl::ReconnectDelayMs(valid_retry),
+                    )));
                 }
                 if has_prior_id {
-                    expected.push(Outcome::Record(SseRecord::Control(SseControl::LastEventId(
-                        prior_id.clone(),
-                    ))));
+                    expected.push(Outcome::Record(SseRecord::Control(
+                        SseControl::LastEventId(prior_id.clone()),
+                    )));
                 }
                 let last_event_id = current_id.or_else(|| has_prior_id.then_some(prior_id));
                 expected.push(Outcome::Record(SseRecord::Dispatch(SseMessage {
@@ -283,7 +304,10 @@ fn test_generated_line_limit_is_inclusive_and_rejects_one_more_byte() {
         cuts: vec![1, 2, 3],
         error_offset: None,
     };
-    assert_eq!(decode(&runtime, &with_bom, &[]), decode(&runtime, &allowed, &[]));
+    assert_eq!(
+        decode(&runtime, &with_bom, &[]),
+        decode(&runtime, &allowed, &[])
+    );
     let unicode_allowed = GeneratedCase {
         bytes: "data: é\n\n".as_bytes().to_vec(),
         line_limit: 8,
@@ -348,7 +372,9 @@ fn test_generated_frame_limit_counts_unknown_fields_and_preserves_prefix() {
         decode(&runtime, &control_eof, &[]),
         vec![
             Outcome::Record(SseRecord::Control(SseControl::ReconnectDelayMs(23))),
-            Outcome::Record(SseRecord::Control(SseControl::LastEventId("eof-cursor".to_owned(),))),
+            Outcome::Record(SseRecord::Control(SseControl::LastEventId(
+                "eof-cursor".to_owned(),
+            ))),
         ]
     );
     let comment_and_terminator = GeneratedCase {
@@ -411,7 +437,10 @@ fn test_generated_transport_error_is_injected_at_a_logical_offset() {
                 .count(),
             1
         );
-        assert_eq!(result.last(), Some(&Outcome::Error(HttpErrorKind::Transport)));
+        assert_eq!(
+            result.last(),
+            Some(&Outcome::Error(HttpErrorKind::Transport))
+        );
         let expected_prefix = if split >= b"data: first\n\n".len() {
             vec![Outcome::Record(SseRecord::Dispatch(SseMessage {
                 event: None,
@@ -442,7 +471,9 @@ fn test_generated_control_fields_and_eof_contract_have_independent_expectations(
         decode(&runtime, &case, &[]),
         vec![
             Outcome::Record(SseRecord::Control(SseControl::ReconnectDelayMs(17))),
-            Outcome::Record(SseRecord::Control(SseControl::LastEventId("cursor".to_owned()))),
+            Outcome::Record(SseRecord::Control(SseControl::LastEventId(
+                "cursor".to_owned()
+            ))),
         ]
     );
     let eof = GeneratedCase {
@@ -462,47 +493,49 @@ fn test_generated_transport_layouts_preserve_success_prefix_and_emit_error_once(
         .enable_all()
         .build()
         .expect("runtime");
-    let strategy = ("[a-z]{0,16}", "[a-z]{0,16}", any::<bool>()).prop_flat_map(|(first, second, include_second)| {
-        let first_message = format!("data: {first}\n\n").into_bytes();
-        let second_message = format!("data: {second}\n\n").into_bytes();
-        let first_boundary = first_message.len();
-        let mut bytes = first_message.clone();
-        if include_second {
-            bytes.extend_from_slice(&second_message);
-        }
-        let input_len = bytes.len();
-        (
-            0usize..=input_len,
-            proptest::collection::vec(0usize..=input_len, 0..=64),
-        )
-            .prop_map(move |(offset, cuts)| {
-                let mut expected = Vec::new();
-                if offset >= first_boundary {
-                    expected.push(Outcome::Record(SseRecord::Dispatch(SseMessage {
-                        event: None,
-                        data: first.clone(),
-                        last_event_id: None,
-                    })));
-                }
-                if include_second && offset == input_len {
-                    expected.push(Outcome::Record(SseRecord::Dispatch(SseMessage {
-                        event: None,
-                        data: second.clone(),
-                        last_event_id: None,
-                    })));
-                }
-                (
-                    GeneratedCase {
-                        bytes: bytes.clone(),
-                        line_limit: 64,
-                        frame_limit: 128,
-                        cuts,
-                        error_offset: Some(offset),
-                    },
-                    expected,
-                )
-            })
-    });
+    let strategy = ("[a-z]{0,16}", "[a-z]{0,16}", any::<bool>()).prop_flat_map(
+        |(first, second, include_second)| {
+            let first_message = format!("data: {first}\n\n").into_bytes();
+            let second_message = format!("data: {second}\n\n").into_bytes();
+            let first_boundary = first_message.len();
+            let mut bytes = first_message.clone();
+            if include_second {
+                bytes.extend_from_slice(&second_message);
+            }
+            let input_len = bytes.len();
+            (
+                0usize..=input_len,
+                proptest::collection::vec(0usize..=input_len, 0..=64),
+            )
+                .prop_map(move |(offset, cuts)| {
+                    let mut expected = Vec::new();
+                    if offset >= first_boundary {
+                        expected.push(Outcome::Record(SseRecord::Dispatch(SseMessage {
+                            event: None,
+                            data: first.clone(),
+                            last_event_id: None,
+                        })));
+                    }
+                    if include_second && offset == input_len {
+                        expected.push(Outcome::Record(SseRecord::Dispatch(SseMessage {
+                            event: None,
+                            data: second.clone(),
+                            last_event_id: None,
+                        })));
+                    }
+                    (
+                        GeneratedCase {
+                            bytes: bytes.clone(),
+                            line_limit: 64,
+                            frame_limit: 128,
+                            cuts,
+                            error_offset: Some(offset),
+                        },
+                        expected,
+                    )
+                })
+        },
+    );
     runner
         .run(&strategy, |(case, mut expected)| {
             let offset = case.error_offset.expect("generated logical error offset");
@@ -560,7 +593,9 @@ fn test_generated_independent_field_semantics_cover_cursor_retry_bom_and_unknown
                 output,
                 vec![
                     Outcome::Record(SseRecord::Control(SseControl::ReconnectDelayMs(9))),
-                    Outcome::Record(SseRecord::Control(SseControl::LastEventId("old".to_owned()))),
+                    Outcome::Record(SseRecord::Control(SseControl::LastEventId(
+                        "old".to_owned()
+                    ))),
                     Outcome::Record(SseRecord::Dispatch(SseMessage {
                         event: None,
                         data: "x".to_owned(),
@@ -573,7 +608,9 @@ fn test_generated_independent_field_semantics_cover_cursor_retry_bom_and_unknown
                     }))
                 ]
             );
-        } else if *bytes == b"id: bad\0id\ndata: x\n\n" || *bytes == b"data: x\n\xef\xbb\xbfdata: y\n\n" {
+        } else if *bytes == b"id: bad\0id\ndata: x\n\n"
+            || *bytes == b"data: x\n\xef\xbb\xbfdata: y\n\n"
+        {
             assert_eq!(
                 output,
                 vec![Outcome::Record(SseRecord::Dispatch(SseMessage {

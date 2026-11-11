@@ -32,13 +32,16 @@ fn test_retry_backoff_validation_errors_keep_scoped_paths() {
                     .unwrap();
             }
             "exponential" => {
-                config.set("client.retry.backoff_multiplier", 0.5_f64).unwrap();
+                config
+                    .set("client.retry.backoff_multiplier", 0.5_f64)
+                    .unwrap();
             }
             _ => {
                 config.set("client.retry.jitter_factor", 2.0_f64).unwrap();
             }
         }
-        let error = HttpRetryOptions::from_config(&config.section("client.retry").unwrap()).unwrap_err();
+        let error =
+            HttpRetryOptions::from_config(&config.section("client.retry").unwrap()).unwrap_err();
         assert_eq!(error.kind, HttpConfigErrorKind::InvalidValue);
         let expected = match strategy {
             "random" => "client.retry.random_max_delay",
@@ -49,7 +52,8 @@ fn test_retry_backoff_validation_errors_keep_scoped_paths() {
     }
     let mut config = Config::new();
     config.set("client.retry.max_attempts", 0_u32).unwrap();
-    let error = HttpRetryOptions::from_config(&config.section("client.retry").unwrap()).unwrap_err();
+    let error =
+        HttpRetryOptions::from_config(&config.section("client.retry").unwrap()).unwrap_err();
     assert_eq!(error.kind, HttpConfigErrorKind::InvalidValue);
     assert_eq!(error.path, "client.retry.max_attempts");
 }
@@ -61,10 +65,15 @@ fn test_http_retry_options_alias_exponential_dash_normalizes_to_exponential_back
     config
         .set("retry.backoff_initial_delay", Duration::from_millis(40))
         .unwrap();
-    config.set("retry.backoff_max_delay", Duration::from_secs(1)).unwrap();
+    config
+        .set("retry.backoff_max_delay", Duration::from_secs(1))
+        .unwrap();
 
     let options = HttpRetryOptions::from_config(&config.section("retry").unwrap()).unwrap();
-    assert_eq!(options.backoff.maximum_delay(), Some(Duration::from_secs(1)));
+    assert_eq!(
+        options.backoff.maximum_delay(),
+        Some(Duration::from_secs(1))
+    );
 }
 
 #[test]
@@ -86,7 +95,9 @@ fn test_http_retry_options_maps_backoff_error_fields_from_policy() {
     maximum
         .set("retry.backoff_initial_delay", Duration::from_secs(2))
         .unwrap();
-    maximum.set("retry.backoff_max_delay", Duration::from_secs(1)).unwrap();
+    maximum
+        .set("retry.backoff_max_delay", Duration::from_secs(1))
+        .unwrap();
     let error = HttpRetryOptions::from_config(&maximum.section("retry").unwrap()).unwrap_err();
     assert_eq!(error.path, "retry.backoff_max_delay");
 }
@@ -144,7 +155,10 @@ fn test_http_retry_options_parses_status_and_error_kind_allowlists() {
     let options = HttpRetryOptions::from_config(&config.section("retry").unwrap()).unwrap();
     assert_eq!(
         options.retry_status_codes,
-        Some(vec![StatusCode::TOO_MANY_REQUESTS, StatusCode::SERVICE_UNAVAILABLE])
+        Some(vec![
+            StatusCode::TOO_MANY_REQUESTS,
+            StatusCode::SERVICE_UNAVAILABLE
+        ])
     );
     assert_eq!(
         options.retry_error_kinds,
@@ -156,7 +170,10 @@ fn test_http_retry_options_parses_status_and_error_kind_allowlists() {
 fn test_http_retry_options_rejects_invalid_status_code_in_allowlist() {
     let mut config = Config::new();
     config
-        .set("retry.status_codes", vec!["200".to_string(), "999".to_string()])
+        .set(
+            "retry.status_codes",
+            vec!["200".to_string(), "999".to_string()],
+        )
         .unwrap();
 
     let error = HttpRetryOptions::from_config(&config.section("retry").unwrap()).unwrap_err();
@@ -168,7 +185,10 @@ fn test_http_retry_options_rejects_invalid_status_code_in_allowlist() {
 fn test_http_retry_options_rejects_non_numeric_status_code_in_allowlist() {
     let mut config = Config::new();
     config
-        .set("retry.status_codes", vec!["429".to_string(), "not-a-code".to_string()])
+        .set(
+            "retry.status_codes",
+            vec!["429".to_string(), "not-a-code".to_string()],
+        )
         .unwrap();
 
     let error = HttpRetryOptions::from_config(&config.section("retry").unwrap()).unwrap_err();
@@ -236,7 +256,9 @@ fn test_http_retry_options_parses_all_supported_error_kinds() {
         .unwrap();
 
     let options = HttpRetryOptions::from_config(&config.section("retry").unwrap()).unwrap();
-    let kinds = options.retry_error_kinds.expect("retry_error_kinds should be parsed");
+    let kinds = options
+        .retry_error_kinds
+        .expect("retry_error_kinds should be parsed");
     assert_eq!(kinds.len(), 15);
     assert!(kinds.contains(&HttpErrorKind::InvalidUrl));
     assert!(kinds.contains(&HttpErrorKind::BuildClient));
@@ -290,16 +312,23 @@ fn test_http_retry_options_allowlists_trim_values_and_sort_status_codes() {
 fn test_http_retry_options_rejects_blank_values_in_allowlists() {
     let mut config = Config::new();
     config
-        .set("retry.status_codes", vec!["429".to_string(), " ".to_string()])
+        .set(
+            "retry.status_codes",
+            vec!["429".to_string(), " ".to_string()],
+        )
         .unwrap();
 
-    let status_error = HttpRetryOptions::from_config(&config.section("retry").unwrap()).unwrap_err();
+    let status_error =
+        HttpRetryOptions::from_config(&config.section("retry").unwrap()).unwrap_err();
     assert_eq!(status_error.kind, HttpConfigErrorKind::InvalidValue);
     assert!(status_error.path.contains("status_codes"));
 
     let mut config2 = Config::new();
     config2
-        .set("retry.error_kinds", vec!["transport".to_string(), " ".to_string()])
+        .set(
+            "retry.error_kinds",
+            vec!["transport".to_string(), " ".to_string()],
+        )
         .unwrap();
 
     let kind_error = HttpRetryOptions::from_config(&config2.section("retry").unwrap()).unwrap_err();
@@ -310,7 +339,9 @@ fn test_http_retry_options_rejects_blank_values_in_allowlists() {
 #[test]
 fn test_http_retry_options_rejects_status_code_below_100() {
     let mut config = Config::new();
-    config.set("retry.status_codes", vec!["99".to_string()]).unwrap();
+    config
+        .set("retry.status_codes", vec!["99".to_string()])
+        .unwrap();
 
     let error = HttpRetryOptions::from_config(&config.section("retry").unwrap()).unwrap_err();
     assert_eq!(error.kind, HttpConfigErrorKind::InvalidValue);
@@ -344,8 +375,12 @@ fn test_http_retry_options_from_config_reads_all_optional_fields() {
     let mut config = Config::new();
     config.set("retry.enabled", true).unwrap();
     config.set("retry.max_attempts", 5_u32).unwrap();
-    config.set("retry.max_duration", Duration::from_secs(12)).unwrap();
-    config.set("retry.delay_strategy", "exponential_backoff").unwrap();
+    config
+        .set("retry.max_duration", Duration::from_secs(12))
+        .unwrap();
+    config
+        .set("retry.delay_strategy", "exponential_backoff")
+        .unwrap();
     config
         .set("retry.backoff_initial_delay", Duration::from_millis(25))
         .unwrap();
@@ -355,8 +390,12 @@ fn test_http_retry_options_from_config_reads_all_optional_fields() {
     config.set("retry.backoff_multiplier", 1.5_f64).unwrap();
     config.set("retry.jitter_factor", 0.2_f64).unwrap();
     config.set("retry.method_policy", "all").unwrap();
-    config.set("retry.status_codes", vec!["429".to_string()]).unwrap();
-    config.set("retry.error_kinds", vec!["transport".to_string()]).unwrap();
+    config
+        .set("retry.status_codes", vec!["429".to_string()])
+        .unwrap();
+    config
+        .set("retry.error_kinds", vec!["transport".to_string()])
+        .unwrap();
 
     let options = HttpRetryOptions::from_config(&config.section("retry").unwrap()).unwrap();
 
@@ -364,9 +403,18 @@ fn test_http_retry_options_from_config_reads_all_optional_fields() {
     assert_eq!(options.max_attempts, 5);
     assert_eq!(options.max_duration, Some(Duration::from_secs(12)));
     assert_eq!(options.method_policy, HttpRetryMethodPolicy::AllMethods);
-    assert_eq!(options.retry_status_codes, Some(vec![StatusCode::TOO_MANY_REQUESTS]));
-    assert_eq!(options.retry_error_kinds, Some(vec![HttpErrorKind::Transport]));
-    assert_eq!(options.backoff.maximum_delay(), Some(Duration::from_millis(250)));
+    assert_eq!(
+        options.retry_status_codes,
+        Some(vec![StatusCode::TOO_MANY_REQUESTS])
+    );
+    assert_eq!(
+        options.retry_error_kinds,
+        Some(vec![HttpErrorKind::Transport])
+    );
+    assert_eq!(
+        options.backoff.maximum_delay(),
+        Some(Duration::from_millis(250))
+    );
 }
 
 #[test]
@@ -375,7 +423,9 @@ fn test_retry_exponential_parameters_apply_without_strategy_key() {
     implicit
         .set("backoff_initial_delay", Duration::from_millis(40))
         .unwrap();
-    implicit.set("backoff_max_delay", Duration::from_secs(1)).unwrap();
+    implicit
+        .set("backoff_max_delay", Duration::from_secs(1))
+        .unwrap();
     implicit.set("backoff_multiplier", 3.0_f64).unwrap();
     let implicit = HttpRetryOptions::from_config(&implicit).unwrap();
     let mut explicit = Config::new();
@@ -383,7 +433,9 @@ fn test_retry_exponential_parameters_apply_without_strategy_key() {
     explicit
         .set("backoff_initial_delay", Duration::from_millis(40))
         .unwrap();
-    explicit.set("backoff_max_delay", Duration::from_secs(1)).unwrap();
+    explicit
+        .set("backoff_max_delay", Duration::from_secs(1))
+        .unwrap();
     explicit.set("backoff_multiplier", 3.0_f64).unwrap();
     let explicit = HttpRetryOptions::from_config(&explicit).unwrap();
     assert_eq!(implicit.backoff, explicit.backoff);

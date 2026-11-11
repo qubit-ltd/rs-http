@@ -6,9 +6,9 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 use std::time::Duration;
 
 use http::Method;
@@ -20,11 +20,13 @@ use tokio::task::JoinHandle;
 use tokio::test as tokio_test;
 use tokio::time::timeout;
 
-use crate::common::ResponsePlan;
 use crate::common::spawn_one_shot_server;
+use crate::common::ResponsePlan;
 
 async fn spawn_tls_stall_server() -> (String, Arc<AtomicUsize>, JoinHandle<()>) {
-    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind TLS stall listener");
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind TLS stall listener");
     let address = listener.local_addr().expect("read listener address");
     let attempts = Arc::new(AtomicUsize::new(0));
     let observed_attempts = Arc::clone(&attempts);
@@ -65,7 +67,10 @@ async fn test_backend_error_mapper_classifies_tls_handshake_timeout_as_connect_t
     .expect_err("TLS handshake should stall");
 
     assert_eq!(error.kind, HttpErrorKind::ConnectTimeout);
-    assert!(error.source.is_some(), "underlying reqwest error should be retained");
+    assert!(
+        error.source.is_some(),
+        "underlying reqwest error should be retained"
+    );
     assert_eq!(error.method, Some(Method::GET));
     assert_eq!(error.url.as_ref().map(url::Url::as_str), Some(url.as_str()));
     assert_eq!(attempts.load(Ordering::SeqCst), 2);
@@ -76,7 +81,9 @@ async fn test_backend_error_mapper_classifies_tls_handshake_timeout_as_connect_t
 
 #[tokio_test]
 async fn test_backend_error_mapper_keeps_connection_refusal_as_transport() {
-    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind listener");
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind listener");
     let address = listener.local_addr().expect("read listener address");
     drop(listener);
 
@@ -154,7 +161,10 @@ async fn test_backend_error_mapper_classifies_body_read_timeout() {
 
     assert_eq!(error.kind, HttpErrorKind::ReadTimeout);
     assert_eq!(error.method, Some(Method::GET));
-    assert_eq!(error.url, Some(server.base_url().join("/read-timeout").unwrap()));
+    assert_eq!(
+        error.url,
+        Some(server.base_url().join("/read-timeout").unwrap())
+    );
 
     timeout(Duration::from_secs(3), server.finish())
         .await

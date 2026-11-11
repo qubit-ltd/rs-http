@@ -59,7 +59,9 @@ fn test_from_config_rejects_unknown_owned_keys() {
     ] {
         let mut config = Config::new();
         let path = format!("service.{key}");
-        config.set(&path, "1").expect("configuration accepts arbitrary keys");
+        config
+            .set(&path, "1")
+            .expect("configuration accepts arbitrary keys");
         let error = HttpClientOptions::from_config(&config.section("service").expect("section"))
             .expect_err("unknown HTTP key must be rejected");
         assert_eq!(error.path, path);
@@ -108,8 +110,11 @@ fn test_from_config_keeps_open_headers_and_sibling_sections() {
 #[test]
 fn test_from_config_resolves_domain_paths_without_prefix_guessing() {
     let mut config = Config::new();
-    config.set("base_url.base_url", "invalid URL").expect("raw config");
-    let error = HttpClientOptions::from_config(&config.section("base_url").expect("section")).expect_err("invalid URL");
+    config
+        .set("base_url.base_url", "invalid URL")
+        .expect("raw config");
+    let error = HttpClientOptions::from_config(&config.section("base_url").expect("section"))
+        .expect_err("invalid URL");
     assert_eq!(error.path, "base_url.base_url");
 }
 
@@ -117,13 +122,18 @@ fn test_from_config_resolves_domain_paths_without_prefix_guessing() {
 #[test]
 fn test_from_config_validates_proxy_and_logging_at_their_scope() {
     let mut config = Config::new();
-    config.set("service.proxy.enabled", true).expect("enabled proxy");
+    config
+        .set("service.proxy.enabled", true)
+        .expect("enabled proxy");
     let error = ProxyOptions::from_config(&config.section("service.proxy").expect("section"))
         .expect_err("enabled proxy requires host");
     assert_eq!(error.path, "service.proxy.host");
-    config.set("service.logging.body_size_limit", 0u64).expect("zero limit");
-    let error = HttpLoggingOptions::from_config(&config.section("service.logging").expect("section"))
-        .expect_err("body logging requires positive limit");
+    config
+        .set("service.logging.body_size_limit", 0u64)
+        .expect("zero limit");
+    let error =
+        HttpLoggingOptions::from_config(&config.section("service.logging").expect("section"))
+            .expect_err("body logging requires positive limit");
     assert_eq!(error.path, "service.logging.body_size_limit");
 }
 
@@ -134,8 +144,9 @@ fn test_from_config_helpers_reports_invalid_header_value_path() {
         .set("http.default_headers.x-bad", "line1\nline2".to_string())
         .expect("test config should accept raw string");
 
-    let error = HttpClientOptions::from_config(&config.section("http").expect("HTTP section should exist"))
-        .expect_err("invalid header value should fail");
+    let error =
+        HttpClientOptions::from_config(&config.section("http").expect("HTTP section should exist"))
+            .expect_err("invalid header value should fail");
 
     assert_eq!(error.kind, HttpConfigErrorKind::InvalidHeader);
     assert_eq!(error.path, "http.default_headers.x-bad");
@@ -150,8 +161,9 @@ fn test_from_config_helpers_accepts_u64_max_as_usize() {
         .set("http.max_redirects", u64::MAX)
         .expect("test config should accept u64::MAX");
 
-    let options = HttpClientOptions::from_config(&config.section("http").expect("HTTP section should exist"))
-        .expect("u64::MAX should fit in a 64-bit usize");
+    let options =
+        HttpClientOptions::from_config(&config.section("http").expect("HTTP section should exist"))
+            .expect("u64::MAX should fit in a 64-bit usize");
 
     assert_eq!(options.max_redirects, Some(usize::MAX));
 }
@@ -163,8 +175,9 @@ fn test_from_config_helpers_reports_platform_integer_overflow() {
         .set("http.max_redirects", usize::MAX as u128 + 1)
         .expect("test config should accept the platform-independent u128");
 
-    let error = HttpClientOptions::from_config(&config.section("http").expect("HTTP section should exist"))
-        .expect_err("a value larger than usize should fail");
+    let error =
+        HttpClientOptions::from_config(&config.section("http").expect("HTTP section should exist"))
+            .expect_err("a value larger than usize should fail");
 
     assert_eq!(error.kind, HttpConfigErrorKind::TypeError);
     assert_eq!(error.path, "http.max_redirects");
@@ -191,8 +204,9 @@ fn test_from_config_helpers_rejects_usize_overflow() {
         .set("http.max_redirects", u64::from(u32::MAX) + 1)
         .expect("test config should accept the platform-independent u64");
 
-    let error = HttpClientOptions::from_config(&config.section("http").expect("HTTP section should exist"))
-        .expect_err("a value larger than usize should fail");
+    let error =
+        HttpClientOptions::from_config(&config.section("http").expect("HTTP section should exist"))
+            .expect_err("a value larger than usize should fail");
 
     assert_eq!(error.kind, HttpConfigErrorKind::TypeError);
     assert_eq!(error.path, "http.max_redirects");

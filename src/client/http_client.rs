@@ -39,6 +39,11 @@ use super::internal::HttpAttemptFailure;
 use super::internal::HttpAttemptResponse;
 use super::internal::HttpRetryApplicationSource;
 use super::internal::HttpRetryRule;
+use crate::client::HttpClientBuilder;
+use crate::response::HttpResponseOptions;
+use crate::sse::SseMessageStream;
+use crate::sse::SseReconnectOptions;
+use crate::sse::SseReconnectRunner;
 use crate::AsyncHttpHeaderInjector;
 use crate::HttpClientOptions;
 use crate::HttpError;
@@ -56,11 +61,6 @@ use crate::HttpResult;
 use crate::HttpRetryDiagnostics;
 use crate::HttpRetryOptions;
 use crate::HttpRetryTermination;
-use crate::client::HttpClientBuilder;
-use crate::response::HttpResponseOptions;
-use crate::sse::SseMessageStream;
-use crate::sse::SseReconnectOptions;
-use crate::sse::SseReconnectRunner;
 
 /// High-level HTTP client: default headers, injectors, interceptors, logging,
 /// timeouts, and optional per-request retry.
@@ -115,11 +115,16 @@ impl RetryRule<HttpAttemptFailure> for HttpRetryRule {
     /// # Returns
     /// Aborts non-retryable HTTP errors, supplies an allowed `Retry-After`
     /// hint, or delegates retry timing to the configured policy.
-    fn decide(&self, failure: &AttemptFailure<HttpAttemptFailure>, _context: &RetryContext) -> RetryDecision {
+    fn decide(
+        &self,
+        failure: &AttemptFailure<HttpAttemptFailure>,
+        _context: &RetryContext,
+    ) -> RetryDecision {
         let AttemptFailure::Error(failure) = failure else {
             return RetryDecision::UseDefault;
         };
-        if !failure.retry_allowed || !HttpClient::is_retryable_error(&failure.error, &self.options) {
+        if !failure.retry_allowed || !HttpClient::is_retryable_error(&failure.error, &self.options)
+        {
             return RetryDecision::Abort;
         }
         if failure.honor_retry_after {
@@ -156,15 +161,20 @@ impl HttpClient {
     /// # Errors
     /// Returns [`crate::HttpConfigError`] when configuration parsing,
     /// validation, or backend construction fails.
-    pub fn from_config<R: ConfigReader + ?Sized>(config: &R) -> Result<Self, crate::HttpConfigError> {
+    pub fn from_config<R: ConfigReader + ?Sized>(
+        config: &R,
+    ) -> Result<Self, crate::HttpConfigError> {
         let options = HttpClientOptions::from_config(config)?;
-        HttpClientBuilder::new().options(options).build().map_err(|error| {
-            crate::HttpConfigError::new(
-                crate::HttpConfigErrorKind::InvalidValue,
-                config.scope_path(),
-                error.to_string(),
-            )
-        })
+        HttpClientBuilder::new()
+            .options(options)
+            .build()
+            .map_err(|error| {
+                crate::HttpConfigError::new(
+                    crate::HttpConfigErrorKind::InvalidValue,
+                    config.scope_path(),
+                    error.to_string(),
+                )
+            })
     }
 
     /// Returns a builder initialized with this client's options.
@@ -490,7 +500,10 @@ impl HttpClient {
     ///
     /// # Returns
     /// The response on success, or the attempt failure with retry metadata.
-    pub(crate) async fn execute_once_for_sse(&self, request: HttpRequest) -> Result<HttpResponse, HttpAttemptFailure> {
+    pub(crate) async fn execute_once_for_sse(
+        &self,
+        request: HttpRequest,
+    ) -> Result<HttpResponse, HttpAttemptFailure> {
         self.execute_once_with_context(request, HttpAttemptExecutionContext::direct())
             .await
             .map(|attempt| attempt.into_parts().0)
@@ -535,15 +548,24 @@ impl HttpClient {
             let response = self
                 .prepare_and_send_once(request, "Request cancelled before sending", context)
                 .await?;
-            let mut response = response.into_success_or_status_error("HTTP request failed").await?;
+            let mut response = response
+                .into_success_or_status_error("HTTP request failed")
+                .await?;
             self.response_interceptors.apply(&mut response.meta)?;
-            let logger = HttpLogger::from_options_with_redactor(&self.options, response.log_redactor().clone());
+            let logger = HttpLogger::from_options_with_redactor(
+                &self.options,
+                response.log_redactor().clone(),
+            );
             logger.log_response(&mut response).await?;
             Ok(HttpAttemptResponse::new(response, restore_retry_flow_token))
         }
         .await;
         result.map_err(|error| {
-            HttpAttemptFailure::new(error.with_log_redactor(log_redactor), retry_allowed, honor_retry_after)
+            HttpAttemptFailure::new(
+                error.with_log_redactor(log_redactor),
+                retry_allowed,
+                honor_retry_after,
+            )
         })
     }
 
@@ -574,10 +596,13 @@ impl HttpClient {
     ) -> HttpResult<HttpResponse> {
         let mut request = request;
         let cancellation_token = context.io_cancellation_token(&request).cloned();
-        if let Some(error) = request.cancelled_error_if_needed(cancellation_message, cancellation_token.as_ref()) {
+        if let Some(error) =
+            request.cancelled_error_if_needed(cancellation_message, cancellation_token.as_ref())
+        {
             return Err(error);
         }
-        let logger = HttpLogger::from_options_with_redactor(&self.options, request.log_redactor().clone());
+        let logger =
+            HttpLogger::from_options_with_redactor(&self.options, request.log_redactor().clone());
         let request_url = request.resolved_url()?;
         let backend_response = request
             .send_impl(&self.backend, &logger, cancellation_token.clone())
@@ -590,7 +615,8 @@ impl HttpClient {
             request.method().clone(),
         )
         .with_log_redactor(log_redactor.clone());
-        let response_options = HttpResponseOptions::from_client_options(&self.options, log_redactor);
+        let response_options =
+            HttpResponseOptions::from_client_options(&self.options, log_redactor);
         Ok(HttpResponse::from_backend(
             meta,
             backend_response,
@@ -624,7 +650,11 @@ impl HttpClient {
     ///
     /// # Side effects
     /// Multiple async HTTP attempts and optional sleeps.
-    async fn execute_with_retry(&self, request: HttpRequest, options: HttpRetryOptions) -> HttpResult<HttpResponse> {
+    async fn execute_with_retry(
+        &self,
+        request: HttpRequest,
+        options: HttpRetryOptions,
+    ) -> HttpResult<HttpResponse> {
         let mut request = request;
         if self.request_interceptors.is_empty() {
             request.share_text_body_for_retry();
@@ -653,7 +683,10 @@ impl HttpClient {
             .run(|| {
                 let attempt_request = retry_request.clone();
                 let attempt_context = attempt_context.clone();
-                async move { self.execute_once_with_context(attempt_request, attempt_context).await }
+                async move {
+                    self.execute_once_with_context(attempt_request, attempt_context)
+                        .await
+                }
             })
             .await;
 
@@ -695,7 +728,9 @@ impl HttpClient {
     #[inline]
     fn is_retryable_error(error: &HttpError, options: &HttpRetryOptions) -> bool {
         if error.kind == crate::HttpErrorKind::Status {
-            error.status.is_some_and(|status| options.is_retryable_status(status))
+            error
+                .status
+                .is_some_and(|status| options.is_retryable_status(status))
         } else {
             options.is_retryable_error_kind(error.kind)
         }
@@ -737,9 +772,8 @@ impl HttpClient {
             RetryErrorReason::TimedOut { scope } => {
                 let message = format!("HTTP retry {scope} timed out after {attempts} attempt(s)");
                 match scope {
-                    RetryTimeoutScope::Attempt | RetryTimeoutScope::Flow => {
-                        application_error.unwrap_or_else(|| HttpError::retry_budget_exceeded(message))
-                    }
+                    RetryTimeoutScope::Attempt | RetryTimeoutScope::Flow => application_error
+                        .unwrap_or_else(|| HttpError::retry_budget_exceeded(message)),
                 }
             }
             RetryErrorReason::CallbackFailed { callback } => HttpError::other(format!(
@@ -753,12 +787,16 @@ impl HttpClient {
             }
             RetryErrorReason::Exhausted { limit } => match limit {
                 RetryLimitKind::Attempts => {
-                    let error =
-                        application_error.expect("HTTP attempt exhaustion should preserve its application error");
-                    Self::append_retry_message(error, format!("retry attempts exhausted: {attempts}/{max_attempts}"))
+                    let error = application_error
+                        .expect("HTTP attempt exhaustion should preserve its application error");
+                    Self::append_retry_message(
+                        error,
+                        format!("retry attempts exhausted: {attempts}/{max_attempts}"),
+                    )
                 }
                 RetryLimitKind::OperationElapsed | RetryLimitKind::TotalElapsed => {
-                    let max_duration = max_duration.expect("HTTP elapsed limit requires max_duration");
+                    let max_duration =
+                        max_duration.expect("HTTP elapsed limit requires max_duration");
                     application_error.map_or_else(
                         || {
                             let mut mapped = HttpError::retry_budget_exceeded(format!(
@@ -792,11 +830,15 @@ impl HttpClient {
             RetryErrorReason::Cancelled { .. } => HttpRetryTermination::Cancelled,
             _ => HttpRetryTermination::Aborted,
         };
-        let mut mapped =
-            mapped.with_retry_diagnostics(HttpRetryDiagnostics::new(attempts, started_at.elapsed(), termination));
+        let mut mapped = mapped.with_retry_diagnostics(HttpRetryDiagnostics::new(
+            attempts,
+            started_at.elapsed(),
+            termination,
+        ));
         if mapped.source().is_none() {
             if let Some(last_error) = error.last_error() {
-                mapped = mapped.with_source(HttpRetryApplicationSource::new(last_error.to_string()));
+                mapped =
+                    mapped.with_source(HttpRetryApplicationSource::new(last_error.to_string()));
             }
         }
         mapped
@@ -811,8 +853,8 @@ impl HttpClient {
     /// An HTTP error projection retaining request and response metadata,
     /// retry hints, and log redaction policy without its source chain.
     fn project_http_error(error: &HttpError) -> HttpError {
-        let mut projected =
-            HttpError::new(error.kind, error.message.clone()).with_log_redactor(error.log_redactor.clone());
+        let mut projected = HttpError::new(error.kind, error.message.clone())
+            .with_log_redactor(error.log_redactor.clone());
         projected.method = error.method.clone();
         projected.url = error.url.clone();
         projected.status = error.status;
@@ -907,7 +949,11 @@ impl HttpClient {
     /// [`HttpClient::execute`] and manage connections yourself
     /// when you need complete control over replay.
     #[must_use]
-    pub fn execute_sse_with_reconnect(&self, request: HttpRequest, options: SseReconnectOptions) -> SseMessageStream {
+    pub fn execute_sse_with_reconnect(
+        &self,
+        request: HttpRequest,
+        options: SseReconnectOptions,
+    ) -> SseMessageStream {
         SseReconnectRunner::new(self.clone(), request, options).run()
     }
 }
@@ -939,9 +985,9 @@ impl std::fmt::Debug for HttpClient {
 mod tests {
     use std::error::Error;
     use std::io;
-    use std::sync::Arc;
     use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering;
+    use std::sync::Arc;
     use std::time::Duration;
     use std::time::Instant;
 
@@ -984,9 +1030,15 @@ mod tests {
     #[test]
     fn test_retry_conversion_retains_complete_source_and_http_fields() {
         for abort in [false, true] {
-            let url = Url::parse("https://example.test/request?tenant_marker=conversion-secret").expect("valid URL");
+            let url = Url::parse("https://example.test/request?tenant_marker=conversion-secret")
+                .expect("valid URL");
             let retry = RetryConfig::<HttpError>::builder()
-                .policy(RetryPolicy::builder().max_attempts(1).build().expect("valid policy"))
+                .policy(
+                    RetryPolicy::builder()
+                        .max_attempts(1)
+                        .build()
+                        .expect("valid policy"),
+                )
                 .observer(CompletionPanic)
                 .rule(move |_: &AttemptFailure<HttpError>, _: &RetryContext| {
                     if abort {
@@ -1007,8 +1059,8 @@ mod tests {
                 .unwrap();
             let terminal = Retry::new(&retry)
                 .run(|| {
-                    let mut error =
-                        HttpError::other("service unavailable").with_source(io::Error::other("backend error"));
+                    let mut error = HttpError::other("service unavailable")
+                        .with_source(io::Error::other("backend error"));
                     error = error.with_log_redaction_policy(redaction.clone());
                     error.kind = HttpErrorKind::Status;
                     error.method = Some(Method::POST);
@@ -1019,8 +1071,15 @@ mod tests {
                     Err::<(), _>(error)
                 })
                 .expect_err("terminal failure");
-            let mapped = HttpClient::map_retry_error(&terminal, Instant::now(), None, 1, &Method::POST, Some(&url))
-                .with_source(terminal);
+            let mapped = HttpClient::map_retry_error(
+                &terminal,
+                Instant::now(),
+                None,
+                1,
+                &Method::POST,
+                Some(&url),
+            )
+            .with_source(terminal);
             let retry_source = mapped
                 .source()
                 .and_then(|source| source.downcast_ref::<RetryError<HttpError>>())
@@ -1046,7 +1105,8 @@ mod tests {
 
     #[test]
     fn test_http_status_capture_source_survives_clone_and_projection() {
-        let capture_error: Arc<dyn Error + Send + Sync> = Arc::new(io::Error::other("capture source marker"));
+        let capture_error: Arc<dyn Error + Send + Sync> =
+            Arc::new(io::Error::other("capture source marker"));
         let response = crate::HttpStatusResponse::new(
             http::HeaderMap::new(),
             bytes::Bytes::from_static(b"partial"),
@@ -1057,7 +1117,9 @@ mod tests {
         let original = HttpError::other("status failure").with_status_response(response);
         assert!(!original.to_string().contains("capture source marker"));
         assert!(!format!("{original:?}").contains("capture source marker"));
-        let cloned = original.status_response_cloned().expect("cloned status response");
+        let cloned = original
+            .status_response_cloned()
+            .expect("cloned status response");
         let projected = HttpClient::project_http_error(&original);
 
         for response in [
@@ -1065,7 +1127,10 @@ mod tests {
             &cloned,
             projected.status_response().unwrap(),
         ] {
-            assert_eq!(response.capture_end(), crate::HttpBodyCaptureEnd::ReadFailure);
+            assert_eq!(
+                response.capture_end(),
+                crate::HttpBodyCaptureEnd::ReadFailure
+            );
             assert!(response.is_truncated());
             assert_eq!(
                 response
@@ -1104,7 +1169,10 @@ mod tests {
                         response.send_reset(h2::Reason::REFUSED_STREAM);
                     } else {
                         response
-                            .send_response(Response::builder().status(StatusCode::OK).body(()).unwrap(), true)
+                            .send_response(
+                                Response::builder().status(StatusCode::OK).body(()).unwrap(),
+                                true,
+                            )
                             .unwrap();
                         let _ = timeout(Duration::from_millis(100), connection.accept()).await;
                         return;
@@ -1113,7 +1181,10 @@ mod tests {
             }
         });
 
-        let backend = reqwest::Client::builder().http2_prior_knowledge().build().unwrap();
+        let backend = reqwest::Client::builder()
+            .http2_prior_knowledge()
+            .build()
+            .unwrap();
         let options = HttpClientOptions {
             base_url: Some(Url::parse(&format!("http://{address}/")).unwrap()),
             ..HttpClientOptions::default()
@@ -1123,10 +1194,12 @@ mod tests {
         let mut client = HttpClient::new(backend, options);
         let calls = Arc::new(AtomicUsize::new(0));
         let calls_for_interceptor = Arc::clone(&calls);
-        client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut crate::HttpRequest| {
-            calls_for_interceptor.fetch_add(1, Ordering::Relaxed);
-            Ok(())
-        }));
+        client.add_request_interceptor(HttpRequestInterceptor::new(
+            move |_request: &mut crate::HttpRequest| {
+                calls_for_interceptor.fetch_add(1, Ordering::Relaxed);
+                Ok(())
+            },
+        ));
 
         let result = timeout(
             Duration::from_secs(5),
@@ -1173,7 +1246,10 @@ mod tests {
             }
         });
 
-        let backend = reqwest::Client::builder().http2_prior_knowledge().build().unwrap();
+        let backend = reqwest::Client::builder()
+            .http2_prior_knowledge()
+            .build()
+            .unwrap();
         let options = HttpClientOptions {
             base_url: Some(Url::parse(&format!("http://{address}/")).unwrap()),
             ..HttpClientOptions::default()
@@ -1181,10 +1257,12 @@ mod tests {
         let mut client = HttpClient::new(backend, options);
         let calls = Arc::new(AtomicUsize::new(0));
         let calls_for_interceptor = Arc::clone(&calls);
-        client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut crate::HttpRequest| {
-            calls_for_interceptor.fetch_add(1, Ordering::Relaxed);
-            Ok(())
-        }));
+        client.add_request_interceptor(HttpRequestInterceptor::new(
+            move |_request: &mut crate::HttpRequest| {
+                calls_for_interceptor.fetch_add(1, Ordering::Relaxed);
+                Ok(())
+            },
+        ));
 
         let result = timeout(
             Duration::from_secs(5),

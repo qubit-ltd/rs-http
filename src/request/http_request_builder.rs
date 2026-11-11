@@ -13,17 +13,17 @@ use std::pin::Pin;
 use std::time::Duration;
 
 use bytes::Bytes;
+use http::header::CONTENT_TYPE;
 use http::HeaderMap;
 use http::HeaderValue;
 use http::Method;
-use http::header::CONTENT_TYPE;
 use qubit_budget::json::JsonEncodeLimits;
 use qubit_budget::json::JsonEncodeSession;
 use qubit_json::encode::JsonEncoder;
 use qubit_redact::Redactor;
 use serde::Serialize;
-use url::Url;
 use url::form_urlencoded;
+use url::Url;
 
 use super::http_request::HttpRequest;
 use super::http_request_body::HttpRequestBody;
@@ -31,6 +31,7 @@ use super::http_request_retry_override::HttpRequestRetryOverride;
 use super::parse_header;
 use super::validate_positive_timeout;
 use super::validate_response_header_timeout;
+use crate::content_type;
 use crate::AsyncHttpHeaderInjector;
 use crate::HttpCancellationToken;
 use crate::HttpClient;
@@ -41,7 +42,6 @@ use crate::HttpRequestBodyByteStream;
 use crate::HttpRequestStreamingBody;
 use crate::HttpResult;
 use crate::HttpRetryMethodPolicy;
-use crate::content_type;
 
 /// Builder for [`HttpRequest`](super::http_request::HttpRequest).
 ///
@@ -121,8 +121,13 @@ impl fmt::Debug for HttpRequestBuilder {
     /// Result from writing the redacted builder representation.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut batch = self.log_redactor.diagnostic_batch();
-        let url = self.debug_resolved_url().map(|url| batch.redact_http_url(url.as_str()));
-        let base_url = self.base_url.as_ref().map(|url| batch.redact_http_url(url.as_str()));
+        let url = self
+            .debug_resolved_url()
+            .map(|url| batch.redact_http_url(url.as_str()));
+        let base_url = self
+            .base_url
+            .as_ref()
+            .map(|url| batch.redact_http_url(url.as_str()));
         let headers = batch.redact_http_headers(&self.headers);
         let default_headers = batch.redact_http_headers(&self.default_headers);
         let output = batch.finish();
@@ -136,13 +141,19 @@ impl fmt::Debug for HttpRequestBuilder {
             .field("url", &url)
             .field("headers", &headers)
             .field("body", &self.body)
-            .field("streaming_body", &self.streaming_body.as_ref().map(|_| "present"))
+            .field(
+                "streaming_body",
+                &self.streaming_body.as_ref().map(|_| "present"),
+            )
             .field("request_timeout", &self.request_timeout)
             .field("response_header_timeout", &self.response_header_timeout)
             .field("read_timeout", &self.read_timeout)
             .field("base_url", &base_url)
             .field("ipv4_only", &self.ipv4_only)
-            .field("cancellation_token_present", &self.cancellation_token.is_some())
+            .field(
+                "cancellation_token_present",
+                &self.cancellation_token.is_some(),
+            )
             .field("retry_override", &self.retry_override)
             .field("default_headers", &default_headers)
             .field("injector_count", &self.injectors.len())
@@ -237,8 +248,8 @@ impl HttpRequestBuilder {
     /// # Returns
     /// `Ok(self)` or [`HttpError`] if name/value are invalid.
     pub fn header(mut self, name: &str, value: &str) -> HttpResult<Self> {
-        let (header_name, header_value) =
-            parse_header(name, value).map_err(|error| Self::attach_log_redactor(error, &self.log_redactor))?;
+        let (header_name, header_value) = parse_header(name, value)
+            .map_err(|error| Self::attach_log_redactor(error, &self.log_redactor))?;
         let is_content_type = header_name == CONTENT_TYPE;
         self.headers.insert(header_name, header_value);
         if is_content_type {
@@ -344,7 +355,10 @@ impl HttpRequestBuilder {
     /// `self` for chaining.
     pub fn streaming_body<F>(mut self, factory: F) -> Self
     where
-        F: Fn() -> Pin<Box<dyn Future<Output = HttpRequestBodyByteStream> + Send + 'static>> + Send + Sync + 'static,
+        F: Fn() -> Pin<Box<dyn Future<Output = HttpRequestBodyByteStream> + Send + 'static>>
+            + Send
+            + Sync
+            + 'static,
     {
         self.replace_auto_content_type(None);
         self.streaming_body = Some(HttpRequestStreamingBody::new(factory));
@@ -406,16 +420,22 @@ impl HttpRequestBuilder {
     ///
     /// # Type Parameters
     /// - `T`: Serializable JSON value type.
-    pub fn json_body_with_limits<T>(mut self, value: &T, limits: JsonEncodeLimits) -> HttpResult<Self>
+    pub fn json_body_with_limits<T>(
+        mut self,
+        value: &T,
+        limits: JsonEncodeLimits,
+    ) -> HttpResult<Self>
     where
         T: Serialize,
     {
-        let bytes = JsonEncoder::with_limits(limits).to_vec(value).map_err(|error| {
-            Self::attach_log_redactor(
-                HttpError::decode("Failed to encode JSON body").with_source(error),
-                &self.log_redactor,
-            )
-        })?;
+        let bytes = JsonEncoder::with_limits(limits)
+            .to_vec(value)
+            .map_err(|error| {
+                Self::attach_log_redactor(
+                    HttpError::decode("Failed to encode JSON body").with_source(error),
+                    &self.log_redactor,
+                )
+            })?;
         self.replace_auto_content_type(Some(HeaderValue::from_static("application/json")));
         self.body = HttpRequestBody::Json(Bytes::from(bytes));
         self.streaming_body = None;
@@ -444,7 +464,9 @@ impl HttpRequestBuilder {
             serializer.append_pair(key, value);
         }
         let body = serializer.finish();
-        self.replace_auto_content_type(Some(HeaderValue::from_static("application/x-www-form-urlencoded")));
+        self.replace_auto_content_type(Some(HeaderValue::from_static(
+            "application/x-www-form-urlencoded",
+        )));
         self.body = HttpRequestBody::Form(Bytes::from(body));
         self.streaming_body = None;
         self
@@ -484,26 +506,35 @@ impl HttpRequestBuilder {
         } else if let Some(existing) = self.headers.get(CONTENT_TYPE) {
             let existing = existing.to_str().map_err(|error| {
                 Self::attach_log_redactor(
-                    HttpError::other(format!("Existing multipart Content-Type must be valid UTF-8: {error}")),
+                    HttpError::other(format!(
+                        "Existing multipart Content-Type must be valid UTF-8: {error}"
+                    )),
                     &self.log_redactor,
                 )
             })?;
             if !content_type::is_multipart(existing) {
                 return Err(Self::attach_log_redactor(
-                    HttpError::other("Existing Content-Type must be multipart when using multipart_body"),
+                    HttpError::other(
+                        "Existing Content-Type must be multipart when using multipart_body",
+                    ),
                     &self.log_redactor,
                 ));
             }
-            let existing_boundary = content_type::unique_parameter(existing, "boundary").map_err(|_| {
-                Self::attach_log_redactor(
-                    HttpError::other("Existing multipart Content-Type boundary is malformed or invalid"),
-                    &self.log_redactor,
-                )
-            })?;
+            let existing_boundary =
+                content_type::unique_parameter(existing, "boundary").map_err(|_| {
+                    Self::attach_log_redactor(
+                        HttpError::other(
+                            "Existing multipart Content-Type boundary is malformed or invalid",
+                        ),
+                        &self.log_redactor,
+                    )
+                })?;
             if let Some(existing_boundary) = existing_boundary {
                 if !content_type::is_valid_multipart_boundary(&existing_boundary) {
                     return Err(Self::attach_log_redactor(
-                        HttpError::other("Existing multipart Content-Type boundary is malformed or invalid"),
+                        HttpError::other(
+                            "Existing multipart Content-Type boundary is malformed or invalid",
+                        ),
                         &self.log_redactor,
                     ));
                 }
@@ -578,7 +609,11 @@ impl HttpRequestBuilder {
     ///
     /// # Type Parameters
     /// - `T`: Serializable record type.
-    pub fn ndjson_body_with_limits<T>(mut self, records: &[T], limits: JsonEncodeLimits) -> HttpResult<Self>
+    pub fn ndjson_body_with_limits<T>(
+        mut self,
+        records: &[T],
+        limits: JsonEncodeLimits,
+    ) -> HttpResult<Self>
     where
         T: Serialize,
     {
@@ -593,7 +628,10 @@ impl HttpRequestBuilder {
                         &self.log_redactor,
                     ));
                 };
-                limits.into_builder().max_output_bytes(record_output_bytes).build()
+                limits
+                    .into_builder()
+                    .max_output_bytes(record_output_bytes)
+                    .build()
             }
             None => limits,
         };

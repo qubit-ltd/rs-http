@@ -10,16 +10,16 @@ use std::error::Error;
 use std::sync::Arc;
 
 use bytes::Bytes;
+use http::header::CONTENT_TYPE;
 use http::HeaderMap;
 use http::HeaderValue;
-use http::header::CONTENT_TYPE;
 use qubit_budget::ResourceBudget;
-use qubit_redact::Redactor;
 use qubit_redact::formats::http::BodyCapture;
+use qubit_redact::Redactor;
 use tokio::time::Instant;
 
-use super::super::internal::HttpResponseBodyState;
 use super::super::internal::http_error_body_capture::HttpErrorBodyCapture;
+use super::super::internal::HttpResponseBodyState;
 use super::HttpResponse;
 use crate::HttpCancellationToken;
 use crate::HttpError;
@@ -39,7 +39,10 @@ impl HttpResponse {
     /// Returns a `Status` error for unsuccessful responses. Body capture
     /// failures and timeouts are retained in the capture diagnostics;
     /// cancellation returns `Cancelled`.
-    pub(crate) async fn into_success_or_status_error(self, message_prefix: &str) -> HttpResult<Self> {
+    pub(crate) async fn into_success_or_status_error(
+        self,
+        message_prefix: &str,
+    ) -> HttpResult<Self> {
         let status = self.status();
         if status.is_success() {
             return Ok(self);
@@ -187,7 +190,8 @@ impl HttpResponse {
         let mut raw_truncated = false;
         let mut end = crate::error::HttpBodyCaptureEnd::Complete;
         let capture_limit = limit.max(raw_limit.max(1)).saturating_add(1);
-        let mut capture_budget = ResourceBudget::new("status error response body preview", capture_limit);
+        let mut capture_budget =
+            ResourceBudget::new("status error response body preview", capture_limit);
         let capture_started_at = Instant::now();
 
         loop {
@@ -195,18 +199,21 @@ impl HttpResponse {
                 .as_ref()
                 .is_some_and(HttpCancellationToken::is_cancelled)
             {
-                return Err(
-                    HttpError::cancelled("Request cancelled while reading status error response body preview")
-                        .with_method(&method)
-                        .with_url(&url)
-                        .with_status(status)
-                        .with_log_redactor(self.log_redactor().clone()),
-                );
+                return Err(HttpError::cancelled(
+                    "Request cancelled while reading status error response body preview",
+                )
+                .with_method(&method)
+                .with_url(&url)
+                .with_status(status)
+                .with_log_redactor(self.log_redactor().clone()));
             }
             let remaining = read_timeout.saturating_sub(capture_started_at.elapsed());
             if remaining.is_zero() {
                 return Ok(HttpErrorBodyCapture {
-                    preview: format!("<error body unavailable: read timeout after {:?}>", read_timeout),
+                    preview: format!(
+                        "<error body unavailable: read timeout after {:?}>",
+                        read_timeout
+                    ),
                     raw_body: Bytes::from(raw),
                     end: crate::error::HttpBodyCaptureEnd::ReadTimeout,
                     error: None,
@@ -248,19 +255,24 @@ impl HttpResponse {
                         raw_truncated |= raw_remaining < chunk.len();
                         break;
                     }
-                    let capture_targets_satisfied = preview.len() == limit && raw.len() == raw_limit;
-                    let declared_truncation = source_len.is_some_and(|length| length > limit.max(raw_limit));
+                    let capture_targets_satisfied =
+                        preview.len() == limit && raw.len() == raw_limit;
+                    let declared_truncation =
+                        source_len.is_some_and(|length| length > limit.max(raw_limit));
                     if capture_targets_satisfied && declared_truncation {
                         break;
                     }
-                    if capture_budget.used() == capture_limit && (preview_truncated || raw_truncated) {
+                    if capture_budget.used() == capture_limit
+                        && (preview_truncated || raw_truncated)
+                    {
                         break;
                     }
                 }
                 Ok(Ok(None)) => break,
                 Ok(Err(error)) => {
                     let error = error.without_url();
-                    let preview = "<error body unavailable: failed to read response body>".to_string();
+                    let preview =
+                        "<error body unavailable: failed to read response body>".to_string();
                     let capture_error: Arc<dyn Error + Send + Sync + 'static> = Arc::new(error);
                     end = crate::error::HttpBodyCaptureEnd::ReadFailure;
                     return Ok(HttpErrorBodyCapture {
@@ -272,7 +284,10 @@ impl HttpResponse {
                 }
                 Err(_) => {
                     return Ok(HttpErrorBodyCapture {
-                        preview: format!("<error body unavailable: read timeout after {:?}>", read_timeout),
+                        preview: format!(
+                            "<error body unavailable: read timeout after {:?}>",
+                            read_timeout
+                        ),
                         raw_body: Bytes::from(raw),
                         end: crate::error::HttpBodyCaptureEnd::ReadTimeout,
                         error: None,
@@ -330,14 +345,16 @@ impl HttpResponse {
             source_len.map_or_else(
                 || BodyCapture::truncated_unknown(bytes),
                 |total_len| {
-                    BodyCapture::truncated(bytes, total_len).unwrap_or_else(|_| BodyCapture::truncated_unknown(bytes))
+                    BodyCapture::truncated(bytes, total_len)
+                        .unwrap_or_else(|_| BodyCapture::truncated_unknown(bytes))
                 },
             )
         } else {
             BodyCapture::complete(bytes)
         };
         let body = log_redactor.redact_http_body(capture, content_type);
-        body.into_text_or_marker("<redaction incomplete>").into_string()
+        body.into_text_or_marker("<redaction incomplete>")
+            .into_string()
     }
 
     /// Extracts a Content-Type header value.

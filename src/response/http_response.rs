@@ -10,36 +10,36 @@ use std::fmt;
 use std::time::Duration;
 
 use bytes::Bytes;
-use futures_util::StreamExt;
 use futures_util::stream as futures_stream;
+use futures_util::StreamExt;
+use http::header::CONTENT_LENGTH;
+use http::header::CONTENT_TYPE;
 use http::HeaderMap;
 use http::Method;
 use http::StatusCode;
-use http::header::CONTENT_LENGTH;
-use http::header::CONTENT_TYPE;
 use qubit_budget::json::JsonValueLimits;
 use qubit_redact::Redactor;
 use serde::de::DeserializeOwned;
 use url::Url;
 
-use super::HttpResponseMeta;
-use super::HttpResponseOptions;
-use super::internal::HttpResponseBodyState;
-use super::internal::http_response_runtime::HttpResponseRuntime;
 use super::internal::http_response_runtime::previous_body_read_error;
 use super::internal::http_response_runtime::remember_body_read_failure_state;
-use crate::HttpCancellationToken;
-use crate::HttpError;
-use crate::HttpErrorKind;
-use crate::HttpResult;
+use super::internal::http_response_runtime::HttpResponseRuntime;
+use super::internal::HttpResponseBodyState;
+use super::HttpResponseMeta;
+use super::HttpResponseOptions;
 use crate::content_type;
-use crate::error::ReqwestErrorPhase;
 use crate::error::backend_error_mapper::map_reqwest_error;
+use crate::error::ReqwestErrorPhase;
 use crate::sse::DoneMarkerPolicy;
 use crate::sse::SseChunkStream;
 use crate::sse::SseCompletionPolicy;
 use crate::sse::SseJsonMode;
 use crate::sse::SseMessageStream;
+use crate::HttpCancellationToken;
+use crate::HttpError;
+use crate::HttpErrorKind;
+use crate::HttpResult;
 
 /// Maps one backend response body read error into this crate's error model.
 ///
@@ -61,9 +61,15 @@ fn map_response_read_error(
     log_redactor: &Redactor,
 ) -> HttpError {
     if error.is_timeout() {
-        return map_reqwest_error(error, HttpErrorKind::Transport, ReqwestErrorPhase::Read, method, url)
-            .with_status(status)
-            .with_log_redactor(log_redactor.clone());
+        return map_reqwest_error(
+            error,
+            HttpErrorKind::Transport,
+            ReqwestErrorPhase::Read,
+            method,
+            url,
+        )
+        .with_status(status)
+        .with_log_redactor(log_redactor.clone());
     }
 
     let error = error.without_url();
@@ -84,7 +90,11 @@ fn map_response_read_error(
 ///
 /// # Returns
 /// The advertised body length, or `None` when it is unavailable or invalid.
-fn parse_content_length_hint(method: &Method, status: StatusCode, headers: &HeaderMap) -> Option<u64> {
+fn parse_content_length_hint(
+    method: &Method,
+    status: StatusCode,
+    headers: &HeaderMap,
+) -> Option<u64> {
     if method == Method::HEAD || status == StatusCode::NOT_MODIFIED {
         return Some(0);
     }
@@ -207,7 +217,10 @@ impl fmt::Debug for HttpResponse {
             .field("body_state", &body_state)
             .field("buffered_body_len", &buffered_body_len)
             .field("read_timeout", &self.runtime.read_timeout)
-            .field("cancellation_token_present", &self.runtime.cancellation_token.is_some())
+            .field(
+                "cancellation_token_present",
+                &self.runtime.cancellation_token.is_some(),
+            )
             .field("options", &self.options)
             .finish()
     }
@@ -241,11 +254,13 @@ impl HttpResponse {
         let url = self.request_url().clone();
         let redactor = self.log_redactor();
         let Some(value) = self.headers().get(CONTENT_TYPE) else {
-            return Err(HttpError::sse_protocol("Missing Content-Type header for SSE response")
-                .with_status(self.status())
-                .with_method(&method)
-                .with_url(&url)
-                .with_log_redactor(redactor.clone()));
+            return Err(
+                HttpError::sse_protocol("Missing Content-Type header for SSE response")
+                    .with_status(self.status())
+                    .with_method(&method)
+                    .with_url(&url)
+                    .with_log_redactor(redactor.clone()),
+            );
         };
         let content_type = value.to_str().map_err(|_| {
             HttpError::sse_protocol("Invalid non-UTF8 Content-Type header for SSE response")
@@ -281,7 +296,13 @@ impl HttpResponse {
     ///
     /// # Returns
     /// A response whose body is immediately available for reading.
-    pub fn new(status: StatusCode, headers: HeaderMap, body: Bytes, url: Url, method: Method) -> Self {
+    pub fn new(
+        status: StatusCode,
+        headers: HeaderMap,
+        body: Bytes,
+        url: Url,
+        method: Method,
+    ) -> Self {
         let original_content_length = parse_content_length_hint(&method, status, &headers);
         Self {
             meta: HttpResponseMeta::new(status, headers, url.clone(), method),
@@ -313,7 +334,8 @@ impl HttpResponse {
         request_url: Url,
         options: HttpResponseOptions,
     ) -> Self {
-        let original_content_length = parse_content_length_hint(meta.method(), meta.status(), meta.headers());
+        let original_content_length =
+            parse_content_length_hint(meta.method(), meta.status(), meta.headers());
         Self {
             meta,
             body: HttpResponseBodyState::Backend(backend),
@@ -537,11 +559,17 @@ impl HttpResponse {
         let url = self.request_url().clone();
         let status = self.status();
         let decoded: SseMessageStream = match self.stream() {
-            Ok(stream) => crate::sse::decode_messages_from_stream_with_limits(stream, max_line_bytes, max_frame_bytes),
+            Ok(stream) => crate::sse::decode_messages_from_stream_with_limits(
+                stream,
+                max_line_bytes,
+                max_frame_bytes,
+            ),
             Err(error) => Box::pin(futures_stream::once(async move { Err(error) })),
         };
         Box::pin(decoded.map(move |result| {
-            result.map_err(|error| attach_sse_error_context(error, &method, &url, status, &log_redactor))
+            result.map_err(|error| {
+                attach_sse_error_context(error, &method, &url, status, &log_redactor)
+            })
         }))
     }
 
@@ -559,11 +587,17 @@ impl HttpResponse {
         let url = self.request_url().clone();
         let status = self.status();
         let decoded: crate::sse::SseRecordStream = match self.stream() {
-            Ok(stream) => crate::sse::decode_records_from_stream_with_limits(stream, max_line_bytes, max_frame_bytes),
+            Ok(stream) => crate::sse::decode_records_from_stream_with_limits(
+                stream,
+                max_line_bytes,
+                max_frame_bytes,
+            ),
             Err(error) => Box::pin(futures_stream::once(async move { Err(error) })),
         };
         Box::pin(decoded.map(move |result| {
-            result.map_err(|error| attach_sse_error_context(error, &method, &url, status, &log_redactor))
+            result.map_err(|error| {
+                attach_sse_error_context(error, &method, &url, status, &log_redactor)
+            })
         }))
     }
 
@@ -615,7 +649,9 @@ impl HttpResponse {
             Err(error) => Box::pin(futures_stream::once(async move { Err(error) })),
         };
         Box::pin(decoded.map(move |result| {
-            result.map_err(|error| attach_sse_error_context(error, &method, &url, status, &log_redactor))
+            result.map_err(|error| {
+                attach_sse_error_context(error, &method, &url, status, &log_redactor)
+            })
         }))
     }
 
@@ -703,13 +739,13 @@ mod tests {
     use tokio::net::TcpListener;
     use tokio::sync::oneshot;
 
+    use super::attach_sse_error_context;
     use super::HttpResponse;
     use super::HttpResponseMeta;
     use super::HttpResponseOptions;
-    use super::attach_sse_error_context;
+    use crate::response::internal::HttpResponseBodyState;
     use crate::HttpError;
     use crate::HttpErrorKind;
-    use crate::response::internal::HttpResponseBodyState;
 
     #[tokio::test]
     async fn test_decode_errors_use_original_request_url() {
@@ -829,7 +865,11 @@ mod tests {
             let _ = release_rx.await;
         });
         let url = url::Url::parse(&format!("http://{address}/")).unwrap();
-        let backend = reqwest::Client::new().get(url.clone()).send().await.unwrap();
+        let backend = reqwest::Client::new()
+            .get(url.clone())
+            .send()
+            .await
+            .unwrap();
         sent_rx.await.unwrap();
         let meta = HttpResponseMeta::new(
             backend.status(),
@@ -842,11 +882,15 @@ mod tests {
             error_response_body_limit: 4,
             ..HttpResponseOptions::default()
         };
-        let response = HttpResponse::from_backend(meta, backend, Duration::from_secs(30), None, url, options);
-        let error = tokio::time::timeout(Duration::from_secs(1), response.into_success_or_status_error("failed"))
-            .await
-            .expect("known truncation should finish before EOF")
-            .unwrap_err();
+        let response =
+            HttpResponse::from_backend(meta, backend, Duration::from_secs(30), None, url, options);
+        let error = tokio::time::timeout(
+            Duration::from_secs(1),
+            response.into_success_or_status_error("failed"),
+        )
+        .await
+        .expect("known truncation should finish before EOF")
+        .unwrap_err();
         let captured = error.status_response().unwrap();
         assert_eq!(captured.body().as_ref(), b"abcd");
         assert!(captured.is_truncated());
@@ -872,9 +916,15 @@ mod tests {
             HttpResponseOptions::default(),
         );
         response.body = HttpResponseBodyState::StreamingTaken;
-        let error = response.into_success_or_status_error("failed").await.unwrap_err();
+        let error = response
+            .into_success_or_status_error("failed")
+            .await
+            .unwrap_err();
         let capture = error.status_response().unwrap();
-        assert_eq!(capture.capture_end(), crate::HttpBodyCaptureEnd::BodyUnavailable);
+        assert_eq!(
+            capture.capture_end(),
+            crate::HttpBodyCaptureEnd::BodyUnavailable
+        );
         assert!(capture.is_truncated());
         assert!(capture.capture_error().is_none());
     }

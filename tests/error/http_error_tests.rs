@@ -13,9 +13,9 @@ use http::StatusCode;
 use qubit_http::HttpError;
 use qubit_http::HttpErrorKind;
 use qubit_http::RetryHint;
+use qubit_redact::formats::http::UrlPathPolicy;
 use qubit_redact::RedactionPolicy;
 use qubit_redact::Sensitivity;
-use qubit_redact::formats::http::UrlPathPolicy;
 
 #[test]
 fn test_http_error_builder_methods() {
@@ -132,9 +132,12 @@ fn test_http_error_debug_uses_custom_log_redaction_policy() {
             let _ = http.query().raise("customer_secret", Sensitivity::High);
         })
         .expect("the test policy input should be valid");
-    let policy = builder.build().expect("log redaction policy should be valid");
-    let url = url::Url::parse("https://example.com/path?customer_secret=debug-custom-secret&visible=ok")
-        .expect("URL should parse");
+    let policy = builder
+        .build()
+        .expect("log redaction policy should be valid");
+    let url =
+        url::Url::parse("https://example.com/path?customer_secret=debug-custom-secret&visible=ok")
+            .expect("URL should parse");
     let error = HttpError::transport(
         "transport failed for https://example.com/path?customer_secret=debug-custom-secret&visible=ok",
     )
@@ -169,7 +172,9 @@ fn test_http_error_display_uses_custom_log_redaction_policy() {
             let _ = http.query().raise("customer_secret", Sensitivity::High);
         })
         .expect("the test policy input should be valid");
-    let policy = builder.build().expect("log redaction policy should be valid");
+    let policy = builder
+        .build()
+        .expect("log redaction policy should be valid");
     let error = HttpError::transport(
         "transport failed for https://example.com/path?customer_secret=display-custom-secret&visible=ok",
     )
@@ -193,7 +198,11 @@ fn test_http_error_debug_honors_url_path_redaction_policy() {
         .expect("test policy should be valid");
     let error = HttpError::transport(format!("transport failed for {raw_url}"))
         .with_url(&url)
-        .with_log_redaction_policy(policy_builder.build().expect("log redaction policy should be valid"));
+        .with_log_redaction_policy(
+            policy_builder
+                .build()
+                .expect("log redaction policy should be valid"),
+        );
 
     let debug = format!("{error:?}");
 
@@ -312,8 +321,8 @@ fn test_http_error_disabled_policy_retains_message_input_and_output_limits() {
         .expect("test policy should be valid")
         .build()
         .expect("disabled test policy should be valid");
-    let error =
-        HttpError::transport("input exceeds the disabled policy limit").with_log_redaction_policy(input_limited);
+    let error = HttpError::transport("input exceeds the disabled policy limit")
+        .with_log_redaction_policy(input_limited);
     assert_eq!(error.to_string(), "<redaction incomplete>");
 
     let output_limited = RedactionPolicy::disabled()
@@ -324,7 +333,8 @@ fn test_http_error_disabled_policy_retains_message_input_and_output_limits() {
         .expect("test policy should be valid")
         .build()
         .expect("disabled test policy should be valid");
-    let error = HttpError::transport("output exceeds limit").with_log_redaction_policy(output_limited);
+    let error =
+        HttpError::transport("output exceeds limit").with_log_redaction_policy(output_limited);
     assert!(error.to_string().is_empty());
 }
 
@@ -353,9 +363,10 @@ fn test_http_error_display_bounds_many_urls_with_shared_output_limit() {
             limits.max_input_bytes(256).max_output_bytes(32);
         })
         .expect("test policy should be valid");
-    let error =
-        HttpError::transport("https://alice:first-secret@example.com/a https://bob:second-secret@example.com/b")
-            .with_log_redaction_policy(policy_builder.build().expect("test policy should be valid"));
+    let error = HttpError::transport(
+        "https://alice:first-secret@example.com/a https://bob:second-secret@example.com/b",
+    )
+    .with_log_redaction_policy(policy_builder.build().expect("test policy should be valid"));
 
     let display = error.to_string();
 
@@ -373,8 +384,9 @@ fn test_http_error_display_returns_empty_when_message_output_cannot_fit_marker()
                 limits.max_input_bytes(64).max_output_bytes(maximum);
             })
             .expect("test policy should be valid");
-        let error = HttpError::transport("too long")
-            .with_log_redaction_policy(policy_builder.build().expect("test policy should be valid"));
+        let error = HttpError::transport("too long").with_log_redaction_policy(
+            policy_builder.build().expect("test policy should be valid"),
+        );
 
         assert!(error.to_string().is_empty());
     }

@@ -32,13 +32,22 @@ fn trusted_options() -> HttpClientOptions {
     let mut options = HttpClientOptions::default();
     options
         .extra_root_certificates_der
-        .push(bytes::Bytes::from_static(include_bytes!("../fixtures/tls/ca.der")));
+        .push(bytes::Bytes::from_static(include_bytes!(
+            "../fixtures/tls/ca.der"
+        )));
     options
 }
 
-async fn tls_client_request(client: &HttpClient, host: &str, port: u16) -> Result<String, qubit_http::HttpError> {
+async fn tls_client_request(
+    client: &HttpClient,
+    host: &str,
+    port: u16,
+) -> Result<String, qubit_http::HttpError> {
     let request = client
-        .request(http::Method::GET, &format!("https://{host}:{port}/through-proxy"))
+        .request(
+            http::Method::GET,
+            &format!("https://{host}:{port}/through-proxy"),
+        )
         .header("x-business-request", "tunnel-test")
         .expect("valid header")
         .build();
@@ -60,7 +69,9 @@ async fn test_tls_roots_public_options_trust_private_ca_through_connect() {
     let mut options = options(tunnel.proxy_addr());
     options
         .extra_root_certificates_der
-        .push(bytes::Bytes::from_static(include_bytes!("../fixtures/tls/ca.der")));
+        .push(bytes::Bytes::from_static(include_bytes!(
+            "../fixtures/tls/ca.der"
+        )));
     let client = HttpClient::builder()
         .options(options)
         .build()
@@ -74,14 +85,22 @@ async fn test_tls_roots_public_options_trust_private_ca_through_connect() {
     let observation = timeout(TEST_TIMEOUT, tunnel.finish())
         .await
         .expect("server finish timeout");
-    assert_eq!(observation.connect_authority, format!("localhost:{tls_port}"));
+    assert_eq!(
+        observation.connect_authority,
+        format!("localhost:{tls_port}")
+    );
     assert_eq!(
         observation.proxy_authorization.as_deref(),
         Some("Basic dHVubmVsLXVzZXI6dHVubmVsLXBhc3N3b3Jk")
     );
     assert!(observation.tls_handshake_succeeded);
-    let request = observation.application_request.expect("application request received");
-    assert!(request.starts_with("GET /through-proxy HTTP/1.1\r\n"), "{request:?}");
+    let request = observation
+        .application_request
+        .expect("application request received");
+    assert!(
+        request.starts_with("GET /through-proxy HTTP/1.1\r\n"),
+        "{request:?}"
+    );
     assert!(
         request
             .to_ascii_lowercase()
@@ -89,7 +108,9 @@ async fn test_tls_roots_public_options_trust_private_ca_through_connect() {
         "{request:?}"
     );
     assert!(
-        !request.to_ascii_lowercase().contains("proxy-authorization:"),
+        !request
+            .to_ascii_lowercase()
+            .contains("proxy-authorization:"),
         "{request:?}"
     );
 }
@@ -107,7 +128,10 @@ async fn test_tls_roots_default_roots_reject_private_ca() {
     let error = tls_client_request(&client, "localhost", tunnel.tls_port())
         .await
         .expect_err("private CA must be rejected");
-    assert!(matches!(error.kind(), HttpErrorKind::Transport | HttpErrorKind::Other));
+    assert!(matches!(
+        error.kind(),
+        HttpErrorKind::Transport | HttpErrorKind::Other
+    ));
     let observation = timeout(TEST_TIMEOUT, tunnel.finish())
         .await
         .expect("server finish timeout");
@@ -123,11 +147,17 @@ async fn test_tls_roots_still_reject_hostname_mismatch() {
         .expect("start tunnel");
     let mut opts = options(tunnel.proxy_addr());
     opts.extra_root_certificates_der = trusted_options().extra_root_certificates_der;
-    let client = HttpClient::builder().options(opts).build().expect("client build");
+    let client = HttpClient::builder()
+        .options(opts)
+        .build()
+        .expect("client build");
     let error = tls_client_request(&client, "127.0.0.1", tunnel.tls_port())
         .await
         .expect_err("hostname mismatch must fail");
-    assert!(matches!(error.kind(), HttpErrorKind::Transport | HttpErrorKind::Other));
+    assert!(matches!(
+        error.kind(),
+        HttpErrorKind::Transport | HttpErrorKind::Other
+    ));
     let observation = timeout(TEST_TIMEOUT, tunnel.finish())
         .await
         .expect("server finish timeout");
@@ -137,7 +167,10 @@ async fn test_tls_roots_still_reject_hostname_mismatch() {
 
 #[test]
 fn test_tls_roots_bad_and_empty_der_fail_build_without_echoing_bytes() {
-    for der in [bytes::Bytes::from_static(b"not a DER certificate"), bytes::Bytes::new()] {
+    for der in [
+        bytes::Bytes::from_static(b"not a DER certificate"),
+        bytes::Bytes::new(),
+    ] {
         let marker = format!("{der:?}");
         let mut options = HttpClientOptions::default();
         options.extra_root_certificates_der.push(der);
@@ -159,7 +192,9 @@ fn test_tls_roots_bad_and_empty_der_fail_build_without_echoing_bytes() {
 
 #[test]
 fn test_tls_roots_options_debug_shows_count_without_der() {
-    assert!(HttpClientOptions::default().extra_root_certificates_der.is_empty());
+    assert!(HttpClientOptions::default()
+        .extra_root_certificates_der
+        .is_empty());
     let mut options = HttpClientOptions::default();
     options
         .extra_root_certificates_der
@@ -197,7 +232,10 @@ async fn test_tls_roots_clone_to_builder_and_rebuild_keep_roots() {
         cloned.extra_root_certificates_der,
         client_options.extra_root_certificates_der
     );
-    let rebuilt = client.to_builder().build().expect("to_builder retains roots");
+    let rebuilt = client
+        .to_builder()
+        .build()
+        .expect("to_builder retains roots");
     assert_eq!(
         rebuilt.options().extra_root_certificates_der,
         client_options.extra_root_certificates_der
@@ -205,7 +243,9 @@ async fn test_tls_roots_clone_to_builder_and_rebuild_keep_roots() {
     let error = client
         .rebuild_with_options({
             let mut invalid = HttpClientOptions::default();
-            invalid.extra_root_certificates_der.push(bytes::Bytes::new());
+            invalid
+                .extra_root_certificates_der
+                .push(bytes::Bytes::new());
             invalid
         })
         .expect_err("invalid replacement must fail");
@@ -235,7 +275,10 @@ async fn test_tls_roots_clone_to_builder_and_rebuild_keep_roots() {
         .options(second_options)
         .build()
         .expect("second client build");
-    let clone = rebuilt.to_builder().build().expect("to_builder retains roots");
+    let clone = rebuilt
+        .to_builder()
+        .build()
+        .expect("to_builder retains roots");
     assert_eq!(
         tls_client_request(&clone, "localhost", tunnel.tls_port())
             .await
@@ -265,7 +308,10 @@ async fn test_tls_roots_cleared_replacement_rejects_private_ca() {
     let replacement_client = client
         .rebuild_with_options(replacement)
         .expect("empty replacement roots are valid");
-    assert!(replacement_client.options().extra_root_certificates_der.is_empty());
+    assert!(replacement_client
+        .options()
+        .extra_root_certificates_der
+        .is_empty());
     let error = tls_client_request(&replacement_client, "localhost", tunnel.tls_port())
         .await
         .expect_err("cleared roots must reject private CA");

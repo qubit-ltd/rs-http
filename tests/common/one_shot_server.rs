@@ -160,7 +160,9 @@ impl OneShotServer {
             .request_rx
             .await
             .expect("one-shot test server dropped request sender");
-        self.join_handle.await.expect("one-shot test server task panicked");
+        self.join_handle
+            .await
+            .expect("one-shot test server task panicked");
         request
     }
 }
@@ -177,7 +179,9 @@ impl MultiShotServer {
             .request_rx
             .await
             .expect("multi-shot test server dropped request sender");
-        self.join_handle.await.expect("multi-shot test server task panicked");
+        self.join_handle
+            .await
+            .expect("multi-shot test server task panicked");
         requests
     }
 }
@@ -301,12 +305,14 @@ pub async fn read_request(stream: &mut TcpStream) -> std::io::Result<CapturedReq
     let mut buffer = Vec::new();
     let header_end_index = loop {
         let mut chunk = [0_u8; 1024];
-        let read_size = timeout(read_timeout, stream.read(&mut chunk)).await.map_err(|_| {
-            std::io::Error::new(
-                std::io::ErrorKind::TimedOut,
-                "timed out while waiting for request headers",
-            )
-        })??;
+        let read_size = timeout(read_timeout, stream.read(&mut chunk))
+            .await
+            .map_err(|_| {
+                std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    "timed out while waiting for request headers",
+                )
+            })??;
         if read_size == 0 {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::UnexpectedEof,
@@ -361,7 +367,10 @@ pub async fn read_request(stream: &mut TcpStream) -> std::io::Result<CapturedReq
             "request has both Transfer-Encoding and Content-Length",
         ));
     }
-    if content_lengths.iter().any(|value| value != &content_lengths[0]) {
+    if content_lengths
+        .iter()
+        .any(|value| value != &content_lengths[0])
+    {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
             "conflicting Content-Length headers",
@@ -377,9 +386,9 @@ pub async fn read_request(stream: &mut TcpStream) -> std::io::Result<CapturedReq
         }
         read_chunked_body(stream, &mut buffer, read_timeout).await?
     } else if let Some(length) = content_lengths.first() {
-        let length = length
-            .parse::<usize>()
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid Content-Length"))?;
+        let length = length.parse::<usize>().map_err(|_| {
+            std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid Content-Length")
+        })?;
         if length > 16 * 1024 * 1024 {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
@@ -399,11 +408,20 @@ pub async fn read_request(stream: &mut TcpStream) -> std::io::Result<CapturedReq
     })
 }
 
-async fn read_more(stream: &mut TcpStream, buffer: &mut Vec<u8>, timeout_duration: Duration) -> std::io::Result<()> {
+async fn read_more(
+    stream: &mut TcpStream,
+    buffer: &mut Vec<u8>,
+    timeout_duration: Duration,
+) -> std::io::Result<()> {
     let mut chunk = [0_u8; 1024];
     let size = timeout(timeout_duration, stream.read(&mut chunk))
         .await
-        .map_err(|_| std::io::Error::new(std::io::ErrorKind::TimedOut, "timed out while reading request body"))??;
+        .map_err(|_| {
+            std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "timed out while reading request body",
+            )
+        })??;
     if size == 0 {
         return Err(std::io::Error::new(
             std::io::ErrorKind::UnexpectedEof,
@@ -455,24 +473,34 @@ async fn read_chunked_body(
     loop {
         let line = read_http_line(stream, buffer, timeout_duration).await?;
         let size_token = line.split(|byte| *byte == b';').next().unwrap_or_default();
-        let size_text = std::str::from_utf8(size_token)
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid chunk size"))?;
+        let size_text = std::str::from_utf8(size_token).map_err(|_| {
+            std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid chunk size")
+        })?;
         if size_text.is_empty() {
-            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "empty chunk size"));
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "empty chunk size",
+            ));
         }
-        let size = usize::from_str_radix(size_text, 16)
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid chunk size"))?;
+        let size = usize::from_str_radix(size_text, 16).map_err(|_| {
+            std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid chunk size")
+        })?;
         if size == 0 {
             loop {
-                if read_http_line(stream, buffer, timeout_duration).await?.is_empty() {
+                if read_http_line(stream, buffer, timeout_duration)
+                    .await?
+                    .is_empty()
+                {
                     return Ok(body);
                 }
             }
         }
-        let new_length = body
-            .len()
-            .checked_add(size)
-            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, "chunked body length overflow"))?;
+        let new_length = body.len().checked_add(size).ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "chunked body length overflow",
+            )
+        })?;
         if new_length > 16 * 1024 * 1024 {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
@@ -495,7 +523,11 @@ async fn write_response(
     mut response_started_tx: Option<oneshot::Sender<()>>,
 ) -> std::io::Result<()> {
     match plan {
-        ResponsePlan::Immediate { status, headers, body } => {
+        ResponsePlan::Immediate {
+            status,
+            headers,
+            body,
+        } => {
             write_fixed_response(stream, status, headers, body).await?;
             signal_response_started(&mut response_started_tx);
         }
@@ -505,7 +537,10 @@ async fn write_response(
             body,
         } => {
             if !contains_raw_header(&headers, "Content-Length") {
-                headers.push(("Content-Length".to_string(), body.len().to_string().into_bytes()));
+                headers.push((
+                    "Content-Length".to_string(),
+                    body.len().to_string().into_bytes(),
+                ));
             }
             write_status_and_raw_headers(stream, status, &headers).await?;
             if !body.is_empty() {
@@ -662,7 +697,9 @@ fn is_expected_client_disconnect(error: &std::io::Error) -> bool {
 }
 
 fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
-    haystack.windows(needle.len()).position(|window| window == needle)
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
 }
 
 fn reason_phrase(status: u16) -> &'static str {
@@ -695,8 +732,8 @@ mod tests {
     use tokio::task::spawn;
     use tokio::time::sleep;
 
-    use super::CapturedRequest;
     use super::read_request;
+    use super::CapturedRequest;
 
     async fn read_fragments(fragments: &[&[u8]], close: bool) -> io::Result<CapturedRequest> {
         let listener = TcpListener::bind("127.0.0.1:0").await?;
@@ -730,16 +767,22 @@ mod tests {
         .expect("chunked request should be captured");
         assert_eq!(captured.body, b"part-1!");
         assert_eq!(
-            captured.headers.get("transfer-encoding").map(String::as_str),
+            captured
+                .headers
+                .get("transfer-encoding")
+                .map(String::as_str),
             Some("chunked")
         );
     }
 
     #[tokio::test]
     async fn test_read_request_rejects_early_content_length_eof() {
-        let error = read_fragments(&[b"POST /upload HTTP/1.1\r\nContent-Length: 4\r\n\r\nabc"], true)
-            .await
-            .expect_err("truncated body must fail");
+        let error = read_fragments(
+            &[b"POST /upload HTTP/1.1\r\nContent-Length: 4\r\n\r\nabc"],
+            true,
+        )
+        .await
+        .expect_err("truncated body must fail");
         assert_eq!(error.kind(), io::ErrorKind::UnexpectedEof);
     }
 

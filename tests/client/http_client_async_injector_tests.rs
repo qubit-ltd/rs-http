@@ -10,11 +10,11 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
 
+use http::header::HeaderName;
 use http::HeaderMap;
 use http::HeaderValue;
 use http::Method;
 use http::StatusCode;
-use http::header::HeaderName;
 use qubit_http::AsyncHttpHeaderInjector;
 use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
@@ -25,12 +25,13 @@ use tokio::test as tokio_test;
 use tokio::time::timeout;
 use url::Url;
 
-use crate::common::ResponsePlan;
 use crate::common::spawn_multi_shot_server;
 use crate::common::spawn_one_shot_server;
+use crate::common::ResponsePlan;
 
 fn injector_failure(context: u8) -> HttpError {
-    let mut error = HttpError::other("injector failed").with_source(std::io::Error::other("source failure"));
+    let mut error =
+        HttpError::other("injector failed").with_source(std::io::Error::other("source failure"));
     if context & 1 != 0 {
         error = error.with_method(&Method::POST);
     }
@@ -64,17 +65,25 @@ async fn test_async_header_injector_runs_after_sync_injector_with_stable_order()
         .expect("client should be created");
     client.add_header_injector(HttpHeaderInjector::new(move |headers: &mut HeaderMap| {
         sync_order.lock().unwrap().push("sync".to_string());
-        headers.insert(HeaderName::from_static("x-flow"), HeaderValue::from_static("sync"));
+        headers.insert(
+            HeaderName::from_static("x-flow"),
+            HeaderValue::from_static("sync"),
+        );
         Ok(())
     }));
-    client.add_async_header_injector(AsyncHttpHeaderInjector::new(move |headers: &mut HeaderMap| {
-        let async_order = async_order.clone();
-        Box::pin(async move {
-            async_order.lock().unwrap().push("async".to_string());
-            headers.insert(HeaderName::from_static("x-flow"), HeaderValue::from_static("async"));
-            Ok(())
-        })
-    }));
+    client.add_async_header_injector(AsyncHttpHeaderInjector::new(
+        move |headers: &mut HeaderMap| {
+            let async_order = async_order.clone();
+            Box::pin(async move {
+                async_order.lock().unwrap().push("async".to_string());
+                headers.insert(
+                    HeaderName::from_static("x-flow"),
+                    HeaderValue::from_static("async"),
+                );
+                Ok(())
+            })
+        },
+    ));
 
     let request = client.request(Method::GET, "/async-injector").build();
     let response = timeout(Duration::from_secs(3), client.execute(request))
@@ -105,20 +114,27 @@ async fn test_async_header_injector_failure_short_circuits_request() {
                 .build()
                 .expect("client should be created");
             if is_async {
-                client.add_async_header_injector(AsyncHttpHeaderInjector::new(move |_headers: &mut HeaderMap| {
-                    let error = injector_failure(context);
-                    Box::pin(async move { Err(error) })
-                }));
+                client.add_async_header_injector(AsyncHttpHeaderInjector::new(
+                    move |_headers: &mut HeaderMap| {
+                        let error = injector_failure(context);
+                        Box::pin(async move { Err(error) })
+                    },
+                ));
             } else {
-                client.add_header_injector(HttpHeaderInjector::new(move |_headers: &mut HeaderMap| {
-                    Err(injector_failure(context))
-                }));
+                client.add_header_injector(HttpHeaderInjector::new(
+                    move |_headers: &mut HeaderMap| Err(injector_failure(context)),
+                ));
             }
 
             let path = "/async-fail?access_token=context-secret";
             let request = client.request(Method::GET, path).build();
             let base_url = server.base_url();
-            let expected_url = Url::parse(&format!("{}{}", base_url.as_str().trim_end_matches('/'), path)).unwrap();
+            let expected_url = Url::parse(&format!(
+                "{}{}",
+                base_url.as_str().trim_end_matches('/'),
+                path
+            ))
+            .unwrap();
             let error = timeout(Duration::from_secs(3), client.execute(request))
                 .await
                 .expect("execute timed out")
@@ -127,7 +143,11 @@ async fn test_async_header_injector_failure_short_circuits_request() {
             assert!(error.message.contains("injector failed"));
             assert_eq!(
                 error.method.as_ref(),
-                Some(if context & 1 != 0 { &Method::POST } else { &Method::GET })
+                Some(if context & 1 != 0 {
+                    &Method::POST
+                } else {
+                    &Method::GET
+                })
             );
             let expected_error_url = if context & 2 != 0 {
                 Url::parse("https://upstream.example/token").unwrap()
@@ -135,12 +155,13 @@ async fn test_async_header_injector_failure_short_circuits_request() {
                 expected_url
             };
             assert_eq!(error.url.as_ref(), Some(&expected_error_url));
-            assert_eq!(error.status, (context & 4 != 0).then_some(StatusCode::BAD_GATEWAY));
-            assert!(
-                std::error::Error::source(&error)
-                    .and_then(|source| source.downcast_ref::<std::io::Error>())
-                    .is_some()
+            assert_eq!(
+                error.status,
+                (context & 4 != 0).then_some(StatusCode::BAD_GATEWAY)
             );
+            assert!(std::error::Error::source(&error)
+                .and_then(|source| source.downcast_ref::<std::io::Error>())
+                .is_some());
             assert!(!error.to_string().contains("context-secret"));
             assert!(!format!("{error:?}").contains("context-secret"));
 
@@ -164,13 +185,19 @@ async fn test_injector_failure_context_survives_retry_projection() {
         .expect("client should be created");
     client.add_async_header_injector(AsyncHttpHeaderInjector::new(|_headers: &mut HeaderMap| {
         Box::pin(async move {
-            Err(HttpError::other("retry injector failed").with_source(std::io::Error::other("retry source failure")))
+            Err(HttpError::other("retry injector failed")
+                .with_source(std::io::Error::other("retry source failure")))
         })
     }));
     let path = "/retry-fail?access_token=context-secret";
     let request = client.request(Method::GET, path).build();
     let base_url = server.base_url();
-    let expected_url = Url::parse(&format!("{}{}", base_url.as_str().trim_end_matches('/'), path)).unwrap();
+    let expected_url = Url::parse(&format!(
+        "{}{}",
+        base_url.as_str().trim_end_matches('/'),
+        path
+    ))
+    .unwrap();
 
     let error = timeout(Duration::from_secs(3), client.execute(request))
         .await
@@ -191,7 +218,9 @@ async fn test_injector_failure_context_survives_retry_projection() {
         "retry projection should retain the injector source chain"
     );
     assert_eq!(
-        error.retry_diagnostics().map(|diagnostics| diagnostics.attempts()),
+        error
+            .retry_diagnostics()
+            .map(|diagnostics| diagnostics.attempts()),
         Some(1)
     );
     let captured = timeout(Duration::from_secs(3), server.finish())

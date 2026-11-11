@@ -6,9 +6,9 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -27,11 +27,11 @@ use tokio::test as tokio_test;
 use tokio::time::sleep;
 use tokio::time::timeout;
 
-use crate::common::CapturedRequest;
-use crate::common::ResponsePlan;
 use crate::common::read_request;
 use crate::common::spawn_multi_shot_server;
 use crate::common::spawn_one_shot_server;
+use crate::common::CapturedRequest;
+use crate::common::ResponsePlan;
 
 #[tokio_test]
 async fn test_upload_redirect_307_bytes_body_follows_and_preserves_post() {
@@ -72,8 +72,12 @@ enum UploadBodyKind {
 
 async fn run_upload_redirect(status: u16, body_kind: UploadBodyKind) {
     let expected_count = usize::from(matches!(body_kind, UploadBodyKind::Bytes)) + 1;
-    let listener = TcpListener::bind("127.0.0.1:0").await.expect("listener should bind");
-    let addr = listener.local_addr().expect("listener address should exist");
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("listener should bind");
+    let addr = listener
+        .local_addr()
+        .expect("listener address should exist");
     let base_url = format!("http://{addr}/");
     let server: JoinHandle<Vec<CapturedRequest>> = tokio::spawn(async move {
         let mut requests = Vec::with_capacity(expected_count);
@@ -119,7 +123,8 @@ async fn run_upload_redirect(status: u16, body_kind: UploadBodyKind) {
             builder.streaming_body(move || {
                 calls.fetch_add(1, Ordering::Relaxed);
                 Box::pin(async {
-                    Box::pin(stream::iter(vec![Ok(Bytes::from_static(b"payload"))])) as HttpRequestBodyByteStream
+                    Box::pin(stream::iter(vec![Ok(Bytes::from_static(b"payload"))]))
+                        as HttpRequestBodyByteStream
                 })
             })
         }
@@ -129,11 +134,20 @@ async fn run_upload_redirect(status: u16, body_kind: UploadBodyKind) {
         .await
         .expect("upload request timed out");
     match body_kind {
-        UploadBodyKind::Bytes => assert_eq!(result.expect("buffered redirect should succeed").status().as_u16(), 200),
+        UploadBodyKind::Bytes => assert_eq!(
+            result
+                .expect("buffered redirect should succeed")
+                .status()
+                .as_u16(),
+            200
+        ),
         UploadBodyKind::Stream | UploadBodyKind::Factory => {
             let error = result.expect_err("streaming redirect should not replay its body");
             assert_eq!(error.kind(), HttpErrorKind::Status);
-            assert_eq!(error.status().expect("status should be present").as_u16(), status);
+            assert_eq!(
+                error.status().expect("status should be present").as_u16(),
+                status
+            );
         }
     }
     let captured = timeout(Duration::from_secs(3), server)
@@ -213,8 +227,9 @@ async fn test_execute_with_multipart_body_and_query_headers_timeout() {
         .build()
         .expect("client should be created");
 
-    let payload =
-        Bytes::from_static(b"--abc\r\nContent-Disposition: form-data; name=\"field\"\r\n\r\nvalue\r\n--abc--\r\n");
+    let payload = Bytes::from_static(
+        b"--abc\r\nContent-Disposition: form-data; name=\"field\"\r\n\r\nvalue\r\n--abc--\r\n",
+    );
     let request = client
         .request(Method::POST, "/multipart")
         .query_param("kind", "multipart")
@@ -268,7 +283,16 @@ async fn test_execute_with_ndjson_body_and_query_headers_timeout() {
         .query_param("kind", "ndjson")
         .header("x-test", "1")
         .expect("header should be valid")
-        .ndjson_body(&[Record { id: 1, name: "alpha" }, Record { id: 2, name: "beta" }])
+        .ndjson_body(&[
+            Record {
+                id: 1,
+                name: "alpha",
+            },
+            Record {
+                id: 2,
+                name: "beta",
+            },
+        ])
         .expect("ndjson should be encoded")
         .request_timeout(Duration::from_secs(1))
         .expect("positive request timeout should be accepted")
@@ -287,7 +311,10 @@ async fn test_execute_with_ndjson_body_and_query_headers_timeout() {
         Some(&"application/x-ndjson".to_string())
     );
     let body = String::from_utf8(captured.body).expect("body should be utf-8");
-    assert_eq!(body, "{\"id\":1,\"name\":\"alpha\"}\n{\"id\":2,\"name\":\"beta\"}\n");
+    assert_eq!(
+        body,
+        "{\"id\":1,\"name\":\"alpha\"}\n{\"id\":2,\"name\":\"beta\"}\n"
+    );
 }
 
 #[tokio_test]
@@ -310,7 +337,10 @@ async fn test_execute_with_stream_body_uses_chunked_transfer_encoding() {
     let request = client
         .request(Method::POST, "/stream-upload")
         .query_param("kind", "stream")
-        .stream_body([Bytes::from(large_chunk.clone()), Bytes::from_static(b"tail")])
+        .stream_body([
+            Bytes::from(large_chunk.clone()),
+            Bytes::from_static(b"tail"),
+        ])
         .request_timeout(Duration::from_secs(1))
         .expect("positive request timeout should be accepted")
         .build();
@@ -324,7 +354,10 @@ async fn test_execute_with_stream_body_uses_chunked_transfer_encoding() {
         .await
         .expect("server finish timed out");
     assert_eq!(captured.target, "/stream-upload?kind=stream");
-    assert_eq!(captured.headers.get("transfer-encoding"), Some(&"chunked".to_string()));
+    assert_eq!(
+        captured.headers.get("transfer-encoding"),
+        Some(&"chunked".to_string())
+    );
     let mut expected = large_chunk;
     expected.extend_from_slice(b"tail");
     assert_eq!(captured.body, expected);
@@ -363,7 +396,10 @@ async fn test_execute_with_stream_body_preserves_ordered_chunks() {
         .await
         .expect("server finish timed out");
     assert_eq!(captured.target, "/stream-upload-streaming?kind=stream-body");
-    assert_eq!(captured.headers.get("transfer-encoding"), Some(&"chunked".to_string()));
+    assert_eq!(
+        captured.headers.get("transfer-encoding"),
+        Some(&"chunked".to_string())
+    );
     assert_eq!(captured.body, b"ab");
 }
 
@@ -463,7 +499,8 @@ async fn test_streaming_body_factory_preparation_respects_response_header_timeou
         .streaming_body(|| {
             Box::pin(async move {
                 sleep(Duration::from_secs(5)).await;
-                Box::pin(stream::empty::<Result<Bytes, std::io::Error>>()) as HttpRequestBodyByteStream
+                Box::pin(stream::empty::<Result<Bytes, std::io::Error>>())
+                    as HttpRequestBodyByteStream
             })
         })
         .build();

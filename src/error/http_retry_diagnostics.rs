@@ -44,7 +44,11 @@ impl HttpRetryDiagnostics {
     ///
     /// # Returns
     /// A diagnostics snapshot containing the supplied values.
-    pub(crate) const fn new(attempts: u32, elapsed: Duration, termination: HttpRetryTermination) -> Self {
+    pub(crate) const fn new(
+        attempts: u32,
+        elapsed: Duration,
+        termination: HttpRetryTermination,
+    ) -> Self {
         Self {
             attempts,
             elapsed,

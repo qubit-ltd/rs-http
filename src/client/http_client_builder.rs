@@ -8,16 +8,16 @@
 //! Reqwest-backed HTTP client factory.
 
 use qubit_config::ConfigReader;
+use reqwest::redirect::Policy;
 use reqwest::Certificate;
 use reqwest::Client;
 use reqwest::Proxy;
-use reqwest::redirect::Policy;
 use url::Host;
 use url::Url;
 
+use super::internal::Ipv4OnlyResolver;
 use super::RedirectIpv6Violation;
 use super::RedirectOriginViolation;
-use super::internal::Ipv4OnlyResolver;
 use crate::HttpClient;
 use crate::HttpClientOptions;
 use crate::HttpConfigError;
@@ -125,16 +125,18 @@ impl HttpClientBuilder {
     /// Returns a configuration error for invalid options or a client error
     /// when reqwest cannot build the backend.
     fn build_backend(options: HttpClientOptions) -> HttpResult<HttpClient> {
-        let backend = Self::configure_backend(&options)?.build().map_err(|error| {
-            let mut error = HttpError::from(error);
-            if !options.extra_root_certificates_der.is_empty() {
-                error.message = format!(
-                    "Failed to build HTTP client with additional trust roots: {}",
-                    error.message
-                );
-            }
-            error
-        })?;
+        let backend = Self::configure_backend(&options)?
+            .build()
+            .map_err(|error| {
+                let mut error = HttpError::from(error);
+                if !options.extra_root_certificates_der.is_empty() {
+                    error.message = format!(
+                        "Failed to build HTTP client with additional trust roots: {}",
+                        error.message
+                    );
+                }
+                error
+            })?;
 
         Ok(HttpClient::new(backend, options))
     }
@@ -171,7 +173,10 @@ impl HttpClientBuilder {
         if let Some(user_agent) = options.user_agent.as_deref() {
             builder = builder.user_agent(user_agent);
         }
-        let redirect_policy = options.max_redirects.map(Policy::limited).unwrap_or_default();
+        let redirect_policy = options
+            .max_redirects
+            .map(Policy::limited)
+            .unwrap_or_default();
         let same_origin_only = matches!(options.origin_policy, crate::HttpOriginPolicy::SameOrigin);
         let ipv4_only = options.ipv4_only;
         builder = builder.redirect(Policy::custom(move |attempt| {

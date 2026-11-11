@@ -86,18 +86,19 @@ fn test_http_config_error_from_missing_argument_error() {
 #[test]
 fn test_http_config_error_from_config_error() {
     let mut config = Config::new();
-    config.set("x", 42i32).expect("test config should accept integer value");
+    config
+        .set("x", 42i32)
+        .expect("test config should accept integer value");
     let ce = config
         .get_strict::<bool>("x")
         .expect_err("strictly reading integer as bool should fail");
     let he = HttpConfigError::from(ce);
     assert_eq!(he.kind, HttpConfigErrorKind::TypeError);
     assert_eq!(he.path, "x");
-    assert!(
-        he.source()
-            .and_then(|source| source.downcast_ref::<ConfigError>())
-            .is_some()
-    );
+    assert!(he
+        .source()
+        .and_then(|source| source.downcast_ref::<ConfigError>())
+        .is_some());
 }
 
 #[test]
@@ -124,7 +125,9 @@ fn test_http_config_error_from_conversion_error_maps_to_type_error() {
         source: DataConversionError::invalid(
             DataType::String,
             DataType::Duration,
-            InvalidValueReason::InvalidSyntax { expected: "a duration" },
+            InvalidValueReason::InvalidSyntax {
+                expected: "a duration",
+            },
         ),
     });
 

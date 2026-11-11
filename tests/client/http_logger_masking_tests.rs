@@ -6,12 +6,12 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use http::HeaderMap;
-use http::Method;
-use http::header::AUTHORIZATION;
-use http::header::CONTENT_TYPE;
 use http::header::HeaderName;
 use http::header::HeaderValue;
+use http::header::AUTHORIZATION;
+use http::header::CONTENT_TYPE;
+use http::HeaderMap;
+use http::Method;
 use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpLogger;
@@ -46,7 +46,8 @@ fn capture_request_header_logs(name: HeaderName, value: HeaderValue) -> String {
 
 #[test]
 fn test_mask_header_value_non_sensitive_header() {
-    let logs = capture_request_header_logs(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    let logs =
+        capture_request_header_logs(CONTENT_TYPE, HeaderValue::from_static("application/json"));
     assert!(
         logs.contains("content-type: [application/json]"),
         "unexpected request header logs: {logs}"

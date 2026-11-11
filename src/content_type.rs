@@ -20,7 +20,11 @@ const MAX_MULTIPART_BOUNDARY_LEN: usize = 70;
 #[must_use]
 #[inline]
 pub(crate) fn media_type(content_type: &str) -> &str {
-    content_type.split(';').next().map(str::trim).unwrap_or_default()
+    content_type
+        .split(';')
+        .next()
+        .map(str::trim)
+        .unwrap_or_default()
 }
 
 /// Returns whether `content_type` has the expected media type.
@@ -63,7 +67,9 @@ pub(crate) fn is_multipart(content_type: &str) -> bool {
     let Some((kind, subtype)) = media_type(content_type).split_once('/') else {
         return false;
     };
-    kind.eq_ignore_ascii_case("multipart") && !subtype.is_empty() && subtype.bytes().all(is_media_type_token_byte)
+    kind.eq_ignore_ascii_case("multipart")
+        && !subtype.is_empty()
+        && subtype.bytes().all(is_media_type_token_byte)
 }
 
 /// Returns whether one byte is allowed in an HTTP media type token.
@@ -88,7 +94,8 @@ fn is_media_type_token_byte(byte: u8) -> bool {
 #[inline]
 pub(crate) fn is_valid_multipart_boundary(boundary: &str) -> bool {
     let len = boundary.len();
-    (1..=MAX_MULTIPART_BOUNDARY_LEN).contains(&len) && boundary.bytes().all(is_valid_multipart_boundary_byte)
+    (1..=MAX_MULTIPART_BOUNDARY_LEN).contains(&len)
+        && boundary.bytes().all(is_valid_multipart_boundary_byte)
 }
 
 /// Extracts a unique semicolon-separated header parameter.
@@ -100,7 +107,10 @@ pub(crate) fn is_valid_multipart_boundary(boundary: &str) -> bool {
 /// # Returns
 /// Decoded parameter value, or `None` when absent. Returns an error for
 /// malformed or duplicate occurrences, including duplicates with equal values.
-pub(crate) fn unique_parameter(value: &str, parameter_name: &str) -> Result<Option<String>, &'static str> {
+pub(crate) fn unique_parameter(
+    value: &str,
+    parameter_name: &str,
+) -> Result<Option<String>, &'static str> {
     let segments = header_parameter_segments(value).ok_or("Malformed header parameters")?;
     let mut found = None;
     for segment in segments.into_iter().skip(1) {
@@ -116,7 +126,8 @@ pub(crate) fn unique_parameter(value: &str, parameter_name: &str) -> Result<Opti
         if found.is_some() {
             return Err("Duplicate header parameter");
         }
-        found = Some(decode_header_parameter(raw_value.trim()).ok_or("Malformed header parameter")?);
+        found =
+            Some(decode_header_parameter(raw_value.trim()).ok_or("Malformed header parameter")?);
     }
     Ok(found)
 }

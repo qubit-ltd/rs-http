@@ -20,9 +20,9 @@ use url::Url;
 
 #[tokio_test]
 async fn test_buffered_sse_body_yields_before_emitting_final_event() {
-    use std::sync::Arc;
     use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering;
+    use std::sync::Arc;
     use std::task::Wake;
 
     struct CountWake(AtomicUsize);
@@ -56,9 +56,14 @@ async fn test_buffered_sse_body_yields_before_emitting_final_event() {
     let wake_counter = Arc::new(CountWake(AtomicUsize::new(0)));
     let waker = std::task::Waker::from(Arc::clone(&wake_counter));
     let mut context = std::task::Context::from_waker(&waker);
-    let result = std::future::poll_fn(|_| std::task::Poll::Ready(events.as_mut().poll_next(&mut context))).await;
+    let result =
+        std::future::poll_fn(|_| std::task::Poll::Ready(events.as_mut().poll_next(&mut context)))
+            .await;
 
-    assert!(result.is_pending(), "decoder should yield during buffered input");
+    assert!(
+        result.is_pending(),
+        "decoder should yield during buffered input"
+    );
     assert!(wake_counter.0.load(Ordering::SeqCst) > 0);
     assert_eq!(side_task_ran.load(Ordering::SeqCst), 0);
     let message = events.next().await.unwrap().unwrap();
@@ -96,7 +101,8 @@ async fn test_decode_messages_does_not_emit_retry_only_control_frame() {
 
 #[tokio_test]
 async fn test_decode_messages_applies_control_only_id_to_next_message() {
-    let response = stream_response_from_chunks(vec!["id: resume-token\n", "\n", "data: hello\n", "\n"]);
+    let response =
+        stream_response_from_chunks(vec!["id: resume-token\n", "\n", "data: hello\n", "\n"]);
     let messages = collect_results(response.sse_messages()).await;
 
     assert_eq!(messages.len(), 1);
@@ -207,7 +213,10 @@ async fn test_decode_frames_ignores_unknown_field_name() {
 #[tokio_test]
 async fn test_decode_frames_rejects_frame_exceeding_max_bytes() {
     let response = stream_response_from_chunks(vec!["data: 12345\n", "data: 67890\n", "\n"]);
-    let mut events = response.sse_max_line_bytes(128).sse_max_frame_bytes(12).sse_messages();
+    let mut events = response
+        .sse_max_line_bytes(128)
+        .sse_max_frame_bytes(12)
+        .sse_messages();
     let error = events.next().await.unwrap().unwrap_err();
 
     assert_eq!(error.kind, HttpErrorKind::SseProtocol);
@@ -235,7 +244,13 @@ async fn test_decode_frames_accepts_frame_at_max_bytes() {
 #[tokio_test]
 async fn test_decode_frames_ignores_comment_lines() {
     let response = stream_response_from_chunks(vec![": heartbeat\n", "data: hello\n", "\n"]);
-    let events = collect_results(response.sse_max_line_bytes(128).sse_max_frame_bytes(64).sse_messages()).await;
+    let events = collect_results(
+        response
+            .sse_max_line_bytes(128)
+            .sse_max_frame_bytes(64)
+            .sse_messages(),
+    )
+    .await;
 
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].data, "hello");
@@ -243,10 +258,18 @@ async fn test_decode_frames_ignores_comment_lines() {
 
 #[tokio_test]
 async fn test_decode_frames_discards_unterminated_event_at_eof() {
-    for body in ["data: value", "data: value\n", "data: value\r", "data: value\r\n"] {
+    for body in [
+        "data: value",
+        "data: value\n",
+        "data: value\r",
+        "data: value\r\n",
+    ] {
         let response = stream_response_from_chunks(vec![body]);
         let events = collect_results(response.sse_messages()).await;
-        assert!(events.is_empty(), "unterminated frame {body:?} must not dispatch");
+        assert!(
+            events.is_empty(),
+            "unterminated frame {body:?} must not dispatch"
+        );
     }
     for body in ["data: value\r\r", "data: value\n\n", "data: value\r\n\r\n"] {
         let response = stream_response_from_chunks(vec![body]);
@@ -272,7 +295,10 @@ async fn test_decode_frames_accepts_field_value_without_space_after_colon() {
 #[tokio_test]
 async fn test_decode_frames_resets_budget_after_unknown_only_frame() {
     let response = stream_response_from_chunks(vec!["x: 123\n\n", "x: 123\n\n", "data: a\n\n"]);
-    let mut events = response.sse_max_line_bytes(128).sse_max_frame_bytes(8).sse_messages();
+    let mut events = response
+        .sse_max_line_bytes(128)
+        .sse_max_frame_bytes(8)
+        .sse_messages();
     let event = events
         .next()
         .await

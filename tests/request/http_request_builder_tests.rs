@@ -10,11 +10,11 @@ use std::error::Error as _;
 use std::time::Duration;
 
 use bytes::Bytes;
+use http::header::HeaderName;
+use http::header::CONTENT_TYPE;
 use http::HeaderMap;
 use http::HeaderValue;
 use http::Method;
-use http::header::CONTENT_TYPE;
-use http::header::HeaderName;
 use qubit_budget::json::JsonEncodeLimits;
 use qubit_budget::json::JsonResource;
 use qubit_http::HttpCancellationToken;
@@ -30,12 +30,12 @@ use qubit_json::encode::JsonEncodeErrorKind;
 use qubit_json::encode::JsonSerializationErrorKind;
 use qubit_redact::RedactionPolicy;
 use qubit_redact::Sensitivity;
-use serde::Serialize;
 use serde::ser::Error as _;
 use serde::ser::Serializer;
+use serde::Serialize;
 
-use crate::common::ResponsePlan;
 use crate::common::spawn_one_shot_server;
+use crate::common::ResponsePlan;
 
 struct FailingSerialize;
 
@@ -71,7 +71,9 @@ fn test_request_builder_debug_masks_sensitive_values() {
             let _ = http.query().raise("debugToken", Sensitivity::High);
         })
         .expect("the test policy input should be valid");
-    options.log_redaction_policy = builder.build().expect("log redaction policy should be valid");
+    options.log_redaction_policy = builder
+        .build()
+        .expect("log redaction policy should be valid");
     let mut default_headers = HeaderMap::new();
     default_headers.insert(
         "x-debug-secret",
@@ -92,7 +94,10 @@ fn test_request_builder_debug_masks_sensitive_values() {
         .request_timeout(Duration::from_secs(1))
         .expect("positive timeout should be accepted")
         .cancellation_token(HttpCancellationToken::new());
-    let absolute = client.request(Method::GET, "https://debug-user:debug-url-secret@example.com/path");
+    let absolute = client.request(
+        Method::GET,
+        "https://debug-user:debug-url-secret@example.com/path",
+    );
 
     let debug = format!("{relative:?}\n{absolute:?}");
 
@@ -126,7 +131,10 @@ fn test_request_builder_preflight_errors_use_client_redaction_snapshot() {
 
     let invalid_header = client
         .request(Method::GET, "/resource")
-        .header("https://example.test/?client_secret=synthetic-secret", "value")
+        .header(
+            "https://example.test/?client_secret=synthetic-secret",
+            "value",
+        )
         .expect_err("URL-shaped header name should be rejected");
     let invalid_timeout = client
         .request(Method::GET, "/resource")
@@ -185,9 +193,14 @@ fn test_request_builder_copies_response_header_timeout_default_from_client_optio
         .options(options)
         .build()
         .expect("client should be created");
-    let request = client.request(Method::GET, "/v1/default-write-timeout").build();
+    let request = client
+        .request(Method::GET, "/v1/default-write-timeout")
+        .build();
 
-    assert_eq!(request.response_header_timeout(), Duration::from_millis(321));
+    assert_eq!(
+        request.response_header_timeout(),
+        Duration::from_millis(321)
+    );
 }
 
 #[test]
@@ -238,7 +251,9 @@ fn test_request_builder_copies_read_timeout_default_from_client_options() {
         .options(options)
         .build()
         .expect("client should be created");
-    let request = client.request(Method::GET, "/v1/default-read-timeout").build();
+    let request = client
+        .request(Method::GET, "/v1/default-read-timeout")
+        .build();
 
     assert_eq!(request.read_timeout(), Duration::from_millis(432));
 }
@@ -299,7 +314,10 @@ fn test_request_builder_ipv4_only_method_overrides_default_from_options() {
         .options(options)
         .build()
         .expect("client should be created");
-    let request = client.request(Method::GET, "users").ipv4_only(false).build();
+    let request = client
+        .request(Method::GET, "users")
+        .ipv4_only(false)
+        .build();
 
     assert!(!request.ipv4_only());
 }
@@ -313,7 +331,10 @@ fn test_request_builder_clear_base_url_method_overrides_default_from_options() {
         .options(options)
         .build()
         .expect("client should be created");
-    let request = client.request(Method::GET, "users").clear_base_url().build();
+    let request = client
+        .request(Method::GET, "users")
+        .clear_base_url()
+        .build();
 
     assert_eq!(request.base_url(), None);
 }
@@ -329,7 +350,10 @@ fn test_request_builder_with_query_params() {
     assert_eq!(request.path(), "/v1/test");
     assert_eq!(
         request.query(),
-        vec![("a".to_string(), "1".to_string()), ("b".to_string(), "2".to_string())]
+        vec![
+            ("a".to_string(), "1".to_string()),
+            ("b".to_string(), "2".to_string())
+        ]
     );
 }
 
@@ -341,7 +365,9 @@ fn test_request_builder_header_validation() {
 
 #[test]
 fn test_request_builder_text_body_sets_content_type() {
-    let request = new_builder(Method::POST, "/v1/text").text_body("hello world").build();
+    let request = new_builder(Method::POST, "/v1/text")
+        .text_body("hello world")
+        .build();
 
     assert_eq!(request.method(), &Method::POST);
     assert_eq!(request.path(), "/v1/text");
@@ -385,7 +411,8 @@ fn test_request_builder_json_body_sets_content_type_and_payload() {
 
     match request.body() {
         HttpRequestBody::Json(bytes) => {
-            let body: serde_json::Value = serde_json::from_slice(bytes).expect("JSON body bytes should decode");
+            let body: serde_json::Value =
+                serde_json::from_slice(bytes).expect("JSON body bytes should decode");
             assert_eq!(body["name"], "alpha");
             assert_eq!(body["value"], 42);
         }
@@ -400,7 +427,10 @@ fn test_body_replacement_refreshes_auto_content_type() {
         .json_body(&serde_json::json!({"ready": true}))
         .unwrap()
         .build();
-    assert_eq!(request.headers().get(CONTENT_TYPE).unwrap(), "application/json");
+    assert_eq!(
+        request.headers().get(CONTENT_TYPE).unwrap(),
+        "application/json"
+    );
     assert!(matches!(request.body(), HttpRequestBody::Json(_)));
 }
 
@@ -425,7 +455,9 @@ fn test_body_replacement_tracks_typed_and_opaque_helpers() {
     let deferred = new_builder(Method::POST, "/items")
         .form_body([("a", "1")])
         .streaming_body(|| {
-            Box::pin(async { Box::pin(futures_util::stream::empty()) as qubit_http::HttpRequestBodyByteStream })
+            Box::pin(async {
+                Box::pin(futures_util::stream::empty()) as qubit_http::HttpRequestBodyByteStream
+            })
         })
         .build();
     assert!(deferred.headers().get(CONTENT_TYPE).is_none());
@@ -462,7 +494,10 @@ fn test_headers_map_marks_content_type_explicit_and_empty_map_does_not() {
         .headers(map)
         .text_body("text")
         .build();
-    assert_eq!(explicit.headers().get(CONTENT_TYPE).unwrap(), "application/map");
+    assert_eq!(
+        explicit.headers().get(CONTENT_TYPE).unwrap(),
+        "application/map"
+    );
 
     let automatic = new_builder(Method::POST, "/items")
         .text_body("text")
@@ -470,7 +505,10 @@ fn test_headers_map_marks_content_type_explicit_and_empty_map_does_not() {
         .json_body(&serde_json::json!({"a": 1}))
         .unwrap()
         .build();
-    assert_eq!(automatic.headers().get(CONTENT_TYPE).unwrap(), "application/json");
+    assert_eq!(
+        automatic.headers().get(CONTENT_TYPE).unwrap(),
+        "application/json"
+    );
 }
 
 #[test]
@@ -511,9 +549,16 @@ fn test_multipart_and_builder_clone_refresh_auto_content_type() {
     );
 
     let builder = new_builder(Method::POST, "/items").text_body("text");
-    let json = builder.clone().json_body(&serde_json::json!({"a": 1})).unwrap().build();
+    let json = builder
+        .clone()
+        .json_body(&serde_json::json!({"a": 1}))
+        .unwrap()
+        .build();
     let bytes = builder.bytes_body(Bytes::new()).build();
-    assert_eq!(json.headers().get(CONTENT_TYPE).unwrap(), "application/json");
+    assert_eq!(
+        json.headers().get(CONTENT_TYPE).unwrap(),
+        "application/json"
+    );
     assert!(bytes.headers().get(CONTENT_TYPE).is_none());
 }
 
@@ -527,9 +572,10 @@ async fn test_removed_automatic_content_type_allows_client_default_to_apply() {
     .await;
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
-    options
-        .default_headers
-        .insert(CONTENT_TYPE, HeaderValue::from_static("application/client-default"));
+    options.default_headers.insert(
+        CONTENT_TYPE,
+        HeaderValue::from_static("application/client-default"),
+    );
     let client = HttpClientBuilder::new().options(options).build().unwrap();
     let request = client
         .request(Method::POST, "/items")
@@ -626,8 +672,14 @@ fn test_request_builder_stream_body_preserves_chunk_order() {
 #[test]
 fn test_request_builder_query_params_headers_and_text_body_preserve_existing_content_type() {
     let mut headers = HeaderMap::new();
-    headers.insert(CONTENT_TYPE, HeaderValue::from_static("text/custom; charset=utf-8"));
-    headers.insert(HeaderName::from_static("x-extra"), HeaderValue::from_static("present"));
+    headers.insert(
+        CONTENT_TYPE,
+        HeaderValue::from_static("text/custom; charset=utf-8"),
+    );
+    headers.insert(
+        HeaderName::from_static("x-extra"),
+        HeaderValue::from_static("present"),
+    );
 
     let request = new_builder(Method::POST, "/v1/text")
         .query_params([("a", "1"), ("b", "2")])
@@ -637,7 +689,10 @@ fn test_request_builder_query_params_headers_and_text_body_preserve_existing_con
 
     assert_eq!(
         request.query(),
-        vec![("a".to_string(), "1".to_string()), ("b".to_string(), "2".to_string()),]
+        vec![
+            ("a".to_string(), "1".to_string()),
+            ("b".to_string(), "2".to_string()),
+        ]
     );
     assert_eq!(
         request
@@ -677,7 +732,8 @@ fn test_request_builder_json_body_preserves_existing_content_type() {
     );
     match request.body() {
         HttpRequestBody::Json(bytes) => {
-            let body: serde_json::Value = serde_json::from_slice(bytes).expect("JSON body bytes should decode");
+            let body: serde_json::Value =
+                serde_json::from_slice(bytes).expect("JSON body bytes should decode");
             assert_eq!(body["ok"], true);
         }
         _ => panic!("expected JSON body"),
@@ -745,12 +801,10 @@ fn test_request_builder_sets_cancellation_token() {
         .build();
 
     assert!(request.cancellation_token().is_some());
-    assert!(
-        !request
-            .cancellation_token()
-            .expect("cancellation token should exist")
-            .is_cancelled()
-    );
+    assert!(!request
+        .cancellation_token()
+        .expect("cancellation token should exist")
+        .is_cancelled());
 }
 
 #[test]
@@ -844,7 +898,10 @@ fn test_multipart_rejects_duplicate_boundary_parameters() {
             .header(CONTENT_TYPE.as_str(), value)
             .unwrap()
             .multipart_body(Bytes::from_static(b"--abc--\r\n"), "abc");
-        assert!(result.is_err(), "invalid boundary parameters must fail: {value}");
+        assert!(
+            result.is_err(),
+            "invalid boundary parameters must fail: {value}"
+        );
     }
 }
 
@@ -997,7 +1054,10 @@ fn test_request_builder_multipart_body_preserves_matching_escaped_existing_bound
 #[test]
 fn test_request_builder_multipart_body_ignores_quoted_boundary_text_in_other_parameters() {
     let request = new_builder(Method::POST, "/v1/multipart")
-        .header(CONTENT_TYPE.as_str(), "multipart/mixed; title=\"not; boundary=real\"")
+        .header(
+            CONTENT_TYPE.as_str(),
+            "multipart/mixed; title=\"not; boundary=real\"",
+        )
         .expect("custom content-type header should be valid")
         .multipart_body(Bytes::from_static(b"payload"), "abc")
         .expect("missing boundary should be repaired")
@@ -1015,7 +1075,10 @@ fn test_request_builder_multipart_body_ignores_quoted_boundary_text_in_other_par
 #[test]
 fn test_request_builder_multipart_body_ignores_escaped_separator_in_other_parameters() {
     let request = new_builder(Method::POST, "/v1/multipart")
-        .header(CONTENT_TYPE.as_str(), "multipart/mixed; title=\"not\\; boundary=real\"")
+        .header(
+            CONTENT_TYPE.as_str(),
+            "multipart/mixed; title=\"not\\; boundary=real\"",
+        )
         .expect("custom content-type header should be valid")
         .multipart_body(Bytes::from_static(b"payload"), "abc")
         .expect("missing boundary should be repaired")
@@ -1033,7 +1096,10 @@ fn test_request_builder_multipart_body_ignores_escaped_separator_in_other_parame
 #[test]
 fn test_request_builder_multipart_body_skips_parameter_without_value_before_boundary() {
     let request = new_builder(Method::POST, "/v1/multipart")
-        .header(CONTENT_TYPE.as_str(), "multipart/mixed; charset; boundary=abc")
+        .header(
+            CONTENT_TYPE.as_str(),
+            "multipart/mixed; charset; boundary=abc",
+        )
         .expect("custom content-type header should be valid")
         .multipart_body(Bytes::from_static(b"payload"), "abc")
         .expect("boundary after value-less parameter should be decoded")
@@ -1309,14 +1375,12 @@ fn test_request_builder_accepts_mime_boundary_length_limits() {
             .multipart_body(Bytes::from_static(b"payload"), &boundary)
             .expect("boundary length one through seventy is accepted")
             .build();
-        assert!(
-            request
-                .headers()
-                .get(CONTENT_TYPE)
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .contains(&boundary)
-        );
+        assert!(request
+            .headers()
+            .get(CONTENT_TYPE)
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .contains(&boundary));
     }
 }

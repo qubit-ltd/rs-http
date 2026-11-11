@@ -9,9 +9,9 @@
 
 use bytes::Bytes;
 use proptest::collection::vec;
+use proptest::prelude::any;
 use proptest::prelude::Just;
 use proptest::prelude::Strategy;
-use proptest::prelude::any;
 
 use crate::HttpByteStream;
 
@@ -55,8 +55,11 @@ pub(super) fn case_strategy() -> impl Strategy<Value = GeneratedCase> {
         .prop_flat_map(
             |(lines, bom, eof_blank, malformed, terminate_last, line_limit, frame_limit)| {
                 let ending = proptest::prop_oneof![Just("\n"), Just("\r"), Just("\r\n")];
-                (vec(ending, lines.len().saturating_add(1)), vec(0usize..=8192, 0..=64)).prop_map(
-                    move |(endings, mut cuts)| {
+                (
+                    vec(ending, lines.len().saturating_add(1)),
+                    vec(0usize..=8192, 0..=64),
+                )
+                    .prop_map(move |(endings, mut cuts)| {
                         let mut bytes = Vec::new();
                         if bom {
                             bytes.extend_from_slice("\u{feff}".as_bytes());
@@ -68,7 +71,8 @@ pub(super) fn case_strategy() -> impl Strategy<Value = GeneratedCase> {
                             }
                         }
                         if eof_blank && !lines.is_empty() {
-                            bytes.extend_from_slice(endings[lines.len() % endings.len()].as_bytes());
+                            bytes
+                                .extend_from_slice(endings[lines.len() % endings.len()].as_bytes());
                         }
                         if malformed {
                             bytes.extend_from_slice(&[0xff, 0xfe]);
@@ -84,8 +88,7 @@ pub(super) fn case_strategy() -> impl Strategy<Value = GeneratedCase> {
                             cuts,
                             error_offset,
                         }
-                    },
-                )
+                    })
             },
         )
 }
@@ -98,7 +101,11 @@ pub(super) fn stream_for_case(case: &GeneratedCase, layout: &[usize]) -> HttpByt
     let mut chunks = Vec::with_capacity(cuts.len() * 2 + 3);
     chunks.push(Ok(Bytes::new()));
     let mut start = 0;
-    for (index, end) in cuts.into_iter().chain(std::iter::once(case.bytes.len())).enumerate() {
+    for (index, end) in cuts
+        .into_iter()
+        .chain(std::iter::once(case.bytes.len()))
+        .enumerate()
+    {
         chunks.push(Ok(Bytes::copy_from_slice(&case.bytes[start..end])));
         for _ in 0..=index % 2 {
             chunks.push(Ok(Bytes::new()));
@@ -108,7 +115,11 @@ pub(super) fn stream_for_case(case: &GeneratedCase, layout: &[usize]) -> HttpByt
     Box::pin(futures_util::stream::iter(chunks))
 }
 
-pub(super) fn stream_with_error(case: &GeneratedCase, layout: &[usize], offset: usize) -> HttpByteStream {
+pub(super) fn stream_with_error(
+    case: &GeneratedCase,
+    layout: &[usize],
+    offset: usize,
+) -> HttpByteStream {
     let offset = offset.min(case.bytes.len());
     let mut cuts = layout.to_vec();
     cuts.push(offset);
@@ -119,14 +130,22 @@ pub(super) fn stream_with_error(case: &GeneratedCase, layout: &[usize], offset: 
     let mut start = 0;
     let mut injected = false;
     if offset == 0 {
-        chunks.push(Err(crate::HttpError::transport("generated transport failure")));
+        chunks.push(Err(crate::HttpError::transport(
+            "generated transport failure",
+        )));
         injected = true;
     }
-    for (index, end) in cuts.into_iter().chain(std::iter::once(case.bytes.len())).enumerate() {
+    for (index, end) in cuts
+        .into_iter()
+        .chain(std::iter::once(case.bytes.len()))
+        .enumerate()
+    {
         chunks.push(Ok(Bytes::copy_from_slice(&case.bytes[start..end])));
         start = end;
         if !injected && start >= offset {
-            chunks.push(Err(crate::HttpError::transport("generated transport failure")));
+            chunks.push(Err(crate::HttpError::transport(
+                "generated transport failure",
+            )));
             injected = true;
         }
         if index < 2 {
@@ -134,7 +153,9 @@ pub(super) fn stream_with_error(case: &GeneratedCase, layout: &[usize], offset: 
         }
     }
     if !injected {
-        chunks.push(Err(crate::HttpError::transport("generated transport failure")));
+        chunks.push(Err(crate::HttpError::transport(
+            "generated transport failure",
+        )));
     }
     Box::pin(futures_util::stream::iter(chunks))
 }

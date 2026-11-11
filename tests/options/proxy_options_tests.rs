@@ -26,7 +26,9 @@ fn test_proxy_options_default_values() {
 #[test]
 fn test_proxy_options_defaults_when_no_keys() {
     let config = Config::new();
-    let section = config.section("http.proxy").expect("proxy section should exist");
+    let section = config
+        .section("http.proxy")
+        .expect("proxy section should exist");
     let opts = ProxyOptions::from_config(&section).expect("default proxy options should parse");
     assert_eq!(opts, ProxyOptions::default());
 }
@@ -34,14 +36,18 @@ fn test_proxy_options_defaults_when_no_keys() {
 #[test]
 fn test_proxy_options_http_type() {
     let mut config = Config::new();
-    config.set("p.enabled", true).expect("enabled should be accepted");
+    config
+        .set("p.enabled", true)
+        .expect("enabled should be accepted");
     config
         .set("p.proxy_type", "http".to_string())
         .expect("HTTP proxy type should be accepted");
     config
         .set("p.host", "127.0.0.1".to_string())
         .expect("proxy host should be accepted");
-    config.set("p.port", 8080u16).expect("proxy port should be accepted");
+    config
+        .set("p.port", 8080u16)
+        .expect("proxy port should be accepted");
 
     let section = config.section("p").expect("proxy section should exist");
     let opts = ProxyOptions::from_config(&section).expect("HTTP proxy options should parse");
@@ -91,7 +97,8 @@ fn test_proxy_options_proxy_type_case_insensitive() {
         .set("p.proxy_type", "HtTp".to_string())
         .expect("mixed-case HTTP proxy type should be accepted");
     let section = config.section("p").expect("proxy section should exist");
-    let opts = ProxyOptions::from_config(&section).expect("mixed-case HTTP proxy options should parse");
+    let opts =
+        ProxyOptions::from_config(&section).expect("mixed-case HTTP proxy options should parse");
     assert_eq!(opts.proxy_type, ProxyType::Http);
 }
 
@@ -138,11 +145,15 @@ fn test_proxy_options_invalid_port_type_is_prefixed() {
 #[test]
 fn test_proxy_options_with_auth() {
     let mut config = Config::new();
-    config.set("p.enabled", true).expect("enabled should be accepted");
+    config
+        .set("p.enabled", true)
+        .expect("enabled should be accepted");
     config
         .set("p.host", "proxy.example.com".to_string())
         .expect("proxy host should be accepted");
-    config.set("p.port", 3128u16).expect("proxy port should be accepted");
+    config
+        .set("p.port", 3128u16)
+        .expect("proxy port should be accepted");
     config
         .set("p.username", "user".to_string())
         .expect("proxy username should be accepted");
@@ -151,7 +162,8 @@ fn test_proxy_options_with_auth() {
         .expect("proxy password should be accepted");
 
     let section = config.section("p").expect("proxy section should exist");
-    let opts = ProxyOptions::from_config(&section).expect("authenticated proxy options should parse");
+    let opts =
+        ProxyOptions::from_config(&section).expect("authenticated proxy options should parse");
     assert_eq!(opts.username, Some("user".to_string()));
     assert_eq!(opts.password, Some("pass".to_string()));
 }
@@ -198,7 +210,9 @@ fn test_proxy_validate_enabled_port_zero() {
         port: Some(0),
         ..Default::default()
     };
-    let err = opts.validate().expect_err("zero proxy port should fail validation");
+    let err = opts
+        .validate()
+        .expect_err("zero proxy port should fail validation");
     assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
     assert!(err.message.contains("greater than 0"));
 }
@@ -225,7 +239,9 @@ fn test_proxy_validate_enabled_blank_host() {
         ..Default::default()
     };
 
-    let err = opts.validate().expect_err("blank proxy host should fail validation");
+    let err = opts
+        .validate()
+        .expect_err("blank proxy host should fail validation");
     assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
     assert_eq!(err.path, "proxy.host");
 }
@@ -250,7 +266,9 @@ fn test_proxy_validate_rejects_structured_host_values() {
             port: Some(8080),
             ..ProxyOptions::default()
         };
-        let error = options.validate().expect_err("proxy host must be a pure host");
+        let error = options
+            .validate()
+            .expect_err("proxy host must be a pure host");
         assert_eq!(error.path, "proxy.host");
         assert!(!error.to_string().contains("secret"));
     }
@@ -265,7 +283,10 @@ fn test_proxy_validate_accepts_domain_ip_and_ipv6_hosts() {
             port: Some(8080),
             ..ProxyOptions::default()
         };
-        assert!(options.validate().is_ok(), "valid proxy host rejected: {host}");
+        assert!(
+            options.validate().is_ok(),
+            "valid proxy host rejected: {host}"
+        );
     }
 }
 
@@ -273,7 +294,9 @@ fn test_proxy_validate_accepts_domain_ip_and_ipv6_hosts() {
 fn test_proxy_config_invalid_host_keeps_scoped_path_and_safe_message() {
     let mut config = Config::new();
     config.set("service.http.proxy.enabled", true).unwrap();
-    config.set("service.http.proxy.host", "user:secret@host").unwrap();
+    config
+        .set("service.http.proxy.host", "user:secret@host")
+        .unwrap();
     config.set("service.http.proxy.port", 8080_u16).unwrap();
     let section = config.section("service.http").unwrap();
     let error = HttpClientOptions::from_config(&section).unwrap_err();
@@ -311,14 +334,19 @@ fn test_proxy_validate_full_valid_config() {
 #[test]
 fn test_proxy_options_no_auth() {
     let mut config = Config::new();
-    config.set("p.enabled", true).expect("enabled should be accepted");
+    config
+        .set("p.enabled", true)
+        .expect("enabled should be accepted");
     config
         .set("p.host", "proxy.example.com".to_string())
         .expect("proxy host should be accepted");
-    config.set("p.port", 8080u16).expect("proxy port should be accepted");
+    config
+        .set("p.port", 8080u16)
+        .expect("proxy port should be accepted");
 
     let section = config.section("p").expect("proxy section should exist");
-    let opts = ProxyOptions::from_config(&section).expect("proxy options without auth should parse");
+    let opts =
+        ProxyOptions::from_config(&section).expect("proxy options without auth should parse");
     assert!(opts.username.is_none());
     assert!(opts.password.is_none());
     assert!(opts.validate().is_ok());

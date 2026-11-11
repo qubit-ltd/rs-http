@@ -13,11 +13,11 @@ use qubit_json::decode::JsonDecoder;
 use serde::de::DeserializeOwned;
 
 use super::super::internal::HttpResponseBodyState;
-use super::HttpResponse;
 use super::map_response_read_error;
+use super::HttpResponse;
+use crate::json_limits::json_decode_limits;
 use crate::HttpError;
 use crate::HttpResult;
-use crate::json_limits::json_decode_limits;
 
 impl HttpResponse {
     /// Returns full body bytes, consuming backend stream lazily on first call.
@@ -124,7 +124,8 @@ impl HttpResponse {
                     return Ok(body);
                 }
                 Ok(Err(error)) => {
-                    let error = map_response_read_error(error, method, url, status, self.log_redactor());
+                    let error =
+                        map_response_read_error(error, method, url, status, self.log_redactor());
                     self.remember_body_read_failure(&error);
                     return Err(error);
                 }
@@ -160,11 +161,14 @@ impl HttpResponse {
     pub async fn text(&mut self) -> HttpResult<String> {
         let body = self.bytes().await?;
         String::from_utf8(body.to_vec()).map_err(|error| {
-            HttpError::decode(format!("Failed to decode response body as UTF-8: {}", error))
-                .with_status(self.meta.status())
-                .with_method(self.meta.method())
-                .with_url(self.request_url())
-                .with_log_redactor(self.log_redactor().clone())
+            HttpError::decode(format!(
+                "Failed to decode response body as UTF-8: {}",
+                error
+            ))
+            .with_status(self.meta.status())
+            .with_method(self.meta.method())
+            .with_url(self.request_url())
+            .with_log_redactor(self.log_redactor().clone())
         })
     }
 

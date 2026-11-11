@@ -99,7 +99,8 @@ impl MessageEmitter {
 /// # Returns
 /// `true` for control or directional formatting characters.
 fn is_log_dangerous(character: char) -> bool {
-    character.is_control() || matches!(character as u32, 0x061c | 0x200e..=0x200f | 0x2028..=0x202e | 0x2066..=0x2069)
+    character.is_control()
+        || matches!(character as u32, 0x061c | 0x200e..=0x200f | 0x2028..=0x202e | 0x2066..=0x2069)
 }
 
 #[cfg(test)]

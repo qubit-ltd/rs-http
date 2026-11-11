@@ -17,9 +17,10 @@ use qubit_http::HttpRequestStreamingBody;
 #[test]
 fn test_http_request_streaming_body_sets_request_body_to_empty_placeholder() {
     let streaming_body = HttpRequestStreamingBody::new(|| {
-        Box::pin(
-            async move { Box::pin(stream::iter(vec![Ok(Bytes::from_static(b"chunk"))])) as HttpRequestBodyByteStream },
-        )
+        Box::pin(async move {
+            Box::pin(stream::iter(vec![Ok(Bytes::from_static(b"chunk"))]))
+                as HttpRequestBodyByteStream
+        })
     });
     assert!(format!("{streaming_body:?}").contains("HttpRequestStreamingBody"));
 
@@ -30,7 +31,8 @@ fn test_http_request_streaming_body_sets_request_body_to_empty_placeholder() {
         .request(Method::POST, "https://example.com/upload")
         .streaming_body(move || {
             Box::pin(async move {
-                Box::pin(stream::iter(vec![Ok(Bytes::from_static(b"chunk"))])) as HttpRequestBodyByteStream
+                Box::pin(stream::iter(vec![Ok(Bytes::from_static(b"chunk"))]))
+                    as HttpRequestBodyByteStream
             })
         })
         .build();

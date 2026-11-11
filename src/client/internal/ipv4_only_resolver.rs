@@ -105,7 +105,9 @@ mod tests {
             let error = filter_ipv4_addrs("fixed.invalid", input)
                 .err()
                 .expect("input without IPv4 must fail");
-            let io_error = error.downcast_ref::<std::io::Error>().expect("typed I/O error");
+            let io_error = error
+                .downcast_ref::<std::io::Error>()
+                .expect("typed I/O error");
             assert_eq!(io_error.kind(), ErrorKind::AddrNotAvailable);
         }
     }

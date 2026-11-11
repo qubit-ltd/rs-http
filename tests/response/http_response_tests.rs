@@ -8,18 +8,18 @@
 
 use bytes::Bytes;
 use futures_util::StreamExt;
+use http::header::CONTENT_LENGTH;
+use http::header::RETRY_AFTER;
 use http::HeaderMap;
 use http::HeaderValue;
 use http::Method;
 use http::StatusCode;
-use http::header::CONTENT_LENGTH;
-use http::header::RETRY_AFTER;
+use qubit_http::constants::DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES;
 use qubit_http::HttpCancellationToken;
 use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
 use qubit_http::HttpResponse;
-use qubit_http::constants::DEFAULT_RESPONSE_BODY_SIZE_LIMIT_BYTES;
 use qubit_json::decode::DiagnosticPolicy;
 use qubit_json::decode::JsonDecodeError;
 use tokio::io::AsyncReadExt;
@@ -29,9 +29,9 @@ use tokio::test as tokio_test;
 use tokio::time::timeout;
 use url::Url;
 
+use crate::common::spawn_one_shot_server;
 use crate::common::ResponsePlan;
 use crate::common::SensitiveChoice;
-use crate::common::spawn_one_shot_server;
 
 fn sse_validation_response(content_type: Option<HeaderValue>) -> HttpResponse {
     let mut headers = HeaderMap::new();
@@ -51,7 +51,10 @@ fn sse_validation_response(content_type: Option<HeaderValue>) -> HttpResponse {
 fn test_validate_sse_content_type_accepts_sse_media_types() {
     for content_type in ["text/event-stream", "Text/Event-Stream; charset=utf-8"] {
         let response = sse_validation_response(Some(HeaderValue::from_str(content_type).unwrap()));
-        assert!(response.validate_sse_content_type().is_ok(), "{content_type}");
+        assert!(
+            response.validate_sse_content_type().is_ok(),
+            "{content_type}"
+        );
     }
 }
 
@@ -82,17 +85,26 @@ fn test_validate_sse_content_type_rejects_invalid_headers_with_response_context(
 async fn test_validate_sse_content_type_does_not_consume_body() {
     let mut valid = sse_validation_response(Some(HeaderValue::from_static("text/event-stream")));
     valid.validate_sse_content_type().unwrap();
-    assert_eq!(valid.bytes().await.unwrap(), Bytes::from_static(b"event body"));
+    assert_eq!(
+        valid.bytes().await.unwrap(),
+        Bytes::from_static(b"event body")
+    );
 
     let mut invalid = sse_validation_response(Some(HeaderValue::from_static("application/json")));
     assert_eq!(
         invalid.validate_sse_content_type().unwrap_err().kind,
         HttpErrorKind::SseProtocol
     );
-    assert_eq!(invalid.bytes().await.unwrap(), Bytes::from_static(b"event body"));
+    assert_eq!(
+        invalid.bytes().await.unwrap(),
+        Bytes::from_static(b"event body")
+    );
 }
 
-async fn cached_response(body: &'static [u8], content_type: &'static str) -> (HttpResponse, HttpCancellationToken) {
+async fn cached_response(
+    body: &'static [u8],
+    content_type: &'static str,
+) -> (HttpResponse, HttpCancellationToken) {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,
         headers: vec![("Content-Type".to_string(), content_type.to_string())],
@@ -131,7 +143,10 @@ async fn cached_response(body: &'static [u8], content_type: &'static str) -> (Ht
 async fn test_cached_body_remains_readable_after_cancellation() {
     let (mut response, token) = cached_response(b"cached", "text/plain").await;
     token.cancel();
-    assert_eq!(response.bytes().await.unwrap(), Bytes::from_static(b"cached"));
+    assert_eq!(
+        response.bytes().await.unwrap(),
+        Bytes::from_static(b"cached")
+    );
 
     let (mut response, token) = cached_response(b"cached", "text/plain").await;
     token.cancel();
@@ -139,12 +154,20 @@ async fn test_cached_body_remains_readable_after_cancellation() {
 
     let (mut response, token) = cached_response(b"{\"ok\":true}", "application/json").await;
     token.cancel();
-    assert_eq!(response.json::<serde_json::Value>().await.unwrap()["ok"], true);
+    assert_eq!(
+        response.json::<serde_json::Value>().await.unwrap()["ok"],
+        true
+    );
 
     let (mut response, token) = cached_response(b"cached", "text/plain").await;
     token.cancel();
-    let mut stream = response.stream().expect("cached stream should remain readable");
-    assert_eq!(stream.next().await.unwrap().unwrap(), Bytes::from_static(b"cached"));
+    let mut stream = response
+        .stream()
+        .expect("cached stream should remain readable");
+    assert_eq!(
+        stream.next().await.unwrap().unwrap(),
+        Bytes::from_static(b"cached")
+    );
     assert!(stream.next().await.is_none());
 
     let (response, token) = cached_response(b"data: value\n\n", "text/event-stream").await;
@@ -166,7 +189,9 @@ async fn test_304_content_length_is_not_body_length() {
             .unwrap()
             .unwrap();
         stream
-            .write_all(b"HTTP/1.1 304 Not Modified\r\nContent-Length: 100000\r\nConnection: close\r\n\r\n")
+            .write_all(
+                b"HTTP/1.1 304 Not Modified\r\nContent-Length: 100000\r\nConnection: close\r\n\r\n",
+            )
             .await
             .unwrap();
     });
@@ -226,7 +251,10 @@ async fn test_cached_stream_can_be_dropped_and_reused_after_text_and_json() {
     let stream = response.stream().unwrap();
     drop(stream);
     assert_eq!(response.text().await.unwrap(), "{\"ok\":true}");
-    assert_eq!(response.json::<serde_json::Value>().await.unwrap()["ok"], true);
+    assert_eq!(
+        response.json::<serde_json::Value>().await.unwrap()["ok"],
+        true
+    );
     let mut stream = response.stream().unwrap();
     assert_eq!(stream.next().await.unwrap().unwrap(), body);
     assert!(stream.next().await.is_none());
@@ -280,15 +308,23 @@ async fn test_http_response_text_decode_error_contains_status_and_url() {
     assert_eq!(error.kind, HttpErrorKind::Decode);
     assert_eq!(error.method, Some(Method::POST));
     assert_eq!(error.status, Some(StatusCode::OK));
-    assert_eq!(error.url, Some(Url::parse("https://example.com/bin").unwrap()));
+    assert_eq!(
+        error.url,
+        Some(Url::parse("https://example.com/bin").unwrap())
+    );
 }
 
 #[test]
 fn test_http_response_debug_masks_sensitive_values() {
     let mut headers = HeaderMap::new();
-    headers.insert("set-cookie", HeaderValue::from_static("session=debug-cookie-secret"));
-    let mut url = Url::parse("https://debug-user:debug-url-secret@example.com/data?access_token=debug-query-secret")
-        .expect("URL should parse");
+    headers.insert(
+        "set-cookie",
+        HeaderValue::from_static("session=debug-cookie-secret"),
+    );
+    let mut url = Url::parse(
+        "https://debug-user:debug-url-secret@example.com/data?access_token=debug-query-secret",
+    )
+    .expect("URL should parse");
     url.set_fragment(Some("debug-fragment-secret"));
     let response = HttpResponse::new(
         StatusCode::OK,
@@ -322,7 +358,10 @@ async fn test_http_response_json_decode_error_contains_status_and_url() {
     assert_eq!(error.kind, HttpErrorKind::Decode);
     assert_eq!(error.method, Some(Method::POST));
     assert_eq!(error.status, Some(StatusCode::OK));
-    assert_eq!(error.url, Some(Url::parse("https://example.com/json").unwrap()));
+    assert_eq!(
+        error.url,
+        Some(Url::parse("https://example.com/json").unwrap())
+    );
 }
 
 #[test]
@@ -336,16 +375,14 @@ fn test_http_response_is_success_reports_status_class() {
     );
 
     assert!(response.is_success());
-    assert!(
-        !HttpResponse::new(
-            StatusCode::BAD_REQUEST,
-            HeaderMap::new(),
-            Bytes::new(),
-            Url::parse("https://example.com/bad").unwrap(),
-            Method::GET,
-        )
-        .is_success()
-    );
+    assert!(!HttpResponse::new(
+        StatusCode::BAD_REQUEST,
+        HeaderMap::new(),
+        Bytes::new(),
+        Url::parse("https://example.com/bad").unwrap(),
+        Method::GET,
+    )
+    .is_success());
 }
 
 #[test]
@@ -360,14 +397,20 @@ fn test_http_response_meta_accessor_returns_shared_metadata() {
 
     let meta = response.meta();
     assert_eq!(meta.status(), StatusCode::ACCEPTED);
-    assert_eq!(meta.url(), &Url::parse("https://example.com/jobs/1").unwrap());
+    assert_eq!(
+        meta.url(),
+        &Url::parse("https://example.com/jobs/1").unwrap()
+    );
     assert_eq!(meta.method(), &Method::POST);
 }
 
 #[test]
 fn test_http_response_retry_after_hint_handles_applicable_status_and_past_date() {
     let mut headers = HeaderMap::new();
-    headers.insert(RETRY_AFTER, HeaderValue::from_static("Wed, 21 Oct 2015 07:28:00 GMT"));
+    headers.insert(
+        RETRY_AFTER,
+        HeaderValue::from_static("Wed, 21 Oct 2015 07:28:00 GMT"),
+    );
     let response = HttpResponse::new(
         StatusCode::SERVICE_UNAVAILABLE,
         headers.clone(),
@@ -456,8 +499,8 @@ async fn test_http_response_json_redacts_deserializer_value() {
         error.url,
         Some(Url::parse("https://example.com/secure-json").expect("test URL must parse"))
     );
-    let source =
-        std::error::Error::source(&error).expect("HTTP JSON decode errors must retain the redacted decoder source");
+    let source = std::error::Error::source(&error)
+        .expect("HTTP JSON decode errors must retain the redacted decoder source");
     let decode_error = source
         .downcast_ref::<JsonDecodeError>()
         .expect("HTTP JSON decode source must be JsonDecodeError");

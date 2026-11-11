@@ -34,7 +34,8 @@ use crate::HttpResult;
 ///     |_context: &mut HttpResponseInterceptorContext| Ok(()),
 /// );
 /// ```
-pub type HttpResponseInterceptor = ArcMutatingFunction<HttpResponseInterceptorContext, HttpResult<()>>;
+pub type HttpResponseInterceptor =
+    ArcMutatingFunction<HttpResponseInterceptorContext, HttpResult<()>>;
 
 /// Applies response interceptors in registration order to successful HTTP
 /// response metadata.

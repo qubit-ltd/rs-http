@@ -15,14 +15,14 @@ mod sensitive_choice;
 pub(crate) mod tls_tunnel;
 mod tracing_capture;
 
-pub use one_shot_server::CapturedRequest;
-pub use one_shot_server::ResponseChunk;
-pub use one_shot_server::ResponsePlan;
 pub use one_shot_server::read_request;
 pub use one_shot_server::spawn_blocked_one_shot_server;
 pub use one_shot_server::spawn_multi_shot_server;
 pub use one_shot_server::spawn_one_shot_server;
-pub use proxy_server::ProxyBehavior;
+pub use one_shot_server::CapturedRequest;
+pub use one_shot_server::ResponseChunk;
+pub use one_shot_server::ResponsePlan;
 pub use proxy_server::spawn_simple_proxy_server;
+pub use proxy_server::ProxyBehavior;
 pub use sensitive_choice::SensitiveChoice;
 pub use tracing_capture::capture_trace_logs;

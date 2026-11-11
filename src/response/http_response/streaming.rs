@@ -7,13 +7,13 @@
 // =============================================================================
 //! One-shot backend response streaming and cached-body streams.
 use async_stream::stream;
-use futures_util::StreamExt;
 use futures_util::stream as futures_stream;
+use futures_util::StreamExt;
 
-use super::super::internal::HttpResponseBodyState;
 use super::super::internal::http_response_runtime::remember_body_read_failure_state;
-use super::HttpResponse;
+use super::super::internal::HttpResponseBodyState;
 use super::map_response_read_error;
+use super::HttpResponse;
 use crate::HttpByteStream;
 use crate::HttpError;
 use crate::HttpResult;
@@ -42,7 +42,8 @@ impl HttpResponse {
             let body = body.clone();
             return Ok(Box::pin(futures_stream::once(async move { Ok(body) })));
         }
-        if let Some(error) = self.cancelled_error_if_needed("Streaming response cancelled before reading response body")
+        if let Some(error) = self
+            .cancelled_error_if_needed("Streaming response cancelled before reading response body")
         {
             return Err(error);
         }

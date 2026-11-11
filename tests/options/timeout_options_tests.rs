@@ -15,8 +15,11 @@ use qubit_http::HttpTimeoutOptions;
 #[test]
 fn test_timeout_options_defaults_when_no_keys() {
     let config = Config::new();
-    let section = config.section("http.timeouts").expect("timeout section should exist");
-    let opts = HttpTimeoutOptions::from_config(&section).expect("default timeout options should be valid");
+    let section = config
+        .section("http.timeouts")
+        .expect("timeout section should exist");
+    let opts =
+        HttpTimeoutOptions::from_config(&section).expect("default timeout options should be valid");
     assert_eq!(opts, HttpTimeoutOptions::default());
 }
 
@@ -30,14 +33,20 @@ fn test_timeout_options_all_fields() {
         .set("http.timeouts.read_timeout", Duration::from_secs(30))
         .expect("read timeout should be configurable");
     config
-        .set("http.timeouts.response_header_timeout", Duration::from_secs(20))
+        .set(
+            "http.timeouts.response_header_timeout",
+            Duration::from_secs(20),
+        )
         .expect("response header timeout should be configurable");
     config
         .set("http.timeouts.request_timeout", Duration::from_secs(60))
         .expect("request timeout should be configurable");
 
-    let section = config.section("http.timeouts").expect("timeout section should exist");
-    let opts = HttpTimeoutOptions::from_config(&section).expect("all timeout options should be valid");
+    let section = config
+        .section("http.timeouts")
+        .expect("timeout section should exist");
+    let opts =
+        HttpTimeoutOptions::from_config(&section).expect("all timeout options should be valid");
     assert_eq!(opts.connect_timeout, Duration::from_secs(5));
     assert_eq!(opts.read_timeout, Duration::from_secs(30));
     assert_eq!(opts.response_header_timeout, Duration::from_secs(20));
@@ -52,7 +61,8 @@ fn test_timeout_options_partial_fields() {
         .expect("connect timeout should be configurable");
 
     let section = config.section("t").expect("timeout section should exist");
-    let opts = HttpTimeoutOptions::from_config(&section).expect("partial timeout options should be valid");
+    let opts =
+        HttpTimeoutOptions::from_config(&section).expect("partial timeout options should be valid");
     assert_eq!(opts.connect_timeout, Duration::from_millis(500));
     assert_eq!(opts.read_timeout, Duration::from_secs(120));
     assert_eq!(opts.request_timeout, None);
@@ -66,8 +76,8 @@ fn test_timeout_options_no_request_timeout() {
         .expect("connect timeout should be configurable");
 
     let section = config.section("t").expect("timeout section should exist");
-    let opts =
-        HttpTimeoutOptions::from_config(&section).expect("timeout options without a request timeout should be valid");
+    let opts = HttpTimeoutOptions::from_config(&section)
+        .expect("timeout options without a request timeout should be valid");
     assert_eq!(opts.request_timeout, None);
 }
 
@@ -79,7 +89,8 @@ fn test_timeout_options_invalid_type_is_prefixed() {
         .expect("invalid timeout value should be storable as raw config");
 
     let section = config.section("t").expect("timeout section should exist");
-    let err = HttpTimeoutOptions::from_config(&section).expect_err("invalid connect timeout should be rejected");
+    let err = HttpTimeoutOptions::from_config(&section)
+        .expect_err("invalid connect timeout should be rejected");
 
     assert_eq!(err.path, "t.connect_timeout");
 }
@@ -92,7 +103,8 @@ fn test_timeout_options_invalid_read_timeout_type_is_prefixed() {
         .expect("invalid timeout value should be storable as raw config");
 
     let section = config.section("t").expect("timeout section should exist");
-    let err = HttpTimeoutOptions::from_config(&section).expect_err("invalid read timeout should be rejected");
+    let err = HttpTimeoutOptions::from_config(&section)
+        .expect_err("invalid read timeout should be rejected");
 
     assert_eq!(err.kind, HttpConfigErrorKind::TypeError);
     assert_eq!(err.path, "t.read_timeout");
@@ -106,8 +118,8 @@ fn test_timeout_options_invalid_response_header_timeout_type_is_prefixed() {
         .expect("invalid timeout value should be storable as raw config");
 
     let section = config.section("t").expect("timeout section should exist");
-    let err =
-        HttpTimeoutOptions::from_config(&section).expect_err("invalid response header timeout should be rejected");
+    let err = HttpTimeoutOptions::from_config(&section)
+        .expect_err("invalid response header timeout should be rejected");
 
     assert_eq!(err.kind, HttpConfigErrorKind::TypeError);
     assert_eq!(err.path, "t.response_header_timeout");
@@ -118,7 +130,9 @@ fn test_timeout_options_validate_rejects_zero_values() {
     let mut opts = HttpTimeoutOptions::default();
     opts.connect_timeout = Duration::ZERO;
 
-    let err = opts.validate().expect_err("zero connect timeout should be rejected");
+    let err = opts
+        .validate()
+        .expect_err("zero connect timeout should be rejected");
     assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
     assert_eq!(err.path, "connect_timeout");
     assert_eq!(err.message, "Timeout value must be greater than 0");
@@ -136,7 +150,8 @@ fn test_timeout_options_from_config_rejects_zero_request_timeout() {
         .expect("test config should set request_timeout");
 
     let section = config.section("t").expect("timeout section should exist");
-    let err = HttpTimeoutOptions::from_config(&section).expect_err("zero request timeout should be rejected");
+    let err = HttpTimeoutOptions::from_config(&section)
+        .expect_err("zero request timeout should be rejected");
     assert_eq!(err.kind, HttpConfigErrorKind::InvalidValue);
     assert_eq!(err.path, "t.request_timeout");
 }

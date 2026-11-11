@@ -57,7 +57,10 @@ impl HttpRetryMethodPolicy {
     /// spelling.
     pub(super) fn from_config_value(value: &str) -> Result<Self, HttpConfigError> {
         Self::from_str(value.trim()).map_err(|_| {
-            HttpConfigError::invalid_value("method_policy", format!("Unsupported retry method policy: {value}"))
+            HttpConfigError::invalid_value(
+                "method_policy",
+                format!("Unsupported retry method policy: {value}"),
+            )
         })
     }
 
@@ -75,7 +78,12 @@ impl HttpRetryMethodPolicy {
         match self {
             Self::IdempotentOnly => matches!(
                 *method,
-                Method::GET | Method::HEAD | Method::PUT | Method::DELETE | Method::OPTIONS | Method::TRACE
+                Method::GET
+                    | Method::HEAD
+                    | Method::PUT
+                    | Method::DELETE
+                    | Method::OPTIONS
+                    | Method::TRACE
             ),
             Self::AllMethods => true,
             Self::None => false,

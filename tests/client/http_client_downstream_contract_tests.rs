@@ -14,23 +14,23 @@ use futures_util::StreamExt;
 use http::HeaderMap;
 use http::Method;
 use http::StatusCode;
+use qubit_http::sse::DoneMarkerPolicy;
+use qubit_http::sse::SseChunk;
+use qubit_http::sse::SseCompletionPolicy;
+use qubit_http::sse::SseJsonMode;
 use qubit_http::HttpBodyCaptureEnd;
 use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
 use qubit_http::HttpResponse;
-use qubit_http::sse::DoneMarkerPolicy;
-use qubit_http::sse::SseChunk;
-use qubit_http::sse::SseCompletionPolicy;
-use qubit_http::sse::SseJsonMode;
 use serde::Deserialize;
 use tokio::test as tokio_test;
 use tokio::time::timeout;
 use url::Url;
 
-use crate::common::ResponsePlan;
 use crate::common::spawn_multi_shot_server;
 use crate::common::spawn_one_shot_server;
+use crate::common::ResponsePlan;
 
 /// Example SDK policy kept local to these contract tests: only the provider's
 /// rate-limit code is retryable; quota and unknown codes are terminal.
@@ -68,7 +68,10 @@ async fn test_downstream_contract_complete_429_preserves_metadata_and_provider_c
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     let client = HttpClientBuilder::new().options(options).build().unwrap();
-    let request = client.request(Method::GET, "/complete-429").disable_retry().build();
+    let request = client
+        .request(Method::GET, "/complete-429")
+        .disable_retry()
+        .build();
     let error = timeout(Duration::from_secs(3), client.execute(request))
         .await
         .unwrap()
@@ -77,12 +80,17 @@ async fn test_downstream_contract_complete_429_preserves_metadata_and_provider_c
     assert_eq!(error.kind, HttpErrorKind::Status);
     assert_eq!(error.status, Some(StatusCode::TOO_MANY_REQUESTS));
     assert_eq!(error.retry_after, Some(Duration::from_secs(3)));
-    let capture = error.status_response().expect("raw status response should be retained");
+    let capture = error
+        .status_response()
+        .expect("raw status response should be retained");
     assert!(!capture.is_truncated());
     assert_eq!(capture.capture_end(), HttpBodyCaptureEnd::Complete);
     assert_eq!(capture.body().as_ref(), body.as_slice());
     assert_eq!(capture.headers()["x-request-id"], "req-contract-42");
-    assert_eq!(classify_provider_error(capture), Some(ProviderDisposition::Retry));
+    assert_eq!(
+        classify_provider_error(capture),
+        Some(ProviderDisposition::Retry)
+    );
     server.finish().await;
 }
 
@@ -108,7 +116,10 @@ async fn test_downstream_contract_quota_and_unknown_provider_codes_stop() {
             .unwrap()
             .unwrap_err();
         let capture = error.status_response().unwrap();
-        assert_eq!(classify_provider_error(capture), Some(ProviderDisposition::Stop));
+        assert_eq!(
+            classify_provider_error(capture),
+            Some(ProviderDisposition::Stop)
+        );
         server.finish().await;
     }
 }
@@ -136,7 +147,9 @@ async fn test_downstream_contract_incomplete_status_body_is_never_provider_class
         .await
         .unwrap()
         .unwrap_err();
-    let capture = error.status_response().expect("partial status body should be retained");
+    let capture = error
+        .status_response()
+        .expect("partial status body should be retained");
     assert!(capture.is_truncated());
     assert_eq!(capture.capture_end(), HttpBodyCaptureEnd::ReadFailure);
     assert_eq!(classify_provider_error(capture), None);
@@ -166,14 +179,19 @@ async fn test_downstream_contract_outer_two_attempts_disable_internal_http_retri
     let client = HttpClientBuilder::new().options(options).build().unwrap();
 
     for _ in 0..2 {
-        let request = client.request(Method::GET, "/outer-attempt").disable_retry().build();
+        let request = client
+            .request(Method::GET, "/outer-attempt")
+            .disable_retry()
+            .build();
         let error = timeout(Duration::from_secs(3), client.execute(request))
             .await
             .unwrap()
             .unwrap_err();
         assert_eq!(error.status, Some(StatusCode::TOO_MANY_REQUESTS));
     }
-    let requests = timeout(Duration::from_secs(3), server.finish()).await.unwrap();
+    let requests = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .unwrap();
     assert_eq!(
         requests.len(),
         2,
@@ -212,7 +230,10 @@ async fn test_downstream_contract_strict_sse_requires_valid_json_and_done_marker
         .into_iter()
         .map(Result::unwrap)
         .collect();
-    assert_eq!(chunks, vec![SseChunk::Data(SsePayload { value: 7 }), SseChunk::Done]);
+    assert_eq!(
+        chunks,
+        vec![SseChunk::Data(SsePayload { value: 7 }), SseChunk::Done]
+    );
 
     let missing_done = sse_response("data: {\"value\":7}\n\n");
     missing_done.validate_sse_content_type().unwrap();
@@ -220,7 +241,10 @@ async fn test_downstream_contract_strict_sse_requires_valid_json_and_done_marker
         .sse_json_mode(SseJsonMode::Strict)
         .sse_completion_policy(SseCompletionPolicy::RequireDoneMarker)
         .sse_chunks::<SsePayload>();
-    assert!(matches!(chunks.next().await.unwrap().unwrap(), SseChunk::Data(_)));
+    assert!(matches!(
+        chunks.next().await.unwrap().unwrap(),
+        SseChunk::Data(_)
+    ));
     assert_eq!(
         chunks.next().await.unwrap().unwrap_err().kind,
         HttpErrorKind::SseProtocol

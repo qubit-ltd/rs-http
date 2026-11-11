@@ -57,7 +57,11 @@ impl HttpConfigError {
     ///
     /// # Returns
     /// New [`HttpConfigError`].
-    pub fn new(kind: HttpConfigErrorKind, path: impl Into<String>, message: impl Into<String>) -> Self {
+    pub fn new(
+        kind: HttpConfigErrorKind,
+        path: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
         Self {
             kind,
             path: path.into(),
@@ -150,7 +154,9 @@ impl Error for HttpConfigError {
     /// Returns the structured error wrapped by this configuration error, if
     /// any.
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        self.source.as_deref().map(|source| source as &(dyn Error + 'static))
+        self.source
+            .as_deref()
+            .map(|source| source as &(dyn Error + 'static))
     }
 }
 
@@ -176,7 +182,9 @@ impl From<ArgumentError> for HttpConfigError {
             ArgumentErrorKind::Custom { code, message } if code == "http_config_missing" => {
                 (HttpConfigErrorKind::MissingField, message.clone())
             }
-            ArgumentErrorKind::Custom { message, .. } => (HttpConfigErrorKind::InvalidValue, message.clone()),
+            ArgumentErrorKind::Custom { message, .. } => {
+                (HttpConfigErrorKind::InvalidValue, message.clone())
+            }
             _ => (
                 HttpConfigErrorKind::InvalidValue,
                 "Argument validation failed".to_owned(),
@@ -204,10 +212,12 @@ impl From<ConfigError> for HttpConfigError {
         let path = e.path().unwrap_or_default().to_owned();
         let msg = e.to_string();
         let mut result = match kind {
-            ConfigErrorKind::Value if e.value_missing().is_some() => HttpConfigError::type_error(path, msg),
-            ConfigErrorKind::TypeMismatch | ConfigErrorKind::Conversion | ConfigErrorKind::PropertyHasNoValue => {
+            ConfigErrorKind::Value if e.value_missing().is_some() => {
                 HttpConfigError::type_error(path, msg)
             }
+            ConfigErrorKind::TypeMismatch
+            | ConfigErrorKind::Conversion
+            | ConfigErrorKind::PropertyHasNoValue => HttpConfigError::type_error(path, msg),
             _ => HttpConfigError::config_error(path, msg),
         };
         result.source = Some(Box::new(e));
