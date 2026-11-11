@@ -18,6 +18,7 @@ use http::header::HeaderName;
 use qubit_budget::json::JsonEncodeLimits;
 use qubit_budget::json::JsonResource;
 use qubit_http::HttpCancellationToken;
+use qubit_http::HttpClient;
 use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
@@ -470,6 +471,30 @@ fn test_headers_map_marks_content_type_explicit_and_empty_map_does_not() {
         .unwrap()
         .build();
     assert_eq!(automatic.headers().get(CONTENT_TYPE).unwrap(), "application/json");
+}
+
+#[test]
+fn test_headers_replace_existing_values_and_preserve_input_multivalues() {
+    let client = HttpClient::builder().build().unwrap();
+    let mut incoming = HeaderMap::new();
+    incoming.append("accept", HeaderValue::from_static("application/json"));
+    incoming.append("accept", HeaderValue::from_static("text/plain"));
+    let request = client
+        .request(Method::GET, "https://example.test/")
+        .header("accept", "application/xml")
+        .unwrap()
+        .header("x-keep", "retained")
+        .unwrap()
+        .headers(incoming)
+        .build();
+    let values: Vec<_> = request
+        .headers()
+        .get_all("accept")
+        .iter()
+        .map(|value| value.to_str().unwrap())
+        .collect();
+    assert_eq!(values, vec!["application/json", "text/plain"]);
+    assert_eq!(request.headers().get("x-keep").unwrap(), "retained");
 }
 
 #[test]

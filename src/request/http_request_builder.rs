@@ -247,12 +247,16 @@ impl HttpRequestBuilder {
         Ok(self)
     }
 
-    /// Merges all entries from `headers` into this builder (existing names may
-    /// get extra values). A map containing `Content-Type` makes that value
-    /// explicit, so later body helpers preserve it.
+    /// Merges explicit headers into this builder by header name.
+    ///
+    /// Each name present in the input replaces all existing values for that
+    /// name. Multiple values in the input map are preserved, and existing
+    /// headers absent from the input remain unchanged. A map containing
+    /// `Content-Type` makes that value explicit, so later body helpers preserve
+    /// it.
     ///
     /// # Parameters
-    /// - `headers`: Map to append.
+    /// - `headers`: Header map to merge using replacement semantics.
     ///
     /// # Returns
     /// `self` for chaining.

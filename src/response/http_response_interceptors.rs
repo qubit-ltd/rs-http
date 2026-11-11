@@ -101,6 +101,9 @@ impl HttpResponseInterceptors {
     /// Returns the first interceptor error and enriches it with
     /// status/method/URL context when missing.
     pub fn apply(&self, response_meta: &mut HttpResponseMeta) -> HttpResult<()> {
+        if self.interceptors.is_empty() {
+            return Ok(());
+        }
         let mut context = HttpResponseInterceptorContext::from_meta(response_meta);
         for interceptor in &self.interceptors {
             interceptor.apply(&mut context).map_err(|error| {
