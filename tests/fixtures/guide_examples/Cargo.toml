@@ -66,7 +66,7 @@ test = true
 
 [dependencies]
 qubit-http = { path = "../../../", version = "^0.16" }
-qubit-config = { path = "../../../../rs-config", version = "^0.15", default-features = false }
+qubit-config = { version = "^0.15", default-features = false }
 qubit-redact = { version = "^0.10" }
 qubit-retry = "^0.26"
 http = "1.4"
