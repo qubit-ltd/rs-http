@@ -911,9 +911,7 @@ checksum = "7227ce653698731c28e1f13cb783286ef0320e3ae9ecf157061d7e007bea0be2"
 
 [[package]]
 name = "qubit-http"
-version = "0.16.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "98c9d56411d712a7b7b114f89e2e9096ad1d3fde218988bbc5b6354749e802b9"
+version = "0.17.0"
 dependencies = [
  "async-stream",
  "bytes",

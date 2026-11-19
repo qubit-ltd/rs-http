@@ -34,7 +34,7 @@
 
 ```toml
 [dependencies]
-qubit-http = "0.16"
+qubit-http = "0.17"
 qubit-redact = "0.10"
 http = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
@@ -97,6 +97,7 @@ text = ready
 | 配置日志脱敏、代理、重定向和 IPv4-only 模式 | [用户指南](doc/user_guide.zh_CN.md) |
 | 处理状态码、传输、超时、取消、解码和重试错误 | [用户指南](doc/user_guide.zh_CN.md) |
 | 从 `qubit-http` 0.15 升级到 0.16 | [升级指南](doc/user_guide.zh_CN.md#从-015-升级到-016) |
+| 从 `qubit-http` 0.16 升级到 0.17 | [升级指南](doc/user_guide.zh_CN.md#从-016-升级到-017) |
 
 ## 核心 API 概览
 

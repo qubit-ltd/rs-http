@@ -2,7 +2,7 @@
 
 [中文](user_guide.zh_CN.md) | [README](../README.md) | [API Reference](https://docs.rs/qubit-http)
 
-This guide is based on the current source code and tests. It applies to crate `qubit-http` 0.16.0, imported from Rust code as `qubit_http`.
+This guide is based on the current source code and tests. It applies to crate `qubit-http` 0.17.0, imported from Rust code as `qubit_http`.
 
 `qubit-http` is an asynchronous HTTP client infrastructure crate. It wraps `reqwest` and provides unified client options, request building, response reading, error classification, TRACE logging with URL/header/body redaction, retries, proxies, IPv4-only resolution, request/response interceptors, and Server-Sent Events (SSE) decoding and reconnection.
 
@@ -10,7 +10,7 @@ This guide is based on the current source code and tests. It applies to crate `q
 
 This guide is for Rust service authors who need several API clients to share the
 same request, timeout, retry, logging, and response-handling rules. It covers
-`qubit-http` 0.16.0 and the public `qubit_http` API. It does not replace the
+`qubit-http` 0.17.0 and the public `qubit_http` API. It does not replace the
 upstream service's API contract, and it does not make unsafe request replay or
 application-level authentication decisions on the caller's behalf.
 
@@ -32,7 +32,7 @@ An `HttpClient` owns shared execution policy. An `HttpRequest` combines a method
 <!-- guide-dependencies:start -->
 ```toml
 [dependencies]
-qubit-http = "^0.16"
+qubit-http = "^0.17"
 qubit-redact = "^0.10"
 http = "1.4"
 qubit-config = { version = "^0.15", default-features = false }
@@ -1347,6 +1347,10 @@ This section compares the repository's `v0.15.1` tag with `0.16.0` at commit `e9
 | Client hooks | In both versions, `to_builder()` copies options only; `rebuild_with_options()` creates a new backend and preserves registered injectors and interceptors. | When replacing options on a configured client, use `rebuild_with_options()` if hooks are part of the contract; do not assume `to_builder()` carries them. |
 | Options struct literals | `HttpClientOptions` has the new `extra_root_certificates_der` field. | Add the field to exhaustive struct literals. Literals using `..HttpClientOptions::default()` need no change. |
 | SSE | The 0.16 source adds explicit handling for empty `id:` resets, persistent valid SSE `retry:` hints, and normal termination on `204 No Content` before media-type validation. Strict JSON and done-marker policies remain caller-selected. | Check cursor reset and retry timing expectations. For strict JSON streams, explicitly use `SseJsonMode::Strict` and `SseCompletionPolicy::RequireDoneMarker`, then test complete and incomplete frames. |
+
+## Upgrade from 0.16 to 0.17
+
+Update the dependency requirement to `qubit-http = "0.17"`; a `^0.16` requirement does not admit `0.17`. No public API migration is required. `HttpClient` clones continue to have independent option state, now copying shared options only when one clone is modified. NDJSON request bodies retain the same JSON-lines format and limits while encoding records directly into the bounded output buffer.
 
 To build a client from configuration, use this complete example. It only constructs the client; it does not send a network request. For the supported keys and configuration behavior, see [Loading From qubit-config](#loading-from-qubit-config).
 

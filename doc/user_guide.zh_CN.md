@@ -2,14 +2,14 @@
 
 [English](user_guide.en.md) | [README](../README.zh_CN.md) | [API 文档](https://docs.rs/qubit-http)
 
-本文档基于当前源码和测试整理，适用于 crate `qubit-http` 0.16.0，Rust 代码中通过库名 `qubit_http` 使用。
+本文档基于当前源码和测试整理，适用于 crate `qubit-http` 0.17.0，Rust 代码中通过库名 `qubit_http` 使用。
 
 `qubit-http` 是一个异步 HTTP 客户端基础设施库。它封装 `reqwest`，提供统一的客户端配置、请求构建、响应读取、错误分类、TRACE 日志脱敏、自动重试、代理、IPv4-only 解析、请求/响应拦截器，以及 Server-Sent Events（SSE）解码和重连能力。
 
 ## 手册目标与读者
 
 本文面向需要让多个 API 客户端共享请求、超时、重试、日志和响应处理
-规则的 Rust 服务开发者，适用于 `qubit-http` 0.16.0 及公开的
+规则的 Rust 服务开发者，适用于 `qubit-http` 0.17.0 及公开的
 `qubit_http` API。手册不替代上游服务的 API 契约，也不会替调用方决定
 认证方案或请求是否可以安全重放。
 
@@ -31,7 +31,7 @@
 <!-- guide-dependencies:start -->
 ```toml
 [dependencies]
-qubit-http = "^0.16"
+qubit-http = "^0.17"
 qubit-redact = "^0.10"
 http = "1.4"
 qubit-config = { version = "^0.15", default-features = false }
@@ -1286,6 +1286,10 @@ SSE 重连使用独立的 `SseReconnectOptions.retry` 策略。普通 HTTP 重�
 | 客户端 hook | 两个版本的 `to_builder()` 都只复制选项；`rebuild_with_options()` 创建新 backend 并保留已注册的注入器和拦截器。 | 修改已配置客户端的选项时，若 hook 属于契约则使用 `rebuild_with_options()`；不要假定 `to_builder()` 会复制 hook。 |
 | Options 结构体字面量 | `HttpClientOptions` 新增 `extra_root_certificates_der` 字段。 | 穷举字段的字面量需补上此字段；使用 `..HttpClientOptions::default()` 的字面量无需修改。 |
 | SSE | 0.16 源码增加对空 `id:` 重置、有效 SSE `retry:` 提示持续生效，以及 `204 No Content` 在媒体类型检查前正常结束的处理。严格 JSON 与完成标记策略仍由调用方选择。 | 检查游标重置和重试时间预期。严格 JSON 流应显式使用 `SseJsonMode::Strict` 与 `SseCompletionPolicy::RequireDoneMarker`，并测试完整帧和未完成帧。 |
+
+## 从 0.16 升级到 0.17
+
+请将依赖要求更新为 `qubit-http = "0.17"`；`^0.16` 不包含 `0.17`。无需迁移公开 API。`HttpClient` 克隆后的选项仍彼此独立，现在只有某个克隆被修改时才复制共享选项。NDJSON 请求体保持原有 JSON Lines 格式和预算限制，同时直接编码到有界输出缓冲区。
 
 要从配置创建客户端，可以直接使用下面的完整示例。它只构建客户端，不会发送网络请求。支持的配置键和读取方式见[从 qubit-config 读取](#从-qubit-config-读取)。
 

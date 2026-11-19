@@ -1029,7 +1029,7 @@ checksum = "7227ce653698731c28e1f13cb783286ef0320e3ae9ecf157061d7e007bea0be2"
 
 [[package]]
 name = "qubit-http"
-version = "0.16.4"
+version = "0.17.0"
 dependencies = [
  "async-stream",
  "bytes",

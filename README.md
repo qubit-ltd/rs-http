@@ -34,7 +34,7 @@ To configure additional TLS trust roots programmatically, see [Additional TLS Tr
 
 ```toml
 [dependencies]
-qubit-http = "0.16"
+qubit-http = "0.17"
 qubit-redact = "0.10"
 http = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
@@ -101,6 +101,7 @@ executed by another client. Build a new request to apply a new policy.
 | Configure logging redaction, proxy, redirects, and IPv4-only mode | [User Guide](doc/user_guide.en.md) |
 | Handle status, transport, timeout, cancellation, decode, and retry errors | [User Guide](doc/user_guide.en.md) |
 | Upgrade from `qubit-http` 0.15 to 0.16 | [Upgrade Guide](doc/user_guide.en.md#upgrade-from-015-to-016) |
+| Upgrade from `qubit-http` 0.16 to 0.17 | [Upgrade Guide](doc/user_guide.en.md#upgrade-from-016-to-017) |
 
 ## Core API At A Glance
 
