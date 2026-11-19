@@ -666,13 +666,12 @@ impl HttpRequestBuilder {
         let mut encoder = JsonEncoder::new(JsonEncodeSession::from_limits(limits));
         let mut payload = Vec::new();
         for record in records {
-            let line = encoder.to_vec(record).map_err(|error| {
+            encoder.write_incremental(&mut payload, record).map_err(|error| {
                 Self::attach_log_redactor(
                     HttpError::decode("Failed to encode NDJSON record").with_source(error),
                     &self.log_redactor,
                 )
             })?;
-            payload.extend_from_slice(&line);
             payload.push(b'\n');
         }
         self.replace_auto_content_type(Some(HeaderValue::from_static("application/x-ndjson")));

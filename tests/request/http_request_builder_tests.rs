@@ -1177,6 +1177,49 @@ fn test_request_builder_ndjson_body_with_limits_counts_line_terminators() {
 }
 
 #[test]
+fn test_request_builder_ndjson_body_accepts_exact_output_budget() {
+    let exact_limits = JsonEncodeLimits::builder().max_output_bytes(4).build();
+    let request = new_builder(Method::POST, "/v1/ndjson")
+        .ndjson_body_with_limits(&[1, 2], exact_limits)
+        .expect("the exact NDJSON output budget should be accepted")
+        .build();
+
+    match request.body() {
+        HttpRequestBody::Ndjson(bytes) => assert_eq!(bytes.as_ref(), b"1\n2\n"),
+        _ => panic!("expected ndjson body"),
+    }
+
+    let short_limits = JsonEncodeLimits::builder().max_output_bytes(3).build();
+    let error = new_builder(Method::POST, "/v1/ndjson")
+        .ndjson_body_with_limits(&[1, 2], short_limits)
+        .expect_err("one byte less than the complete NDJSON output should fail");
+    assert_eq!(error.kind, HttpErrorKind::Decode);
+}
+
+#[test]
+fn test_request_builder_ndjson_body_rejects_insufficient_newline_budget() {
+    let limits = JsonEncodeLimits::builder().max_output_bytes(1).build();
+    let error = new_builder(Method::POST, "/v1/ndjson")
+        .ndjson_body_with_limits(&[1, 2], limits)
+        .expect_err("two NDJSON records need at least two bytes for line endings");
+
+    assert_eq!(error.kind, HttpErrorKind::Decode);
+    assert!(error.message.contains("Failed to encode NDJSON"));
+}
+
+#[test]
+fn test_request_builder_ndjson_body_enforces_structure_budget() {
+    let limits = JsonEncodeLimits::builder().max_depth(0).build();
+    let error = new_builder(Method::POST, "/v1/ndjson")
+        .ndjson_body_with_limits(&[vec![1]], limits)
+        .expect_err("nested records must respect the JSON structure budget");
+
+    assert_eq!(error.kind, HttpErrorKind::Decode);
+    assert!(error.message.contains("Failed to encode NDJSON record"));
+    assert!(error.source().is_some());
+}
+
+#[test]
 fn test_request_builder_ndjson_body_serialization_failure_returns_decode_error() {
     let records = [FailingSerialize];
     let error = new_builder(Method::POST, "/v1/ndjson")
@@ -1199,6 +1242,33 @@ fn test_request_builder_ndjson_body_serialization_failure_returns_decode_error()
         JsonSerializationErrorKind::CustomSerialization,
     );
     assert!(!source.to_string().contains("boom"));
+}
+
+#[test]
+fn test_request_builder_ndjson_body_later_serialization_failure_returns_decode_error() {
+    struct FailsAfterOneRecord(bool);
+
+    impl Serialize for FailsAfterOneRecord {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            if self.0 {
+                Err(S::Error::custom("later failure"))
+            } else {
+                serializer.serialize_u8(1)
+            }
+        }
+    }
+
+    let records = [FailsAfterOneRecord(false), FailsAfterOneRecord(true)];
+    let error = new_builder(Method::POST, "/v1/ndjson")
+        .ndjson_body(&records)
+        .expect_err("a later record serialization failure should reject the body");
+
+    assert_eq!(error.kind, HttpErrorKind::Decode);
+    assert!(error.message.contains("Failed to encode NDJSON record"));
+    assert!(error.source().is_some());
 }
 
 #[test]
