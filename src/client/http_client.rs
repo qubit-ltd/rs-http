@@ -15,6 +15,7 @@
 //! single-attempt implementation.
 
 use std::error::Error;
+use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -65,10 +66,11 @@ use crate::sse::SseReconnectRunner;
 /// High-level HTTP client: default headers, injectors, interceptors, logging,
 /// timeouts, and optional per-request retry.
 ///
-/// Cloning shares the underlying [`reqwest::Client`] connection pool. Client
-/// options and injector/interceptor registration containers are cloned;
-/// callback handles retain their existing [`Clone`] semantics. Clone cost
-/// depends on owned configuration and registration data.
+/// Cloning shares the underlying [`reqwest::Client`] connection pool and
+/// client options. Updating options uses copy-on-write, so a clone only copies
+/// the configuration when one side is modified. Injector/interceptor
+/// registration containers are cloned, and callback handles retain their
+/// existing [`Clone`] semantics. Clone cost still depends on registration data.
 ///
 /// # Examples
 ///
@@ -89,7 +91,7 @@ pub struct HttpClient {
     /// reqwest).
     pub(super) backend: reqwest::Client,
     /// Timeouts, proxy, logging, default headers, and related settings.
-    pub(super) options: HttpClientOptions,
+    pub(super) options: Arc<HttpClientOptions>,
     /// Shared redactor for all request/response/error snapshots created by
     /// this client.
     log_redactor: Redactor,
@@ -178,7 +180,7 @@ impl HttpClient {
     /// A builder containing a clone of this client's options.
     #[must_use]
     pub fn to_builder(&self) -> HttpClientBuilder {
-        HttpClientBuilder::new().options(self.options.clone())
+        HttpClientBuilder::new().options(self.options.as_ref().clone())
     }
 
     /// Rebuilds the backend with new options while retaining runtime hooks.
@@ -220,7 +222,7 @@ impl HttpClient {
         let log_redactor = Redactor::new(options.log_redaction_policy.clone());
         Self {
             backend,
-            options,
+            options: Arc::new(options),
             log_redactor,
             injectors: Vec::new(),
             async_injectors: Vec::new(),
@@ -237,7 +239,7 @@ impl HttpClient {
     /// options installed on this client.
     #[inline]
     pub fn options(&self) -> &HttpClientOptions {
-        &self.options
+        self.options.as_ref()
     }
 
     /// Returns the shared [`Redactor`] used by this client.
@@ -302,7 +304,7 @@ impl HttpClient {
     /// # Errors
     /// Returns [`HttpError`] when the header name or value is invalid.
     pub fn add_header(&mut self, name: &str, value: &str) -> HttpResult<&mut Self> {
-        self.options.add_header(name, value)?;
+        Arc::make_mut(&mut self.options).add_header(name, value)?;
         Ok(self)
     }
 
@@ -320,7 +322,7 @@ impl HttpClient {
     /// Returns [`HttpError`] when any name/value pair is invalid (nothing from
     /// this call is applied).
     pub fn add_headers(&mut self, headers: &[(&str, &str)]) -> HttpResult<&mut Self> {
-        self.options.add_headers(headers)?;
+        Arc::make_mut(&mut self.options).add_headers(headers)?;
         Ok(self)
     }
 

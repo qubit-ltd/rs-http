@@ -426,6 +426,63 @@ fn test_request_builder_inherits_client_default_options() {
 }
 
 #[test]
+fn test_client_clone_default_headers_are_isolated() {
+    let mut client = HttpClientBuilder::new().build().expect("client should be created");
+    client.add_header("x-original", "one").unwrap();
+    let mut cloned = client.clone();
+
+    cloned.add_header("x-new", "two").unwrap();
+    assert!(!client.options().default_headers.contains_key("x-new"));
+    assert_eq!(cloned.options().default_headers["x-new"], "two");
+
+    client.add_header("x-original", "client").unwrap();
+    cloned.add_header("x-original", "clone").unwrap();
+    assert_eq!(client.options().default_headers["x-original"], "client");
+    assert_eq!(cloned.options().default_headers["x-original"], "clone");
+}
+
+#[test]
+fn test_client_add_headers_invalid_batch_is_atomic_after_clone() {
+    let mut client = HttpClientBuilder::new().build().expect("client should be created");
+    client.add_header("x-original", "one").unwrap();
+    let mut cloned = client.clone();
+
+    assert!(
+        cloned
+            .add_headers(&[("x-valid", "two"), ("invalid header", "bad")])
+            .is_err()
+    );
+    assert!(!client.options().default_headers.contains_key("x-valid"));
+    assert!(!cloned.options().default_headers.contains_key("x-valid"));
+    assert_eq!(client.options().default_headers["x-original"], "one");
+    assert_eq!(cloned.options().default_headers["x-original"], "one");
+}
+
+#[tokio_test]
+async fn test_request_default_header_snapshot_is_unchanged_by_later_client_update() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 200,
+        headers: vec![],
+        body: b"ok".to_vec(),
+    })
+    .await;
+    let mut client = HttpClientBuilder::new().build().expect("client should be created");
+    // Use the test server as the request URL while the default headers remain
+    // the client state whose build-time snapshot is under test.
+    client.add_header("x-original", "one").unwrap();
+    let url = server.base_url();
+    let request = client.request(Method::GET, url.as_str()).build();
+
+    client.add_header("x-original", "two").unwrap();
+    client.add_header("x-new", "later").unwrap();
+
+    client.execute(request).await.expect("request should succeed");
+    let captured = server.finish().await;
+    assert_eq!(captured.headers.get("x-original").unwrap(), "one");
+    assert!(!captured.headers.contains_key("x-new"));
+}
+
+#[test]
 fn test_request_builder_methods_override_client_default_options() {
     let mut options = HttpClientOptions::default();
     options
