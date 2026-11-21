@@ -127,10 +127,14 @@ impl HttpResponseMeta {
         &self.headers
     }
 
-    /// Returns final response URL.
+    /// Returns the response URL metadata, initially populated from the
+    /// backend's final URL after redirects.
+    ///
+    /// A response interceptor can rewrite this metadata. Treat it as the
+    /// response's reported URL, not proof of the address actually accessed.
     ///
     /// # Returns
-    /// Immutable final response URL.
+    /// Immutable reference to the response URL metadata.
     #[inline]
     pub fn url(&self) -> &Url {
         &self.url

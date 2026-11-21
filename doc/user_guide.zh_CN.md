@@ -582,6 +582,8 @@ client.add_response_interceptor(HttpResponseInterceptor::new(|context| {
 
 `HttpResponse` 暴露 `meta()`、`status()`、`headers()`、`url()`、`request_url()`、`is_success()`、`retry_after_hint()` 以及读 body / 解码 SSE 的 API。`client.execute(...).await?` 得到 `mut response` 后，按下表选择响应体读取方式。未缓存的后端 body 只能移交给流一次；成功缓存后可以重复读取或创建流。表格下方 **「使用示例」** 小节给出表中各方法的典型写法。
 
+`request_url()` 是请求拦截器处理后、后端跟随重定向前保留用于诊断的初始请求目标。`url()` 和 `meta().url()` 返回响应 URL metadata，初始值为后端跟随重定向后的最终 URL。响应拦截器可以改写该 metadata；改写后的值不能证明后端实际访问了哪个地址。需要审计实际访问地址时，应使用单独的传输层或审计记录。
+
 body 可用方式：
 
 | 方法 | 行为 |

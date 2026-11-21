@@ -369,13 +369,21 @@ impl HttpResponse {
         self.meta.headers()
     }
 
-    /// Returns the final URL after any redirects followed by the backend.
+    /// Returns the response URL metadata, initially populated from the
+    /// backend's final URL after redirects.
+    ///
+    /// A response interceptor can rewrite this metadata. Treat it as the
+    /// response's reported URL, not proof of the address actually accessed.
     #[inline]
     pub fn url(&self) -> &Url {
         self.meta.url()
     }
 
-    /// Returns the original request URL used in body-read diagnostics.
+    /// Returns the initial request target after request interceptors, retained
+    /// for body-read diagnostics.
+    ///
+    /// This does not change when the backend follows redirects or when a
+    /// response interceptor rewrites the response URL metadata.
     #[inline]
     pub fn request_url(&self) -> &Url {
         &self.runtime.request_url

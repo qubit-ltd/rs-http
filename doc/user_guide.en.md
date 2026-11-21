@@ -604,6 +604,8 @@ client.add_response_interceptor(HttpResponseInterceptor::new(|context| {
 
 `HttpResponse` exposes `meta()`, `status()`, `headers()`, `url()`, `request_url()`, `is_success()`, `retry_after_hint()`, and helpers to read the body or decode SSE. After `let mut response = client.execute(...).await?`, choose a body-reading strategy from the table below. An unbuffered backend body can be transferred to a stream once; once buffered, it remains available for repeated reads and streams. The **Examples** subsection right after the table shows typical usage for each API listed there.
 
+`request_url()` is the initial request target after request interceptors, before backend redirects, retained for diagnostics. `url()` and `meta().url()` expose response URL metadata, initially set to the backend's final URL after redirects. A response interceptor may rewrite that metadata, and the change does not establish which address the backend actually accessed; use separate transport or audit records when that distinction matters.
+
 Body APIs:
 
 | Method | Behavior |
