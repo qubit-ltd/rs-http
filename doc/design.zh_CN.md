@@ -2,7 +2,7 @@
 
 [English Design](design.md) | [用户指南](user_guide.zh_CN.md) | [README](../README.zh_CN.md)
 
-本文记录 `qubit-http` 0.16.0 的执行边界和必须保持的约束。具体行为以源码和测试为准；这里重点说明调用方和维护者容易误解的设计选择。
+本文记录 `qubit-http` 0.17.0 的执行边界和必须保持的约束。具体行为以源码和测试为准；这里重点说明调用方和维护者容易误解的设计选择。迁移说明见[从 0.16 升级到 0.17](user_guide.zh_CN.md#从-016-升级到-017)。
 
 ## 组件与所有权
 
@@ -20,7 +20,7 @@ flowchart LR
     Reconnect --> SSE
 ```
 
-`HttpClientBuilder` 校验 `HttpClientOptions`，再构造底层 `reqwest::Client`。客户端持有连接池、默认策略、注入器、拦截器和脱敏策略快照。`HttpRequestBuilder` 将 base URL、origin policy、默认请求头、注入器和脱敏上下文捕获到 `HttpRequest`；发送请求时无需借用可变的客户端配置。执行客户端提供后端、日志选项、请求/响应拦截器和外层重试策略；请求捕获的 redactor 则统一用于请求/响应日志、执行错误、返回后的响应读取和 SSE 诊断。客户端 A 构建的请求由客户端 B 执行时，不合并或替换 A 的脱敏快照。客户端重建不会重绑旧请求；需要新脱敏策略的调用方应通过新客户端重新构建请求。独立构造的 `HttpLogger` 仍使用调用方显式指定的策略。初始 URL 解析和来源检查使用请求快照；重定向检查使用执行客户端的 reqwest 重定向策略和原始请求源。
+`HttpClientBuilder` 校验 `HttpClientOptions`，再构造底层 `reqwest::Client`。克隆的 `HttpClient` 先共享内部选项；修改某个克隆的默认请求头时采用写时复制，不影响另一个克隆。客户端持有连接池、默认策略、注入器、拦截器和脱敏策略快照。`HttpRequestBuilder` 将 base URL、origin policy、默认请求头、注入器和脱敏上下文捕获到 `HttpRequest`；发送请求时无需借用可变的客户端配置。执行客户端提供后端、日志选项、请求/响应拦截器和外层重试策略；请求捕获的 redactor 则统一用于请求/响应日志、执行错误、返回后的响应读取和 SSE 诊断。客户端 A 构建的请求由客户端 B 执行时，不合并或替换 A 的脱敏快照；已构造请求也保留自己的初始 URL、来源及 IPv4-only 校验快照。修改某个克隆的默认请求头不会改变已构造请求捕获的请求头状态。客户端重建不会重绑旧请求；需要新脱敏策略的调用方应通过新客户端重新构建请求。独立构造的 `HttpLogger` 仍使用调用方显式指定的策略。初始 URL、来源和 IPv4-only 检查使用请求快照；DNS 过滤及重定向检查使用执行客户端的选项和 reqwest 重定向策略，并以原始请求源检查重定向。
 
 `HttpClient::rebuild_with_options` 构造新的后端和脱敏策略快照，同时复制原客户端注册的请求头注入器、请求拦截器和响应拦截器。包括校验失败在内，原客户端始终不变；`to_builder` 则只复制选项。调用方若依赖运行时注册项，应选择保留它们的重建 API。
 

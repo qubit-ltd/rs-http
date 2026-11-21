@@ -549,6 +549,9 @@ impl HttpRequest {
 
     /// Returns whether IPv6 literal hosts are rejected after URL resolution.
     ///
+    /// This request snapshot controls the initial URL. DNS filtering and
+    /// redirect validation use the executing client's `ipv4_only` option.
+    ///
     /// # Returns
     /// `true` when a resolved URL whose host is an IPv6 literal must be
     /// rejected with [`HttpError::invalid_url`].
@@ -557,7 +560,11 @@ impl HttpRequest {
         self.context.ipv4_only
     }
 
-    /// Enables or disables IPv6 literal host rejection for resolved URLs.
+    /// Enables or disables IPv6 literal host rejection for the resolved URL.
+    ///
+    /// This controls the initial URL even when another client executes the
+    /// request. DNS filtering and redirect validation remain controlled by
+    /// the executing client's `ipv4_only` option.
     ///
     /// # Parameters
     /// - `enabled`: When `true`, resolved URLs whose host is an IPv6 literal
@@ -995,10 +1002,7 @@ impl HttpRequest {
             return Err(HttpError::invalid_url("Request URL must use HTTP or HTTPS"));
         }
         if self.context.ipv4_only && matches!(url.host(), Some(Host::Ipv6(_))) {
-            return Err(HttpError::invalid_url(format!(
-                "IPv6 literal host is not allowed when ipv4_only=true: {}",
-                url
-            )));
+            return Err(HttpError::invalid_url("IPv6 literal host is not allowed when ipv4_only=true").with_url(url));
         }
         Ok(())
     }

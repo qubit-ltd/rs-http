@@ -790,8 +790,13 @@ impl HttpRequestBuilder {
         self
     }
 
-    /// Overrides whether this request enforces IPv4-only literal-host
-    /// validation.
+    /// Overrides whether this request enforces IPv4-only initial
+    /// literal-host validation.
+    ///
+    /// This request-level setting controls the initial resolved URL, including
+    /// when another client executes the request. DNS filtering and redirect
+    /// validation are configured by the executing client's `ipv4_only`
+    /// option.
     ///
     /// # Parameters
     /// - `enabled`: `true` to reject IPv6 literal hosts, `false` to allow them.

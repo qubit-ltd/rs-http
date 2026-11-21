@@ -784,9 +784,9 @@ match client.execute(request).await {
 | SSE 重连 | 存在可重试错误但次数已耗尽 | 返回最后的 HTTP/SSE 错误并保持其原有 source；不承诺普通 HTTP 的 retry diagnostics |
 | SSE 重连 | operation/total 时间预算耗尽 | 返回 `RetryBudgetExceeded`，保留已有请求上下文；若有最后一次 `HttpError`，直接以该错误作为 source |
 | SSE 重连 | 预算记账自身失败 | 保持现有 `Other` kind 和 `RetryBudgetError` source |
-| SSE 重连 | 清洁 EOF 耗尽次数，或收到 204 | 正常结束流 |
+| SSE 重连 | 收到 204，或未启用 EOF 重连/重连次数耗尽时遇到清洁 EOF | 正常结束流（消费者观察到 `None`） |
 
-SSE 不承诺普通 HTTP 自动重试的直接 source 类型或诊断信息。
+消费者无法仅凭流区分这些正常结束原因；若需知道原因，可用 `execute` 自行管理连接。可重试错误耗尽次数时会产出最后一个错误项；operation 或 total 时间预算耗尽时会产出对应预算错误项。SSE 不承诺普通 HTTP 自动重试的直接 source 类型或诊断信息。
 
 `retry_metadata()` 是已弃用的兼容 getter，始终返回 `None`，不能用来判断错误是否经过普通 HTTP 重试。需要该路径的终态信息时使用 `retry_diagnostics()`，并从 `Error::source()` 检查 `RetryError<HttpError>`。SSE 解码错误会在原错误未提供相应字段时补上响应 method、原始请求 URL 和 status；URL 格式化仍使用响应对应的脱敏策略。
 
@@ -821,7 +821,7 @@ backend 读取失败和流不可用。backend 读取失败时可用 `capture_err
 
 自动重试默认关闭。开启后，只有当 `retry.enabled = true`、`max_attempts > 1`，并且方法策略允许当前 HTTP 方法时，`execute` 才会进入重试流程。
 
-`max_attempts` 和重试诊断统计本库的外层尝试次数。一次 reqwest 执行可能包含安全协议恢复和重定向；两者都不会创建新的外层尝试。关闭本库重试只会停止这些外层重试，仍保留 reqwest 的安全协议恢复。请求拦截器和动态请求头注入按外层尝试运行，reqwest 内部恢复不会重新运行它们。`request_timeout` 限制一次 reqwest 执行及其响应体读取，不会为每次底层网络发送重置。请求构建时还会捕获来源客户端的 base URL、origin policy、默认请求头和注入器；执行客户端提供后端、执行拦截器和重试策略。客户端重建不会重绑旧请求；若要使用新配置，应通过重建后的客户端创建新请求。初始 URL 按请求快照检查，重定向按执行后端的重定向策略检查。
+`max_attempts` 和重试诊断统计本库的外层尝试次数。一次 reqwest 执行可能包含安全协议恢复和重定向；两者都不会创建新的外层尝试。关闭本库重试只会停止这些外层重试，仍保留 reqwest 的安全协议恢复。请求拦截器和动态请求头注入按外层尝试运行，reqwest 内部恢复不会重新运行它们。`request_timeout` 限制一次 reqwest 执行及其响应体读取，不会为每次底层网络发送重置。请求构建时还会捕获来源客户端的 base URL、origin policy、默认请求头和注入器；执行客户端提供后端、执行拦截器和重试策略。客户端重建不会重绑旧请求；若要使用新配置，应通过重建后的客户端创建新请求。初始 URL、来源及 IPv4-only 字面量检查按请求快照执行；DNS 过滤和 IPv6 重定向拒绝由执行客户端的 `ipv4_only` 选项控制。
 
 默认重试条件：
 
@@ -848,7 +848,7 @@ let request = client
     .build();
 ```
 
-`honor_retry_after(true)` 只在请求级启用。遇到可重试的 429 或 5xx 时，它会把响应中的 `Retry-After` 值作为提示交给退避策略。默认 HTTP 退避策略将提示作为最小延迟，下一次尝试等待计划退避和提示中的较大值。自定义 `BackoffPolicy` 可以改变这一行为：`ignore_retry_after()` 会忽略提示，`limit_delay(duration)` 则限制最终延迟，即使提示更长也会受此上限约束。SSE 重连也采用最终请求偏好；开启后，可重连的 429/5xx 握手错误会把解析出的提示交给重连退避策略。`server_retry_max_delay` 只限制 SSE `retry:` 字段；HTTP 提示仍受用户配置的退避上限和重连预算约束。
+`honor_retry_after(true)` 只在请求级启用。遇到可重试的 429 或 5xx 时，它会把响应中解析出的 `Retry-After` 时长作为提示交给退避策略。默认 HTTP 退避策略将提示作为最小延迟，下一次尝试等待计划退避和提示中的较大值。自定义 `BackoffPolicy` 可以改变这一行为：`prefer_retry_after()` 采用提示，`ignore_retry_after()` 忽略提示，`limit_delay(duration)` 限制所选最终延迟。所选延迟仍受重试准入预算约束。SSE 重连也采用最终请求偏好；开启后，可重连的 429/5xx 握手错误会把解析出的提示交给重连退避策略。`server_retry_max_delay` 只限制 SSE `retry:` 字段；策略延迟上限和重连预算仍约束 HTTP 提示。
 
 开启重试后，`execute` 会把每次尝试交给 `qubit-retry` 的 `Retry`。HTTP `max_duration` 使用单调时钟统计。可重试错误耗尽 `max_attempts` 或 `max_duration` 后仍返回最后一次 HTTP 错误并附加 `HttpRetryDiagnostics`，完整 `RetryError<HttpError>` 作为 `source` 保留。
 
@@ -1179,7 +1179,7 @@ while let Some(item) = events.next().await {
 
 Operation 时间累计已完成连接建立及响应校验尝试所耗费的时间，不包括 SSE 消费或重连等待。Total 时间包括经过的消费和等待时间；准入限额不会中断正在读取的流。这些预算控制是否允许开始后续连接，并非正在读取流的硬截止时间。请求超时、读取超时和取消仍按各自规则独立生效。
 
-默认重连配置为 `retry.max_attempts = 4`（即最多重连 3 次），使用 `initial=1s`、`max=30s`、`multiplier=2.0` 且无 jitter 的指数 `BackoffPolicy`，并在 EOF 后重连、尊重服务端 `retry:`。最新有效的 `retry:` 会持续生效，直到新有效值替换；可用 `honor_server_retry = false` 忽略服务端提示。服务端 `retry:` 会被限制到 `server_retry_max_delay`；若该字段为 `None`，则从 backoff policy 的最大值推导，无法推导时使用 30 秒。这个上限只作用于 SSE `retry:` 字段。可重连的 429/5xx 握手错误是否采用解析出的 HTTP 提示，由最终请求的 `honor_retry_after` 偏好决定；HTTP `Retry-After` 仍是只影响单次尝试的提示，遵循独立退避策略上限和重连预算。`apply_jitter_to_server_retry` 默认开启；只有传入的 `RetryPolicy` 配置了 jitter 时，服务端给出的延迟才会被扰动。重连时会复用原始请求，并禁用内层 HTTP 自动重试；收到非空 SSE `id:` 字段后（包括 control-only 控制记录中的 ID），下一次请求会带上 `Last-Event-ID` header；空 ID 重置后下一次请求会省略该头。204 响应会正常结束重连流，不要求 `Content-Type`。这些是有意的行为变化：调用方应将 204 的流结束视为正常停流，服务端若要更改延迟应发送新的有效 `retry:`。本 API 不宣称完整实现 EventSource。其他成功状态仍要求 `Content-Type` 为 `text/event-stream`。SSE 解码错误会补充响应 method、原始请求 URL 和 status，同时保留更具体的原有上下文与 source。取消错误不会触发重连；SSE 协议错误默认也不会重连；超时、transport、429/5xx 等 retryable 错误，以及包含 unexpected EOF 语义的错误可触发重连。
+默认重连配置为 `retry.max_attempts = 4`（即最多重连 3 次），使用 `initial=1s`、`max=30s`、`multiplier=2.0` 且无 jitter 的指数 `BackoffPolicy`，并在 EOF 后重连、尊重服务端 `retry:`。最新有效的 `retry:` 会持续生效，直到新有效值替换；可用 `honor_server_retry = false` 忽略服务端提示。服务端 `retry:` 会被限制到 `server_retry_max_delay`；若该字段为 `None`，则从 backoff policy 的最大值推导，无法推导时使用 30 秒。这个上限只作用于 SSE `retry:` 字段。可重连的 429/5xx 握手错误是否采用解析出的 HTTP 提示，由最终请求的 `honor_retry_after` 偏好决定；默认策略将其作为最小延迟，自定义策略可采用或忽略提示，`limit_delay` 限制所选延迟。所选延迟仍受重连准入预算约束。`apply_jitter_to_server_retry` 默认开启；只有传入的 `RetryPolicy` 配置了 jitter 时，服务端给出的延迟才会被扰动。重连时会复用原始请求，并禁用内层 HTTP 自动重试；收到非空 SSE `id:` 字段后（包括 control-only 控制记录中的 ID），下一次请求会带上 `Last-Event-ID` header；空 ID 重置后下一次请求会省略该头。204 响应会正常结束重连流，不要求 `Content-Type`。EOF 重连关闭或重连次数耗尽时，清洁 EOF 也会正常结束。消费者观察到的都是 `None`；若需判断结束原因，应使用 `execute` 自行管理连接。可重试错误耗尽次数时会产出最后一个错误项，operation/total 预算失败则产出预算错误项。这些是有意的行为规则：调用方应将 204 的流结束视为正常停流，服务端若要更改延迟应发送新的有效 `retry:`。本 API 不宣称完整实现 EventSource。其他成功状态仍要求 `Content-Type` 为 `text/event-stream`。SSE 解码错误会补充响应 method、原始请求 URL 和 status，同时保留更具体的原有上下文与 source。取消错误不会触发重连；SSE 协议错误默认也不会重连；超时、transport、429/5xx 等 retryable 错误，以及包含 unexpected EOF 语义的错误可触发重连。
 
 SSE 重连使用独立的 `SseReconnectOptions.retry` 策略。普通 HTTP 重试设置、`retry.method_policy` 以及请求级 `disable_retry()` 都不会禁止外层 SSE 重连。因此原请求可能被重复发送，包括 `POST` 或 `PATCH`。优先使用 `GET`；对有副作用的操作，应确认操作和请求体在业务幂等保证下可以安全重复。工厂能生成新的请求体流只代表技术上可重放，并不保证业务幂等。需要完全控制重放时，可分别通过 `execute` 管理每次连接。
 

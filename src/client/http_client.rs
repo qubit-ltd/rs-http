@@ -606,8 +606,12 @@ impl HttpClient {
     /// Runs [`HttpClient::execute_once`] under the given retry policy.
     ///
     /// Between attempts waits according to the resolved retry delay, optionally
-    /// honoring `Retry-After` by extending the next sleep. Each attempt clones
-    /// the request so request bodies can be rebuilt when supported.
+    /// honoring an enabled request's parsed `Retry-After` hint. The default
+    /// HTTP backoff policy uses the hint as a minimum; custom policies may
+    /// prefer or ignore it, and `limit_delay` caps the selected delay. Retry
+    /// admission budgets still control whether another attempt may start.
+    /// Each attempt clones the request so request bodies can be rebuilt when
+    /// supported.
     ///
     /// # Parameters
     /// - `request`: Built request passed to each [`HttpClient::execute_once`]
@@ -887,6 +891,14 @@ impl HttpClient {
     /// - SSE protocol errors (non-reconnectable by default);
     /// - transport/read errors after reconnect budget is exhausted.
     ///
+    /// A `204 No Content` response ends the stream normally. A clean EOF also
+    /// ends normally when EOF reconnect is disabled or reconnect attempts are
+    /// exhausted. In contrast, exhausted attempts after a retryable error yield
+    /// that last error item, and operation/total time budgets yield their
+    /// corresponding budget error item. These normal termination causes all
+    /// appear as `None` to the consumer; use [`HttpClient::execute`] to manage
+    /// connections when the stop reason must be distinguished.
+    ///
     /// Once the server supplies an event ID, the reconnect runner owns the
     /// final `Last-Event-ID` header. Its non-empty cursor wins after defaults,
     /// injectors, and request interceptors have been merged; an empty ID
@@ -1156,20 +1168,34 @@ mod tests {
     async fn test_protocol_recovery_terminates_after_repeated_refusals() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
+        let (stop_server, mut stop_server_rx) = tokio::sync::oneshot::channel();
         let server = tokio::spawn(async move {
             let mut streams = 0;
             loop {
-                let (socket, _) = timeout(Duration::from_secs(3), listener.accept())
-                    .await
-                    .expect("reqwest did not finish protocol recovery")
-                    .unwrap();
-                let mut connection = h2::server::handshake(socket).await.unwrap();
-                while let Some(Ok((_request, mut response))) = connection.accept().await {
-                    streams += 1;
-                    response.send_reset(h2::Reason::REFUSED_STREAM);
-                    if streams >= 3 {
-                        let _ = timeout(Duration::from_millis(100), connection.accept()).await;
-                        return streams;
+                let accepted = tokio::select! {
+                    _ = &mut stop_server_rx => return streams,
+                    accepted = timeout(Duration::from_secs(3), listener.accept()) => accepted
+                        .expect("reqwest did not finish protocol recovery")
+                        .expect("failed to accept recovery connection"),
+                };
+                let (socket, _) = accepted;
+                let mut connection = tokio::select! {
+                    _ = &mut stop_server_rx => return streams,
+                    connection = h2::server::handshake(socket) => connection
+                        .expect("HTTP/2 handshake failed"),
+                };
+                loop {
+                    let accepted = tokio::select! {
+                        _ = &mut stop_server_rx => return streams,
+                        accepted = connection.accept() => accepted,
+                    };
+                    match accepted {
+                        Some(Ok((_request, mut response))) => {
+                            streams += 1;
+                            response.send_reset(h2::Reason::REFUSED_STREAM);
+                        }
+                        Some(Err(error)) => panic!("HTTP/2 server failed: {error}"),
+                        None => break,
                     }
                 }
             }
@@ -1192,14 +1218,18 @@ mod tests {
             Duration::from_secs(5),
             client.execute(client.request(Method::GET, "/recovery-limit").build()),
         )
-        .await
-        .expect("repeated HTTP/2 refusals must terminate");
+        .await;
+        let _ = stop_server.send(());
         let streams = timeout(Duration::from_secs(2), server)
             .await
             .expect("test server did not finish")
             .unwrap();
+        let result = result.expect("repeated HTTP/2 refusals must terminate");
         assert!(result.is_err(), "persistent REFUSED_STREAM should fail");
-        assert!((1..10).contains(&streams), "recovery should remain bounded");
+        assert!(
+            (1..=3).contains(&streams),
+            "recovery should stay within reqwest's default limit"
+        );
         assert_eq!(calls.load(Ordering::Relaxed), 1);
     }
 }

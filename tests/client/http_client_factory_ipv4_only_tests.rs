@@ -15,6 +15,9 @@ use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
 use qubit_http::HttpOriginPolicy;
+use qubit_redact::RedactionPolicy;
+use qubit_redact::Sensitivity;
+use qubit_redact::formats::http::UrlPathPolicy;
 use tokio::io::AsyncWriteExt;
 use tokio::test as tokio_test;
 use tokio::time::timeout;
@@ -64,15 +67,89 @@ async fn test_ipv4_only_with_localhost_request_is_accessible() {
 async fn test_ipv4_only_rejects_ipv6_literal_request_url() {
     let mut options = HttpClientOptions::default();
     options.ipv4_only = true;
+    options.log_redaction_policy = RedactionPolicy::strict()
+        .to_builder()
+        .http(|http| {
+            http.url_path(UrlPathPolicy::Redact);
+            let _ = http.query().raise("access_token", Sensitivity::Secret);
+        })
+        .unwrap()
+        .build()
+        .unwrap();
     options.timeouts.response_header_timeout = Duration::from_secs(1);
     options.timeouts.read_timeout = Duration::from_secs(1);
 
     let client = HttpClientBuilder::new().options(options).build().unwrap();
-    let request = client.request(Method::GET, "http://[::1]:18080/ipv6").build();
+    let request = client
+        .request(
+            Method::GET,
+            "http://[::1]:18080/PRIVATE_IPV6_PATH?access_token=PRIVATE_IPV6_QUERY",
+        )
+        .build();
     let error = client.execute(request).await.unwrap_err();
 
     assert_eq!(error.kind, HttpErrorKind::InvalidUrl);
-    assert!(error.message.contains("ipv4_only=true"));
+    assert_eq!(error.message(), "IPv6 literal host is not allowed when ipv4_only=true");
+    let url = error.url().expect("rejected candidate URL should be retained");
+    assert_eq!(url.path(), "/PRIVATE_IPV6_PATH");
+    assert_eq!(url.query(), Some("access_token=PRIVATE_IPV6_QUERY"));
+    for output in [error.to_string(), format!("{error:?}")] {
+        assert!(!output.contains("PRIVATE_IPV6_PATH"));
+        assert!(!output.contains("PRIVATE_IPV6_QUERY"));
+    }
+}
+
+#[tokio_test]
+async fn test_ipv4_only_initial_literal_policy_comes_from_request_snapshot() {
+    let listener = match tokio::net::TcpListener::bind("[::1]:0").await {
+        Ok(listener) => listener,
+        Err(error) => {
+            eprintln!("IPv6 loopback unavailable; skipping direct IPv4-only policy check: {error}");
+            return;
+        }
+    };
+    let address = listener.local_addr().unwrap();
+    let strict_client = HttpClientBuilder::new()
+        .options(HttpClientOptions {
+            ipv4_only: true,
+            use_env_proxy: false,
+            ..HttpClientOptions::default()
+        })
+        .build()
+        .unwrap();
+    let relaxed_client = HttpClientBuilder::new()
+        .options(HttpClientOptions {
+            use_env_proxy: false,
+            ..HttpClientOptions::default()
+        })
+        .build()
+        .unwrap();
+
+    let url = format!("http://[::1]:{}/", address.port());
+    let strict_request = relaxed_client.request(Method::GET, &url).ipv4_only(true).build();
+    let error = relaxed_client.execute(strict_request).await.unwrap_err();
+    assert_eq!(error.kind, HttpErrorKind::InvalidUrl);
+
+    let server = tokio::spawn(async move {
+        for _ in 0..2 {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = [0; 1024];
+            let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut request).await.unwrap();
+            socket
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok")
+                .await
+                .unwrap();
+        }
+    });
+    let relaxed_request = relaxed_client.request(Method::GET, &url).build();
+    let response = strict_client.execute(relaxed_request).await.unwrap();
+    assert_eq!(response.status().as_u16(), 200);
+
+    let mut explicitly_relaxed_request = strict_client.request(Method::GET, &url).build();
+    explicitly_relaxed_request.set_ipv4_only(false);
+    let response = strict_client.execute(explicitly_relaxed_request).await.unwrap();
+    assert_eq!(response.status().as_u16(), 200);
+    server.await.unwrap();
 }
 
 #[test]
