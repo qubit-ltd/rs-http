@@ -54,8 +54,88 @@ use url::Url;
 use crate::common::CapturedRequest;
 use crate::common::ResponseChunk;
 use crate::common::ResponsePlan;
+use crate::common::capture_trace_logs;
 use crate::common::spawn_multi_shot_server;
 use crate::common::spawn_one_shot_server;
+
+#[test]
+fn test_sse_reconnect_cursor_is_transmitted_but_redacted_from_trace_logs() {
+    const CURSOR: &str = "sse-reconnect-private-cursor";
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("Tokio runtime should be created");
+    let logs = capture_trace_logs(|| {
+        runtime.block_on(async {
+            let server = spawn_multi_shot_server(vec![
+                ResponsePlan::Immediate {
+                    status: 200,
+                    headers: vec![("Content-Type".to_owned(), "text/event-stream".to_owned())],
+                    body: format!("id: {CURSOR}\ndata: first\n\n").into_bytes(),
+                },
+                ResponsePlan::Immediate {
+                    status: 204,
+                    headers: vec![],
+                    body: Vec::new(),
+                },
+            ])
+            .await;
+            let mut options = HttpClientOptions::default();
+            options.base_url = Some(server.base_url());
+            options.retry.enabled = false;
+            options.log_redaction_policy = qubit_redact::RedactionPolicy::default();
+            let client = HttpClientBuilder::new()
+                .options(options)
+                .build()
+                .expect("client should be created");
+            let request = client.request(Method::GET, "/events").build();
+            let reconnect = SseReconnectOptions {
+                reconnect_on_eof: true,
+                retry: RetryPolicy::builder()
+                    .max_attempts(2)
+                    .backoff(BackoffPolicy::immediate())
+                    .build()
+                    .expect("retry policy should be valid"),
+                ..SseReconnectOptions::default()
+            };
+            let mut events = client.execute_sse_with_reconnect(request, reconnect);
+            let first = timeout(Duration::from_secs(3), events.next())
+                .await
+                .expect("first SSE event timed out")
+                .expect("expected event")
+                .expect("event should parse");
+            assert_eq!(first.data, "first");
+            assert_eq!(first.last_event_id.as_deref(), Some(CURSOR));
+            assert!(
+                timeout(Duration::from_secs(3), events.next())
+                    .await
+                    .expect("SSE completion timed out")
+                    .is_none()
+            );
+            let captured = timeout(Duration::from_secs(3), server.finish())
+                .await
+                .expect("server finish timed out");
+            assert_eq!(captured.len(), 2);
+            assert_eq!(
+                captured[1].headers.get("last-event-id").map(String::as_str),
+                Some(CURSOR)
+            );
+        });
+    });
+
+    assert!(
+        !logs.contains(CURSOR),
+        "TRACE logs must redact the reconnect cursor: {logs}"
+    );
+    let cursor_header_log = logs
+        .lines()
+        .find(|line| line.contains("last-event-id"))
+        .expect("TRACE logs should include the reconnect request header");
+    assert!(
+        cursor_header_log.contains("<redacted>"),
+        "reconnect header should be redacted in TRACE logs: {cursor_header_log}"
+    );
+}
 
 #[tokio_test]
 async fn test_sse_reconnect_replays_post_after_eof_with_http_retry_disabled() {

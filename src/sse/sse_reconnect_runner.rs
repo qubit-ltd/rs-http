@@ -305,7 +305,7 @@ fn apply_last_event_id_header(
         request.suppress_sse_last_event_id();
         return Ok(());
     }
-    let header_value = HeaderValue::from_str(last_event_id).map_err(|error| {
+    let mut header_value = HeaderValue::from_str(last_event_id).map_err(|error| {
         let mut mapped = HttpError::other(format!(
             "Invalid Last-Event-ID header value ({} bytes): {error}",
             last_event_id.len()
@@ -317,6 +317,7 @@ fn apply_last_event_id_header(
         }
         mapped
     })?;
+    header_value.set_sensitive(true);
     request.set_sse_last_event_id(header_value);
     Ok(())
 }
