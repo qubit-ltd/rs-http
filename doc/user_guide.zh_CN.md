@@ -106,6 +106,7 @@ let client = qubit_http::HttpClient::builder().build()?;
 | --- | --- |
 | `base_url` | 无；可以直接使用显式绝对 URL，也可以设置 base URL 后使用相对路径 |
 | `origin_policy` | 默认 `SameOrigin`。初始 URL 按请求快照校验；重定向按执行客户端后端策略校验。详见[跨客户端来源策略](#跨客户端来源策略)。 |
+| `max_redirects` | 默认 `None`，每次 reqwest 执行使用 10 次重定向上限 |
 | 连接超时 | 10 秒 |
 | 读超时 | 120 秒 |
 | 响应头／发送阶段超时 | 120 秒 |
@@ -172,6 +173,8 @@ options.retry.method_policy = HttpRetryMethodPolicy::IdempotentOnly;
 
 let client = HttpClient::builder().options(options).build()?;
 ```
+
+`max_redirects` 限制每次 reqwest 执行中的重定向数；设为 `None` 时默认上限为 10。每次外层 HTTP 尝试都会重新应用该上限。超过上限会返回 `HttpErrorKind::RedirectLimitExceeded`（配置/字符串名为 `redirect_limit_exceeded`）。
 
 `create` 会先执行校验。常见校验包括：超时必须大于 0；`response_header_timeout` 还必须能表示为当前平台 `Instant` 的截止时间；启用代理时必须有非空 host 和非 0 port；只有设置 username 时才能设置 password；日志记录请求体或响应体时 `body_size_limit` 必须大于 0；`retry.max_attempts` 必须大于 0；`error_response_preview_limit` 必须大于 0；`user_agent` 不能为空并且必须是合法 header value；SSE 行/帧上限必须大于 0。backoff 与 jitter 在构造 `BackoffPolicy` 时完成校验。
 
@@ -281,7 +284,7 @@ let client = HttpClient::from_config(&config.section("http")?)?;
 | `retry.delay_strategy` | `NONE`、`FIXED`、`RANDOM`、`EXPONENTIAL_BACKOFF` 或 `EXPONENTIAL` |
 | `retry.method_policy` | `IDEMPOTENT_ONLY`/`IDEMPOTENT`、`ALL_METHODS`/`ALL`、`NONE`/`DISABLED` |
 | `retry.status_codes` | 重试状态码白名单；未配置时默认重试 429 和 5xx |
-| `retry.error_kinds` | 非状态错误类型白名单；未配置时默认重试超时和 transport |
+| `retry.error_kinds` | 非状态错误类型白名单；默认重试超时和 transport，不含 `redirect_limit_exceeded` |
 | `sse.json_mode` | `LENIENT` 或 `STRICT` |
 | `sse.done_marker` | `DISABLED`（或 `DISABLE`）禁用完成标记；`DEFAULT` 使用 `[DONE]`；其它非空字符串视为自定义完成标记（`Custom`），与 trim 后的 `data:` 文本比较 |
 | `sse.max_line_bytes` | SSE 单行字节上限 |
@@ -382,7 +385,7 @@ assert_eq!(
 | `json_body` | 序列化 JSON；设置或更新 builder 自动生成的 `application/json` |
 | `json_body_with_limits` | 使用本请求的 value 与输出字节上限序列化 JSON |
 | `form_body` | 表单体；设置或更新 builder 自动生成的 `application/x-www-form-urlencoded` |
-| `multipart_body` | 原始 multipart 字节；需要 1 到 70 个 token-safe 字符的 boundary；自动生成的 multipart 值会随新 boundary 更新，显式 multipart 值缺少 boundary 时会补齐；重复、格式错误或不匹配的 boundary 会被拒绝 |
+| `multipart_body` | 原始 multipart 字节；需要 1 到 70 个 token-safe 字符的 boundary；自动生成的 multipart 值会随新 boundary 更新，显式 multipart 值缺少 boundary 时会补齐；调用时会拒绝多条显式 `Content-Type` 值（即使值相同），也会拒绝单条值中重复、格式错误或不匹配的 boundary 参数 |
 | `ndjson_body` | 每条记录一行 JSON；设置或更新 builder 自动生成的 `application/x-ndjson` |
 | `ndjson_body_with_limits` | 使用一个累计输出预算序列化 NDJSON，且包含行结束符 |
 
@@ -775,6 +778,7 @@ match client.execute(request).await {
 | --- | --- | --- |
 | URL / 配置 | `InvalidUrl`, `BuildClient`, `ProxyConfig` | URL 无法解析、客户端构建失败或代理配置非法 |
 | 超时 / 网络 | `ConnectTimeout`, `ReadTimeout`, `ResponseHeaderTimeout`, `RequestTimeout`, `Transport` | `ConnectTimeout` 表示后端报告的连接阶段超时；其它发送阶段超时仍为 `RequestTimeout`，非超时连接失败仍为 `Transport` |
+| 重定向策略 | `RedirectLimitExceeded`（`redirect_limit_exceeded`） | 超出配置的重定向次数上限 |
 | HTTP 状态 | `Status` | 收到非 2xx 状态码 |
 | 解码 / SSE | `Decode`, `SseProtocol`, `SseDecode` | 响应体解码失败、SSE 协议错误或 SSE JSON chunk 解码失败 |
 | 重试层 | `RetryBudgetExceeded` 与 `HttpRetryDiagnostics` | 重试预算或终止策略诊断 |
@@ -801,7 +805,7 @@ match client.execute(request).await {
 
 `retry_metadata()` 是已弃用的兼容 getter，始终返回 `None`，不能用来判断错误是否经过普通 HTTP 重试。需要该路径的终态信息时使用 `retry_diagnostics()`，并从 `Error::source()` 检查 `RetryError<HttpError>`。SSE 解码错误会在原错误未提供相应字段时补上响应 method、原始请求 URL 和 status；URL 格式化仍使用响应对应的脱敏策略。
 
-`retry_hint()` 会把超时、transport、429 和 5xx 状态视为可重试提示，其余默认不可重试。新增的重试层错误分类本身也不可重试。真正是否重试还要结合 `HttpRetryOptions` 和方法策略。
+`retry_hint()` 会把超时、transport、429 和 5xx 状态视为可重试提示；`RedirectLimitExceeded` 默认不可重试，因为重试同一请求会再次遇到被拒绝的跳转链。真正是否重试还要结合 `HttpRetryOptions` 和方法策略。
 
 ## 排障
 
@@ -812,6 +816,7 @@ match client.execute(request).await {
 | --- | --- | --- |
 | 相对请求路径返回 `InvalidUrl` | 是否设置了 `base_url` | 配置 client/request 级 base URL，或改用绝对 URL。 |
 | 跨 origin 的 URL 或重定向被拒绝 | `origin_policy` 与 base URL | 默认 `SameOrigin` 用于隔离；只有服务契约确实需要跨 origin 时才显式使用 `AnyOrigin`。请求由一个客户端构建、另一个客户端执行时，详见[跨客户端来源策略](#跨客户端来源策略)。 |
+| 重定向链以 `RedirectLimitExceeded` 结束 | `max_redirects` 和服务端的跳转响应 | 检查重定向链并修复意外循环；仅当服务确实需要更多跳转时再提高上限。普通 HTTP 默认不重试此策略错误，除非显式将 `redirect_limit_exceeded` 加入 `retry.error_kinds`。 |
 | 请求没有重试 | `retry.enabled`、`max_attempts`、方法策略和错误白名单 | 开启重试，并确认当前方法及错误/状态码允许且适合重放。 |
 | 流式读取后再次读取 body 失败 | 是否已移交未缓存的后端流 | 已缓存响应仍可重复读取；未缓存后端流移交后无法再取回。 |
 | 没有日志或日志出现敏感值 | `logging.enabled`、TRACE subscriber 等级和脱敏策略 | 同时开启日志条件，并在创建 client 前配置 `RedactionPolicy`。 |
@@ -844,7 +849,7 @@ backend 读取失败和流不可用。backend 读取失败时可用 `capture_err
 
 可以用 `retry.status_codes` 和 `retry.error_kinds` 配置白名单。白名单一旦设置，就只重试列出的状态码或错误类型。
 
-`retry.error_kinds` 可使用所有 `HttpErrorKind` 名称的配置形式。配置值会 trim，`read-timeout` 一类连字符形式会归一化为 `read_timeout`；请使用小写 snake_case 或等价的连字符形式。
+`retry.error_kinds` 可使用所有 `HttpErrorKind` 名称的配置形式。配置值会 trim，`read-timeout` 一类连字符形式会归一化为 `read_timeout`；请使用小写 snake_case 或等价的连字符形式。默认集合不含 `redirect_limit_exceeded`；普通 HTTP 调用方可按自身服务行为显式将它加入白名单。
 
 request interceptor 可以在重试流程准入后修改 method 或重试覆盖项；最终 method 和覆盖项决定该流程能否继续。拦截器不能启动此前未准入的重试流程。拦截器顺序见 [Header、注入器和拦截器](#header-注入器和拦截器)。
 
@@ -995,7 +1000,9 @@ options.proxy.host = Some("127.0.0.1".to_string());
 options.proxy.port = Some(1080);
 ```
 
-`ProxyType::Socks5` 使用 scheme `socks5h`，即远端 DNS。设置 username 后会启用代理 Basic Auth；只设置 password 不设置 username 会校验失败。
+`proxy.username` 和 `proxy.password` 是代理凭据。HTTP 和 HTTPS 代理使用 HTTP Basic Auth；SOCKS5 则在 SOCKS5 认证握手中发送用户名和密码。`ProxyType::Socks5` 使用 `socks5h`，由代理远端解析目标域名。配置 password 时必须同时配置 username；否则客户端配置校验会失败。
+
+排查认证错误时，先看失败发生在哪个阶段：HTTP/HTTPS 代理应检查 Basic Auth 凭据及代理返回的 HTTP 代理认证响应；SOCKS5 应确认代理支持用户名密码认证，并检查握手是否接受了这组凭据。客户端连上代理，并不代表代理认证或代理到目标服务器的连接也已成功。
 
 IPv4-only 策略分属三个阶段。建请求时捕获的请求快照决定初始 URL 字面量校验；因此，由关闭 IPv4-only 的客户端创建的请求可以保留 IPv6 字面量，即使之后由更严格的客户端执行。执行客户端决定本地 DNS 是否只保留 IPv4，以及是否拒绝 IPv6 字面量重定向；构造启用 IPv4-only 的执行客户端时，也会拒绝显式配置的 IPv6 字面量代理地址。直连 IPv6 字面量行为由 `test_ipv4_only_initial_literal_policy_comes_from_request_snapshot` 覆盖。
 
@@ -1190,6 +1197,8 @@ while let Some(item) = events.next().await {
 | 读取 SSE record，包括消费者暂停轮询 | 不计入 | 累计实际经过时间 |
 | 重连等待 | 不计入 | 累计实际经过时间 |
 
+`RedirectLimitExceeded` 不会在 SSE 握手阶段触发重连；重定向上限是确定性的策略边界，不是临时连接故障。
+
 Operation 时间累计已完成连接建立及响应校验尝试所耗费的时间，不包括 SSE 消费或重连等待。Total 时间包括经过的消费和等待时间；准入限额不会中断正在读取的流。这些预算控制是否允许开始后续连接，并非正在读取流的硬截止时间。请求超时、读取超时和取消仍按各自规则独立生效。
 
 默认重连配置为 `retry.max_attempts = 4`（即最多重连 3 次），使用 `initial=1s`、`max=30s`、`multiplier=2.0` 且无 jitter 的指数 `BackoffPolicy`，并在 EOF 后重连、尊重服务端 `retry:`。最新有效的 `retry:` 会持续生效，直到新有效值替换；可用 `honor_server_retry = false` 忽略服务端提示。服务端 `retry:` 会被限制到 `server_retry_max_delay`；若该字段为 `None`，则从 backoff policy 的最大值推导，无法推导时使用 30 秒。这个上限只作用于 SSE `retry:` 字段。可重连的 429/5xx 握手错误是否采用解析出的 HTTP 提示，由最终请求的 `honor_retry_after` 偏好决定；默认策略将其作为最小延迟，自定义策略可采用或忽略提示，`limit_delay` 限制所选延迟。所选延迟仍受重连准入预算约束。`apply_jitter_to_server_retry` 默认开启；只有传入的 `RetryPolicy` 配置了 jitter 时，服务端给出的延迟才会被扰动。重连时会复用原始请求，并禁用内层 HTTP 自动重试；收到非空 SSE `id:` 字段后（包括 control-only 控制记录中的 ID），下一次请求会带上 `Last-Event-ID` header；空 ID 重置后下一次请求会省略该头。204 响应会正常结束重连流，不要求 `Content-Type`。EOF 重连关闭或重连次数耗尽时，清洁 EOF 也会正常结束。消费者观察到的都是 `None`；若需判断结束原因，应使用 `execute` 自行管理连接。可重试错误耗尽次数时会产出最后一个错误项，operation/total 预算失败则产出预算错误项。这些是有意的行为规则：调用方应将 204 的流结束视为正常停流，服务端若要更改延迟应发送新的有效 `retry:`。本 API 不宣称完整实现 EventSource。其他成功状态仍要求 `Content-Type` 为 `text/event-stream`。SSE 解码错误会补充响应 method、原始请求 URL 和 status，同时保留更具体的原有上下文与 source。取消错误不会触发重连；SSE 协议错误默认也不会重连；超时、transport、429/5xx 等 retryable 错误，以及包含 unexpected EOF 语义的错误可触发重连。
@@ -1212,7 +1221,7 @@ SSE 重连使用独立的 `SseReconnectOptions.retry` 策略。普通 HTTP 重�
 | `response_body_size_limit` | 整体响应体与 JSON helper 允许累计的最大字节数；默认 8 MiB |
 | `error_response_body_limit` | 非 2xx `HttpStatusResponse` 保留的原始 body 最大字节数；默认 64 KiB，与默认 16 KiB 的脱敏 `error_response_preview_limit` 独立 |
 | `user_agent` | 传给 `reqwest` builder 的默认 User-Agent |
-| `max_redirects` | 最大重定向次数 |
+| `max_redirects` | 每次 reqwest 执行的最大重定向次数；`None` 默认上限为 10 |
 | `pool_idle_timeout` | 连接池空闲超时 |
 | `pool_max_idle_per_host` | 每个 host 最大空闲连接数 |
 | `use_env_proxy` | 显式代理禁用时是否继承环境代理；默认 `false` |
@@ -1243,8 +1252,8 @@ SSE 重连使用独立的 `SseReconnectOptions.retry` 策略。普通 HTTP 重�
 | `proxy.proxy_type` | `http`、`https`、`socks5` 或 `socks5h` |
 | `proxy.host` | 代理主机 |
 | `proxy.port` | 代理端口 |
-| `proxy.username` | 代理 Basic Auth 用户名 |
-| `proxy.password` | 代理 Basic Auth 密码，必须配合 username |
+| `proxy.username` | 代理认证用户名；HTTP/HTTPS 使用 HTTP Basic Auth，SOCKS5 在握手阶段使用用户名密码认证 |
+| `proxy.password` | 代理认证密码；必须同时设置 `proxy.username` |
 | `logging.enabled` | 是否允许 TRACE HTTP 日志 |
 | `logging.log_request_header` | 是否记录请求头 |
 | `logging.log_request_body` | 是否记录请求体预览 |
@@ -1264,7 +1273,7 @@ SSE 重连使用独立的 `SseReconnectOptions.retry` 策略。普通 HTTP 重�
 | `retry.jitter_factor` | 抖动比例，范围 `0.0..=1.0` |
 | `retry.method_policy` | `IDEMPOTENT_ONLY`/`IDEMPOTENT`、`ALL_METHODS`/`ALL`、`NONE`/`DISABLED` |
 | `retry.status_codes` | 重试状态码白名单；未配置时默认重试 429 和 5xx |
-| `retry.error_kinds` | 非状态错误类型白名单；未配置时默认重试超时和 transport |
+| `retry.error_kinds` | 非状态错误类型白名单；默认重试超时和 transport，不含 `redirect_limit_exceeded` |
 | `sse.json_mode` | `LENIENT` 或 `STRICT` |
 | `sse.done_marker` | `DISABLED`（或 `DISABLE`）禁用完成标记；`DEFAULT` 使用 `[DONE]`；其它非空字符串视为自定义完成标记（`Custom`），与 trim 后的 `data:` 文本比较 |
 | `sse.completion` | `allow_eof`（默认）或 `require_done_marker`；后者要求启用且非空的 `sse.done_marker` |
@@ -1302,7 +1311,11 @@ SSE 重连使用独立的 `SseReconnectOptions.retry` 策略。普通 HTTP 重�
 
 ## 从 0.16 升级到 0.17
 
-请将依赖要求更新为 `qubit-http = "0.17"`；`^0.16` 不包含 `0.17`。无需迁移公开 API。`HttpClient` 克隆后的选项仍彼此独立，现在只有某个克隆被修改时才复制共享选项。NDJSON 请求体保持原有 JSON Lines 格式和预算限制，同时直接编码到有界输出缓冲区。
+请将依赖要求更新为 `qubit-http = "0.17"`；`^0.16` 不包含 `0.17`。`HttpClient` 克隆后的选项仍彼此独立，现在只有某个克隆被修改时才复制共享选项。NDJSON 请求体保持原有 JSON Lines 格式和预算限制，同时直接编码到有界输出缓冲区。新增的 `HttpErrorKind::RedirectLimitExceeded` 变体会影响穷举匹配；请为错误处理和统计逻辑增加分支。若调用方会解析错误类型名称，也要识别 `redirect_limit_exceeded`。
+
+`max_redirects = None` 表示每次 reqwest 执行最多允许 10 次重定向。超限时会返回 `RedirectLimitExceeded`；普通 HTTP 默认重试集合不包含它，SSE 握手也会停止且不重连。如果业务上确实适合再次尝试，可在普通 HTTP 的 `retry.error_kinds` 中显式加入 `redirect_limit_exceeded`。
+
+如果 `multipart_body` 前通过 `headers` map 设置了多条 `Content-Type`，请在调用 helper 前用 `HeaderMap::insert` 保留一个值，或移除这个请求级字段，让 helper 推断 multipart 类型和值。多值检查发生在调用 `multipart_body` 时；它不同于单条字段内 boundary 参数重复、格式错误或与 helper 参数不匹配时的校验错误。
 
 要从配置创建客户端，可以直接使用下面的完整示例。它只构建客户端，不会发送网络请求。支持的配置键和读取方式见[从 qubit-config 读取](#从-qubit-config-读取)。
 

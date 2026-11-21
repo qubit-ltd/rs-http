@@ -112,6 +112,7 @@ Default behavior:
 | --- | --- |
 | `base_url` | None; use an explicit absolute URL, or set a request/client base URL for relative paths |
 | `origin_policy` | `SameOrigin` by default. Initial URL checks use the request snapshot; redirect checks use the executing client backend. See [origin policy across clients](#origin-policy-across-clients). |
+| `max_redirects` | `None` by default, using a limit of 10 redirects per reqwest execution |
 | Connect timeout | 10 seconds |
 | Read timeout | 120 seconds |
 | Response-header/send-phase timeout | 120 seconds |
@@ -184,6 +185,8 @@ options.retry.method_policy = HttpRetryMethodPolicy::IdempotentOnly;
 
 let client = HttpClient::builder().options(options).build()?;
 ```
+
+`max_redirects` limits redirects within each reqwest execution. `None` uses a limit of 10; the ceiling applies anew to each outer HTTP attempt. When the ceiling is exceeded, the request returns `HttpErrorKind::RedirectLimitExceeded` (`redirect_limit_exceeded`).
 
 `create` validates options before building the client. Validation includes: all timeout values must be greater than zero; `response_header_timeout` must also fit in the platform's `Instant` deadline range; enabled proxies require a non-empty host and non-zero port; a proxy password requires a username; `logging.body_size_limit` must be greater than zero when request or response body logging is enabled; `retry.max_attempts` must be greater than zero; `error_response_preview_limit` must be greater than zero; `user_agent` must be non-empty and a valid header value; SSE line and frame limits must be greater than zero. Backoff and jitter values are validated when constructing `BackoffPolicy`.
 
@@ -302,7 +305,7 @@ Common configuration keys:
 | `retry.delay_strategy` | `NONE`, `FIXED`, `RANDOM`, `EXPONENTIAL_BACKOFF`, or `EXPONENTIAL` |
 | `retry.method_policy` | `IDEMPOTENT_ONLY`/`IDEMPOTENT`, `ALL_METHODS`/`ALL`, or `NONE`/`DISABLED` |
 | `retry.status_codes` | Retryable status allowlist; defaults to 429 and 5xx when absent |
-| `retry.error_kinds` | Retryable non-status error-kind allowlist; defaults to timeouts and transport when absent |
+| `retry.error_kinds` | Retryable non-status error-kind allowlist; defaults to timeouts and transport when absent, excluding `redirect_limit_exceeded` |
 | `sse.json_mode` | `LENIENT` or `STRICT` |
 | `sse.done_marker` | `DISABLED` or `DISABLE` disables done markers; `DEFAULT` uses `[DONE]`; any other non-empty string becomes a `Custom` marker compared to trimmed `data:` text |
 | `sse.max_line_bytes` | SSE single-line byte limit |
@@ -403,7 +406,7 @@ Request body builders:
 | `json_body` | Serializes JSON; sets or refreshes the builder-generated `application/json` value |
 | `json_body_with_limits` | Serializes JSON with per-request value and output-byte limits |
 | `form_body` | Form body; sets or refreshes the builder-generated `application/x-www-form-urlencoded` value |
-| `multipart_body` | Raw multipart bytes; requires a 1 to 70 character token-safe boundary; refreshes a builder-generated multipart value for the new boundary, adds a missing boundary to an explicit multipart value, and rejects duplicate, malformed, or mismatched boundary parameters |
+| `multipart_body` | Raw multipart bytes; requires a 1 to 70 character token-safe boundary; refreshes a builder-generated multipart value for the new boundary, adds a missing boundary to an explicit multipart value, and rejects multiple explicit `Content-Type` values (even identical ones), or a repeated, malformed, or mismatched boundary parameter within one value. Validation runs when `multipart_body` is called. |
 | `ndjson_body` | One JSON record per line; sets or refreshes the builder-generated `application/x-ndjson` value |
 | `ndjson_body_with_limits` | Serializes an NDJSON sequence with one aggregate output budget, including line terminators |
 
@@ -809,6 +812,7 @@ For non-2xx errors, the redacted preview and retained raw body have independent 
 | --- | --- | --- |
 | URL / configuration | `InvalidUrl`, `BuildClient`, `ProxyConfig` | URL resolution failed, client construction failed, or proxy options are invalid |
 | Timeout / network | `ConnectTimeout`, `ReadTimeout`, `ResponseHeaderTimeout`, `RequestTimeout`, `Transport` | `ConnectTimeout` is a timeout reported for the connection phase; other send-phase timeouts remain `RequestTimeout`, and non-timeout connection failures remain `Transport` |
+| Redirect policy | `RedirectLimitExceeded` (`redirect_limit_exceeded`) | The configured redirect ceiling rejected another redirect |
 | HTTP status | `Status` | A non-2xx status code was returned |
 | Decoding / SSE | `Decode`, `SseProtocol`, `SseDecode` | Body decoding failed, SSE framing was invalid, or an SSE JSON chunk could not be decoded |
 | Retry layer | `RetryBudgetExceeded` and `HttpRetryDiagnostics` | Retry budget or terminal-policy diagnostics |
@@ -837,7 +841,7 @@ The consumer cannot distinguish these normal stop reasons from the stream alone;
 
 `retry_metadata()` is a deprecated compatibility getter that always returns `None`; it does not indicate whether retry execution occurred. Use `retry_diagnostics()` for terminal details and inspect `Error::source()` for the retained `RetryError<HttpError>` context. SSE decoding errors also carry the response method, original request URL, and status when those fields were not already present; URL rendering continues to use the response redaction policy.
 
-`retry_hint()` marks timeouts, transport errors, 429, and 5xx statuses as retryable hints. The new retry-layer error categories are non-retryable themselves. Actual retry behavior still depends on `HttpRetryOptions` and the method policy.
+`retry_hint()` marks timeouts, transport errors, 429, and 5xx statuses as retryable hints. `RedirectLimitExceeded` is not retryable by default: repeating the same request would repeat the rejected redirect chain. Actual retry behavior still depends on `HttpRetryOptions` and the method policy.
 
 ## Troubleshooting
 
@@ -848,6 +852,7 @@ following symptoms identify the most common configuration or usage mistakes:
 | --- | --- | --- |
 | Relative request path fails with `InvalidUrl` | Whether `base_url` is set | Configure a client/request base URL or use an absolute URL. |
 | Cross-origin URL or redirect is rejected | `origin_policy` and the configured base URL | Use the default `SameOrigin` for isolation, or explicitly select `AnyOrigin` when the service contract requires it. For requests built by one client and executed by another, see [origin policy across clients](#origin-policy-across-clients). |
+| Redirect chain ends with `RedirectLimitExceeded` | `max_redirects` and the redirect responses | Inspect the chain and fix an unintended loop; increase the limit only when the service legitimately needs more hops. Ordinary HTTP retry excludes this policy failure unless you explicitly add `redirect_limit_exceeded` to `retry.error_kinds`. |
 | Request never retries | `retry.enabled`, `max_attempts`, method policy, and error allowlists | Enable retry and ensure the method and error/status are safe and allowed to replay. |
 | Response body read fails after streaming | Whether an unbuffered backend stream was already taken | Buffered responses remain reusable; an unbuffered backend stream cannot be recovered after it is transferred. |
 | Logs are absent or sensitive values are visible | `logging.enabled`, TRACE subscriber level, and redaction policy | Enable both logging conditions and configure `RedactionPolicy` before constructing the client. |
@@ -882,7 +887,7 @@ Default retryability:
 
 You can configure `retry.status_codes` and `retry.error_kinds` allowlists. Once an allowlist is set, only listed statuses or error kinds are retried.
 
-`retry.error_kinds` accepts config names for every `HttpErrorKind`. Values are trimmed; hyphenated names such as `read-timeout` are normalized to `read_timeout`. Use lowercase snake_case or the equivalent hyphenated form.
+`retry.error_kinds` accepts config names for every `HttpErrorKind`. Values are trimmed; hyphenated names such as `read-timeout` are normalized to `read_timeout`. Use lowercase snake_case or the equivalent hyphenated form. The default set excludes `redirect_limit_exceeded`; ordinary HTTP callers may explicitly include it when another outer attempt is useful for their service behavior.
 
 A request interceptor can change the method or retry override after retry flow has been admitted. The final method and override determine whether the flow may continue; an interceptor cannot start a retry flow that was not admitted. See [Headers, Injectors, And Interceptors](#headers-injectors-and-interceptors) for interceptor ordering.
 
@@ -1049,7 +1054,9 @@ options.proxy.host = Some("127.0.0.1".to_string());
 options.proxy.port = Some(1080);
 ```
 
-`ProxyType::Socks5` uses scheme `socks5h`, which performs remote DNS. Setting username enables proxy Basic Auth; setting password without username fails validation.
+`proxy.username` and `proxy.password` are credentials for the proxy. HTTP and HTTPS proxies use HTTP Basic Auth; SOCKS5 sends the username and password during the SOCKS5 authentication handshake. `ProxyType::Socks5` uses scheme `socks5h`, which performs remote DNS. A password requires a username; setting a password alone fails client configuration validation.
+
+If proxy authentication fails, check which stage the proxy reports: for HTTP/HTTPS, verify the proxy's Basic Auth credentials and its HTTP proxy-auth response; for SOCKS5, verify that the proxy offers username/password authentication and accepts the credentials during the SOCKS5 handshake. A successful connection to the proxy does not prove that the subsequent authentication or destination connection succeeded.
 
 IPv4-only policy has three owners. The request snapshot captured when the request is built controls validation of its initial URL literal; a request created with IPv4-only disabled may therefore contain an IPv6 literal even if a stricter client later executes it. The executing client controls local DNS filtering and IPv6-literal redirect rejection. Its `ipv4_only` setting also rejects explicitly configured IPv6 proxy literals when that client is constructed. The direct IPv6-literal behavior is covered by `test_ipv4_only_initial_literal_policy_comes_from_request_snapshot`.
 
@@ -1248,6 +1255,8 @@ Operation time accumulates time spent in completed connection-opening attempts, 
 
 The default reconnect settings are `retry.max_attempts = 4` (that is, at most 3 reconnects), exponential `BackoffPolicy` with `initial=1s`, `max=30s`, `multiplier=2.0`, no jitter, reconnect on EOF, and honor server `retry:`. The latest valid `retry:` delay persists until replaced; use `honor_server_retry = false` to ignore server hints. Server `retry:` delays are capped by `server_retry_max_delay`; when it is `None`, the cap is derived from the backoff policy's maximum delay, or falls back to 30 seconds when no maximum exists. This cap applies only to the SSE `retry:` field. For a reconnectable 429/5xx handshake, the final request's `honor_retry_after` preference controls whether the parsed HTTP hint is passed to the backoff policy; the default policy uses it as a minimum, custom policies may prefer or ignore it, and `limit_delay` caps the selected delay. The selected delay remains subject to reconnect admission budgets. `apply_jitter_to_server_retry` is enabled by default, but server-provided delays remain unchanged unless the supplied `RetryPolicy` uses jitter. Reconnects reuse the original request and disable inner HTTP retry. After a non-empty SSE `id:` field updates the reconnect cursor, including in a control-only record, the next request includes `Last-Event-ID`; an empty ID reset makes the next request omit that header. A 204 response ends the reconnect stream normally without requiring `Content-Type`. Clean EOF also ends normally when EOF reconnect is disabled or reconnect attempts are exhausted. These normal stops all appear as `None` to the consumer; use `execute` to manage connections when the stop reason matters. Exhausted attempts after a retryable error yield the last error item, while operation/total budget failures yield a budget error item. These are deliberate behavior rules; callers should handle 204 as normal end-of-stream and servers should send a new valid `retry:` to change the delay. The API does not claim full EventSource compliance. `execute_sse_with_reconnect` requires response `Content-Type` to be `text/event-stream` for other successful statuses. SSE decoder errors include the response method, original request URL, and status while preserving more specific context and the existing error source. Cancellation does not reconnect. SSE protocol errors do not reconnect by default. Retryable timeout, transport, 429/5xx, and unexpected-EOF-like errors may reconnect.
 
+`RedirectLimitExceeded` does not reconnect during the SSE handshake; the redirect ceiling is a deterministic policy boundary, not a transient connection failure.
+
 SSE reconnects use the independent `SseReconnectOptions.retry` policy. Ordinary
 HTTP retry settings, including `retry.method_policy`, and request-level
 `disable_retry()` do not disable outer SSE reconnects. The original request may
@@ -1274,7 +1283,7 @@ The table below lists every configuration key supported by `HttpClientOptions::f
 | `response_body_size_limit` | Maximum bytes accumulated by whole-response body and JSON helpers; defaults to 8 MiB |
 | `error_response_body_limit` | Maximum raw bytes retained in non-2xx `HttpStatusResponse` values; defaults to 64 KiB and is separate from the redacted `error_response_preview_limit` (16 KiB by default) |
 | `user_agent` | Default User-Agent passed to the reqwest builder |
-| `max_redirects` | Redirect limit |
+| `max_redirects` | Maximum redirects per reqwest execution; `None` uses the default limit of 10 |
 | `pool_idle_timeout` | Connection pool idle timeout |
 | `pool_max_idle_per_host` | Max idle connections per host |
 | `use_env_proxy` | Whether to inherit environment proxies when explicit proxying is disabled; defaults to `false` |
@@ -1305,8 +1314,8 @@ The table below lists every configuration key supported by `HttpClientOptions::f
 | `proxy.proxy_type` | `http`, `https`, `socks5`, or `socks5h` |
 | `proxy.host` | Proxy host |
 | `proxy.port` | Proxy port |
-| `proxy.username` | Proxy Basic Auth username |
-| `proxy.password` | Proxy Basic Auth password; requires username |
+| `proxy.username` | Proxy authentication username; used for HTTP Basic Auth with HTTP/HTTPS proxies and username/password authentication during a SOCKS5 handshake |
+| `proxy.password` | Proxy authentication password; requires `proxy.username` |
 | `logging.enabled` | Allows TRACE HTTP logs |
 | `logging.log_request_header` | Logs request headers |
 | `logging.log_request_body` | Logs request body preview |
@@ -1326,7 +1335,7 @@ The table below lists every configuration key supported by `HttpClientOptions::f
 | `retry.jitter_factor` | Jitter factor in range `0.0..=1.0` |
 | `retry.method_policy` | `IDEMPOTENT_ONLY`/`IDEMPOTENT`, `ALL_METHODS`/`ALL`, or `NONE`/`DISABLED` |
 | `retry.status_codes` | Retryable status allowlist; defaults to 429 and 5xx when absent |
-| `retry.error_kinds` | Retryable non-status error-kind allowlist; defaults to timeouts and transport when absent |
+| `retry.error_kinds` | Retryable non-status error-kind allowlist; defaults to timeouts and transport when absent, excluding `redirect_limit_exceeded` |
 | `sse.json_mode` | `LENIENT` or `STRICT` |
 | `sse.done_marker` | `DISABLED` or `DISABLE` disables done markers; `DEFAULT` uses `[DONE]`; any other non-empty string becomes a `Custom` marker compared to trimmed `data:` text |
 | `sse.completion` | `allow_eof` (default) or `require_done_marker`; the latter requires an enabled non-empty `sse.done_marker` |
@@ -1367,7 +1376,11 @@ This section compares the repository's `v0.15.1` tag with `0.16.0` at commit `e9
 
 ## Upgrade from 0.16 to 0.17
 
-Update the dependency requirement to `qubit-http = "0.17"`; a `^0.16` requirement does not admit `0.17`. No public API migration is required. `HttpClient` clones continue to have independent option state, now copying shared options only when one clone is modified. NDJSON request bodies retain the same JSON-lines format and limits while encoding records directly into the bounded output buffer.
+Update the dependency requirement to `qubit-http = "0.17"`; a `^0.16` requirement does not admit `0.17`. `HttpClient` clones continue to have independent option state, now copying shared options only when one clone is modified. NDJSON request bodies retain the same JSON-lines format and limits while encoding records directly into the bounded output buffer. The new `HttpErrorKind::RedirectLimitExceeded` variant can break exhaustive matches; add a branch to error handling and statistics. Consumers parsing error-kind names should recognize `redirect_limit_exceeded`.
+
+`max_redirects = None` now means a limit of 10 redirects per reqwest execution. Exhausting it returns `RedirectLimitExceeded`; the default ordinary HTTP retry set excludes this category, and SSE handshakes stop without reconnecting. If another ordinary HTTP attempt is appropriate for your service, explicitly include `redirect_limit_exceeded` in `retry.error_kinds`.
+
+If you set multiple `Content-Type` values through a `headers` map before calling `multipart_body`, use `HeaderMap::insert` to keep one value, or remove the request-local field so the helper can infer it. The multiple-value check runs when `multipart_body` is called. It is separate from validation of a repeated, malformed, or mismatched `boundary` parameter inside one value.
 
 To build a client from configuration, use this complete example. It only constructs the client; it does not send a network request. For the supported keys and configuration behavior, see [Loading From qubit-config](#loading-from-qubit-config).
 

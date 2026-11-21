@@ -36,6 +36,8 @@ flowchart LR
 
 base URL 在配置解析和客户端构造时校验；最终请求 URL 在解析或 join 后校验，拦截器修改后的目标也会检查。仅支持 HTTP 和 HTTPS；不支持的请求 scheme 返回 `InvalidUrl`。IPv4-only 过滤仅作用于客户端本地 resolver 和 URL literal 检查；显式配置的 IPv6 代理 literal 会在客户端构造时被拒绝。环境代理选择仍委托给 reqwest，因此 IPv4-only 不限制客户端到代理这一段的连接，包括使用 IPv6 环境代理时。SOCKS5 保留远端 DNS（`socks5h`），HTTP/HTTPS 代理也自行控制目标解析与出口，因此代理到目标这一段的地址族同样不受本地 IPv4 保证约束。
 
+重定向上限按每次 reqwest 执行计算；`max_redirects = None` 时上限为 10。超出上限的下一跳会在现有同源和 IPv6 重定向检查之后映射为 `HttpErrorKind::RedirectLimitExceeded`（`redirect_limit_exceeded`）。它表示确定性的策略失败，不是临时传输错误。普通 HTTP 默认不重试该类别，但调用方可通过 `retry_error_kinds` 显式选择；`retry_hint()` 仍将其视为不可重试，因此 SSE 握手遇到此错误会终止重连。
+
 ## 请求与重试边界
 
 `HttpClient::execute` 先解析请求的重试选项。每次获准的尝试都会检查取消状态、运行请求拦截器、解析 URL 和最终请求头、记录请求日志、发送请求、将非 2xx 状态映射为 `HttpError`，最后运行响应拦截器并记录响应日志。此处日志与错误均使用请求捕获的 redactor；是否记录及 body 展示限额仍由执行客户端控制。响应返回前这一整段路径产生的错误可参与重试；`HttpResponse` 返回后的 body 或 SSE 读取错误由调用方处理，不进入普通 HTTP 重试，但仍保留相同请求策略。
@@ -46,7 +48,7 @@ base URL 在配置解析和客户端构造时校验；最终请求 URL 在解析
 
 `HttpRequestStreamingBody::try_new` 和 `HttpRequestBuilder::try_streaming_body` 允许异步准备工厂返回 `HttpResult<HttpRequestBodyByteStream>`。准备错误会保留类型、消息、source、请求上下文和捕获的 redactor，并在本次尝试调用 `reqwest::RequestBuilder::send` 前返回。工厂是惰性的，按外层尝试执行。准备阶段沿用 response-header 超时和取消路径；流创建后的错误沿用现有发送错误映射。原有不可失败工厂 API 保持兼容，无需迁移。重试分类、工厂可能被重新调用，以及流式 body 对 307/308 的限制均不变。
 
-`HttpRequestBuilder` 会在内部记录请求级 `Content-Type` 是否由正文 helper 自动生成。后续带类型的 helper 会更新这个自动值；`bytes_body`、`stream_body`、`streaming_body` 和 `try_streaming_body` 会将其移除。通过 `header` 或包含 `Content-Type` 的 `headers` map 设置的值属于显式配置，即使字节内容与自动值相同也会保留。multipart helper 会替换自身生成的 boundary；显式值仍沿用现有校验和不匹配错误。移除自动生成的请求级值不会改动客户端默认 header 或注入器，正常合并时这些来源可能重新生效。低层 `HttpRequest::set_body` 和 `set_streaming_body` 保留 header，也不会推断媒体类型；需要时应配套调用 `set_header` 或 `remove_header`。
+`HttpRequestBuilder` 会在内部记录请求级 `Content-Type` 是否由正文 helper 自动生成。后续带类型的 helper 会更新这个自动值；`bytes_body`、`stream_body`、`streaming_body` 和 `try_streaming_body` 会将其移除。通过 `header` 或 `headers` map 设置的值属于显式配置，即使内容与自动值相同也会保留。调用 `multipart_body` 时，多条显式 `Content-Type` 值会被拒绝，即使它们的内容相同也一样。这与单条值内部的校验不同：其中重复、格式错误或不匹配的 `boundary` 参数同样会被拒绝。header map 含多个值时，调用方可用 `HeaderMap::insert` 保留一个显式值，也可以移除请求级字段，让 helper 推断。移除自动生成的请求级值不会改动客户端默认 header 或注入器，正常合并时这些来源可能重新生效。低层 `HttpRequest::set_body` 和 `set_streaming_body` 保留 header，也不会推断媒体类型；需要时应配套调用 `set_header` 或 `remove_header`。
 
 | 超时 | 限制范围 |
 | --- | --- |
@@ -93,7 +95,7 @@ Operation 时间累计已完成连接建立及响应校验尝试所耗费的时�
 
 对于可重连的 429/5xx 握手错误，是否把解析出的 HTTP 提示交给本次重连退避策略，由最终请求的 `honor_retry_after` 偏好决定。HTTP `Retry-After` 仍是只作用于单次尝试的提示，遵守独立的退避策略上限和重连预算；`server_retry_max_delay` 只限制 SSE `retry:` 延迟。SSE 解码错误会从响应补齐缺失的 method、原始请求 URL 和 status，同时保留更具体的已有上下文、脱敏规则和 source。
 
-请求构造不会把原始相对路径带入 URL 解析错误。显式代理 URL 由校验后的域名或 IP 字面量和独立配置的 port 结构化生成，避免 `proxy.host` 混入 authority 分隔符或凭据。multipart 解析会拒绝重复 `boundary`。`stream_body` 调用时会把有限迭代器完整收集到内存；需要延迟创建每次尝试的流时使用 `streaming_body`。
+请求构造不会把原始相对路径带入 URL 解析错误。显式代理 URL 由校验后的域名或 IP 字面量和独立配置的 port 结构化生成，避免 `proxy.host` 混入 authority 分隔符或凭据。`proxy.username` 与 `proxy.password` 是代理凭据：HTTP/HTTPS 使用 HTTP Basic Auth，SOCKS5 在握手中使用用户名密码认证。SOCKS5 使用 `socks5h` 在远端解析目标域名，且设置 password 时必须同时设置 username。排查时应确认错误发生在 HTTP 代理认证还是 SOCKS5 握手认证阶段。multipart 解析会拒绝重复 `boundary`。`stream_body` 调用时会把有限迭代器完整收集到内存；需要延迟创建每次尝试的流时使用 `streaming_body`。
 
 ## 修改设计时需要验证的不变量
 
@@ -104,4 +106,4 @@ Operation 时间累计已完成连接建立及响应校验尝试所耗费的时�
 - 直接 SSE 解码与自动重连保持各自的媒体类型契约。
 - 日志和错误格式化使用捕获的脱敏策略，并限制 body 预览大小。
 - 客户端重建后保留运行时注册项，且不修改原客户端。
-- 同源重定向不会连接跨源目标；IPv4-only 客户端也会以 `InvalidUrl` 拒绝 IPv6 字面量重定向，同时仍遵守次数上限。
+- 同源重定向不会连接跨源目标；IPv4-only 客户端也会以 `InvalidUrl` 拒绝 IPv6 字面量重定向，同时仍执行次数上限，并将超限分类为 `RedirectLimitExceeded`。
