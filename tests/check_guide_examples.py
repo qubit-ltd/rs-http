@@ -186,7 +186,9 @@ def render_readme_manifest(
 
 def generate_readme_examples() -> list[tuple[str, pathlib.Path]]:
     """Write separate Cargo packages for the two README quick starts."""
-    output_root = ROOT / "tests/fixtures/guide_examples/target/readme_examples"
+    # Keep generated Cargo packages under the repository's root target directory
+    # so standard build-artifact cleanup can remove them safely.
+    output_root = ROOT / "target/readme_examples"
     generated = []
     for language, path in READMES.items():
         package = output_root / f"readme-{language}"
