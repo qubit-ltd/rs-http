@@ -50,6 +50,12 @@ path = "../../../target/guide_examples/src/bin/token-refresh-en.rs"
 name = "token-refresh-zh_CN"
 path = "../../../target/guide_examples/src/bin/token-refresh-zh_CN.rs"
 [[bin]]
+name = "url-join-en"
+path = "../../../target/guide_examples/src/bin/url-join-en.rs"
+[[bin]]
+name = "url-join-zh_CN"
+path = "../../../target/guide_examples/src/bin/url-join-zh_CN.rs"
+[[bin]]
 name = "token-refresh-regression-en"
 path = "../../../target/guide_examples/src/bin/token-refresh-regression-en.rs"
 test = true
