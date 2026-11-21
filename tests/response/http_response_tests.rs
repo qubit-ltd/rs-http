@@ -283,6 +283,43 @@ async fn test_cancellation_during_stream_poll_is_remembered_for_other_readers() 
 }
 
 #[tokio_test]
+async fn test_consumed_stream_precedes_unrecorded_cancellation() {
+    let (mut response, token, finish_server) = delayed_unbuffered_response(10).await;
+    let mut stream = response.stream().expect("stream should be available");
+    token.cancel();
+
+    let stream_error = match response.stream() {
+        Ok(_) => panic!("a transferred body should be reported as consumed"),
+        Err(error) => error,
+    };
+    assert_eq!(stream_error.kind, HttpErrorKind::ResponseBodyAlreadyConsumed);
+
+    let bytes_error = response
+        .bytes()
+        .await
+        .expect_err("a transferred body should be reported as consumed");
+    assert_eq!(bytes_error.kind, HttpErrorKind::ResponseBodyAlreadyConsumed);
+
+    let error = stream
+        .next()
+        .await
+        .expect("cancelled stream should yield an error")
+        .expect_err("cancelled stream poll should fail");
+    assert_eq!(error.kind, HttpErrorKind::Cancelled);
+
+    let stream_error = match response.stream() {
+        Ok(_) => panic!("a recorded cancellation should be retained"),
+        Err(error) => error,
+    };
+    assert_eq!(stream_error.kind, HttpErrorKind::Cancelled);
+    assert_eq!(
+        response.bytes().await.unwrap_err().kind,
+        HttpErrorKind::Cancelled
+    );
+    finish_server.await;
+}
+
+#[tokio_test]
 async fn test_cached_body_remains_readable_after_cancellation() {
     let (mut response, token) = cached_response(b"cached", "text/plain").await;
     token.cancel();

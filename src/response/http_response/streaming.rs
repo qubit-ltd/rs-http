@@ -32,8 +32,9 @@ impl HttpResponse {
     /// backend I/O.
     ///
     /// # Errors
-    /// Returns an error if the body was already consumed, an earlier read
-    /// failed, or an unbuffered response was cancelled before streaming starts.
+    /// Returns an earlier read failure first, then an error if the body was
+    /// already consumed. Cancellation is checked only while this response
+    /// still owns an unbuffered backend body.
     pub fn stream(&mut self) -> HttpResult<HttpByteStream> {
         if let Some(error) = self.previous_body_read_error() {
             return Err(error);
@@ -41,6 +42,9 @@ impl HttpResponse {
         if let HttpResponseBodyState::Buffered(body) = &self.body {
             let body = body.clone();
             return Ok(Box::pin(futures_stream::once(async move { Ok(body) })));
+        }
+        if matches!(self.body, HttpResponseBodyState::StreamingTaken) {
+            return Err(self.response_body_already_consumed_error());
         }
         if let Some(error) = self.cancelled_error_if_needed("Streaming response cancelled before reading response body")
         {
