@@ -640,7 +640,11 @@ async fn test_default_redirect_limit_is_ten() {
         .await
         .expect_err("the default limit should reject redirect eleven");
 
-    assert_eq!(error.kind, HttpErrorKind::RedirectLimitExceeded);
+    assert_eq!(
+        error.kind,
+        HttpErrorKind::RedirectLimitExceeded,
+        "unexpected redirect-limit failure: {error:?}"
+    );
     let captured = server.finish().await;
     assert_eq!(captured.len(), 11, "ten redirects allow eleven requests");
 }
