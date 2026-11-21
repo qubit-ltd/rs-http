@@ -582,7 +582,7 @@ impl HttpClient {
         let logger = HttpLogger::from_options_with_redactor(&self.options, request.log_redactor().clone());
         let request_url = request.resolved_url()?;
         let backend_response = request
-            .send_impl(&self.backend, &logger, cancellation_token.clone())
+            .send_impl(&self.backend, &logger, &request_url, cancellation_token.clone())
             .await?;
         let log_redactor = request.log_redactor().clone();
         let meta = HttpResponseMeta::new(

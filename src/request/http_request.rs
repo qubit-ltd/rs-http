@@ -688,6 +688,7 @@ impl HttpRequest {
         &mut self,
         backend: &Client,
         logger: &HttpLogger<'_>,
+        request_url: &Url,
         cancellation_token: Option<HttpCancellationToken>,
     ) -> HttpResult<Response> {
         // Effective headers are cached on the request. Each send attempt must
@@ -697,7 +698,7 @@ impl HttpRequest {
         self.invalidate_effective_headers_cache();
         let log_redactor = self.log_redactor().clone();
         let method = self.method().clone();
-        let request_url_context = self.resolved_url().ok();
+        let request_url_context = Some(request_url.clone());
         let response_header_timeout = self.execution_options.response_header_timeout;
         let send_deadline = Instant::now().checked_add(response_header_timeout).ok_or_else(|| {
             let mut error =
@@ -709,11 +710,9 @@ impl HttpRequest {
         })?;
         // Reject disallowed destinations before running header injectors, which
         // may perform I/O or produce credentials for the request.
-        let url = self.resolved_base_url()?;
-        let request_url = self.resolved_url()?;
-        if let Err(error) = self.validate_origin_policy(&url) {
+        if let Err(error) = self.validate_origin_policy(request_url) {
             let error = error.with_method(&method);
-            let error = error.with_url(request_url_context.as_ref().unwrap_or(&request_url));
+            let error = error.with_url(request_url);
             return Err(error.with_log_redactor(log_redactor.clone()));
         }
         let headers = Self::await_pre_send_future(
@@ -733,12 +732,9 @@ impl HttpRequest {
         .clone();
         // Log the request after computing effective headers so TRACE logs
         // include the same query string used by the actual send path.
-        logger.log_request(self);
-        let mut builder = backend.request(method.clone(), url.clone());
+        logger.log_request_with_url(self, request_url);
+        let mut builder = backend.request(method.clone(), request_url.clone());
         builder = builder.headers(headers);
-        if !self.query.is_empty() {
-            builder = builder.query(self.query.as_slice());
-        }
         if let Some(timeout) = self.execution_options.request_timeout {
             builder = builder.timeout(timeout);
         }
@@ -748,7 +744,7 @@ impl HttpRequest {
                 send_deadline.saturating_duration_since(Instant::now()),
                 cancellation_token.clone(),
                 &method,
-                Some(&request_url),
+                Some(request_url),
                 "Request cancelled while preparing streaming request body",
                 format!(
                     "Response-header timeout after {:?} while preparing streaming request body",
@@ -768,7 +764,7 @@ impl HttpRequest {
                 _ = token.cancelled() => {
                     return Err(HttpError::cancelled("Request cancelled while sending")
                         .with_method(&method)
-                        .with_url(&request_url)
+                        .with_url(request_url)
                         .with_log_redactor(log_redactor.clone()));
                 }
                 send_result = send_future => send_result,
@@ -792,7 +788,7 @@ impl HttpRequest {
                 self.execution_options.response_header_timeout
             ))
             .with_method(&method)
-            .with_url(&request_url)
+            .with_url(request_url)
             .with_log_redactor(log_redactor)),
         }
     }
@@ -1333,7 +1329,12 @@ mod tests {
         request.execution_options.response_header_timeout = Duration::MAX;
 
         let error = request
-            .send_impl(&Client::new(), &HttpLogger::new(&options), None)
+            .send_impl(
+                &Client::new(),
+                &HttpLogger::new(&options),
+                &request.resolved_url().unwrap(),
+                None,
+            )
             .await
             .expect_err("unrepresentable deadline should return an error");
 

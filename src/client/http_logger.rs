@@ -20,6 +20,7 @@ use tracing::dispatcher::get_default;
 use tracing::metadata;
 use tracing::metadata::Kind;
 use tracing::trace;
+use url::Url;
 
 use self::internal::RequestBodyLogPreview;
 use crate::HttpClientOptions;
@@ -133,13 +134,34 @@ impl<'a> HttpLogger<'a> {
         if !self.is_trace_enabled() {
             return;
         }
+        match request.resolved_url() {
+            Ok(url) => self.log_request_with_url(request, &url),
+            Err(_) => self.log_request_with_optional_url(request, None),
+        }
+    }
 
+    /// Logs a prepared request using its already resolved attempt URL.
+    ///
+    /// # Parameters
+    /// - `request`: The prepared request.
+    /// - `url`: The URL resolved for this send attempt.
+    pub(crate) fn log_request_with_url(&self, request: &HttpRequest, url: &Url) {
+        if !self.is_trace_enabled() {
+            return;
+        }
+        self.log_request_with_optional_url(request, Some(url));
+    }
+
+    /// Renders request diagnostics, using the unresolved placeholder when
+    /// needed.
+    ///
+    /// # Parameters
+    /// - `request`: The request whose headers and body are logged.
+    /// - `request_url`: The resolved URL, if resolution succeeded.
+    fn log_request_with_optional_url(&self, request: &HttpRequest, request_url: Option<&Url>) {
         let headers = request.effective_headers_cached().unwrap_or_else(|| request.headers());
         let mut batch = self.redacted_logger.redactor().diagnostic_batch();
-        let url_handle = request
-            .resolved_url()
-            .ok()
-            .map(|url| batch.redact_http_url(url.as_str()));
+        let url_handle = request_url.map(|url| batch.redact_http_url(url.as_str()));
         let header_handle = self
             .options
             .log_request_header
