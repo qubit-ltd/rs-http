@@ -816,6 +816,32 @@ fn test_request_builder_multipart_body_sets_content_type_with_boundary() {
 }
 
 #[test]
+fn test_multipart_body_rejects_multiple_explicit_content_type_values() {
+    for second_value in [
+        "multipart/form-data; boundary=beta",
+        "multipart/form-data; boundary=alpha",
+    ] {
+        let mut headers = HeaderMap::new();
+        headers.append(
+            CONTENT_TYPE,
+            HeaderValue::from_static("multipart/form-data; boundary=alpha"),
+        );
+        headers.append(CONTENT_TYPE, HeaderValue::from_static(second_value));
+
+        let error = new_builder(Method::POST, "/v1/multipart")
+            .headers(headers)
+            .multipart_body(Bytes::from_static(b"--alpha\r\n..."), "alpha")
+            .expect_err("multiple explicit Content-Type values should be rejected");
+
+        assert_eq!(error.kind, HttpErrorKind::Other);
+        assert_eq!(
+            error.message,
+            "Multiple Content-Type header values are not supported by multipart_body"
+        );
+    }
+}
+
+#[test]
 fn test_multipart_rejects_invalid_media_type() {
     for value in [
         "multipart/; boundary=abc",
