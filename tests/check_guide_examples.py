@@ -298,6 +298,106 @@ def generate() -> list[pathlib.Path]:
     return generated
 
 
+def validate_generated_bins(
+    generated: list[pathlib.Path], manifest_toml: str, manifest_dir: pathlib.Path
+) -> None:
+    """Require each generated guide source to have exactly one matching Cargo bin."""
+    try:
+        manifest = tomllib.loads(manifest_toml)
+    except tomllib.TOMLDecodeError as error:
+        raise ValueError(f"fixture: invalid TOML: {error}") from error
+    bins = manifest.get("bin", [])
+    if not isinstance(bins, list):
+        raise ValueError("fixture: [[bin]] declarations must be an array")
+
+    declared: dict[str, pathlib.Path] = {}
+    paths: dict[pathlib.Path, str] = {}
+    for entry in bins:
+        if (
+            not isinstance(entry, dict)
+            or not isinstance(entry.get("name"), str)
+            or not isinstance(entry.get("path"), str)
+        ):
+            raise ValueError("fixture: each [[bin]] must declare name and path")
+        name = entry["name"]
+        path = (manifest_dir / entry["path"]).resolve()
+        if name in declared:
+            raise ValueError(f"fixture: duplicate bin name {name}")
+        if path in paths:
+            raise ValueError(f"fixture: duplicate bin path {path} ({paths[path]} and {name})")
+        declared[name] = path
+        paths[path] = name
+
+    expected = {source.stem: source.resolve() for source in generated}
+    for name, path in expected.items():
+        if declared.get(name) != path:
+            if name not in declared:
+                raise ValueError(f"fixture: missing bin {name} for generated source {path}")
+            raise ValueError(f"fixture: bin {name} points to {declared[name]}, expected {path}")
+    for name, path in declared.items():
+        if name not in expected:
+            raise ValueError(f"fixture: extra bin {name} points to {path}")
+
+
+class GeneratedBinTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = pathlib.Path("/fixture")
+        self.sources = [
+            pathlib.Path("/generated/url-join-en.rs"),
+            pathlib.Path("/generated/url-join-zh_CN.rs"),
+        ]
+        self.valid = '''[[bin]]
+name = "url-join-en"
+path = "../generated/url-join-en.rs"
+[[bin]]
+name = "url-join-zh_CN"
+path = "../generated/url-join-zh_CN.rs"
+'''
+
+    def test_complete_pair(self):
+        validate_generated_bins(self.sources, self.valid, self.directory)
+
+    def test_missing_pair_target(self):
+        manifest = self.valid.replace(
+            '[[bin]]\nname = "url-join-zh_CN"\npath = "../generated/url-join-zh_CN.rs"\n',
+            "",
+        )
+        with self.assertRaisesRegex(ValueError, "missing bin url-join-zh_CN"):
+            validate_generated_bins(self.sources, manifest, self.directory)
+
+    def test_extra_target_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "extra bin unrelated"):
+            validate_generated_bins(
+                self.sources,
+                self.valid + '\n[[bin]]\nname="unrelated"\npath="../generated/other.rs"\n',
+                self.directory,
+            )
+
+    def test_same_name_wrong_path_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "points to .*expected"):
+            validate_generated_bins(
+                self.sources,
+                self.valid.replace("../generated/url-join-en.rs", "../generated/other.rs"),
+                self.directory,
+            )
+
+    def test_duplicate_name_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "duplicate bin name url-join-en"):
+            validate_generated_bins(
+                self.sources,
+                self.valid + '\n[[bin]]\nname="url-join-en"\npath="../generated/other.rs"\n',
+                self.directory,
+            )
+
+    def test_duplicate_path_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "duplicate bin path"):
+        validate_generated_bins(
+            self.sources,
+            self.valid.replace("url-join-zh_CN.rs", "url-join-en.rs"),
+            self.directory,
+        )
+
+
 class ExtractorTests(unittest.TestCase):
     def test_url_join_marker_entries_exist_in_both_guides(self):
         for language, path in GUIDES.items():
@@ -609,13 +709,26 @@ if __name__ == "__main__":
             (ROOT / "tests/fixtures/guide_examples/Cargo.toml").read_text(encoding="utf-8"),
         )
         check_readme_examples()
-        generate()
+        generated = generate()
+        fixture_manifest = ROOT / "tests/fixtures/guide_examples/Cargo.toml"
+        validate_generated_bins(
+            generated,
+            fixture_manifest.read_text(encoding="utf-8"),
+            fixture_manifest.parent,
+        )
         subprocess.run(
             ["cargo", "check", "--manifest-path", "tests/fixtures/guide_examples/Cargo.toml", "--all-targets"],
             cwd=ROOT,
             env=cargo_environment(),
             check=True,
         )
+        for target in ("url-join-en", "url-join-zh_CN"):
+            subprocess.run(
+                ["cargo", "run", "--manifest-path", str(fixture_manifest), "--bin", target],
+                cwd=ROOT,
+                env=cargo_environment(),
+                check=True,
+            )
         subprocess.run(
             [
                 "cargo", "test", "--manifest-path", "tests/fixtures/guide_examples/Cargo.toml",
