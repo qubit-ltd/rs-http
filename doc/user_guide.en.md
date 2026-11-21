@@ -1074,11 +1074,14 @@ Choose the SSE API by what you need:
 
 `sse_messages()` and `sse_chunks::<T>()` decode the response body without checking
 `Content-Type`. If the upstream protocol requires SSE, verify that the response
-declares `text/event-stream` before using these direct decoders. The reconnect
-API performs this check itself and returns `SseProtocol` on a missing or invalid
-media type. A media-type mismatch uses a fixed error summary and does not
-include the original `Content-Type`; match `SseProtocol` and inspect the method,
-URL, and status instead of matching the header value in `message`.
+declares exactly one `text/event-stream` value before using these direct
+decoders. The reconnect API performs this check itself and returns
+`SseProtocol` when the header is missing, invalid, or has multiple values, even
+when the values are identical. A media-type error uses a fixed summary and does
+not include the original header values; match `SseProtocol` and inspect the
+method, URL, and status instead of matching a header value in `message`. Servers,
+proxies, and response interceptors that normalize response headers should leave
+one authoritative `Content-Type: text/event-stream` value.
 
 SSE message decoding starts from `HttpResponse`:
 

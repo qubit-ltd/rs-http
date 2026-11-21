@@ -321,6 +321,42 @@ async fn test_sse_content_type_error_omits_sensitive_header_value() {
 }
 
 #[tokio_test]
+async fn test_sse_reconnect_rejects_multiple_content_type_values_without_retrying() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 200,
+        headers: vec![
+            ("Content-Type".to_owned(), "text/event-stream".to_owned()),
+            ("Content-Type".to_owned(), "application/json".to_owned()),
+        ],
+        body: b"data: unused\n\n".to_vec(),
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    let client = HttpClientBuilder::new().options(options).build().unwrap();
+    let request = client.request(Method::GET, "/multiple-content-type").build();
+    let reconnect = SseReconnectOptions {
+        retry: RetryPolicy::builder()
+            .max_attempts(2)
+            .backoff(BackoffPolicy::immediate())
+            .build()
+            .unwrap(),
+        ..SseReconnectOptions::default()
+    };
+    let mut events = client.execute_sse_with_reconnect(request, reconnect);
+    let error = timeout(Duration::from_secs(3), events.next())
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(error.kind(), HttpErrorKind::SseProtocol);
+    assert_eq!(error.message(), "Multiple Content-Type header values for SSE response");
+    assert!(events.next().await.is_none());
+    let captured = timeout(Duration::from_secs(3), server.finish()).await.unwrap();
+    assert_eq!(captured.target, "/multiple-content-type");
+}
+
+#[tokio_test]
 async fn test_sse_nonempty_cursor_wins_after_request_interceptors() {
     for mutation in 0..3 {
         let server = spawn_multi_shot_server(vec![

@@ -710,8 +710,12 @@ impl HttpRequest {
         // Reject disallowed destinations before running header injectors, which
         // may perform I/O or produce credentials for the request.
         let url = self.resolved_base_url()?;
-        self.validate_origin_policy(&url)?;
         let request_url = self.resolved_url()?;
+        if let Err(error) = self.validate_origin_policy(&url) {
+            let error = error.with_method(&method);
+            let error = error.with_url(request_url_context.as_ref().unwrap_or(&request_url));
+            return Err(error.with_log_redactor(log_redactor.clone()));
+        }
         let headers = Self::await_pre_send_future(
             self.effective_headers(),
             send_deadline.saturating_duration_since(Instant::now()),

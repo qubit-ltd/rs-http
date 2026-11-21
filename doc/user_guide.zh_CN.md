@@ -1020,10 +1020,12 @@ IPv4-only 策略分属三个阶段。建请求时捕获的请求快照决定初�
 
 `sse_messages()` 和 `sse_chunks::<T>()` 只解码响应体，不检查 `Content-Type`。
 如果上游协议要求 SSE，直接调用这两个方法前应确认响应声明了
-`text/event-stream`。自动重连 API 会自行检查；媒体类型缺失或不合法时返回
-`SseProtocol` 错误。媒体类型不匹配时使用固定摘要，不包含原始
-`Content-Type`；调用方应匹配 `SseProtocol` 并检查 method、URL 和 status，
-不要再匹配 message 中的 header 原值。
+`text/event-stream`，且只能有一个值。自动重连 API 会自行检查；header 缺失、
+不合法或存在多个值时（即使多个值相同）均返回 `SseProtocol` 错误。媒体类型
+错误使用固定摘要，不包含原始 header 值；调用方应匹配 `SseProtocol` 并检查
+method、URL 和 status，不要再匹配 message 中的 header 原值。服务端、代理或
+负责规范化响应 header 的拦截器应只保留一个权威值
+`Content-Type: text/event-stream`。
 
 SSE 消息解码从 `HttpResponse` 开始：
 

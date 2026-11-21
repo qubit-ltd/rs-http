@@ -15,6 +15,7 @@ use http::HeaderValue;
 use http::Method;
 use http::StatusCode;
 use http::header::CONTENT_LENGTH;
+use http::header::CONTENT_TYPE;
 use http::header::RETRY_AFTER;
 use qubit_http::HttpCancellationToken;
 use qubit_http::HttpClientBuilder;
@@ -92,6 +93,39 @@ async fn test_validate_sse_content_type_does_not_consume_body() {
         HttpErrorKind::SseProtocol
     );
     assert_eq!(invalid.bytes().await.unwrap(), Bytes::from_static(b"event body"));
+}
+
+#[tokio_test]
+async fn test_validate_sse_content_type_rejects_multiple_values_without_consuming_body() {
+    for values in [
+        ["text/event-stream", "application/json"],
+        ["application/json", "text/event-stream"],
+        ["text/event-stream", "text/event-stream"],
+    ] {
+        let mut headers = HeaderMap::new();
+        for value in values {
+            headers.append(CONTENT_TYPE, HeaderValue::from_static(value));
+        }
+        let mut response = HttpResponse::new(
+            StatusCode::BAD_GATEWAY,
+            headers,
+            Bytes::from_static(b"event body"),
+            Url::parse("https://example.com/events?access_token=sse-query-secret").unwrap(),
+            Method::POST,
+        );
+        let error = response.validate_sse_content_type().unwrap_err();
+        assert_eq!(error.kind, HttpErrorKind::SseProtocol);
+        assert_eq!(error.status, Some(StatusCode::BAD_GATEWAY));
+        assert_eq!(error.method, Some(Method::POST));
+        assert_eq!(error.url.as_ref().unwrap().path(), "/events");
+        assert_eq!(error.message, "Multiple Content-Type header values for SSE response");
+        for output in [error.message.clone(), error.to_string(), format!("{error:?}")] {
+            assert!(!output.contains("text/event-stream"));
+            assert!(!output.contains("application/json"));
+            assert!(!output.contains("sse-query-secret"));
+        }
+        assert_eq!(response.bytes().await.unwrap(), Bytes::from_static(b"event body"));
+    }
 }
 
 async fn cached_response(body: &'static [u8], content_type: &'static str) -> (HttpResponse, HttpCancellationToken) {

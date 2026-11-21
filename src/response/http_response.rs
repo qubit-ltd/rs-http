@@ -231,22 +231,34 @@ impl HttpResponse {
     ///
     /// # Returns
     /// `Ok(())` when `Content-Type` is `text/event-stream` (parameters and
-    /// casing are accepted).
+    /// casing are accepted). Responses with multiple `Content-Type` values
+    /// are rejected, even when every value is identical.
     ///
     /// # Errors
     /// Returns [`HttpErrorKind::SseProtocol`] when the header is missing,
-    /// invalid UTF-8, or does not declare the SSE media type.
+    /// invalid UTF-8, contains multiple values, or does not declare the SSE
+    /// media type.
     pub fn validate_sse_content_type(&self) -> HttpResult<()> {
         let method = self.meta().method().clone();
         let url = self.request_url().clone();
         let redactor = self.log_redactor();
-        let Some(value) = self.headers().get(CONTENT_TYPE) else {
+        let mut values = self.headers().get_all(CONTENT_TYPE).iter();
+        let Some(value) = values.next() else {
             return Err(HttpError::sse_protocol("Missing Content-Type header for SSE response")
                 .with_status(self.status())
                 .with_method(&method)
                 .with_url(&url)
                 .with_log_redactor(redactor.clone()));
         };
+        if values.next().is_some() {
+            return Err(
+                HttpError::sse_protocol("Multiple Content-Type header values for SSE response")
+                    .with_status(self.status())
+                    .with_method(&method)
+                    .with_url(&url)
+                    .with_log_redactor(redactor.clone()),
+            );
+        }
         let content_type = value.to_str().map_err(|_| {
             HttpError::sse_protocol("Invalid non-UTF8 Content-Type header for SSE response")
                 .with_status(self.status())

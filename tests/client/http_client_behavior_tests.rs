@@ -202,10 +202,56 @@ async fn test_same_origin_rejects_absolute_url_different_from_configured_base() 
     options.base_url = Some(url::Url::parse("http://127.0.0.1:1/").unwrap());
     let client = HttpClientBuilder::new().options(options).build().unwrap();
     let error = client
-        .execute(client.request(Method::GET, "http://127.0.0.1:2/cross-origin").build())
+        .execute(
+            client
+                .request(
+                    Method::GET,
+                    "http://127.0.0.1:2/cross-origin?access_token=origin-secret",
+                )
+                .query_param("clientSecret", "query-secret")
+                .build(),
+        )
         .await
         .unwrap_err();
     assert_eq!(error.kind, HttpErrorKind::OriginPolicy);
+    assert_eq!(error.method(), Some(&Method::GET));
+    let url = error.url().expect("origin error should retain target URL");
+    assert_eq!(
+        url.as_str(),
+        "http://127.0.0.1:2/cross-origin?access_token=origin-secret&clientSecret=query-secret"
+    );
+    for output in [error.message.clone(), error.to_string(), format!("{error:?}")] {
+        assert!(!output.contains("origin-secret"));
+        assert!(!output.contains("query-secret"));
+    }
+}
+
+#[tokio_test]
+async fn same_origin_rejects_interceptor_rewrite_with_final_request_context() {
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(url::Url::parse("http://127.0.0.1:1/").unwrap());
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
+    client.add_request_interceptor(HttpRequestInterceptor::new(|request: &mut HttpRequest| {
+        request.set_method(Method::POST);
+        request.set_path("http://127.0.0.1:2/rewritten?access_token=rewrite-secret");
+        request.add_query_param("clientSecret", "appended-secret");
+        Ok(())
+    }));
+    let error = client
+        .execute(client.request(Method::GET, "/initial").build())
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind, HttpErrorKind::OriginPolicy);
+    assert_eq!(error.method(), Some(&Method::POST));
+    let url = error.url().expect("origin error should retain rewritten URL");
+    assert_eq!(
+        url.as_str(),
+        "http://127.0.0.1:2/rewritten?access_token=rewrite-secret&clientSecret=appended-secret"
+    );
+    for output in [error.message.clone(), error.to_string(), format!("{error:?}")] {
+        assert!(!output.contains("rewrite-secret"));
+        assert!(!output.contains("appended-secret"));
+    }
 }
 
 #[tokio_test]
