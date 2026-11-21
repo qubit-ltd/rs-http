@@ -23,14 +23,17 @@ fn test_http_error_kind_display_from_str_and_serde_use_snake_case() {
         HttpErrorKind::from_str("redirect_limit_exceeded").expect("kind should parse"),
         HttpErrorKind::RedirectLimitExceeded
     );
-    assert_eq!(HttpErrorKind::RedirectLimitExceeded.to_string(), "redirect_limit_exceeded");
+    assert_eq!(
+        HttpErrorKind::RedirectLimitExceeded.to_string(),
+        "redirect_limit_exceeded"
+    );
 
     let json = serde_json::to_string(&HttpErrorKind::ReadTimeout).expect("kind should serialize to JSON");
     assert_eq!(json, "\"read_timeout\"");
     let decoded: HttpErrorKind = serde_json::from_str("\"retry_budget_exceeded\"").expect("kind should deserialize");
     assert_eq!(decoded, HttpErrorKind::RetryBudgetExceeded);
-    let decoded: HttpErrorKind = serde_json::from_str("\"redirect_limit_exceeded\"")
-        .expect("redirect limit kind should deserialize");
+    let decoded: HttpErrorKind =
+        serde_json::from_str("\"redirect_limit_exceeded\"").expect("redirect limit kind should deserialize");
     assert_eq!(decoded, HttpErrorKind::RedirectLimitExceeded);
 }
 

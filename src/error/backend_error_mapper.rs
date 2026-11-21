@@ -102,6 +102,12 @@ fn contains_redirect_ipv6_violation(error: &ReqwestError) -> bool {
 }
 
 /// Returns whether an error source chain contains a redirect-limit rejection.
+///
+/// # Parameters
+/// - `error`: Reqwest error whose source chain is inspected.
+///
+/// # Returns
+/// `true` when the chain contains a redirect-limit rejection.
 fn contains_redirect_limit_exceeded(error: &ReqwestError) -> bool {
     let mut source = error.source();
     while let Some(candidate) = source {

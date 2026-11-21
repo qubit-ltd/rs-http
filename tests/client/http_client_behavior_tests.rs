@@ -541,7 +541,11 @@ async fn test_same_origin_redirect_honors_max_redirects() {
         .expect("redirect server did not finish");
     assert_eq!(captured.len(), 2);
     assert_eq!(captured[1].target, "/again");
-    assert_eq!(attempts.load(Ordering::SeqCst), 1, "default policy must not retry this error");
+    assert_eq!(
+        attempts.load(Ordering::SeqCst),
+        1,
+        "default policy must not retry this error"
+    );
 }
 
 #[tokio_test]
@@ -624,7 +628,10 @@ async fn test_redirect_limit_can_be_selected_for_http_retry() {
         .execute(client.request(Method::GET, "/start").build())
         .await
         .expect_err("both outer attempts should hit the redirect limit");
-    assert_eq!(retry_abort_inner_http(&error).kind, HttpErrorKind::RedirectLimitExceeded);
+    assert_eq!(
+        retry_abort_inner_http(&error).kind,
+        HttpErrorKind::RedirectLimitExceeded
+    );
     let captured = server.finish().await;
     assert_eq!(captured.len(), 4, "explicit allowlist should retry the request once");
 }
