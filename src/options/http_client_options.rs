@@ -116,7 +116,9 @@ pub struct HttpClientOptions {
     pub json_encode_limits: JsonEncodeLimits,
     /// Optional default `User-Agent` header sent by reqwest.
     pub user_agent: Option<String>,
-    /// Optional redirect limit applied by reqwest.
+    /// Maximum number of redirects followed for each request. `None` uses the
+    /// default limit of 10. Exceeding the limit returns
+    /// [`crate::HttpErrorKind::RedirectLimitExceeded`].
     pub max_redirects: Option<usize>,
     /// Optional connection pool idle-time timeout.
     pub pool_idle_timeout: Option<Duration>,

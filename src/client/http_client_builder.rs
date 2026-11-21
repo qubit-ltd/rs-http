@@ -15,6 +15,7 @@ use reqwest::redirect::Policy;
 use url::Host;
 
 use super::RedirectIpv6Violation;
+use super::RedirectLimitExceeded;
 use super::RedirectOriginViolation;
 use super::internal::Ipv4OnlyResolver;
 use crate::HttpClient;
@@ -171,7 +172,7 @@ impl HttpClientBuilder {
         if let Some(user_agent) = options.user_agent.as_deref() {
             builder = builder.user_agent(user_agent);
         }
-        let redirect_policy = options.max_redirects.map(Policy::limited).unwrap_or_default();
+        let max_redirects = options.max_redirects.unwrap_or(10);
         let same_origin_only = matches!(options.origin_policy, crate::HttpOriginPolicy::SameOrigin);
         let ipv4_only = options.ipv4_only;
         builder = builder.redirect(Policy::custom(move |attempt| {
@@ -185,7 +186,10 @@ impl HttpClientBuilder {
             if ipv4_only && matches!(attempt.url().host(), Some(Host::Ipv6(_))) {
                 return attempt.error(RedirectIpv6Violation);
             }
-            redirect_policy.redirect(attempt)
+            if attempt.previous().len() > max_redirects {
+                return attempt.error(RedirectLimitExceeded);
+            }
+            attempt.follow()
         }));
         if let Some(pool_idle_timeout) = options.pool_idle_timeout {
             builder = builder.pool_idle_timeout(pool_idle_timeout);

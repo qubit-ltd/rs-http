@@ -14,6 +14,7 @@ mod http_retry_application_source;
 mod http_retry_rule;
 mod ipv4_only_resolver;
 mod redirect_ipv6_violation;
+mod redirect_limit_exceeded;
 mod redirect_origin_violation;
 
 pub(in crate::client) use http_attempt_execution_context::HttpAttemptExecutionContext;
@@ -23,4 +24,5 @@ pub(in crate::client) use http_retry_application_source::HttpRetryApplicationSou
 pub(in crate::client) use http_retry_rule::HttpRetryRule;
 pub(super) use ipv4_only_resolver::Ipv4OnlyResolver;
 pub(crate) use redirect_ipv6_violation::RedirectIpv6Violation;
+pub(crate) use redirect_limit_exceeded::RedirectLimitExceeded;
 pub(crate) use redirect_origin_violation::RedirectOriginViolation;

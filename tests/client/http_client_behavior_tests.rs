@@ -513,10 +513,19 @@ async fn test_same_origin_redirect_honors_max_redirects() {
     let mut options = HttpClientOptions::default();
     options.base_url = Some(server.base_url());
     options.max_redirects = Some(1);
-    let client = HttpClientBuilder::new()
+    options.retry.enabled = true;
+    options.retry.max_attempts = 2;
+    options.retry.backoff = BackoffPolicy::immediate();
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let observed_attempts = Arc::clone(&attempts);
+    let mut client = HttpClientBuilder::new()
         .options(options)
         .build()
         .expect("client should be created");
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |_request: &mut HttpRequest| {
+        observed_attempts.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }));
 
     let result = timeout(
         Duration::from_secs(3),
@@ -525,12 +534,99 @@ async fn test_same_origin_redirect_honors_max_redirects() {
     .await
     .expect("redirect-limited request timed out");
 
-    assert!(result.is_err(), "redirect beyond the configured limit should fail");
+    let error = result.expect_err("redirect beyond the configured limit should fail");
+    assert_eq!(error.kind, HttpErrorKind::RedirectLimitExceeded);
     let captured = timeout(Duration::from_secs(3), server.finish())
         .await
         .expect("redirect server did not finish");
     assert_eq!(captured.len(), 2);
     assert_eq!(captured[1].target, "/again");
+    assert_eq!(attempts.load(Ordering::SeqCst), 1, "default policy must not retry this error");
+}
+
+#[tokio_test]
+async fn test_zero_redirect_limit_rejects_first_redirect() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 302,
+        headers: vec![("Location".to_string(), "/never".to_string())],
+        body: vec![],
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.max_redirects = Some(0);
+    let client = HttpClientBuilder::new()
+        .options(options)
+        .build()
+        .expect("client should be created");
+    let error = client
+        .execute(client.request(Method::GET, "/start").build())
+        .await
+        .expect_err("zero redirects should reject the first redirect");
+
+    assert_eq!(error.kind, HttpErrorKind::RedirectLimitExceeded);
+    assert!(error.source.is_some(), "reqwest source should be retained");
+    assert_eq!(server.finish().await.target, "/start");
+}
+
+#[tokio_test]
+async fn test_default_redirect_limit_is_ten() {
+    let plans = (0..11)
+        .map(|_| ResponsePlan::Immediate {
+            status: 302,
+            headers: vec![("Location".to_string(), "/next".to_string())],
+            body: Vec::new(),
+        })
+        .collect();
+    let server = spawn_multi_shot_server(plans).await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    let client = HttpClientBuilder::new()
+        .options(options)
+        .build()
+        .expect("client should be created");
+    let error = client
+        .execute(client.request(Method::GET, "/start").build())
+        .await
+        .expect_err("the default limit should reject redirect eleven");
+
+    assert_eq!(error.kind, HttpErrorKind::RedirectLimitExceeded);
+    let captured = server.finish().await;
+    assert_eq!(captured.len(), 11, "ten redirects allow eleven requests");
+}
+
+#[tokio_test]
+async fn test_redirect_limit_can_be_selected_for_http_retry() {
+    let plans = (0..4)
+        .map(|index| ResponsePlan::Immediate {
+            status: 302,
+            headers: vec![(
+                "Location".to_string(),
+                if index % 2 == 0 { "/again" } else { "/never" }.to_string(),
+            )],
+            body: Vec::new(),
+        })
+        .collect();
+    let server = spawn_multi_shot_server(plans).await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.max_redirects = Some(1);
+    options.retry.enabled = true;
+    options.retry.max_attempts = 2;
+    options.retry.backoff = BackoffPolicy::immediate();
+    options.retry.retry_error_kinds = Some(vec![HttpErrorKind::RedirectLimitExceeded]);
+    let client = HttpClientBuilder::new()
+        .options(options)
+        .build()
+        .expect("client should be created");
+
+    let error = client
+        .execute(client.request(Method::GET, "/start").build())
+        .await
+        .expect_err("both outer attempts should hit the redirect limit");
+    assert_eq!(retry_abort_inner_http(&error).kind, HttpErrorKind::RedirectLimitExceeded);
+    let captured = server.finish().await;
+    assert_eq!(captured.len(), 4, "explicit allowlist should retry the request once");
 }
 
 #[tokio_test]

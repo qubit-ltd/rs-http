@@ -17,6 +17,7 @@ use super::ReqwestErrorPhase;
 use crate::HttpError;
 use crate::HttpErrorKind;
 use crate::client::RedirectIpv6Violation;
+use crate::client::RedirectLimitExceeded;
 use crate::client::RedirectOriginViolation;
 
 /// Maps a [`ReqwestError`] into [`HttpError`] with phase-aware timeout
@@ -47,11 +48,18 @@ pub(crate) fn map_reqwest_error(
         HttpErrorKind::OriginPolicy
     } else if contains_redirect_ipv6_violation(&error) {
         HttpErrorKind::InvalidUrl
+    } else if contains_redirect_limit_exceeded(&error) {
+        HttpErrorKind::RedirectLimitExceeded
     } else {
         classify_reqwest_error_kind(is_timeout, is_connect, phase, default_kind)
     };
 
-    HttpError::new(kind, "HTTP transport request failed")
+    let message = if kind == HttpErrorKind::RedirectLimitExceeded {
+        "HTTP redirect limit exceeded"
+    } else {
+        "HTTP transport request failed"
+    };
+    HttpError::new(kind, message)
         .with_method(&method)
         .with_url(&url)
         .with_source(error)
@@ -86,6 +94,18 @@ fn contains_redirect_ipv6_violation(error: &ReqwestError) -> bool {
     let mut source = error.source();
     while let Some(candidate) = source {
         if candidate.downcast_ref::<RedirectIpv6Violation>().is_some() {
+            return true;
+        }
+        source = candidate.source();
+    }
+    false
+}
+
+/// Returns whether an error source chain contains a redirect-limit rejection.
+fn contains_redirect_limit_exceeded(error: &ReqwestError) -> bool {
+    let mut source = error.source();
+    while let Some(candidate) = source {
+        if candidate.downcast_ref::<RedirectLimitExceeded>().is_some() {
             return true;
         }
         source = candidate.source();

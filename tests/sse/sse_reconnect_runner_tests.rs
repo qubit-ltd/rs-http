@@ -1496,6 +1496,49 @@ async fn test_execute_sse_with_reconnect_disables_inner_http_retry() {
 }
 
 #[tokio_test]
+async fn test_sse_handshake_redirect_limit_does_not_reconnect() {
+    let server = spawn_multi_shot_server(vec![
+        ResponsePlan::Immediate {
+            status: 302,
+            headers: vec![("Location".to_string(), "/again".to_string())],
+            body: Vec::new(),
+        },
+        ResponsePlan::Immediate {
+            status: 302,
+            headers: vec![("Location".to_string(), "/never".to_string())],
+            body: Vec::new(),
+        },
+    ])
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.max_redirects = Some(1);
+    let client = HttpClientBuilder::new()
+        .options(options)
+        .build()
+        .expect("client should be created");
+    let request = client.request(Method::GET, "/start").build();
+    let mut events = client.execute_sse_with_reconnect(
+        request,
+        SseReconnectOptions {
+            retry: build_retry_options(2, BackoffPolicy::immediate()),
+            ..SseReconnectOptions::default()
+        },
+    );
+
+    let error = timeout(Duration::from_secs(3), events.next())
+        .await
+        .expect("SSE handshake should finish")
+        .expect("handshake failure should be yielded")
+        .expect_err("redirect limit should fail the handshake");
+    assert_eq!(error.kind, HttpErrorKind::RedirectLimitExceeded);
+    let captured = timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("redirect server should finish");
+    assert_eq!(captured.len(), 2, "SSE must not reconnect after this policy failure");
+}
+
+#[tokio_test]
 async fn test_execute_sse_with_reconnect_fails_fast_on_non_sse_content_type() {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 200,

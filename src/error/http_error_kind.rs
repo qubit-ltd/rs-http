@@ -70,6 +70,8 @@ pub enum HttpErrorKind {
     ResponseBodyAlreadyConsumed,
     /// The request target violates the configured origin policy.
     OriginPolicy,
+    /// A redirect was rejected because it exceeded the configured limit.
+    RedirectLimitExceeded,
     /// Any other error.
     Other,
 }
