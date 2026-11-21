@@ -659,15 +659,15 @@ class ReadmeDependencyTests(unittest.TestCase):
         source = guide('''qubit-http = "0.17"
 http = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }''')
-        manifest = render_readme_manifest(
-            source,
-            pathlib.Path("/tmp/readme-example"),
-            pathlib.Path("/workspace/rs-http"),
-        )
+        manifest_dir = pathlib.Path("/tmp/readme-example")
+        project_root = pathlib.Path("/workspace/rs-http")
+        manifest = render_readme_manifest(source, manifest_dir, project_root)
         dependencies = tomllib.loads(manifest)["dependencies"]
 
         self.assertEqual(dependencies["qubit-http"]["version"], "0.17")
-        self.assertEqual(dependencies["qubit-http"]["path"], "../../workspace/rs-http")
+        dependency_path = pathlib.Path(dependencies["qubit-http"]["path"])
+        self.assertFalse(dependency_path.is_absolute())
+        self.assertEqual((manifest_dir / dependency_path).resolve(), project_root.resolve())
         self.assertEqual(dependencies["http"], "1")
         self.assertEqual(dependencies["tokio"]["features"], ["macros", "rt-multi-thread"])
         self.assertEqual(set(dependencies), {"qubit-http", "http", "tokio"})

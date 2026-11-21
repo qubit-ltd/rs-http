@@ -23,6 +23,7 @@ use tokio::test as tokio_test;
 use tokio::time::timeout;
 
 use crate::common::ResponsePlan;
+use crate::common::read_request;
 use crate::common::spawn_one_shot_server;
 
 #[test]
@@ -101,55 +102,70 @@ async fn test_ipv4_only_rejects_ipv6_literal_request_url() {
 
 #[tokio_test]
 async fn test_ipv4_only_initial_literal_policy_comes_from_request_snapshot() {
-    let listener = match tokio::net::TcpListener::bind("[::1]:0").await {
+    let listener = match TcpListener::bind("[::1]:0") {
         Ok(listener) => listener,
-        Err(error) => {
-            eprintln!("IPv6 loopback unavailable; skipping direct IPv4-only policy check: {error}");
+        Err(error)
+            if matches!(
+                error.kind(),
+                std::io::ErrorKind::AddrNotAvailable | std::io::ErrorKind::Unsupported
+            ) =>
+        {
+            eprintln!("IPv6 loopback is unavailable: {error}");
             return;
         }
+        Err(error) => panic!("bind IPv6 loopback listener: {error}"),
     };
-    let address = listener.local_addr().unwrap();
-    let strict_client = HttpClientBuilder::new()
+    listener.set_nonblocking(true).expect("set nonblocking listener");
+    let url = format!("http://{}/snapshot", listener.local_addr().expect("IPv6 bind address"));
+
+    let options = HttpClientOptions {
+        use_env_proxy: false,
+        ..HttpClientOptions::default()
+    };
+    let permissive = HttpClientBuilder::new()
+        .options(options.clone())
+        .build()
+        .expect("build permissive client");
+    let strict = HttpClientBuilder::new()
         .options(HttpClientOptions {
             ipv4_only: true,
-            use_env_proxy: false,
-            ..HttpClientOptions::default()
+            ..options
         })
         .build()
-        .unwrap();
-    let relaxed_client = HttpClientBuilder::new()
-        .options(HttpClientOptions {
-            use_env_proxy: false,
-            ..HttpClientOptions::default()
-        })
-        .build()
-        .unwrap();
+        .expect("build strict client");
 
-    let url = format!("http://[::1]:{}/", address.port());
-    let strict_request = relaxed_client.request(Method::GET, &url).ipv4_only(true).build();
-    let error = relaxed_client.execute(strict_request).await.unwrap_err();
-    assert_eq!(error.kind, HttpErrorKind::InvalidUrl);
+    let deadline = Duration::from_secs(3);
+    let error = timeout(deadline, strict.execute(strict.request(Method::GET, &url).build()))
+        .await
+        .expect("strict request must finish")
+        .expect_err("strict request snapshot must reject the literal");
+    assert_eq!(error.kind(), HttpErrorKind::InvalidUrl);
+    assert_eq!(
+        listener
+            .accept()
+            .expect_err("strict snapshot must reject before connecting")
+            .kind(),
+        std::io::ErrorKind::WouldBlock
+    );
 
-    let server = tokio::spawn(async move {
-        for _ in 0..2 {
-            let (mut socket, _) = listener.accept().await.unwrap();
-            let mut request = [0; 1024];
-            let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut request).await.unwrap();
+    let listener = tokio::net::TcpListener::from_std(listener).expect("register IPv6 listener");
+    let mut explicitly_relaxed = strict.request(Method::GET, &url).build();
+    explicitly_relaxed.set_ipv4_only(false);
+    for request in [permissive.request(Method::GET, &url).build(), explicitly_relaxed] {
+        let serve = async {
+            let (mut socket, _) = listener.accept().await.expect("accept IPv6 connection");
+            let received = read_request(&mut socket).await.expect("read IPv6 request");
+            assert_eq!(received.target, "/snapshot");
             socket
-                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok")
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
                 .await
-                .unwrap();
-        }
-    });
-    let relaxed_request = relaxed_client.request(Method::GET, &url).build();
-    let response = strict_client.execute(relaxed_request).await.unwrap();
-    assert_eq!(response.status().as_u16(), 200);
-
-    let mut explicitly_relaxed_request = strict_client.request(Method::GET, &url).build();
-    explicitly_relaxed_request.set_ipv4_only(false);
-    let response = strict_client.execute(explicitly_relaxed_request).await.unwrap();
-    assert_eq!(response.status().as_u16(), 200);
-    server.await.unwrap();
+                .expect("write IPv6 response");
+        };
+        let (result, ()) = timeout(deadline, async { tokio::join!(strict.execute(request), serve) })
+            .await
+            .expect("permitted request must reach the IPv6 listener");
+        assert_eq!(result.expect("execute permitted IPv6 request").status().as_u16(), 200);
+    }
 }
 
 #[test]

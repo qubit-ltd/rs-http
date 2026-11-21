@@ -1168,35 +1168,30 @@ mod tests {
     async fn test_protocol_recovery_terminates_after_repeated_refusals() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
-        let (stop_server, mut stop_server_rx) = tokio::sync::oneshot::channel();
-        let server = tokio::spawn(async move {
+        let (stop, mut stopped) = tokio::sync::oneshot::channel();
+        let mut server = tokio::spawn(async move {
             let mut streams = 0;
             loop {
-                let accepted = tokio::select! {
-                    _ = &mut stop_server_rx => return streams,
-                    accepted = timeout(Duration::from_secs(3), listener.accept()) => accepted
-                        .expect("reqwest did not finish protocol recovery")
-                        .expect("failed to accept recovery connection"),
+                let (socket, _) = tokio::select! {
+                    _ = &mut stopped => return streams,
+                    accepted = listener.accept() => accepted.expect("accept HTTP/2 TCP connection"),
                 };
-                let (socket, _) = accepted;
                 let mut connection = tokio::select! {
-                    _ = &mut stop_server_rx => return streams,
-                    connection = h2::server::handshake(socket) => connection
-                        .expect("HTTP/2 handshake failed"),
+                    _ = &mut stopped => return streams,
+                    handshake = h2::server::handshake(socket) => handshake.expect("complete HTTP/2 handshake"),
                 };
                 loop {
-                    let accepted = tokio::select! {
-                        _ = &mut stop_server_rx => return streams,
-                        accepted = connection.accept() => accepted,
+                    let request = tokio::select! {
+                        _ = &mut stopped => return streams,
+                        request = connection.accept() => request,
                     };
-                    match accepted {
-                        Some(Ok((_request, mut response))) => {
-                            streams += 1;
-                            response.send_reset(h2::Reason::REFUSED_STREAM);
-                        }
-                        Some(Err(error)) => panic!("HTTP/2 server failed: {error}"),
-                        None => break,
-                    }
+                    let Some(request) = request else {
+                        break;
+                    };
+                    let (request, mut response) = request.expect("accept HTTP/2 request stream");
+                    assert_eq!(request.uri().path(), "/recovery-limit");
+                    streams += 1;
+                    response.send_reset(h2::Reason::REFUSED_STREAM);
                 }
             }
         });
@@ -1219,17 +1214,19 @@ mod tests {
             client.execute(client.request(Method::GET, "/recovery-limit").build()),
         )
         .await;
-        let _ = stop_server.send(());
-        let streams = timeout(Duration::from_secs(2), server)
-            .await
-            .expect("test server did not finish")
-            .unwrap();
+        let _ = stop.send(());
+        let streams = match timeout(Duration::from_secs(2), &mut server).await {
+            Ok(joined) => joined.expect("HTTP/2 test server failed"),
+            Err(_) => {
+                server.abort();
+                let _ = server.await;
+                panic!("HTTP/2 test server did not stop");
+            }
+        };
         let result = result.expect("repeated HTTP/2 refusals must terminate");
         assert!(result.is_err(), "persistent REFUSED_STREAM should fail");
-        assert!(
-            (1..=3).contains(&streams),
-            "recovery should stay within reqwest's default limit"
-        );
+        // reqwest 0.13.5 allows up to two protocol retries after the initial stream.
+        assert!((1..=3).contains(&streams), "unexpected HTTP/2 stream count: {streams}");
         assert_eq!(calls.load(Ordering::Relaxed), 1);
     }
 }
