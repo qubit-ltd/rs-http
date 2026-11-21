@@ -622,6 +622,15 @@ reading the body and process chunks incrementally. Streaming avoids this
 whole-body aggregation limit, but the application should still bound its own
 accumulated bytes, storage, and processing work.
 
+For an unbuffered response, an already-cancelled request token returns
+`HttpErrorKind::Cancelled` before a known `Content-Length` size-limit check.
+When cancellation and an oversized declared length are both present,
+`Cancelled` takes precedence; callers should handle active cancellation as
+`Cancelled`. An uncancelled oversized response still returns
+`ResponseBodyTooLarge`. The failure is retained for later body readers. A body
+that was successfully buffered remains readable after cancellation, subject
+to the configured size limit.
+
 ### Examples
 
 **Whole-body reads (`bytes` / `text` / `json`)**: each loads the entire body into the cache. Cached bytes can be reused by whole-body readers and `stream()`; a successful cache read does not prevent creating a stream. This example uses `response` from the existing `client.execute(...).await?` in the same async function:
@@ -679,7 +688,7 @@ fn client_for_known_large_responses() -> qubit_http::HttpResult<HttpClient> {
 }
 ```
 
-**Streaming bytes (`stream`)**: for an unbuffered body, `stream()` transfers the backend body to the returned stream; it cannot be recovered for later whole-body reads. `?` applies when obtaining the stream, for example if a request cancellation token has already fired before body reading starts. A cancellation or body-read failure is retained and cannot be bypassed by another reader. Once a whole-body read succeeds, later cancellation does not block reading the cache or decoding cached SSE; cancellation still stops reads that need backend I/O. Callers that must stop business processing immediately when a token is cancelled should check that token at the application processing boundary. This separate request example shows unbuffered network streaming, rather than cached in-memory bytes.
+**Streaming bytes (`stream`)**: for an unbuffered body, `stream()` transfers the backend body to the returned stream; it cannot be recovered for later whole-body reads. If the token is already cancelled, obtaining the stream returns `Cancelled`; if it is cancelled after stream creation, polling yields the cancellation error. A cancellation or body-read failure is retained and cannot be bypassed by another reader. Once a whole-body read succeeds, later cancellation does not block reading the cache or decoding cached SSE; cancellation still stops reads that need backend I/O. Callers that must stop business processing immediately when a token is cancelled should check that token at the application processing boundary. This separate request example shows unbuffered network streaming, rather than cached in-memory bytes.
 
 For `bytes`, `text`, and `json`, an unbuffered backend body is also transferred when the aggregate-read future is first polled. If an outer `timeout` or a losing `select!` branch then drops that future before buffering succeeds, the backend and any partial bytes are lost; later readers return `ResponseBodyAlreadyConsumed`. Dropping an unpolled future does not take the body, and a successfully cached body remains reusable. This external drop differs from cancellation or read-timeout errors returned by the built-in reader, which retain their existing failure category. Configure the request read timeout or cancellation token before sending when a classified read failure is needed; treat an externally cancelled unbuffered response as unreadable afterward.
 
@@ -1036,7 +1045,9 @@ options.proxy.port = Some(1080);
 
 `ProxyType::Socks5` uses scheme `socks5h`, which performs remote DNS. Setting username enables proxy Basic Auth; setting password without username fails validation.
 
-When `ipv4_only = true`, the local resolver filters DNS results to IPv4, request URLs with IPv6 literal hosts are rejected, explicitly configured IPv6 proxy literals are rejected during client construction, and IPv6 redirect targets retain their existing checks. Environment proxy selection remains delegated to reqwest: an IPv6 environment proxy can still be reached from the client, because the local resolver does not constrain the client-to-proxy connection. `ProxyType::Socks5` uses `socks5h`, so the target hostname is sent to the proxy for remote DNS. HTTP and HTTPS proxies also control target resolution and egress. The local resolver cannot constrain the proxy-to-target address family either, so IPv4-only is not an end-to-end guarantee across a proxy. Deployments that require IPv4 egress through a proxy must enforce it at the proxy, or disable environment proxying and use a verified direct connection.
+IPv4-only policy has three owners. The request snapshot captured when the request is built controls validation of its initial URL literal; a request created with IPv4-only disabled may therefore contain an IPv6 literal even if a stricter client later executes it. The executing client controls local DNS filtering and IPv6-literal redirect rejection. Its `ipv4_only` setting also rejects explicitly configured IPv6 proxy literals when that client is constructed. The direct IPv6-literal behavior is covered by `test_ipv4_only_initial_literal_policy_comes_from_request_snapshot`.
+
+Proxy routing has separate address-family boundaries. Environment proxy selection remains delegated to reqwest, so an IPv6 environment proxy can still be reached because the local resolver does not constrain the client-to-proxy connection. `ProxyType::Socks5` uses `socks5h`, sending the target hostname to the proxy for remote DNS. HTTP and HTTPS proxies also control target resolution and egress. The local resolver cannot constrain the proxy-to-target address family, so IPv4-only is not an end-to-end guarantee across a proxy. Deployments that require IPv4 egress through a proxy must enforce it at the proxy, or disable environment proxying and use a verified direct connection.
 
 ## SSE Decoding
 
@@ -1252,7 +1263,7 @@ The table below lists every configuration key supported by `HttpClientOptions::f
 | Key | Description |
 | --- | --- |
 | `base_url` | Base URL used to resolve relative request paths |
-| `ipv4_only` | Keeps only IPv4 DNS results and rejects IPv6 literal URLs |
+| `ipv4_only` | Request snapshots control initial URL literal checks; the executing client controls IPv4 DNS filtering and IPv6 redirect checks |
 | `error_response_preview_limit` | Body preview byte limit stored on non-2xx errors; defaults to 16 KiB |
 | `response_body_size_limit` | Maximum bytes accumulated by whole-response body and JSON helpers; defaults to 8 MiB |
 | `error_response_body_limit` | Maximum raw bytes retained in non-2xx `HttpStatusResponse` values; defaults to 64 KiB and is separate from the redacted `error_response_preview_limit` (16 KiB by default) |

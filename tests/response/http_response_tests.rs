@@ -6,6 +6,8 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
+use std::future::Future;
+
 use bytes::Bytes;
 use futures_util::StreamExt;
 use http::HeaderMap;
@@ -125,6 +127,159 @@ async fn cached_response(body: &'static [u8], content_type: &'static str) -> (Ht
         .await
         .expect("test server did not finish");
     (response, token)
+}
+
+async fn unbuffered_response(body: &'static [u8], body_limit: usize) -> (HttpResponse, HttpCancellationToken) {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 200,
+        headers: Vec::new(),
+        body: body.to_vec(),
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.proxy.enabled = false;
+    options.use_env_proxy = false;
+    options.retry.enabled = false;
+    options.response_body_size_limit = body_limit;
+    let client = HttpClientBuilder::new()
+        .options(options)
+        .build()
+        .expect("client should be created");
+    let token = HttpCancellationToken::new();
+    let request = client
+        .request(Method::GET, "/cancel-before-body-read")
+        .cancellation_token(token.clone())
+        .build();
+    let response = timeout(std::time::Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("request timed out")
+        .expect("request should return a response");
+    server.finish().await;
+    (response, token)
+}
+
+async fn delayed_unbuffered_response(
+    body_limit: usize,
+) -> (
+    HttpResponse,
+    HttpCancellationToken,
+    impl Future<Output = crate::common::CapturedRequest>,
+) {
+    let server = spawn_one_shot_server(ResponsePlan::PartialThenDelay {
+        status: 200,
+        headers: Vec::new(),
+        total_length: 4,
+        prefix: Vec::new(),
+        delay: std::time::Duration::from_millis(250),
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.proxy.enabled = false;
+    options.use_env_proxy = false;
+    options.retry.enabled = false;
+    options.response_body_size_limit = body_limit;
+    let client = HttpClientBuilder::new()
+        .options(options)
+        .build()
+        .expect("client should be created");
+    let token = HttpCancellationToken::new();
+    let request = client
+        .request(Method::GET, "/cancel-before-body-read")
+        .cancellation_token(token.clone())
+        .build();
+    let response = timeout(std::time::Duration::from_secs(3), client.execute(request))
+        .await
+        .expect("request timed out")
+        .expect("request should return a response");
+    let finish_server = async move { server.finish().await };
+    (response, token, finish_server)
+}
+
+#[tokio_test]
+async fn test_cancelled_unbuffered_body_takes_priority_over_content_length_limit() {
+    let (mut response, token) = unbuffered_response(b"oversized", 2).await;
+    token.cancel();
+
+    let first = response
+        .bytes()
+        .await
+        .expect_err("pre-cancelled body read should return cancellation");
+    assert_eq!(first.kind, HttpErrorKind::Cancelled);
+
+    let second = response
+        .bytes()
+        .await
+        .expect_err("later body read should retain the cancellation failure");
+    assert_eq!(second.kind, HttpErrorKind::Cancelled);
+
+    let stream_error = match response.stream() {
+        Ok(_) => panic!("streaming must retain the earlier cancellation failure"),
+        Err(error) => error,
+    };
+    assert_eq!(stream_error.kind, HttpErrorKind::Cancelled);
+}
+
+#[tokio_test]
+async fn test_uncancelled_unbuffered_body_still_enforces_content_length_limit() {
+    let (mut response, _token) = unbuffered_response(b"oversized", 2).await;
+
+    let error = response
+        .bytes()
+        .await
+        .expect_err("uncancelled oversized response should fail the size limit");
+
+    assert_eq!(error.kind, HttpErrorKind::ResponseBodyTooLarge);
+}
+
+#[tokio_test]
+async fn test_cancelled_unbuffered_body_with_pending_data_returns_cancelled() {
+    let (mut response, token, finish_server) = delayed_unbuffered_response(10).await;
+    token.cancel();
+
+    let error = response
+        .bytes()
+        .await
+        .expect_err("cancelled pending body read should fail");
+    assert_eq!(error.kind, HttpErrorKind::Cancelled);
+    assert_eq!(response.bytes().await.unwrap_err().kind, HttpErrorKind::Cancelled);
+    finish_server.await;
+}
+
+#[tokio_test]
+async fn test_pre_cancelled_unbuffered_stream_fails_when_obtained() {
+    let (mut response, token, finish_server) = delayed_unbuffered_response(10).await;
+    token.cancel();
+
+    let stream_error = match response.stream() {
+        Ok(_) => panic!("pre-cancelled unbuffered response must not yield a stream"),
+        Err(error) => error,
+    };
+    assert_eq!(stream_error.kind, HttpErrorKind::Cancelled);
+
+    let read_error = response
+        .bytes()
+        .await
+        .expect_err("another reader must still observe cancellation");
+    assert_eq!(read_error.kind, HttpErrorKind::Cancelled);
+    finish_server.await;
+}
+
+#[tokio_test]
+async fn test_cancellation_during_stream_poll_is_remembered_for_other_readers() {
+    let (mut response, token, finish_server) = delayed_unbuffered_response(10).await;
+    let mut stream = response.stream().expect("stream should be available");
+    token.cancel();
+
+    let error = stream
+        .next()
+        .await
+        .expect("cancelled stream should yield an error")
+        .expect_err("cancelled stream poll should fail");
+    assert_eq!(error.kind, HttpErrorKind::Cancelled);
+    assert_eq!(response.bytes().await.unwrap_err().kind, HttpErrorKind::Cancelled);
+    finish_server.await;
 }
 
 #[tokio_test]

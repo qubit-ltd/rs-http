@@ -42,7 +42,10 @@ impl HttpResponse {
     /// retained-failure behavior instead. Configure the request's read timeout
     /// or cancellation token before sending when the reader should return a
     /// classified failure.
-    /// Cancellation after buffering does not prevent reads of cached bytes.
+    /// A pre-cancelled unbuffered response returns cancellation before a
+    /// `Content-Length` size-limit check. A successfully buffered response is
+    /// checked against the size limit and remains reusable. Cancellation after
+    /// buffering does not prevent reads of cached bytes.
     ///
     /// # Errors
     /// Returns the backend read, timeout, cancellation, or body-size error.
@@ -67,6 +70,11 @@ impl HttpResponse {
                 return Err(self.response_body_already_consumed_error());
             }
         };
+
+        if let Some(error) = self.cancelled_error_if_needed("Request cancelled before reading response body") {
+            self.remember_body_read_failure(&error);
+            return Err(error);
+        }
 
         let method = self.meta.method().clone();
         let url = self.runtime.request_url.clone();

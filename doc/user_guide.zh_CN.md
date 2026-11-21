@@ -597,6 +597,12 @@ body 可用方式：
 聚合预算；若下载较大或大小难以预计，应在开始读取前选择 `stream()`，逐块处理。
 流式读取不受整包聚合上限约束，但应用仍应限制自行累计的字节数、存储空间和处理量。
 
+对于尚未缓冲的响应，如果请求 token 已取消，读取会先返回
+`HttpErrorKind::Cancelled`，再检查已知的 `Content-Length` 大小上限。取消与声明长度超限
+同时发生时优先返回 `Cancelled`；调用方应按主动取消处理。未取消的超限响应仍返回
+`ResponseBodyTooLarge`。该失败会保留，后续 body reader 也会返回取消错误。已成功缓冲的
+body 在取消后仍可读取，但仍受配置的大小上限约束。
+
 ### 使用示例
 
 **整包读取（`bytes` / `text` / `json`）**：三者都会把完整 body 读入并缓存；缓存可供整包读取和 `stream()` 复用，成功缓存后仍可创建流。下面的 `response` 来自本节已有的 `client.execute(...).await?`，并在同一个异步函数内连续使用：
@@ -637,7 +643,7 @@ async fn read_whole_body_examples(
 }
 ```
 
-**流式字节（`stream`）**：对未缓存的 body，`stream()` 会把后端 body 移交给返回的流，之后无法再取回以进行整包读取；`?` 在拿到流时展开，例如请求上的取消 token 已在开始读取 body 前触发时会在这里返回错误。取消或已有的 body 读取错误仍会返回错误，不能通过其他读取方式绕过。整包读取成功后，即使请求随后取消，也可以读取缓存或解码缓存的 SSE；仍需后端 I/O 的读取会被取消阻止。如果应用要求 token 取消后立即停止业务处理，应在应用处理边界检查 token。以下独立请求示例展示未缓冲的网络流式读取，不是缓存内存示例。
+**流式字节（`stream`）**：对未缓存的 body，`stream()` 会把后端 body 移交给返回的流，之后无法再取回以进行整包读取。如果 token 已取消，获取流时会返回 `Cancelled`；若在获取流后取消，轮询时会产生取消错误。取消或已有的 body 读取错误会保留，不能通过其他读取方式绕过。整包读取成功后，即使请求随后取消，也可以读取缓存或解码缓存的 SSE；仍需后端 I/O 的读取会被取消阻止。如果应用要求 token 取消后立即停止业务处理，应在应用处理边界检查 token。以下独立请求示例展示未缓冲的网络流式读取，不是缓存内存示例。
 
 ```rust
 use futures_util::StreamExt;
@@ -986,7 +992,9 @@ options.proxy.port = Some(1080);
 
 `ProxyType::Socks5` 使用 scheme `socks5h`，即远端 DNS。设置 username 后会启用代理 Basic Auth；只设置 password 不设置 username 会校验失败。
 
-`ipv4_only = true` 时，本地 resolver 只保留 IPv4 解析结果；请求 URL 中的 IPv6 literal host、显式配置的 IPv6 literal 代理地址（在客户端构造时）以及现有 IPv6 重定向检查仍会被拒绝。环境代理的选择仍委托给 reqwest：客户端到 IPv6 环境代理的连接不受本地 resolver 限制，因此仍可能成功。`ProxyType::Socks5` 使用 `socks5h`，目标域名交给代理远端解析；HTTP 和 HTTPS 代理也自行控制目标解析与出口。本地 resolver 既无法限制客户端到代理这一段，也无法约束代理到目标这一段的地址族，因此 IPv4-only 不是跨代理链路的端到端保证。部署若要求代理出口为 IPv4，应由代理自身限制，或关闭环境代理并使用经过验证的直连配置。
+IPv4-only 策略分属三个阶段。建请求时捕获的请求快照决定初始 URL 字面量校验；因此，由关闭 IPv4-only 的客户端创建的请求可以保留 IPv6 字面量，即使之后由更严格的客户端执行。执行客户端决定本地 DNS 是否只保留 IPv4，以及是否拒绝 IPv6 字面量重定向；构造启用 IPv4-only 的执行客户端时，也会拒绝显式配置的 IPv6 字面量代理地址。直连 IPv6 字面量行为由 `test_ipv4_only_initial_literal_policy_comes_from_request_snapshot` 覆盖。
+
+代理链路的地址族另有边界。环境代理选择仍交由 reqwest，因此客户端到 IPv6 环境代理的连接不受本地 resolver 限制。`ProxyType::Socks5` 使用 `socks5h`，把目标域名交给代理远端解析；HTTP 和 HTTPS 代理也自行控制目标解析与出口。本地 resolver 无法约束代理到目标这一段的地址族，因此 IPv4-only 不是跨代理链路的端到端保证。部署若要求代理出口为 IPv4，应由代理自身限制，或关闭环境代理并使用经过验证的直连配置。
 
 ## SSE 解码
 
@@ -1194,7 +1202,7 @@ SSE 重连使用独立的 `SseReconnectOptions.retry` 策略。普通 HTTP 重�
 | 键 | 说明 |
 | --- | --- |
 | `base_url` | 相对请求路径的基础 URL |
-| `ipv4_only` | 启用后 DNS 只保留 IPv4 地址，并拒绝 IPv6 literal URL |
+| `ipv4_only` | 请求快照决定初始 URL 字面量检查；执行客户端决定 IPv4 DNS 过滤和 IPv6 重定向检查 |
 | `error_response_preview_limit` | 非 2xx 错误中保留的响应体预览字节数；默认 16 KiB |
 | `response_body_size_limit` | 整体响应体与 JSON helper 允许累计的最大字节数；默认 8 MiB |
 | `error_response_body_limit` | 非 2xx `HttpStatusResponse` 保留的原始 body 最大字节数；默认 64 KiB，与默认 16 KiB 的脱敏 `error_response_preview_limit` 独立 |
