@@ -7,6 +7,8 @@ Requires Python 3.11+ for the standard-library ``tomllib`` module.
 from __future__ import annotations
 
 import pathlib
+import json
+import os
 import re
 import subprocess
 import sys
@@ -20,10 +22,12 @@ GUIDES = {
     "zh_CN": ROOT / "doc/user_guide.zh_CN.md",
 }
 QUICK_STARTS = {
-    "readme-en": ROOT / "README.md",
-    "readme-zh_CN": ROOT / "README.zh_CN.md",
     "quick-start-en": ROOT / "doc/user_guide.en.md",
     "quick-start-zh_CN": ROOT / "doc/user_guide.zh_CN.md",
+}
+READMES = {
+    "en": ROOT / "README.md",
+    "zh_CN": ROOT / "README.zh_CN.md",
 }
 SCENARIOS = ("configuration", "async-upload", "redaction", "sse-reconnect", "token-refresh", "tls-roots", "url-join")
 FENCE = re.compile(r"```rust\s*\n(.*?)\n```", re.DOTALL)
@@ -134,6 +138,83 @@ def normalize_dependency(value: str | dict) -> dict:
     return result
 
 
+def toml_value(value) -> str:
+    """Serialize the TOML values accepted in Cargo dependency declarations."""
+    if isinstance(value, str):
+        return json.dumps(value, ensure_ascii=False)
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, list):
+        return "[" + ", ".join(toml_value(item) for item in value) + "]"
+    if isinstance(value, dict):
+        fields = ", ".join(f"{key} = {toml_value(item)}" for key, item in value.items())
+        return "{ " + fields + " }"
+    raise ValueError(f"unsupported TOML dependency value: {type(value).__name__}")
+
+
+def render_readme_manifest(
+    markdown: str,
+    manifest_dir: pathlib.Path,
+    project_root: pathlib.Path = ROOT,
+) -> str:
+    """Render only a README's declared dependencies with a local qubit-http path."""
+    dependencies = extract_dependencies(markdown)
+    if "qubit-http" not in dependencies:
+        raise ValueError("README: dependencies must include qubit-http")
+    rendered = []
+    for name, value in dependencies.items():
+        if name != "qubit-http" and isinstance(value, str):
+            rendered.append(f"{name} = {toml_value(value)}")
+            continue
+        if isinstance(value, str):
+            dependency = {"version": value}
+        elif isinstance(value, dict):
+            dependency = dict(value)
+        else:
+            raise ValueError(f"README: dependency {name} must be a string or inline table")
+        if name == "qubit-http":
+            if "path" in dependency:
+                raise ValueError("README: qubit-http path override is not allowed")
+            dependency["path"] = pathlib.Path(
+                os.path.relpath(project_root.resolve(), manifest_dir.resolve())
+            ).as_posix()
+        rendered.append(f"{name} = {toml_value(dependency)}")
+    return "[package]\nname = \"readme-quick-start\"\nversion = \"0.0.0\"\nedition = \"2021\"\npublish = false\n\n[workspace]\n\n[dependencies]\n" + "\n".join(rendered) + "\n"
+
+
+def generate_readme_examples() -> list[tuple[str, pathlib.Path]]:
+    """Write separate Cargo packages for the two README quick starts."""
+    output_root = ROOT / "tests/fixtures/guide_examples/target/readme_examples"
+    generated = []
+    for language, path in READMES.items():
+        package = output_root / f"readme-{language}"
+        source_dir = package / "src"
+        source_dir.mkdir(parents=True, exist_ok=True)
+        markdown = path.read_text(encoding="utf-8")
+        code = extract(markdown, "quick-start")
+        (package / "Cargo.toml").write_text(
+            render_readme_manifest(markdown, package), encoding="utf-8"
+        )
+        (source_dir / "main.rs").write_text(code + "\n", encoding="utf-8")
+        generated.append((language, package / "Cargo.toml"))
+    return generated
+
+
+def check_readme_examples() -> None:
+    """Compile each README quick start with exactly its declared dependencies."""
+    for language, manifest in generate_readme_examples():
+        try:
+            subprocess.run(
+                ["cargo", "check", "--manifest-path", str(manifest)],
+                cwd=ROOT,
+                check=True,
+            )
+        except subprocess.CalledProcessError as error:
+            raise RuntimeError(f"README {language} quick-start compilation failed") from error
+
+
 def extract(markdown: str, scenario: str) -> str:
     start = f"<!-- guide-check:{scenario}:start -->"
     end = f"<!-- guide-check:{scenario}:end -->"
@@ -172,6 +253,8 @@ def generate_quick_starts(
 def generate() -> list[pathlib.Path]:
     destination = ROOT / "tests/fixtures/guide_examples/target/guide_examples/src/bin"
     destination.mkdir(parents=True, exist_ok=True)
+    for language in READMES:
+        (destination / f"readme-{language}.rs").unlink(missing_ok=True)
     generated = generate_quick_starts(destination)
     for scenario in SCENARIOS:
         for language, path in GUIDES.items():
@@ -222,8 +305,6 @@ class ExtractorTests(unittest.TestCase):
         self.assertEqual(
             {name: path.relative_to(ROOT).as_posix() for name, path in QUICK_STARTS.items()},
             {
-                "readme-en": "README.md",
-                "readme-zh_CN": "README.zh_CN.md",
                 "quick-start-en": "doc/user_guide.en.md",
                 "quick-start-zh_CN": "doc/user_guide.zh_CN.md",
             },
@@ -457,6 +538,50 @@ bytes = "1.11"
             validate_dependencies(self.valid_guides, "[package]\nname = 'x'\n")
 
 
+class ReadmeDependencyTests(unittest.TestCase):
+    def test_both_readmes_have_independent_dependency_blocks(self):
+        for language, path in READMES.items():
+            with self.subTest(language=language):
+                dependencies = extract_dependencies(path.read_text(encoding="utf-8"))
+                self.assertIn("qubit-http", dependencies)
+
+    def test_readme_manifest_preserves_declared_dependencies_and_local_http_path(self):
+        source = guide('''qubit-http = "0.17"
+http = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }''')
+        manifest = render_readme_manifest(
+            source,
+            pathlib.Path("/tmp/readme-example"),
+            pathlib.Path("/workspace/rs-http"),
+        )
+        dependencies = tomllib.loads(manifest)["dependencies"]
+
+        self.assertEqual(dependencies["qubit-http"]["version"], "0.17")
+        self.assertEqual(dependencies["qubit-http"]["path"], "../../workspace/rs-http")
+        self.assertEqual(dependencies["http"], "1")
+        self.assertEqual(dependencies["tokio"]["features"], ["macros", "rt-multi-thread"])
+        self.assertEqual(set(dependencies), {"qubit-http", "http", "tokio"})
+
+    def test_readme_manifest_does_not_invent_an_undeclared_dependency(self):
+        manifest = render_readme_manifest(
+            guide('qubit-http = "0.17"'),
+            pathlib.Path("/tmp/readme-example"),
+            pathlib.Path("/workspace/rs-http"),
+        )
+
+        self.assertNotIn("http", tomllib.loads(manifest)["dependencies"])
+
+    def test_readme_manifest_rejects_document_supplied_qubit_http_path(self):
+        source = guide('qubit-http = { version = "0.17", path = "../other" }')
+
+        with self.assertRaisesRegex(ValueError, "qubit-http path override is not allowed"):
+            render_readme_manifest(
+                source,
+                pathlib.Path("/tmp/readme-example"),
+                pathlib.Path("/workspace/rs-http"),
+            )
+
+
 def run_self_tests() -> bool:
     suite = unittest.defaultTestLoader.loadTestsFromModule(sys.modules[__name__])
     result = unittest.TextTestRunner(verbosity=2).run(suite)
@@ -473,6 +598,7 @@ if __name__ == "__main__":
             {language: path.read_text(encoding="utf-8") for language, path in GUIDES.items()},
             (ROOT / "tests/fixtures/guide_examples/Cargo.toml").read_text(encoding="utf-8"),
         )
+        check_readme_examples()
         generate()
         subprocess.run(
             ["cargo", "check", "--manifest-path", "tests/fixtures/guide_examples/Cargo.toml", "--all-targets"],

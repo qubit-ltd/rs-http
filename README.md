@@ -32,6 +32,7 @@ To configure additional TLS trust roots programmatically, see [Additional TLS Tr
 
 ## Installation
 
+<!-- guide-dependencies:start -->
 ```toml
 [dependencies]
 qubit-http = "0.17"
@@ -39,6 +40,7 @@ qubit-redact = "0.10"
 http = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
+<!-- guide-dependencies:end -->
 
 Some examples in the user guide use optional helper crates such as `serde`, `serde_json`, `futures-util`, and `qubit-config`.
 

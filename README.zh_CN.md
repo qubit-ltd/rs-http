@@ -32,6 +32,7 @@
 
 ## 安装
 
+<!-- guide-dependencies:start -->
 ```toml
 [dependencies]
 qubit-http = "0.17"
@@ -39,6 +40,7 @@ qubit-redact = "0.10"
 http = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
+<!-- guide-dependencies:end -->
 
 用户指南中的部分示例会用到 `serde`、`serde_json`、`futures-util`、`qubit-config` 等可选辅助依赖。
 
