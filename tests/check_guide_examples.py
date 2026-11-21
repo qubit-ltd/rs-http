@@ -204,6 +204,13 @@ def generate_readme_examples() -> list[tuple[str, pathlib.Path]]:
     return generated
 
 
+def cargo_environment() -> dict[str, str]:
+    """Keep all example build outputs under the repository's root target directory."""
+    environment = os.environ.copy()
+    environment["CARGO_TARGET_DIR"] = str(ROOT / "target/guide_example_build")
+    return environment
+
+
 def check_readme_examples() -> None:
     """Compile each README quick start with exactly its declared dependencies."""
     for language, manifest in generate_readme_examples():
@@ -211,6 +218,7 @@ def check_readme_examples() -> None:
             subprocess.run(
                 ["cargo", "check", "--manifest-path", str(manifest)],
                 cwd=ROOT,
+                env=cargo_environment(),
                 check=True,
             )
         except subprocess.CalledProcessError as error:
@@ -253,7 +261,7 @@ def generate_quick_starts(
 
 
 def generate() -> list[pathlib.Path]:
-    destination = ROOT / "tests/fixtures/guide_examples/target/guide_examples/src/bin"
+    destination = ROOT / "target/guide_examples/src/bin"
     destination.mkdir(parents=True, exist_ok=True)
     for language in READMES:
         (destination / f"readme-{language}.rs").unlink(missing_ok=True)
@@ -605,6 +613,7 @@ if __name__ == "__main__":
         subprocess.run(
             ["cargo", "check", "--manifest-path", "tests/fixtures/guide_examples/Cargo.toml", "--all-targets"],
             cwd=ROOT,
+            env=cargo_environment(),
             check=True,
         )
         subprocess.run(
@@ -614,5 +623,6 @@ if __name__ == "__main__":
                 "--", "--test-threads=1",
             ],
             cwd=ROOT,
+            env=cargo_environment(),
             check=True,
         )

@@ -8,54 +8,54 @@ publish = false
 
 [[bin]]
 name = "quick-start-en"
-path = "target/guide_examples/src/bin/quick-start-en.rs"
+path = "../../../target/guide_examples/src/bin/quick-start-en.rs"
 [[bin]]
 name = "quick-start-zh_CN"
-path = "target/guide_examples/src/bin/quick-start-zh_CN.rs"
+path = "../../../target/guide_examples/src/bin/quick-start-zh_CN.rs"
 
 [[bin]]
 name = "configuration-en"
-path = "target/guide_examples/src/bin/configuration-en.rs"
+path = "../../../target/guide_examples/src/bin/configuration-en.rs"
 [[bin]]
 name = "configuration-zh_CN"
-path = "target/guide_examples/src/bin/configuration-zh_CN.rs"
+path = "../../../target/guide_examples/src/bin/configuration-zh_CN.rs"
 [[bin]]
 name = "tls-roots-en"
-path = "target/guide_examples/src/bin/tls-roots-en.rs"
+path = "../../../target/guide_examples/src/bin/tls-roots-en.rs"
 [[bin]]
 name = "tls-roots-zh_CN"
-path = "target/guide_examples/src/bin/tls-roots-zh_CN.rs"
+path = "../../../target/guide_examples/src/bin/tls-roots-zh_CN.rs"
 [[bin]]
 name = "async-upload-en"
-path = "target/guide_examples/src/bin/async-upload-en.rs"
+path = "../../../target/guide_examples/src/bin/async-upload-en.rs"
 [[bin]]
 name = "async-upload-zh_CN"
-path = "target/guide_examples/src/bin/async-upload-zh_CN.rs"
+path = "../../../target/guide_examples/src/bin/async-upload-zh_CN.rs"
 [[bin]]
 name = "redaction-en"
-path = "target/guide_examples/src/bin/redaction-en.rs"
+path = "../../../target/guide_examples/src/bin/redaction-en.rs"
 [[bin]]
 name = "redaction-zh_CN"
-path = "target/guide_examples/src/bin/redaction-zh_CN.rs"
+path = "../../../target/guide_examples/src/bin/redaction-zh_CN.rs"
 [[bin]]
 name = "sse-reconnect-en"
-path = "target/guide_examples/src/bin/sse-reconnect-en.rs"
+path = "../../../target/guide_examples/src/bin/sse-reconnect-en.rs"
 [[bin]]
 name = "sse-reconnect-zh_CN"
-path = "target/guide_examples/src/bin/sse-reconnect-zh_CN.rs"
+path = "../../../target/guide_examples/src/bin/sse-reconnect-zh_CN.rs"
 [[bin]]
 name = "token-refresh-en"
-path = "target/guide_examples/src/bin/token-refresh-en.rs"
+path = "../../../target/guide_examples/src/bin/token-refresh-en.rs"
 [[bin]]
 name = "token-refresh-zh_CN"
-path = "target/guide_examples/src/bin/token-refresh-zh_CN.rs"
+path = "../../../target/guide_examples/src/bin/token-refresh-zh_CN.rs"
 [[bin]]
 name = "token-refresh-regression-en"
-path = "target/guide_examples/src/bin/token-refresh-regression-en.rs"
+path = "../../../target/guide_examples/src/bin/token-refresh-regression-en.rs"
 test = true
 [[bin]]
 name = "token-refresh-regression-zh_CN"
-path = "target/guide_examples/src/bin/token-refresh-regression-zh_CN.rs"
+path = "../../../target/guide_examples/src/bin/token-refresh-regression-zh_CN.rs"
 test = true
 
 [dependencies]
