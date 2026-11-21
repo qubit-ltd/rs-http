@@ -391,11 +391,11 @@ path = "../generated/url-join-zh_CN.rs"
 
     def test_duplicate_path_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "duplicate bin path"):
-        validate_generated_bins(
-            self.sources,
-            self.valid.replace("url-join-zh_CN.rs", "url-join-en.rs"),
-            self.directory,
-        )
+            validate_generated_bins(
+                self.sources,
+                self.valid.replace("url-join-zh_CN.rs", "url-join-en.rs"),
+                self.directory,
+            )
 
 
 class ExtractorTests(unittest.TestCase):

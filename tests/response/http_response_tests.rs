@@ -312,10 +312,7 @@ async fn test_consumed_stream_precedes_unrecorded_cancellation() {
         Err(error) => error,
     };
     assert_eq!(stream_error.kind, HttpErrorKind::Cancelled);
-    assert_eq!(
-        response.bytes().await.unwrap_err().kind,
-        HttpErrorKind::Cancelled
-    );
+    assert_eq!(response.bytes().await.unwrap_err().kind, HttpErrorKind::Cancelled);
     finish_server.await;
 }
 
