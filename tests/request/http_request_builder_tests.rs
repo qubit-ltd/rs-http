@@ -22,6 +22,7 @@ use qubit_http::HttpClient;
 use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpErrorKind;
+use qubit_http::HttpLogger;
 use qubit_http::HttpRequestBody;
 use qubit_http::HttpRequestBuilder;
 use qubit_http::HttpRetryMethodPolicy;
@@ -35,6 +36,7 @@ use serde::ser::Error as _;
 use serde::ser::Serializer;
 
 use crate::common::ResponsePlan;
+use crate::common::capture_trace_logs;
 use crate::common::spawn_one_shot_server;
 
 struct FailingSerialize;
@@ -967,6 +969,43 @@ fn test_request_builder_multipart_body_adds_boundary_to_existing_multipart_conte
 }
 
 #[test]
+fn test_request_builder_multipart_body_preserves_sensitive_content_type_when_adding_boundary() {
+    let mut value = HeaderValue::from_static("multipart/mixed; token=trace-marker");
+    value.set_sensitive(true);
+    let mut headers = HeaderMap::new();
+    headers.insert(CONTENT_TYPE, value);
+    let request = new_builder(Method::POST, "/v1/multipart")
+        .headers(headers)
+        .multipart_body(Bytes::from_static(b"payload"), "abc")
+        .expect("multipart body should be built")
+        .build();
+
+    let content_type = request
+        .headers()
+        .get(CONTENT_TYPE)
+        .expect("multipart content-type should be kept");
+    assert_eq!(content_type, "multipart/mixed; token=trace-marker; boundary=abc");
+    assert!(content_type.is_sensitive());
+
+    let options = HttpClientOptions::default();
+    let logger = HttpLogger::new(&options);
+    let logs = capture_trace_logs(|| logger.log_request(&request));
+    let debug = format!("{request:?}");
+    assert!(
+        logs.contains("content-type: [<redacted>]"),
+        "sensitive Content-Type was not masked in TRACE: {logs}"
+    );
+    assert!(
+        !logs.contains("trace-marker"),
+        "sensitive value leaked into TRACE: {logs}"
+    );
+    assert!(
+        !debug.contains("trace-marker"),
+        "sensitive value leaked into Debug: {debug}"
+    );
+}
+
+#[test]
 fn test_request_builder_multipart_body_preserves_matching_existing_boundary() {
     let request = new_builder(Method::POST, "/v1/multipart")
         .header(CONTENT_TYPE.as_str(), "multipart/mixed; boundary=abc")
@@ -1098,6 +1137,29 @@ fn test_request_builder_multipart_body_rejects_mismatched_existing_boundary() {
     assert_eq!(error.kind, HttpErrorKind::Other);
     assert!(error.message.contains("boundary"));
     assert!(error.message.contains("does not match"));
+}
+
+#[test]
+fn test_request_builder_multipart_body_mismatch_error_omits_boundary_values() {
+    let error = new_builder(Method::POST, "/v1/multipart")
+        .header(CONTENT_TYPE.as_str(), "multipart/mixed; boundary=private-existing")
+        .expect("custom content-type header should be valid")
+        .multipart_body(Bytes::from_static(b"payload"), "private-request")
+        .expect_err("mismatched boundary should fail");
+
+    let expected = "Existing multipart Content-Type boundary does not match multipart_body boundary";
+    assert_eq!(error.kind, HttpErrorKind::Other);
+    assert_eq!(error.message(), expected);
+    for display in [error.message().to_owned(), format!("{error}"), format!("{error:?}")] {
+        assert!(
+            !display.contains("private-existing"),
+            "existing boundary leaked: {display}"
+        );
+        assert!(
+            !display.contains("private-request"),
+            "request boundary leaked: {display}"
+        );
+    }
 }
 
 #[test]
