@@ -322,7 +322,7 @@ let request = client
     .build();
 ```
 
-`build()` 后可以调用 `HttpRequest::resolved_url()` 取得真实发送 URL：绝对 `path` 会保持绝对 URL；相对路径会和 `base_url` join；`path` 中已有的 query 会保留，builder 或拦截器追加的 query 会按顺序继续追加。
+`build()` 后可以调用 `HttpRequest::resolved_url()`，根据请求当前快照解析 URL：绝对 `path` 会保持绝对 URL；相对路径会和 `base_url` join；`path` 中已有的 query 会保留，快照中的 query 会按顺序追加。它不是实际发送 URL 的记录。请求拦截器会在每次执行尝试时运行，并可能修改目标或 query；发送路径会单独检查初始来源，允许的重定向也可能产生不同的响应 URL。应使用 `resolved_url()` 检查当前快照，不能据此断定请求已经发送或通过了执行时策略检查。
 
 相对路径遵循 `Url::join` 的规则：以 `/` 开头的路径从主机根目录开始；`base_url` 若没有尾斜杠，最后一段会被当作文件名并替换。要保留 `/v1/` 这样的 API 前缀，应给 `base_url` 加尾斜杠，并使用不以 `/` 开头的路径。
 
@@ -589,6 +589,11 @@ body 可用方式：
 | `stream()` | 返回 `HttpByteStream`；若 body 已缓存则为单块内存流，即使请求已取消也可读取。未缓存时调用本身**不会**立刻读完整 body，而是把底层响应交给返回的流，**在轮询该流时**按需读取字节块 |
 | `sse_messages()` | 消费 `self`，按当前 SSE 行/帧上限等选项将 body 解码为 SSE 消息流（详见下文「SSE 解码」） |
 | `sse_chunks::<T>()` | 消费 `self`，将 SSE `data:` JSON chunk 解码为 `SseChunk<T>` 流（JSON 模式、完成标记等见下文「SSE JSON chunk」） |
+
+若 `stream()` 已移交未缓冲的 body，在原流记录读取失败前，再调用 `stream()` 或缓冲式读取会返回
+`HttpErrorKind::ResponseBodyAlreadyConsumed`。如果轮询原流时记录了取消，后续 body reader
+会返回保留的 `HttpErrorKind::Cancelled`。移交 body 前 token 已取消时，入口仍直接返回
+`Cancelled`。
 
 `bytes()`、`text()` 和 `json()` 都会聚合完整响应体，共用默认 8 MiB 的
 `response_body_size_limit`。超过上限会返回

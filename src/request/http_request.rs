@@ -926,14 +926,21 @@ impl HttpRequest {
         Ok(resolved)
     }
 
-    /// Returns the resolved URL plus request-builder query parameters.
+    /// Returns the URL resolved from the current request snapshot, including
+    /// its query parameters.
     ///
-    /// This mirrors the URL sent by the request execution path: query pairs
-    /// already present in [`Self::path`] are preserved, and pairs from
-    /// [`Self::query`] are appended in insertion order.
+    /// Absolute paths are retained and relative paths are resolved against the
+    /// captured base URL. Query pairs already present in [`Self::path`] are
+    /// preserved, and pairs from [`Self::query`] are appended in insertion
+    /// order. This describes the fields at the time of this call; request
+    /// interceptors run for each execution attempt and may change the target or
+    /// query parameters. The send path separately checks the initial origin,
+    /// and an allowed redirect may produce a different response URL.
     ///
     /// # Returns
-    /// Resolved [`Url`] including query parameters from this request snapshot.
+    /// [`Url`] resolved from the current request snapshot, including its query
+    /// parameters. It does not establish that the request was sent or passed
+    /// execution-time policy checks.
     ///
     /// # Errors
     /// Propagates URL-resolution errors for invalid or unresolved URLs.

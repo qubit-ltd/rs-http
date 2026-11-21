@@ -343,7 +343,7 @@ let request = client
     .build();
 ```
 
-After `build()`, `HttpRequest::resolved_url()` returns the actual outbound URL: absolute `path` values stay absolute, relative paths are joined with `base_url`, query pairs already present in `path` are preserved, and builder/query-interceptor pairs are appended in order.
+After `build()`, `HttpRequest::resolved_url()` resolves the URL from the request's current snapshot: absolute `path` values stay absolute, relative paths are joined with `base_url`, query pairs already present in `path` are preserved, and query pairs in the snapshot are appended in order. It is not a record of a URL actually sent. Request interceptors run for each execution attempt and may change the target or query pairs; the send path separately checks the initial origin, and an allowed redirect can produce a different response URL. Use `resolved_url()` to inspect the current snapshot, not to establish that execution occurred or passed policy checks.
 
 Relative paths follow `Url::join` semantics. A path beginning with `/` starts at the host root, and a base URL without a trailing slash treats its final path segment as a file to replace. To keep an API prefix such as `/v1/`, end the base URL with `/` and use a relative path without a leading slash.
 
@@ -611,6 +611,12 @@ Body APIs:
 | `stream()` | Returns `HttpByteStream`; if the body is cached, yields a one-chunk in-memory stream even after request cancellation. Otherwise the call does **not** eagerly read the entire body: it hands the backend response to the returned stream, and bytes are read **while that stream is polled** |
 | `sse_messages()` | Consumes `self` and decodes the body stream into an SSE message stream using the configured line/frame limits (see “SSE Decoding” below) |
 | `sse_chunks::<T>()` | Consumes `self` and decodes SSE JSON `data:` chunks into a `SseChunk<T>` stream (JSON mode, done-marker policy, etc.—see “SSE JSON Chunks” below) |
+
+If `stream()` has transferred an unbuffered body, another `stream()` or a
+buffered read returns `HttpErrorKind::ResponseBodyAlreadyConsumed` until the
+original stream records a read failure. If polling that stream records a
+cancellation, later body readers return the retained `HttpErrorKind::Cancelled`.
+An already-cancelled token before body transfer still returns `Cancelled`.
 
 `bytes()`, `text()`, and `json()` aggregate the whole response and share the
 `response_body_size_limit` default of 8 MiB. Exceeding it returns
