@@ -663,9 +663,11 @@ async fn run_http_date_retry_after_sse_reconnect(
         .await
         .expect("server finish timed out");
     assert_eq!(requests.len(), 2);
-    assert!(requests
-        .iter()
-        .all(|request| request.target == "/sse-http-date-retry-after"));
+    assert!(
+        requests
+            .iter()
+            .all(|request| request.target == "/sse-http-date-retry-after")
+    );
     assert_eq!(attempts.load(Ordering::SeqCst), 2);
 }
 
