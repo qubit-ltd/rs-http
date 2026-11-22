@@ -281,7 +281,41 @@ fn parse_retry_after_value(value: &str) -> Option<Duration> {
     if trimmed.bytes().all(|byte| byte.is_ascii_digit()) {
         return trimmed.parse::<u64>().ok().map(Duration::from_secs);
     }
-    let retry_at = parse_http_date(trimmed).ok()?;
-    let now = SystemTime::now();
-    Some(retry_at.duration_since(now).unwrap_or_else(|_| Duration::from_secs(0)))
+    parse_retry_after_date(trimmed, SystemTime::now())
+}
+
+/// Parses an HTTP-date `Retry-After` value relative to a supplied wall-clock
+/// time.
+///
+/// # Parameters
+/// - `value`: HTTP-date header value.
+/// - `now`: Reference wall-clock time used to calculate the delay.
+///
+/// # Returns
+/// The positive delay until the date, zero when it is not in the future, or
+/// `None` when the date is invalid.
+fn parse_retry_after_date(value: &str, now: SystemTime) -> Option<Duration> {
+    let retry_at = parse_http_date(value).ok()?;
+    Some(retry_at.duration_since(now).unwrap_or(Duration::ZERO))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+    use std::time::UNIX_EPOCH;
+
+    use super::parse_retry_after_date;
+
+    #[test]
+    fn test_parse_retry_after_date_uses_reference_time() {
+        let now = UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+        let past = httpdate::fmt_http_date(now - Duration::from_secs(30));
+        let same = httpdate::fmt_http_date(now);
+        let future = httpdate::fmt_http_date(now + Duration::from_secs(30));
+
+        assert_eq!(parse_retry_after_date(&past, now), Some(Duration::ZERO));
+        assert_eq!(parse_retry_after_date(&same, now), Some(Duration::ZERO));
+        assert_eq!(parse_retry_after_date(&future, now), Some(Duration::from_secs(30)));
+        assert_eq!(parse_retry_after_date("not an HTTP date", now), None);
+    }
 }

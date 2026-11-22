@@ -28,6 +28,7 @@ use tokio::task::JoinHandle;
 use tokio::test as tokio_test;
 use tokio::time::sleep;
 use tokio::time::timeout;
+use url::Url;
 
 use crate::common::CapturedRequest;
 use crate::common::ResponsePlan;
@@ -44,6 +45,7 @@ async fn test_try_streaming_body_preparation_error_sends_nothing() {
     let calls_for_factory = Arc::clone(&calls);
     let request = client
         .request(Method::POST, &url)
+        .query_param("batch", "upload-1")
         .try_streaming_body(move || {
             calls_for_factory.fetch_add(1, Ordering::Relaxed);
             Box::pin(async {
@@ -63,10 +65,47 @@ async fn test_try_streaming_body_preparation_error_sends_nothing() {
         .unwrap()
         .unwrap_err();
     assert_eq!(error.kind(), HttpErrorKind::Decode);
+    assert_eq!(error.method(), Some(&Method::POST));
+    assert_eq!(
+        error.url().map(Url::as_str),
+        Some(format!("{url}?batch=upload-1").as_str())
+    );
     assert!(std::error::Error::source(&error).is_some());
     assert_eq!(calls.load(Ordering::Relaxed), 1);
     assert!(!format!("{error}\n{error:?}").contains("pwsecret"));
     assert!(!format!("{error}\n{error:?}").contains("tokensecret"));
+    assert!(timeout(Duration::from_millis(100), listener.accept()).await.is_err());
+}
+
+#[tokio_test]
+async fn test_try_streaming_body_preparation_error_preserves_explicit_context() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let request_url = format!("http://{}/upload?batch=upload-1", listener.local_addr().unwrap());
+    let explicit_url = Url::parse("https://factory.example.test/custom").unwrap();
+    let client = HttpClientBuilder::new().build().unwrap();
+    let request = client
+        .request(Method::POST, &request_url)
+        .try_streaming_body(move || {
+            let explicit_url = explicit_url.clone();
+            Box::pin(async move {
+                Err(HttpError::decode("factory failed")
+                    .with_method(&Method::PUT)
+                    .with_url(&explicit_url))
+            })
+        })
+        .disable_retry()
+        .build();
+
+    let error = timeout(Duration::from_secs(3), client.execute(request))
+        .await
+        .unwrap()
+        .unwrap_err();
+
+    assert_eq!(error.method(), Some(&Method::PUT));
+    assert_eq!(
+        error.url(),
+        Some(&Url::parse("https://factory.example.test/custom").unwrap())
+    );
     assert!(timeout(Duration::from_millis(100), listener.accept()).await.is_err());
 }
 

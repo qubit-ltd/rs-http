@@ -752,7 +752,11 @@ impl HttpRequest {
                 ),
             )
             .await
-            .map_err(|error| error.with_log_redactor(log_redactor.clone()))?;
+            .map_err(|mut error| {
+                error.method.get_or_insert_with(|| method.clone());
+                error.url.get_or_insert_with(|| request_url.clone());
+                error.with_log_redactor(log_redactor.clone())
+            })?;
             builder = builder.body(body);
         } else {
             builder = Self::apply_request_body(builder, self.take_body());
