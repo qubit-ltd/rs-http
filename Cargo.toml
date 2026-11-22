@@ -35,7 +35,7 @@ tracing = "^0.1"
 reqwest = { version = "^0.13", features = ["stream", "query", "socks"] }
 http = "^1.5"
 httpdate = "^1.0"
-url = "^2.5"
+url = "^2.5.9"
 bytes = { version = "^1.11", features = ["serde"] }
 serde = { version = "^1.0", features = ["derive"] }
 strum = { version = "^0.28", features = ["derive"] }
