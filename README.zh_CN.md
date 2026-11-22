@@ -91,13 +91,13 @@ text = ready
 
 | 任务 | 阅读 |
 | --- | --- |
-| 通过默认配置、代码配置或配置中心创建客户端 | [用户指南](doc/user_guide.zh_CN.md) |
-| 构建 JSON、表单、multipart、NDJSON 或流式请求体 | [用户指南](doc/user_guide.zh_CN.md) |
-| 添加默认请求头、请求头注入器和拦截器 | [用户指南](doc/user_guide.zh_CN.md) |
-| 配置超时、重试、取消和 `Retry-After` 处理 | [用户指南](doc/user_guide.zh_CN.md) |
-| 读取 bytes、text、JSON、流式响应或 SSE 数据块 | [用户指南](doc/user_guide.zh_CN.md) |
-| 配置日志脱敏、代理、重定向和 IPv4-only 模式 | [用户指南](doc/user_guide.zh_CN.md) |
-| 处理状态码、传输、超时、取消、解码和重试错误 | [用户指南](doc/user_guide.zh_CN.md) |
+| 通过默认配置、代码配置或配置中心创建客户端 | [用户指南](doc/user_guide.zh_CN.md#创建客户端) |
+| 构建 JSON、表单、multipart、NDJSON 或流式请求体 | [构建请求](doc/user_guide.zh_CN.md#构建请求) |
+| 添加默认请求头、请求头注入器和拦截器 | [Header、注入器和拦截器](doc/user_guide.zh_CN.md#header注入器和拦截器) |
+| 配置超时、重试、取消和 `Retry-After` 处理 | [自动重试](doc/user_guide.zh_CN.md#自动重试) |
+| 读取 bytes、text、JSON、流式响应或 SSE 数据块 | [读取响应](doc/user_guide.zh_CN.md#读取响应) |
+| 配置日志脱敏、代理、重定向和 IPv4-only 模式 | [日志脱敏](doc/user_guide.zh_CN.md#日志脱敏)、[代理与 IPv4-only](doc/user_guide.zh_CN.md#代理与-ipv4-only) |
+| 处理状态码、传输、超时、取消、解码和重试错误 | [错误模型](doc/user_guide.zh_CN.md#错误模型)、[排障](doc/user_guide.zh_CN.md#排障) |
 | 从 `qubit-http` 0.15 升级到 0.16 | [升级指南](doc/user_guide.zh_CN.md#从-015-升级到-016) |
 | 从 `qubit-http` 0.16 升级到 0.17 | [升级指南](doc/user_guide.zh_CN.md#从-016-升级到-017) |
 

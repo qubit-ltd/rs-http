@@ -774,7 +774,7 @@ match client.execute(request).await {
 
 错误分类：
 
-非 2xx 错误的脱敏预览和保留原始 body 使用独立限额。预览可能已截断而 raw body 仍完整。`HttpStatusResponse::is_truncated()` 保持兼容语义：raw 字节有遗漏或采集未能确认完整时为 true，但它不说明具体原因。使用 `capture_end()` 区分 `Complete`、`SizeLimit`、`ReadTimeout`、`ReadFailure` 和 `BodyUnavailable`；该枚举为 non-exhaustive，匹配时需提供兜底分支。仅 `ReadFailure` 的 `capture_error()` 会返回 backend 错误及其 source 链；记录前须脱敏。该查询独立于顶层 `HttpError::source()` 重试错误链，并会随状态快照经过重试投影保留。只有 `capture_end()` 为 `Complete` 时才解析 provider 字段；仅 preview 截断不表示 raw body 不完整。默认最多保留 64 KiB 原始字节；raw body 可能含敏感信息，不应直接写入日志，解析前先确认采集完整。
+非 2xx 错误的脱敏预览和保留原始 body 使用独立限额。预览可能已截断而 raw body 仍完整。`HttpStatusResponse::is_truncated()` 保持兼容语义：raw 字节有遗漏或采集未能确认完整时为 true，但它不说明具体原因。使用 `capture_end()` 区分 `Complete`、`SizeLimit`、`ReadTimeout`、`ReadFailure` 和 `BodyUnavailable`；该枚举为 non-exhaustive，匹配时需提供兜底分支。客户端错误体采集的 `read_timeout` 到期时，`capture_end()` 为 `ReadTimeout` 且没有 backend source。读取错误体 chunk 时后端的单次请求 `request_timeout` 到期，则为 `ReadFailure`，`capture_error()` 保留剥离 URL 的后端超时及 source 链。两者的外层类型均为 `Status`，保留响应状态码并标记采集不完整。返回的 backend 错误记录前须脱敏。该查询独立于顶层 `HttpError::source()` 重试错误链，并会随状态快照经过重试投影保留。只有 `capture_end()` 为 `Complete` 时才解析 provider 字段；仅 preview 截断不表示 raw body 不完整。默认最多保留 64 KiB 原始字节；raw body 可能含敏感信息，不应直接写入日志，解析前先确认采集完整。
 
 | 分组 | 错误类型 | 典型含义 |
 | --- | --- | --- |

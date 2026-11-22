@@ -911,8 +911,8 @@ impl HttpRequest {
                 return Err(self.with_log_redactor(HttpError::other("Resolved URL cache read lock poisoned")));
             }
         };
-        if let Some(url) = cached.as_ref() {
-            return Ok(url.clone());
+        if let Some(url) = cached {
+            return Ok(url);
         }
         let resolved = self
             .compute_resolved_url()

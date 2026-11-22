@@ -42,9 +42,11 @@ base URL 在配置解析和客户端构造时校验；最终请求 URL 在解析
 
 `HttpClient::execute` 先解析请求的重试选项。每次获准的尝试都会检查取消状态、运行请求拦截器、解析 URL 和最终请求头、记录请求日志、发送请求、将非 2xx 状态映射为 `HttpError`，最后运行响应拦截器并记录响应日志。此处日志与错误均使用请求捕获的 redactor；是否记录及 body 展示限额仍由执行客户端控制。响应返回前这一整段路径产生的错误可参与重试；`HttpResponse` 返回后的 body 或 SSE 读取错误由调用方处理，不进入普通 HTTP 重试，但仍保留相同请求策略。
 
+直接执行、普通 HTTP 重试和 SSE 握手共用 `execute_once_with_context` 单次尝试边界。该路径在调用 `prepare_and_send_once` 前运行请求拦截器并记录最终请求的重试元数据，之后检查成功状态并运行响应拦截器。
+
 `max_attempts` 和重试诊断统计本库的外层尝试次数。一次 reqwest 执行可能包含协议恢复和重定向，但不会增加外层计数；请求拦截器和动态请求头注入按外层尝试运行，不会针对底层发送重复运行。关闭本库重试仍保留 reqwest 安全的协议 NACK 恢复。`request_timeout` 限制一次 reqwest 执行及其响应体读取，不会为每次底层网络发送分别计时。非成功状态会在成功响应拦截器前映射为错误，因此 429/5xx 的 `Retry-After` 从 `HttpError` 读取；response/meta 提示方法仍可用于单独处理的 metadata。
 
-每次重试都会克隆请求。缓冲请求体可以重放；延迟生成的流式请求体由工厂为每次外层尝试重新创建。`stream_body`（即使已提前收集到内存）和 `streaming_body` 都会表示为 reqwest 流式 body，无法通过内部 307/308 重定向重放；此类重定向也不会再次调用工厂。优先使用最终上传 URL；载荷符合应用内存预算时可改用 `bytes_body`。原始请求决定是否准入重试流程；流程内则依据拦截器修改后的每次请求重新计算续试资格和 `Retry-After` 偏好。外层尝试次数和时长预算保持固定。`max_duration` 控制是否继续尝试，并非已经开始的请求的硬截止时间；response-header 超时从异步请求准备开始，累计至收到响应头；同步 request interceptor 在期限开始前执行。连接、响应头、读取和 `request_timeout` 仍分别配置。`request_timeout` 是 reqwest 单次网络请求及响应体读取期限，不包含异步 header 注入、流式 body 工厂准备、重试等待及其他尝试；`response_header_timeout` 覆盖异步准备直到收到响应头；`read_timeout` 限制每次正常 body 读取及完整的非成功错误体采集。最终 `HttpError` 保留重试诊断信息和完整的 `RetryError<HttpError>` 错误来源链。
+每次重试都会克隆请求。缓冲请求体可以重放；延迟生成的流式请求体由工厂为每次外层尝试重新创建。`stream_body`（即使已提前收集到内存）和 `streaming_body` 都会表示为 reqwest 流式 body，无法通过内部 307/308 重定向重放；此类重定向也不会再次调用工厂。优先使用最终上传 URL；载荷符合应用内存预算时可改用 `bytes_body`。原始请求决定是否准入重试流程；流程内则依据拦截器修改后的每次请求重新计算续试资格和 `Retry-After` 偏好。外层尝试次数和时长预算保持固定。`max_duration` 控制是否继续尝试，并非已经开始的请求的硬截止时间；response-header 超时从异步请求准备开始，累计至收到响应头；同步 request interceptor 在期限开始前执行。连接、响应头、读取和 `request_timeout` 仍分别配置。`request_timeout` 是 reqwest 单次网络请求及响应体读取期限，不包含异步 header 注入、流式 body 工厂准备、重试等待及其他尝试；`response_header_timeout` 覆盖异步准备直到收到响应头；`read_timeout` 限制每次正常 body 读取及完整的非成功错误体采集。若该采集计时到期，`capture_end()` 为 `ReadTimeout` 且 `capture_error()` 为空；若读取 chunk 时后端的 `request_timeout` 到期，`capture_end()` 为 `ReadFailure`，`capture_error()` 保留剥离 URL 的后端超时。两者的外层错误均保持 `Status` 和原状态码，并将采集标记为不完整。最终 `HttpError` 保留重试诊断信息和完整的 `RetryError<HttpError>` 错误来源链。
 
 `HttpRequestStreamingBody::try_new` 和 `HttpRequestBuilder::try_streaming_body` 允许异步准备工厂返回 `HttpResult<HttpRequestBodyByteStream>`。准备错误会保留类型、消息、source、请求上下文和捕获的 redactor，并在本次尝试调用 `reqwest::RequestBuilder::send` 前返回。工厂是惰性的，按外层尝试执行。准备阶段沿用 response-header 超时和取消路径；流创建后的错误沿用现有发送错误映射。原有不可失败工厂 API 保持兼容，无需迁移。重试分类、工厂可能被重新调用，以及流式 body 对 307/308 的限制均不变。
 

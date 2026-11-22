@@ -39,9 +39,12 @@ pub enum HttpBodyCaptureEnd {
     Complete,
     /// Capture stopped at a configured size bound or omitted raw bytes.
     SizeLimit,
-    /// The cumulative timeout for this status-body capture expired.
+    /// The client's `read_timeout` expired while collecting this status body.
+    /// The outer HTTP error remains `Status`; `capture_error()` is `None`.
     ReadTimeout,
-    /// The HTTP backend returned an error while reading a body chunk.
+    /// The backend returned an error while reading a body chunk, including
+    /// when its per-request timeout expires. The outer error remains `Status`
+    /// and `capture_error()` preserves the URL-stripped backend error.
     ReadFailure,
     /// The response stream had already been taken and was unavailable.
     BodyUnavailable,

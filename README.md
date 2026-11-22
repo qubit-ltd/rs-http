@@ -95,13 +95,13 @@ executed by another client. Build a new request to apply a new policy.
 
 | Task | Read |
 | --- | --- |
-| Create clients from defaults, options, or config | [User Guide](doc/user_guide.en.md) |
-| Build JSON, form, multipart, NDJSON, or stream request bodies | [User Guide](doc/user_guide.en.md) |
-| Add default headers, header injectors, and interceptors | [User Guide](doc/user_guide.en.md) |
-| Configure timeouts, retries, cancellation, and `Retry-After` handling | [User Guide](doc/user_guide.en.md) |
-| Read bytes, text, JSON, streams, or SSE chunks | [User Guide](doc/user_guide.en.md) |
-| Configure logging redaction, proxy, redirects, and IPv4-only mode | [User Guide](doc/user_guide.en.md) |
-| Handle status, transport, timeout, cancellation, decode, and retry errors | [User Guide](doc/user_guide.en.md) |
+| Create clients from defaults, options, or config | [User Guide](doc/user_guide.en.md#creating-a-client) |
+| Build JSON, form, multipart, NDJSON, or stream request bodies | [User Guide](doc/user_guide.en.md#building-requests) |
+| Add default headers, header injectors, and interceptors | [User Guide](doc/user_guide.en.md#headers-injectors-and-interceptors) |
+| Configure timeouts, retries, cancellation, and `Retry-After` handling | [Automatic Retry](doc/user_guide.en.md#automatic-retry) |
+| Read bytes, text, JSON, streams, or SSE chunks | [Reading Responses](doc/user_guide.en.md#reading-responses) |
+| Configure logging redaction, proxy, redirects, and IPv4-only mode | [Logging Redaction](doc/user_guide.en.md#logging-redaction), [Proxy And IPv4-only](doc/user_guide.en.md#proxy-and-ipv4-only) |
+| Handle status, transport, timeout, cancellation, decode, and retry errors | [Error Model](doc/user_guide.en.md#error-model), [Troubleshooting](doc/user_guide.en.md#troubleshooting) |
 | Upgrade from `qubit-http` 0.15 to 0.16 | [Upgrade Guide](doc/user_guide.en.md#upgrade-from-015-to-016) |
 | Upgrade from `qubit-http` 0.16 to 0.17 | [Upgrade Guide](doc/user_guide.en.md#upgrade-from-016-to-017) |
 

@@ -134,16 +134,19 @@ async fn test_text_body_retry_recreates_mutable_attempt_from_snapshot() {
         let HttpRequestBody::Text(body) = request.body() else {
             panic!("text request body should remain observable to the interceptor");
         };
-        interceptor_bodies
-            .lock()
-            .expect("body observations should be unlocked")
-            .push(body.clone());
+        let mut observed = interceptor_bodies.lock().expect("body observations should be unlocked");
+        observed.push(body.clone());
+        let attempt = observed.len();
+        drop(observed);
+        request.set_path(&format!("/attempt-{attempt}"));
+        request.add_query_param("attempt", &attempt.to_string());
         request.set_body(HttpRequestBody::Text("attempt-local-text".to_string()));
         Ok(())
     }));
 
     let request = client
         .request(Method::POST, "/text-body-retry")
+        .query_param("source", "builder")
         .text_body("original-text")
         .retry_method_policy(HttpRetryMethodPolicy::AllMethods)
         .force_retry()
@@ -153,6 +156,11 @@ async fn test_text_body_retry_recreates_mutable_attempt_from_snapshot() {
         .expect("execute timed out")
         .expect("request should succeed after retry");
     assert_eq!(response.status(), StatusCode::OK);
+    let expected_response_url = server
+        .base_url()
+        .join("/attempt-2?source=builder&attempt=2")
+        .expect("expected response request URL should parse");
+    assert_eq!(response.request_url(), &expected_response_url);
     assert_eq!(
         *observed_bodies.lock().expect("body observations should be unlocked"),
         vec!["original-text", "original-text"]
@@ -164,6 +172,8 @@ async fn test_text_body_retry_recreates_mutable_attempt_from_snapshot() {
     assert_eq!(captured.len(), 2);
     assert_eq!(captured[0].body, b"attempt-local-text");
     assert_eq!(captured[1].body, b"attempt-local-text");
+    assert_eq!(captured[0].target, "/attempt-1?source=builder&attempt=1");
+    assert_eq!(captured[1].target, "/attempt-2?source=builder&attempt=2");
 }
 
 #[tokio_test]

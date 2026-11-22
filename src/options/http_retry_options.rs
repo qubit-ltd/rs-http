@@ -267,6 +267,25 @@ impl HttpRetryOptions {
         self.max_attempts > 1 && self.allows_method(request.method())
     }
 
+    /// Checks retry eligibility without cloning this complete policy.
+    ///
+    /// # Parameters
+    /// - `request`: Request whose effective override and method are checked.
+    ///
+    /// # Returns
+    /// `true` when retry is enabled, the method is allowed, and more than one
+    /// attempt is configured.
+    #[must_use]
+    #[inline]
+    pub(crate) fn allows_retry_for_request(&self, request: &HttpRequest) -> bool {
+        let override_policy = request.retry_override();
+        self.max_attempts > 1
+            && override_policy.resolve_enabled(self.enabled)
+            && override_policy
+                .resolve_method_policy(self.method_policy)
+                .allows_method(request.method())
+    }
+
     /// Resolves request-level retry override against this retry policy.
     ///
     /// # Parameters
