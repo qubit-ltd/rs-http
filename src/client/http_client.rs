@@ -724,7 +724,7 @@ impl HttpClient {
         max_attempts: u32,
         request_template: &HttpRequest,
     ) -> HttpError {
-        let application_error = error.last_error().map(Self::project_http_error);
+        let project_last_error = || error.last_error().map(Self::project_http_error);
         let attempts = error.context().attempts();
         let mut mapped = match error.reason() {
             RetryErrorReason::Cancelled { phase } => {
@@ -739,7 +739,7 @@ impl HttpClient {
                 let message = format!("HTTP retry {scope} timed out after {attempts} attempt(s)");
                 match scope {
                     RetryTimeoutScope::Attempt | RetryTimeoutScope::Flow => {
-                        application_error.unwrap_or_else(|| HttpError::retry_budget_exceeded(message))
+                        project_last_error().unwrap_or_else(|| HttpError::retry_budget_exceeded(message))
                     }
                 }
             }
@@ -750,17 +750,17 @@ impl HttpClient {
                 "HTTP retry infrastructure failed after {attempts} attempt(s): {failure}",
             )),
             RetryErrorReason::Aborted => {
-                application_error.expect("HTTP retry abort should preserve its application error")
+                project_last_error().expect("HTTP retry abort should preserve its application error")
             }
             RetryErrorReason::Exhausted { limit } => match limit {
                 RetryLimitKind::Attempts => {
                     let error =
-                        application_error.expect("HTTP attempt exhaustion should preserve its application error");
+                        project_last_error().expect("HTTP attempt exhaustion should preserve its application error");
                     Self::append_retry_message(error, format!("retry attempts exhausted: {attempts}/{max_attempts}"))
                 }
                 RetryLimitKind::OperationElapsed | RetryLimitKind::TotalElapsed => {
                     let max_duration = max_duration.expect("HTTP elapsed limit requires max_duration");
-                    application_error.map_or_else(
+                    project_last_error().map_or_else(
                         || {
                             let mut mapped = HttpError::retry_budget_exceeded(format!(
                             "HTTP retry max duration exceeded before a retryable error was captured: {max_duration:?}"

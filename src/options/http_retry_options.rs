@@ -52,6 +52,12 @@ pub struct HttpRetryOptions {
     pub max_attempts: u32,
     /// Optional soft duration budget for admitting retry attempts.
     ///
+    /// This budget applies only when a request enters the ordinary retry
+    /// flow, and admission includes the first attempt. `Some(Duration::ZERO)`
+    /// therefore rejects that first attempt with `RetryBudgetExceeded` and
+    /// zero attempts. Use [`crate::HttpRequestBuilder::disable_retry`] to
+    /// disable this crate's outer retry flow for a request.
+    ///
     /// An admitted request may finish after this duration because the budget
     /// does not cancel in-flight I/O. Use
     /// [`crate::HttpTimeoutOptions::request_timeout`] to bound each request.

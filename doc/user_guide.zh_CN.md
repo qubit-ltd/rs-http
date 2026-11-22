@@ -869,7 +869,7 @@ let request = client
 
 `honor_retry_after(true)` 只在请求级启用。遇到可重试的 429 或 5xx 时，它会把响应中解析出的 `Retry-After` 时长作为提示交给退避策略。默认 HTTP 退避策略将提示作为最小延迟，下一次尝试等待计划退避和提示中的较大值。自定义 `BackoffPolicy` 可以改变这一行为：`prefer_retry_after()` 采用提示，`ignore_retry_after()` 忽略提示，`limit_delay(duration)` 限制所选最终延迟。所选延迟仍受重试准入预算约束。SSE 重连也采用最终请求偏好；开启后，可重连的 429/5xx 握手错误会把解析出的提示交给重连退避策略。`server_retry_max_delay` 只限制 SSE `retry:` 字段；策略延迟上限和重连预算仍约束 HTTP 提示。
 
-开启重试后，`execute` 会把每次尝试交给 `qubit-retry` 的 `Retry`。HTTP `max_duration` 使用单调时钟统计。可重试错误耗尽 `max_attempts` 或 `max_duration` 后仍返回最后一次 HTTP 错误并附加 `HttpRetryDiagnostics`，完整 `RetryError<HttpError>` 作为 `source` 保留。
+开启重试后，`execute` 会把每次尝试交给 `qubit-retry` 的 `Retry`。HTTP `max_duration` 使用单调时钟统计，且只在请求进入普通重试流程后参与准入；准入包含第一次尝试。因此 `max_duration = 0s` 会拒绝第一次尝试，返回 `RetryBudgetExceeded`，诊断中的 `attempts` 为 0。若只希望执行一次本库外层 HTTP 尝试，可对请求调用 `.disable_retry()`；这不影响 reqwest 内部协议恢复、重定向或独立的 SSE 重连。可重试错误耗尽 `max_attempts` 或 `max_duration` 后仍返回最后一次 HTTP 错误并附加 `HttpRetryDiagnostics`，完整 `RetryError<HttpError>` 作为 `source` 保留。
 
 这是**软性续试预算**：它可以拒绝计划中的等待或下一次准入，但不会取消正在执行的请求，也不会覆盖成功结果。
 普通 HTTP 重试没有设置 `qubit-retry` 的 `attempt_timeout` 或 `flow_timeout`。例如，
@@ -1267,7 +1267,7 @@ SSE 重连使用独立的 `SseReconnectOptions.retry` 策略。普通 HTTP 重�
 | `logging.body_size_limit` | 日志体预览字节数 |
 | `retry.enabled` | 是否启用内置重试 |
 | `retry.max_attempts` | 最大尝试次数，含第一次请求 |
-| `retry.max_duration` | 可选的软性续试预算，包含尝试、等待和重试控制回调 |
+| `retry.max_duration` | 可选的软性续试预算，包含尝试、等待和重试控制回调；零值会在普通重试流程中拒绝第一次尝试 |
 | `retry.delay_strategy` | `NONE`、`FIXED`、`RANDOM`、`EXPONENTIAL_BACKOFF` 或 `EXPONENTIAL` |
 | `retry.fixed_delay` | 固定延迟 |
 | `retry.random_min_delay` | 随机延迟下限 |

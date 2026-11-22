@@ -907,7 +907,7 @@ let request = client
 
 `honor_retry_after(true)` is request-level. For retryable 429 or 5xx responses, it passes the parsed `Retry-After` duration to the backoff policy as a hint. The default HTTP backoff policy uses this hint as a minimum: the next attempt waits for the longer of the planned backoff and the hint. A custom `BackoffPolicy` can change that behavior: `prefer_retry_after()` selects the hint, `ignore_retry_after()` ignores it, and `limit_delay(duration)` caps the selected delay. The selected delay remains subject to retry admission budgets. SSE reconnect uses the final request preference too: when enabled, a retryable 429/5xx handshake can supply its parsed hint to the reconnect backoff. `server_retry_max_delay` applies only to the SSE `retry:` field; a policy delay cap and the reconnect budget still apply to HTTP hints.
 
-When retry is enabled, `execute` runs attempts through `qubit-retry`'s `Retry`. HTTP `max_duration` uses monotonic accounting. Retryable failures that exhaust `max_attempts` or `max_duration` preserve the last HTTP error and attach `HttpRetryDiagnostics`; the complete `RetryError<HttpError>` remains available as `source`.
+When retry is enabled, `execute` runs attempts through `qubit-retry`'s `Retry`. HTTP `max_duration` uses monotonic accounting and applies only after a request enters the ordinary retry flow; admission includes the first attempt. Therefore, `max_duration = 0s` rejects the first attempt with `RetryBudgetExceeded` and zero attempts in diagnostics. To make one outer HTTP attempt without this crate's retry flow, call `.disable_retry()` on the request; this does not affect reqwest's internal protocol recovery, redirects, or independent SSE reconnects. Retryable failures that exhaust `max_attempts` or `max_duration` preserve the last HTTP error and attach `HttpRetryDiagnostics`; the complete `RetryError<HttpError>` remains available as `source`.
 
 This is a **soft continuation budget**: it can reject a planned delay or the next
 admission, but it neither cancels an in-flight request nor replaces its successful
@@ -1330,7 +1330,7 @@ The table below lists every configuration key supported by `HttpClientOptions::f
 | `logging.body_size_limit` | Log body preview byte limit |
 | `retry.enabled` | Enables built-in retry |
 | `retry.max_attempts` | Max attempts, including the first request |
-| `retry.max_duration` | Optional soft continuation budget, including attempts, waits, and retry control callbacks |
+| `retry.max_duration` | Optional soft continuation budget, including attempts, waits, and retry control callbacks; zero rejects the first attempt in the ordinary retry flow |
 | `retry.delay_strategy` | `NONE`, `FIXED`, `RANDOM`, `EXPONENTIAL_BACKOFF`, or `EXPONENTIAL` |
 | `retry.fixed_delay` | Fixed retry delay |
 | `retry.random_min_delay` | Random delay lower bound |
