@@ -97,7 +97,11 @@ impl HttpResponseInterceptorContext {
         .with_log_redactor(meta.log_redactor().clone())
     }
 
-    /// Attaches the shared log redactor used for standalone debug output.
+    /// Attaches the shared log redactor used for this context's standalone
+    /// debug output.
+    ///
+    /// The redactor affects only this context and is not copied into response
+    /// metadata when the interceptor succeeds.
     ///
     /// # Parameters
     /// - `log_redactor`: Shared log redactor to apply when formatting this
@@ -111,7 +115,11 @@ impl HttpResponseInterceptorContext {
         self
     }
 
-    /// Attaches a policy snapshot used for standalone debug output.
+    /// Attaches a policy snapshot used for this context's standalone debug
+    /// output.
+    ///
+    /// The policy affects only this context and is not copied into response
+    /// metadata when the interceptor succeeds.
     ///
     /// # Parameters
     /// - `policy`: Policy snapshot to apply when formatting this context.
@@ -195,17 +203,17 @@ impl HttpResponseInterceptorContext {
         HttpResponseMeta::retry_after_hint_from_parts(self.status, &self.headers)
     }
 
-    /// Applies mutable context fields back into response metadata.
+    /// Applies mutable headers and URL back into response metadata.
     ///
     /// # Parameters
     /// - `meta`: Response metadata to update.
     ///
     /// # Returns
-    /// Nothing. Status and method are intentionally not copied back.
+    /// Nothing. Status, method, and the context's debug redactor are not copied
+    /// back; metadata retains the redactor captured from the request.
     pub(super) fn apply_to_meta(self, meta: &mut HttpResponseMeta) {
         meta.set_headers(self.headers);
         meta.set_url(self.url);
-        meta.set_log_redactor(self.log_redactor);
     }
 }
 

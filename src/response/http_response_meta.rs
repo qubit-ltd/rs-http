@@ -216,18 +216,6 @@ impl HttpResponseMeta {
     pub(crate) fn log_redactor(&self) -> &Redactor {
         &self.log_redactor
     }
-
-    /// Replaces the shared log redactor snapshot.
-    ///
-    /// # Parameters
-    /// - `log_redactor`: New shared redactor snapshot.
-    ///
-    /// # Returns
-    /// Nothing.
-    #[inline]
-    pub(super) fn set_log_redactor(&mut self, log_redactor: Redactor) {
-        self.log_redactor = log_redactor;
-    }
 }
 
 impl fmt::Debug for HttpResponseMeta {

@@ -31,6 +31,7 @@ use qubit_http::HttpRequest;
 use qubit_http::HttpRequestInterceptor;
 use qubit_http::HttpResponseInterceptor;
 use qubit_http::HttpResponseInterceptorContext;
+use qubit_redact::RedactionPolicy;
 use qubit_retry::BackoffPolicy;
 use qubit_retry::RetryError;
 use tokio::test as tokio_test;
@@ -918,6 +919,52 @@ async fn test_clear_response_interceptors_restores_success_path() {
     let request = client.request(Method::GET, "/response-clear").build();
     let response = client.execute(request).await.unwrap();
     assert_eq!(response.status().as_u16(), 200);
+}
+
+#[tokio_test]
+async fn test_response_interceptor_context_policy_does_not_replace_metadata_policy() {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 200,
+        headers: vec![],
+        body: b"ok".to_vec(),
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    options.log_redaction_policy = RedactionPolicy::strict();
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
+    client.add_response_interceptor(HttpResponseInterceptor::new(
+        |context: &mut HttpResponseInterceptorContext| {
+            context.set_url(url::Url::parse("http://example.com/context-path-secret").unwrap());
+            context.headers_mut().insert(
+                HeaderName::from_static("x-interceptor-result"),
+                HeaderValue::from_static("updated"),
+            );
+            *context = context.clone().with_log_redaction_policy(RedactionPolicy::default());
+            let debug = format!("{context:?}");
+            assert!(debug.contains("context-path-secret"));
+            Ok(())
+        },
+    ));
+
+    let response = timeout(
+        Duration::from_secs(3),
+        client.execute(client.request(Method::GET, "/request-path-secret").build()),
+    )
+    .await
+    .expect("request timed out")
+    .expect("request should succeed");
+
+    assert_eq!(response.meta().url().as_str(), "http://example.com/context-path-secret");
+    assert_eq!(
+        response.headers().get("x-interceptor-result"),
+        Some(&HeaderValue::from_static("updated"))
+    );
+    let debug = format!("{:?}", response.meta());
+    assert!(!debug.contains("context-path-secret"));
+    timeout(Duration::from_secs(3), server.finish())
+        .await
+        .expect("test server did not finish");
 }
 
 #[tokio_test]
