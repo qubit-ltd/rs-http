@@ -125,8 +125,8 @@ impl<'a> HttpLogger<'a> {
     /// TRACE is active.
     ///
     /// # Parameters
-    /// - `request`: Prepared request snapshot; expected to carry resolved URL
-    ///   and attempt-level merged headers.
+    /// - `request`: Request snapshot. This independent logging entry point
+    ///   records request-local headers without running header injectors.
     ///
     /// # Returns
     /// Nothing; no-op when disabled or TRACE off.
@@ -135,8 +135,8 @@ impl<'a> HttpLogger<'a> {
             return;
         }
         match request.resolved_url() {
-            Ok(url) => self.log_request_with_url(request, &url),
-            Err(_) => self.log_request_with_optional_url(request, None),
+            Ok(url) => self.log_request_with_optional_url(request, Some(&url), request.headers()),
+            Err(_) => self.log_request_with_optional_url(request, None, request.headers()),
         }
     }
 
@@ -145,11 +145,11 @@ impl<'a> HttpLogger<'a> {
     /// # Parameters
     /// - `request`: The prepared request.
     /// - `url`: The URL resolved for this send attempt.
-    pub(crate) fn log_request_with_url(&self, request: &HttpRequest, url: &Url) {
+    pub(crate) fn log_request_with_url(&self, request: &HttpRequest, url: &Url, headers: &HeaderMap) {
         if !self.is_trace_enabled() {
             return;
         }
-        self.log_request_with_optional_url(request, Some(url));
+        self.log_request_with_optional_url(request, Some(url), headers);
     }
 
     /// Renders request diagnostics, using the unresolved placeholder when
@@ -158,8 +158,7 @@ impl<'a> HttpLogger<'a> {
     /// # Parameters
     /// - `request`: The request whose headers and body are logged.
     /// - `request_url`: The resolved URL, if resolution succeeded.
-    fn log_request_with_optional_url(&self, request: &HttpRequest, request_url: Option<&Url>) {
-        let headers = request.effective_headers_cached().unwrap_or_else(|| request.headers());
+    fn log_request_with_optional_url(&self, request: &HttpRequest, request_url: Option<&Url>, headers: &HeaderMap) {
         let mut batch = self.redacted_logger.redactor().diagnostic_batch();
         let url_handle = request_url.map(|url| batch.redact_http_url(url.as_str()));
         let header_handle = self

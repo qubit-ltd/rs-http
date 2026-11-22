@@ -82,9 +82,6 @@ pub struct HttpRequest {
     streaming_body: Option<HttpRequestStreamingBody>,
     /// Lazily maintained cache for the currently resolved URL.
     resolved_url: RwLock<Option<Url>>,
-    /// Attempt-scoped cache of merged outbound headers after applying
-    /// defaults/injectors/request-local headers.
-    effective_headers: Option<HeaderMap>,
     /// Request execution options and runtime controls.
     execution_options: HttpRequestExecutionOptions,
     /// Client-derived context for URL and header resolution.
@@ -158,7 +155,6 @@ impl HttpRequest {
             body: builder.body,
             streaming_body: builder.streaming_body,
             resolved_url: RwLock::new(None),
-            effective_headers: None,
             execution_options: HttpRequestExecutionOptions {
                 request_timeout: builder.request_timeout,
                 response_header_timeout: builder.response_header_timeout,
@@ -287,7 +283,6 @@ impl HttpRequest {
     pub fn set_header(&mut self, name: &str, value: &str) -> Result<&mut Self, HttpError> {
         let (header_name, header_value) = parse_header(name, value).map_err(|error| self.with_log_redactor(error))?;
         self.headers.insert(header_name, header_value);
-        self.invalidate_effective_headers_cache();
         Ok(self)
     }
 
@@ -303,7 +298,6 @@ impl HttpRequest {
     #[inline]
     pub fn set_typed_header(&mut self, name: HeaderName, value: HeaderValue) -> &mut Self {
         self.headers.insert(name, value);
-        self.invalidate_effective_headers_cache();
         self
     }
 
@@ -317,7 +311,6 @@ impl HttpRequest {
     #[inline]
     pub fn remove_header(&mut self, name: &HeaderName) -> &mut Self {
         self.headers.remove(name);
-        self.invalidate_effective_headers_cache();
         self
     }
 
@@ -329,7 +322,6 @@ impl HttpRequest {
     #[inline]
     pub fn clear_headers(&mut self) -> &mut Self {
         self.headers.clear();
-        self.invalidate_effective_headers_cache();
         self
     }
 
@@ -661,7 +653,7 @@ impl HttpRequest {
     /// this snapshot's body, then sends before a response-header deadline.
     ///
     /// Centralizes send-attempt preparation and transport wiring:
-    /// - invalidates and recomputes effective headers for each attempt;
+    /// - recomputes effective headers for each attempt;
     /// - emits request TRACE logs via the provided logger;
     /// - applies query/timeout/body wiring plus cooperative cancellation and
     ///   response-header-timeout handling.
@@ -691,11 +683,6 @@ impl HttpRequest {
         request_url: &Url,
         cancellation_token: Option<HttpCancellationToken>,
     ) -> HttpResult<Response> {
-        // Effective headers are cached on the request. Each send attempt must
-        // invalidate and recompute them so injector output and request
-        // mutations are refreshed instead of reusing stale headers from
-        // prior attempts.
-        self.invalidate_effective_headers_cache();
         let log_redactor = self.log_redactor().clone();
         let method = self.method().clone();
         let request_url_context = Some(request_url.clone());
@@ -716,7 +703,7 @@ impl HttpRequest {
             return Err(error.with_log_redactor(log_redactor.clone()));
         }
         let headers = Self::await_pre_send_future(
-            self.effective_headers(),
+            self.effective_headers(Some(request_url)),
             send_deadline.saturating_duration_since(Instant::now()),
             cancellation_token.clone(),
             &method,
@@ -728,11 +715,10 @@ impl HttpRequest {
             ),
         )
         .await
-        .map_err(|error| error.with_log_redactor(log_redactor.clone()))?
-        .clone();
+        .map_err(|error| error.with_log_redactor(log_redactor.clone()))?;
         // Log the request after computing effective headers so TRACE logs
         // include the same query string used by the actual send path.
-        logger.log_request_with_url(self, request_url);
+        logger.log_request_with_url(self, request_url, &headers);
         let mut builder = backend.request(method.clone(), request_url.clone());
         builder = builder.headers(headers);
         if let Some(timeout) = self.execution_options.request_timeout {
@@ -1045,10 +1031,8 @@ impl HttpRequest {
 
     /// Returns the attempt-scoped merged outbound headers.
     ///
-    /// On first call after invalidation, this computes merged headers by
-    /// replaying defaults/injectors/request-local headers and stores them in
-    /// [`Self::effective_headers`]. Later calls in the same attempt return the
-    /// cached map.
+    /// Computes the owned merged header map for one send attempt by replaying
+    /// defaults, injectors, and request-local headers.
     ///
     /// Why this API is async:
     /// - async injectors are part of header assembly and may perform awaitable
@@ -1062,67 +1046,34 @@ impl HttpRequest {
     /// 3. Asynchronous injector output in registration order.
     /// 4. Request-local headers from this snapshot.
     ///
+    /// # Parameters
+    /// - `request_url`: Resolved URL for this attempt, when available for
+    ///   enriching injector errors.
+    ///
     /// # Returns
-    /// Borrowed merged [`HeaderMap`] from the cache.
+    /// Owned merged [`HeaderMap`].
     ///
     /// # Errors
     /// Propagates injector failures, filling missing method and resolved URL
     /// context without replacing fields already supplied by the callback. URL
     /// resolution failure preserves the original error. Diagnostic rendering
     /// uses the request's captured redaction policy.
-    pub(crate) async fn effective_headers(&mut self) -> HttpResult<&HeaderMap> {
-        if self.effective_headers.is_none() {
-            let headers = self.compute_effective_headers().await.map_err(|mut error| {
-                if error.method.is_none() {
-                    error.method = Some(self.method().clone());
-                }
-                if error.url.is_none() {
-                    if let Ok(url) = self.resolved_url() {
-                        error.url = Some(url);
-                    }
-                }
-                self.with_log_redactor(error)
-            })?;
-            self.effective_headers = Some(headers);
-        }
-        Ok(self
-            .effective_headers
-            .as_ref()
-            .expect("effective headers cache must be populated after computation"))
-    }
-
-    /// Returns cached merged outbound headers when available.
-    #[inline]
-    pub(crate) fn effective_headers_cached(&self) -> Option<&HeaderMap> {
-        self.effective_headers.as_ref()
-    }
-
-    /// Clears the effective-header cache.
-    ///
-    /// This method invalidates [`Self::effective_headers`] so the next call to
-    /// [`Self::effective_headers`] recomputes merged headers by re-running
-    /// defaults and header injectors.
-    ///
-    /// Why this is needed:
-    /// - request-local headers may have been mutated (`set_header`,
-    ///   `clear_headers`, etc.);
-    /// - injector output may be time-sensitive (for example rotating auth token
-    ///   or timestamp-based signatures), so each send attempt should recompute
-    ///   merged headers instead of reusing stale values from prior attempts.
-    ///
-    /// When to call:
-    /// - immediately before starting a new send attempt;
-    /// - after any mutation that can change final outbound headers.
-    #[inline]
-    pub(crate) fn invalidate_effective_headers_cache(&mut self) {
-        self.effective_headers = None;
+    pub(crate) async fn effective_headers(&self, request_url: Option<&Url>) -> HttpResult<HeaderMap> {
+        self.compute_effective_headers().await.map_err(|mut error| {
+            if error.method.is_none() {
+                error.method = Some(self.method().clone());
+            }
+            if error.url.is_none() {
+                error.url = request_url.cloned();
+            }
+            self.with_log_redactor(error)
+        })
     }
 
     /// Suppresses the final `Last-Event-ID` header after an SSE cursor reset.
     pub(crate) fn suppress_sse_last_event_id(&mut self) {
         self.execution_options.sse_last_event_id_override = Some(HeaderValue::from_static(""));
         self.headers.remove("last-event-id");
-        self.invalidate_effective_headers_cache();
     }
 
     /// Installs a server cursor that wins after ordinary request header
@@ -1134,7 +1085,6 @@ impl HttpRequest {
         self.headers
             .insert(HeaderName::from_static("last-event-id"), value.clone());
         self.execution_options.sse_last_event_id_override = Some(value);
-        self.invalidate_effective_headers_cache();
     }
 
     /// Computes merged outbound headers without touching the cache.
@@ -1240,7 +1190,6 @@ impl Clone for HttpRequest {
             body: self.body.clone(),
             streaming_body: self.streaming_body.clone(),
             resolved_url: RwLock::new(self.resolved_base_url_cached()),
-            effective_headers: self.effective_headers.clone(),
             execution_options: self.execution_options.clone(),
             context: self.context.clone(),
         }
@@ -1358,10 +1307,10 @@ mod tests {
         client.add_header_injector(HttpHeaderInjector::new(|_headers: &mut http::HeaderMap| {
             Err(HttpError::other("injector failed"))
         }));
-        let mut request = client.request(Method::GET, "http://[invalid").build();
+        let request = client.request(Method::GET, "http://[invalid").build();
 
         let error = request
-            .effective_headers()
+            .effective_headers(request.resolved_url().ok().as_ref())
             .await
             .expect_err("injector failure should be returned");
 

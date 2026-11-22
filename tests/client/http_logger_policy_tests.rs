@@ -21,6 +21,7 @@ use qubit_http::HttpClientBuilder;
 use qubit_http::HttpClientOptions;
 use qubit_http::HttpError;
 use qubit_http::HttpErrorKind;
+use qubit_http::HttpHeaderInjector;
 use qubit_http::HttpLogger;
 use qubit_http::HttpLoggingOptions;
 use qubit_http::HttpRequest;
@@ -849,6 +850,49 @@ fn test_execute_logs_response_body_from_backend_when_trace_enabled() {
         });
     });
     assert!(logs.contains("Response body: <skipped: body not buffered>"));
+}
+
+#[test]
+fn test_execute_logs_and_sends_the_same_injected_headers_once() {
+    let runtime = Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("failed to build tokio runtime");
+    let injector_calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
+    let logs = capture_trace_logs(|| {
+        runtime.block_on(async {
+            let server = spawn_one_shot_server(ResponsePlan::Immediate {
+                status: 200,
+                headers: vec![],
+                body: b"ok".to_vec(),
+            })
+            .await;
+            let mut options = HttpClientOptions::default();
+            options.base_url = Some(server.base_url());
+            let mut client = HttpClientBuilder::new()
+                .options(options)
+                .build()
+                .expect("client should be created");
+            let calls = injector_calls.clone();
+            client.add_header_injector(HttpHeaderInjector::new(move |headers: &mut HeaderMap| {
+                calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                headers.insert("x-attempt-probe", HeaderValue::from_static("final-value"));
+                Ok(())
+            }));
+
+            let request = client.request(Method::GET, "/same-headers").build();
+            client.execute(request).await.expect("request should succeed");
+            let captured = server.finish().await;
+            assert_eq!(
+                captured.headers.get("x-attempt-probe").map(String::as_str),
+                Some("final-value")
+            );
+        });
+    });
+
+    assert!(logs.contains("x-attempt-probe: [final-value]"));
+    assert_eq!(injector_calls.load(std::sync::atomic::Ordering::SeqCst), 1);
 }
 
 #[test]

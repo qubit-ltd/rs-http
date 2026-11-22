@@ -176,7 +176,7 @@ let client = HttpClient::builder().options(options).build()?;
 
 `max_redirects` 限制每次 reqwest 执行中的重定向数；设为 `None` 时默认上限为 10。每次外层 HTTP 尝试都会重新应用该上限。超过上限会返回 `HttpErrorKind::RedirectLimitExceeded`（配置/字符串名为 `redirect_limit_exceeded`）。
 
-`create` 会先执行校验。常见校验包括：超时必须大于 0；`response_header_timeout` 还必须能表示为当前平台 `Instant` 的截止时间；启用代理时必须有非空 host 和非 0 port；只有设置 username 时才能设置 password；日志记录请求体或响应体时 `body_size_limit` 必须大于 0；`retry.max_attempts` 必须大于 0；`error_response_preview_limit` 必须大于 0；`user_agent` 不能为空并且必须是合法 header value；SSE 行/帧上限必须大于 0。backoff 与 jitter 在构造 `BackoffPolicy` 时完成校验。
+`.options(options).build()` 会在构建客户端前校验选项。`error_response_preview_limit`、`error_response_body_limit` 和 `response_body_size_limit` 都必须大于 0，分别限制脱敏错误预览、非 2xx 响应保留的原始 body，以及整包响应体聚合。完整选项列表见[配置参考](#配置参考)。其他校验包括：超时必须大于 0；`response_header_timeout` 还必须能表示为当前平台 `Instant` 的截止时间；启用代理时必须有非空 host 和非 0 port；只有设置 username 时才能设置 password；日志记录请求体或响应体时 `body_size_limit` 必须大于 0；`retry.max_attempts` 必须大于 0；`user_agent` 不能为空并且必须是合法 header value；SSE 行/帧上限必须大于 0。backoff 与 jitter 在构造 `BackoffPolicy` 时完成校验。
 
 如果已注册请求头注入器或拦截器，修改选项时应从现有客户端重建：
 
