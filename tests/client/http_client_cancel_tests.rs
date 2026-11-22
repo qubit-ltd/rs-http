@@ -427,6 +427,7 @@ async fn test_execute_retry_sleep_can_be_cancelled() {
     let token = HttpCancellationToken::new();
     let request = client
         .request(Method::GET, "/cancel-retry-sleep")
+        .query_param("phase", "backoff")
         .cancellation_token(token.clone())
         .build();
     let future = client.execute(request);
@@ -445,14 +446,9 @@ async fn test_execute_retry_sleep_can_be_cancelled() {
 
     assert_eq!(error.kind, HttpErrorKind::Cancelled);
     assert_eq!(error.method.as_ref(), Some(&Method::GET));
-    assert_eq!(
-        error
-            .url
-            .as_ref()
-            .expect("cancelled retry should include request URL")
-            .path(),
-        "/cancel-retry-sleep"
-    );
+    let url = error.url.as_ref().expect("cancelled retry should include request URL");
+    assert_eq!(url.path(), "/cancel-retry-sleep");
+    assert_eq!(url.query(), Some("phase=backoff"));
     assert_eq!(retry_error(&error).context().attempts(), 1);
     let diagnostics = error.retry_diagnostics().expect("cancelled retry diagnostics");
     assert_eq!(diagnostics.termination(), qubit_http::HttpRetryTermination::Cancelled);

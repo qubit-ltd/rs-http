@@ -645,8 +645,6 @@ impl HttpClient {
 
         let cancellation_token = request.cancellation_token().cloned();
         let attempt_context = HttpAttemptExecutionContext::retry(&request);
-        let request_method = request.method().clone();
-        let request_url = request.resolved_url().ok();
         let retry_request = request;
         let mut async_retry = TokioRetry::new(&retry_config);
         if let Some(token) = cancellation_token.as_ref() {
@@ -679,8 +677,7 @@ impl HttpClient {
                     started_at,
                     options.max_duration,
                     options.max_attempts,
-                    &request_method,
-                    request_url.as_ref(),
+                    &retry_request,
                 ))
             }
         }
@@ -710,10 +707,9 @@ impl HttpClient {
     /// - `started_at`: Monotonic start instant of the HTTP retry flow.
     /// - `max_duration`: Optional HTTP total retry budget.
     /// - `max_attempts`: Configured maximum HTTP attempts.
-    /// - `request_method`: Request method attached to cancellation errors and
-    ///   retry budget errors raised before the first attempt.
-    /// - `request_url`: Resolved URL attached to cancellation errors and retry
-    ///   budget errors raised before the first attempt when available.
+    /// - `request_template`: Original request template used to populate
+    ///   cancellation errors and retry budget errors raised before the first
+    ///   attempt.
     ///
     /// # Returns
     /// A rich [`HttpError`] preserving the last attempt error when available.
@@ -726,15 +722,18 @@ impl HttpClient {
         started_at: Instant,
         max_duration: Option<Duration>,
         max_attempts: u32,
-        request_method: &Method,
-        request_url: Option<&Url>,
+        request_template: &HttpRequest,
     ) -> HttpError {
         let application_error = error.last_error().map(Self::project_http_error);
         let attempts = error.context().attempts();
         let mut mapped = match error.reason() {
             RetryErrorReason::Cancelled { phase } => {
                 let message = format!("HTTP retry cancelled during {phase}");
-                Self::retry_cancelled_error(&message, request_method, request_url)
+                Self::retry_cancelled_error(
+                    &message,
+                    request_template.method(),
+                    request_template.resolved_url().ok().as_ref(),
+                )
             }
             RetryErrorReason::TimedOut { scope } => {
                 let message = format!("HTTP retry {scope} timed out after {attempts} attempt(s)");
@@ -766,9 +765,9 @@ impl HttpClient {
                             let mut mapped = HttpError::retry_budget_exceeded(format!(
                             "HTTP retry max duration exceeded before a retryable error was captured: {max_duration:?}"
                             ))
-                            .with_method(request_method);
-                            if let Some(url) = request_url {
-                                mapped = mapped.with_url(url);
+                            .with_method(request_template.method());
+                            if let Ok(url) = request_template.resolved_url() {
+                                mapped = mapped.with_url(&url);
                             }
                             mapped
                         },
@@ -988,6 +987,15 @@ mod tests {
     fn test_retry_conversion_retains_complete_source_and_http_fields() {
         for abort in [false, true] {
             let url = Url::parse("https://example.test/request?tenant_marker=conversion-secret").expect("valid URL");
+            let options = HttpClientOptions {
+                base_url: Some(Url::parse("https://example.test").expect("valid base URL")),
+                ..HttpClientOptions::default()
+            };
+            let client = HttpClient::builder().options(options).build().expect("valid client");
+            let request_template = client
+                .request(Method::POST, "/request")
+                .query_param("tenant_marker", "conversion-secret")
+                .build();
             let retry = RetryConfig::<HttpError>::builder()
                 .policy(RetryPolicy::builder().max_attempts(1).build().expect("valid policy"))
                 .observer(CompletionPanic)
@@ -1022,7 +1030,7 @@ mod tests {
                     Err::<(), _>(error)
                 })
                 .expect_err("terminal failure");
-            let mapped = HttpClient::map_retry_error(terminal, Instant::now(), None, 1, &Method::POST, Some(&url));
+            let mapped = HttpClient::map_retry_error(terminal, Instant::now(), None, 1, &request_template);
             let retry_source = mapped
                 .source()
                 .and_then(|source| source.downcast_ref::<RetryError<HttpError>>())
