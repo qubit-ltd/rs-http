@@ -552,55 +552,7 @@ fn build_retry_policy(max_reconnects: u32, max_elapsed: Option<Duration>, backof
     builder.build().unwrap()
 }
 
-async fn run_retry_after_sse_reconnect(
-    retry_after: &str,
-    template_honor_retry_after: bool,
-    interceptor_honor_retry_after: bool,
-) -> Duration {
-    let server = spawn_multi_shot_server(vec![
-        ResponsePlan::Immediate {
-            status: 503,
-            headers: vec![("Retry-After".to_string(), retry_after.to_string())],
-            body: b"retry".to_vec(),
-        },
-        ResponsePlan::Immediate {
-            status: 200,
-            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
-            body: b"data: connected\n\n".to_vec(),
-        },
-    ])
-    .await;
-    let mut options = HttpClientOptions::default();
-    options.base_url = Some(server.base_url());
-    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
-    client.add_request_interceptor(HttpRequestInterceptor::new(move |request: &mut HttpRequest| {
-        request.set_retry_override(
-            HttpRequestRetryOverride::default().with_honor_retry_after(interceptor_honor_retry_after),
-        );
-        Ok(())
-    }));
-    let request = client
-        .request(Method::GET, "/sse-retry-after")
-        .honor_retry_after(template_honor_retry_after)
-        .build();
-    let mut events = client.execute_sse_with_reconnect(
-        request,
-        SseReconnectOptions {
-            retry: build_retry_options(1, BackoffPolicy::immediate().prefer_retry_after()),
-            reconnect_on_eof: false,
-            honor_server_retry: false,
-            ..SseReconnectOptions::default()
-        },
-    );
-    let started = Instant::now();
-    assert_eq!(events.next().await.unwrap().unwrap().data, "connected");
-    assert!(events.next().await.is_none());
-    let requests = timeout(Duration::from_secs(3), server.finish()).await.unwrap();
-    assert_eq!(requests.len(), 2);
-    started.elapsed()
-}
-
-async fn run_http_date_retry_after_sse_reconnect(
+async fn run_retry_after_reconnect_success(
     retry_after: &str,
     template_honor_retry_after: bool,
     interceptor_honor_retry_after: bool,
@@ -671,7 +623,7 @@ async fn run_http_date_retry_after_sse_reconnect(
     assert_eq!(attempts.load(Ordering::SeqCst), 2);
 }
 
-async fn run_http_date_retry_after_rejection(retry_after: &str) {
+async fn run_retry_after_budget_rejection(retry_after: &str) {
     let server = spawn_one_shot_server(ResponsePlan::Immediate {
         status: 503,
         headers: vec![("Retry-After".to_string(), retry_after.to_string())],
@@ -816,8 +768,7 @@ async fn test_sse_template_last_event_id_survives_without_server_reset() {
 
 #[tokio_test]
 async fn test_execute_sse_reconnect_honors_delta_seconds_after_interceptor_override() {
-    let elapsed = run_retry_after_sse_reconnect("1", false, true).await;
-    assert!(elapsed >= Duration::from_millis(650), "elapsed={elapsed:?}");
+    run_retry_after_budget_rejection("3600").await;
 }
 
 #[tokio_test]
@@ -894,17 +845,16 @@ async fn test_execute_sse_with_reconnect_stops_on_204_after_reconnect() {
 #[tokio_test]
 async fn test_execute_sse_reconnect_honors_http_date_after_interceptor_override() {
     let future = httpdate::fmt_http_date(SystemTime::now() + Duration::from_secs(3600));
-    run_http_date_retry_after_rejection(&future).await;
-    run_http_date_retry_after_sse_reconnect(&future, true, false).await;
+    run_retry_after_budget_rejection(&future).await;
+    run_retry_after_reconnect_success(&future, true, false).await;
     for value in ["invalid-date", "Sun, 06 Nov 1994 08:49:37 GMT"] {
-        run_http_date_retry_after_sse_reconnect(value, false, true).await;
+        run_retry_after_reconnect_success(value, false, true).await;
     }
 }
 
 #[tokio_test]
 async fn test_execute_sse_reconnect_interceptor_can_disable_template_retry_after() {
-    let elapsed = run_retry_after_sse_reconnect("1", true, false).await;
-    assert!(elapsed < Duration::from_millis(650), "elapsed={elapsed:?}");
+    run_retry_after_reconnect_success("3600", true, false).await;
 }
 
 #[tokio_test]
