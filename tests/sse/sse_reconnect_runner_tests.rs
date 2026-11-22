@@ -9,6 +9,7 @@
 //!
 //! Covers [`HttpClient::execute_sse_with_reconnect`](qubit_http::HttpClient::execute_sse_with_reconnect).
 
+use std::error::Error as StdError;
 use std::future::Future;
 use std::io::Error as IoError;
 use std::sync::Arc;
@@ -599,6 +600,134 @@ async fn run_retry_after_sse_reconnect(
     started.elapsed()
 }
 
+async fn run_http_date_retry_after_sse_reconnect(
+    retry_after: &str,
+    template_honor_retry_after: bool,
+    interceptor_honor_retry_after: bool,
+) {
+    let server = spawn_multi_shot_server(vec![
+        ResponsePlan::Immediate {
+            status: 503,
+            headers: vec![("Retry-After".to_string(), retry_after.to_string())],
+            body: b"retry".to_vec(),
+        },
+        ResponsePlan::Immediate {
+            status: 200,
+            headers: vec![("Content-Type".to_string(), "text/event-stream".to_string())],
+            body: b"data: connected\n\n".to_vec(),
+        },
+    ])
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let observed = attempts.clone();
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |request: &mut HttpRequest| {
+        observed.fetch_add(1, Ordering::SeqCst);
+        request.set_retry_override(
+            HttpRequestRetryOverride::default().with_honor_retry_after(interceptor_honor_retry_after),
+        );
+        Ok(())
+    }));
+    let request = client
+        .request(Method::GET, "/sse-http-date-retry-after")
+        .honor_retry_after(template_honor_retry_after)
+        .build();
+    let mut events = client.execute_sse_with_reconnect(
+        request,
+        SseReconnectOptions {
+            retry: build_retry_options_with_max_elapsed(
+                1,
+                Duration::from_secs(30),
+                BackoffPolicy::immediate().prefer_retry_after(),
+            ),
+            reconnect_on_eof: false,
+            honor_server_retry: false,
+            ..SseReconnectOptions::default()
+        },
+    );
+    let message = timeout(Duration::from_secs(5), events.next())
+        .await
+        .expect("SSE event timed out")
+        .expect("expected SSE event")
+        .expect("SSE event should parse");
+    assert_eq!(message.data, "connected");
+    assert!(
+        timeout(Duration::from_secs(5), events.next())
+            .await
+            .expect("SSE completion timed out")
+            .is_none()
+    );
+    let requests = timeout(Duration::from_secs(5), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(requests.len(), 2);
+    assert!(requests
+        .iter()
+        .all(|request| request.target == "/sse-http-date-retry-after"));
+    assert_eq!(attempts.load(Ordering::SeqCst), 2);
+}
+
+async fn run_http_date_retry_after_rejection(retry_after: &str) {
+    let server = spawn_one_shot_server(ResponsePlan::Immediate {
+        status: 503,
+        headers: vec![("Retry-After".to_string(), retry_after.to_string())],
+        body: b"retry".to_vec(),
+    })
+    .await;
+    let mut options = HttpClientOptions::default();
+    options.base_url = Some(server.base_url());
+    let mut client = HttpClientBuilder::new().options(options).build().unwrap();
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let observed = attempts.clone();
+    client.add_request_interceptor(HttpRequestInterceptor::new(move |request: &mut HttpRequest| {
+        observed.fetch_add(1, Ordering::SeqCst);
+        request.set_retry_override(HttpRequestRetryOverride::default().with_honor_retry_after(true));
+        Ok(())
+    }));
+    let request = client
+        .request(Method::GET, "/sse-http-date-retry-after")
+        .honor_retry_after(false)
+        .build();
+    let mut events = client.execute_sse_with_reconnect(
+        request,
+        SseReconnectOptions {
+            retry: build_retry_options_with_max_elapsed(
+                1,
+                Duration::from_secs(30),
+                BackoffPolicy::immediate().prefer_retry_after(),
+            ),
+            reconnect_on_eof: false,
+            honor_server_retry: false,
+            ..SseReconnectOptions::default()
+        },
+    );
+    let error = timeout(Duration::from_secs(5), events.next())
+        .await
+        .expect("SSE error timed out")
+        .expect("expected retry budget error")
+        .expect_err("future Retry-After should exhaust reconnect budget");
+    assert_eq!(error.kind, HttpErrorKind::RetryBudgetExceeded);
+    assert_eq!(error.status, Some(StatusCode::SERVICE_UNAVAILABLE));
+    let source = error.source().expect("last HTTP error should be chained");
+    let source = (source as &(dyn StdError + 'static))
+        .downcast_ref::<HttpError>()
+        .expect("source should retain the last HTTP error");
+    assert_eq!(source.status, Some(StatusCode::SERVICE_UNAVAILABLE));
+    assert!(
+        timeout(Duration::from_secs(5), events.next())
+            .await
+            .expect("SSE completion timed out")
+            .is_none()
+    );
+    let captured = timeout(Duration::from_secs(5), server.finish())
+        .await
+        .expect("server finish timed out");
+    assert_eq!(captured.target, "/sse-http-date-retry-after");
+    assert_eq!(attempts.load(Ordering::SeqCst), 1);
+}
+
 async fn run_sse_reset_header_layers(first_body: &'static [u8], reset: bool) {
     let server = spawn_multi_shot_server(vec![
         ResponsePlan::Immediate {
@@ -762,17 +891,11 @@ async fn test_execute_sse_with_reconnect_stops_on_204_after_reconnect() {
 
 #[tokio_test]
 async fn test_execute_sse_reconnect_honors_http_date_after_interceptor_override() {
-    let date = httpdate::fmt_http_date(SystemTime::now() + Duration::from_secs(2));
-    let elapsed = run_retry_after_sse_reconnect(&date, false, true).await;
-    assert!(elapsed >= Duration::from_millis(650), "elapsed={elapsed:?}");
-}
-
-#[tokio_test]
-async fn test_execute_sse_reconnect_ignores_invalid_and_past_http_dates() {
-    let past = httpdate::fmt_http_date(SystemTime::now() - Duration::from_secs(2));
-    for value in ["invalid-date", past.as_str()] {
-        let elapsed = run_retry_after_sse_reconnect(value, false, true).await;
-        assert!(elapsed < Duration::from_millis(650), "{value}: elapsed={elapsed:?}");
+    let future = httpdate::fmt_http_date(SystemTime::now() + Duration::from_secs(3600));
+    run_http_date_retry_after_rejection(&future).await;
+    run_http_date_retry_after_sse_reconnect(&future, true, false).await;
+    for value in ["invalid-date", "Sun, 06 Nov 1994 08:49:37 GMT"] {
+        run_http_date_retry_after_sse_reconnect(value, false, true).await;
     }
 }
 
