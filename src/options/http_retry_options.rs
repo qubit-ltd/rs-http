@@ -259,14 +259,46 @@ impl HttpRetryOptions {
         self.enabled && self.method_policy.allows_method(method)
     }
 
-    /// Returns whether retry should run for `request` under this policy.
+    /// Returns whether retry is enabled for `request` under these options and
+    /// the request method is allowed by the current method policy.
+    ///
+    /// This checks the options as they stand and does not apply the request's
+    /// retry override. Use [`Self::resolve`] to apply that override first. A
+    /// `true` result only means the request is eligible to enter the retry
+    /// flow: the duration budget, a subsequent attempt's error, and request
+    /// interceptors can still affect whether another attempt runs.
     ///
     /// # Parameters
-    /// - `request`: Request whose method is checked against retry policy.
+    /// - `request`: Request whose method is checked against these retry
+    ///   options.
     ///
     /// # Returns
     /// `true` when retry is enabled, `max_attempts` is greater than one, and
     /// the request method is allowed by [`Self::method_policy`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use http::Method;
+    /// use qubit_http::{HttpClient, HttpClientOptions, HttpRetryMethodPolicy};
+    ///
+    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     let mut options = HttpClientOptions::default();
+    ///     options.retry.enabled = true;
+    ///     options.retry.max_attempts = 2;
+    ///     options.retry.method_policy = HttpRetryMethodPolicy::IdempotentOnly;
+    ///     let client = HttpClient::builder().options(options).build()?;
+    ///     let request = client
+    ///         .request(Method::GET, "https://example.test/items")
+    ///         .disable_retry()
+    ///         .build();
+    ///
+    ///     let retry = &client.options().retry;
+    ///     assert!(retry.should_retry(&request));
+    ///     assert!(!retry.resolve(&request).should_retry(&request));
+    ///     Ok(())
+    /// }
+    /// ```
     #[must_use]
     #[inline]
     pub fn should_retry(&self, request: &HttpRequest) -> bool {
