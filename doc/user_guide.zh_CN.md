@@ -983,9 +983,9 @@ logger.log_response(&mut response).await?;
 ```
 <!-- guide-check:redaction:end -->
 
-自动响应日志在 `execute` 返回前触发。如果此时响应体尚未消费，日志会显示 `<skipped: body not yet consumed>`；即使已知 `Content-Length`，logger 也不会为了日志读取响应体。之后读取响应体不会自动补记日志。若要记录已缓冲的响应体，应先完成缓冲读取，再显式调用上方的 `HttpLogger::log_response`。这次调用会再次记录响应行，以及已启用的响应头。除开启 logging 开关外，应用的 tracing subscriber 也必须允许 TRACE 事件。
+自动响应日志在 `execute` 返回前触发。如果此时响应体尚未缓冲，日志会显示 `<skipped: body not buffered>`；即使已知 `Content-Length`，logger 也不会为了日志读取响应体。未缓冲的响应体一旦移交给 `stream()`、`sse_messages()` 或 `sse_chunks()`，logger 也无法取回该 body 进行后续日志记录。之后读取响应体不会自动补记日志。若要记录已缓冲的响应体，应先完成缓冲读取，再显式调用上方的 `HttpLogger::log_response`。这次调用会再次记录响应行，以及已启用的响应头。除开启 logging 开关外，应用的 tracing subscriber 也必须允许 TRACE 事件。
 
-显式记录仍遵循 body 展示限额和脱敏规则。如果 `bytes()` 读取失败，`?` 会返回错误，后续 logger 调用不会执行。缓冲读取也受配置的读取超时和取消 token 约束。此用法适用于能在 `response_body_size_limit` 内完整缓冲的有限响应体；不要为了日志而消费未缓存的 `stream()` 或 SSE 响应。请将示例中的 `https://api.example.com/login` 替换为你自己的服务地址；指南检查器只编译示例，不会连接该地址。示例由同一 client 构造并执行请求，logger 也从该 client 的 options 构造。独立创建的 logger 使用传给构造器的策略，不会自动继承另一份请求快照。
+显式记录仍遵循 body 展示限额和脱敏规则。如果响应体尚未缓冲（包括已移交给流或 SSE 解码器的响应体），日志会显示 `<skipped: body not buffered>`，且不会消费该响应体。如果 `bytes()` 读取失败，`?` 会返回错误，后续 logger 调用不会执行。缓冲读取也受配置的读取超时和取消 token 约束。此用法适用于能在 `response_body_size_limit` 内完整缓冲的有限响应体；不要为了日志而消费未缓存的 `stream()` 或 SSE 响应。请将示例中的 `https://api.example.com/login` 替换为你自己的服务地址；指南检查器只编译示例，不会连接该地址。示例由同一 client 构造并执行请求，logger 也从该 client 的 options 构造。独立创建的 logger 使用传给构造器的策略，不会自动继承另一份请求快照。
 
 ## 代理与 IPv4-only
 
@@ -1157,7 +1157,7 @@ while let Some(item) = chunks.next().await {
 - `DefaultDone`：`data:` 去除空白后等于 `[DONE]` 时输出 `SseChunk::Done` 并结束。
 - `Custom(String)`：使用自定义完成标记。
 
-`SseJsonMode::Lenient` 会跳过 malformed JSON chunk 并继续。自动解码错误使用固定摘要，并通过 source 保留安全的 `JsonDecodeError`。Lenient DEBUG 日志只记录错误类型/阶段以及 event/id 是否存在和字节数，不记录原文；调用方仍可读取原始 message 字段，并应自行控制日志策略。 依赖旧错误文本或记录 event/id 原文的应用应改为检查 `HttpErrorKind` 并读取 `JsonDecodeError` source；只有在明确制定应用日志策略后才记录消息字段。`Strict` 会在第一个 malformed JSON 处返回 `HttpErrorKind::SseDecode`。JSON value 预算可通过 `HttpClientOptions::json_value_limits` 或 `json.max_*` 配置，SSE frame 限制通过 `sse.*` 配置。若只覆盖本次响应，可按上例把 `json_value_limits`、`sse_json_mode`、`sse_done_marker_policy`、`sse_max_line_bytes`、`sse_max_frame_bytes` 与 `sse_chunks::<T>()` 链在同一表达式中。
+`SseJsonMode::Lenient` 会规范化受支持的 JSON 格式，跳过普通的 malformed JSON chunk 并继续。两种模式遇到 JSON 资源预算超限时都会返回 `HttpErrorKind::SseDecode` 并终止流，不会继续读取后续有效 chunk。`Strict` 遇到第一个 malformed JSON chunk 时也会返回 `HttpErrorKind::SseDecode`。自动解码错误使用固定摘要，并通过 source 保留安全的 `JsonDecodeError`。Lenient DEBUG 日志只记录错误类型/阶段以及 event/id 是否存在和字节数，不记录原文；调用方仍可读取原始 message 字段，并应自行控制日志策略。依赖旧错误文本或记录 event/id 原文的应用应改为检查 `HttpErrorKind` 并读取 `JsonDecodeError` source；只有在明确制定应用日志策略后才记录消息字段。JSON value 预算可通过 `HttpClientOptions::json_value_limits` 或 `json.max_*` 配置，SSE frame 限制通过 `sse.*` 配置。若只覆盖本次响应，可按上例把 `json_value_limits`、`sse_json_mode`、`sse_done_marker_policy`、`sse_max_line_bytes`、`sse_max_frame_bytes` 与 `sse_chunks::<T>()` 链在同一表达式中。
 
 ### SSE 自动重连
 

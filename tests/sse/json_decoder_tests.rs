@@ -133,19 +133,25 @@ async fn test_decode_json_chunks_with_limits_reports_sse_protocol_error() {
 
 #[tokio_test]
 async fn test_decode_json_chunks_applies_response_json_value_limits() {
-    let response = stream_response_from_chunks(vec!["data: {\"value\": 1}\n\n"]);
-    let mut stream = response
-        .json_value_limits(JsonValueLimits::builder().max_nodes(1).build())
-        .sse_json_mode(SseJsonMode::Strict)
-        .sse_chunks::<TestChunk>();
+    for mode in [SseJsonMode::Strict, SseJsonMode::Lenient] {
+        let response = stream_response_from_chunks(vec!["data: {\"value\": 1}\n\n", "data: 1\n\n"]);
+        let mut stream = response
+            .json_value_limits(JsonValueLimits::builder().max_nodes(1).build())
+            .sse_json_mode(mode)
+            .sse_chunks::<serde_json::Value>();
 
-    let error = stream
-        .next()
-        .await
-        .expect("stream should produce a result")
-        .expect_err("response JSON node limit must reject the SSE payload");
+        let error = stream
+            .next()
+            .await
+            .expect("stream should produce a result")
+            .expect_err("response JSON node limit must reject the SSE payload");
 
-    assert_eq!(error.kind, HttpErrorKind::SseDecode);
+        assert_eq!(error.kind, HttpErrorKind::SseDecode, "mode: {mode:?}");
+        assert!(
+            stream.next().await.is_none(),
+            "budget failure must terminate the stream in {mode:?} mode"
+        );
+    }
 }
 
 #[tokio_test]

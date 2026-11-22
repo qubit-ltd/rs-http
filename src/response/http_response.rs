@@ -601,11 +601,11 @@ impl HttpResponse {
     /// - `T`: Owned type decoded from each SSE data payload.
     ///
     /// # Returns
-    /// A stream of decoded chunks and any configured done marker. With
-    /// [`SseJsonMode::Lenient`], invalid JSON payloads are skipped; with
-    /// [`SseJsonMode::Strict`], the first JSON decode error is emitted and the
-    /// stream then terminates. Stream, protocol, and resource-limit errors may
-    /// also terminate the stream. When
+    /// A stream of decoded chunks and any configured done marker. Lenient
+    /// decoding normalizes supported JSON forms and skips payloads that remain
+    /// invalid; strict decoding emits an error for the first invalid payload.
+    /// JSON resource-budget failures terminate the stream in either mode.
+    /// Stream, protocol, and framing-limit errors may also terminate it. When
     /// [`SseCompletionPolicy::RequireDoneMarker`] is configured, reaching EOF
     /// without the required marker emits an SSE protocol error.
     pub fn sse_chunks<T>(mut self) -> SseChunkStream<T>

@@ -41,18 +41,37 @@ MARKDOWN_LINK = re.compile(r"!?\[[^\]]*\]\((<[^>]+>|[^)]*)\)")
 HTML_ID = re.compile(r"<(?:a|span)\b[^>]*\b(?:id|name)\s*=\s*['\"]([^'\"]+)['\"]", re.IGNORECASE)
 
 
+def markdown_lines_outside_fences(markdown: str):
+    """Yield (line number, source) pairs outside CommonMark fenced blocks."""
+    fence_character = None
+    fence_length = 0
+    for line_number, line in enumerate(markdown.splitlines(), start=1):
+        if fence_character is None:
+            opener = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line)
+            if opener:
+                markers, info = opener.groups()
+                if markers[0] != "`" or "`" not in info:
+                    fence_character = markers[0]
+                    fence_length = len(markers)
+                    continue
+            yield line_number, line
+            continue
+
+        closer = re.match(r"^ {0,3}(`+|~+)([ \t]*)$", line)
+        if (
+            closer
+            and closer.group(1)[0] == fence_character
+            and len(closer.group(1)) >= fence_length
+        ):
+            fence_character = None
+            fence_length = 0
+
+
 def markdown_anchors(markdown: str) -> set[str]:
     """Collect GitHub-style anchors generated from ATX headings and HTML IDs."""
     anchors = set()
     counts: dict[str, int] = {}
-    in_fence = False
-    for line in markdown.splitlines():
-        fence = re.match(r"^\s{0,3}(`{3,}|~{3,})", line)
-        if fence:
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
+    for _, line in markdown_lines_outside_fences(markdown):
         anchors.update(HTML_ID.findall(line))
         heading = re.match(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$", line)
         if not heading:
@@ -76,14 +95,7 @@ def check_local_links(documents: dict[pathlib.Path, str]) -> list[str]:
     contents = {path.resolve(): markdown for path, markdown in documents.items()}
     errors = []
     for source, markdown in contents.items():
-        in_fence = False
-        for line_number, line in enumerate(markdown.splitlines(), start=1):
-            fence = re.match(r"^\s{0,3}(`{3,}|~{3,})", line)
-            if fence:
-                in_fence = not in_fence
-                continue
-            if in_fence:
-                continue
+        for line_number, line in markdown_lines_outside_fences(markdown):
             for match in MARKDOWN_LINK.finditer(line):
                 destination = match.group(1).strip()
                 if destination.startswith("<") and destination.endswith(">"):
@@ -460,6 +472,32 @@ class LocalLinkTests(unittest.TestCase):
         }
 
         self.assertEqual(check_local_links(documents), [])
+
+    def test_fence_scanner_tracks_marker_and_opening_length(self):
+        source = pathlib.Path("guide.md")
+        markdown = (
+            "````markdown\n"
+            "```\n"
+            "[hidden](inside.md)\n"
+            "# Fake Heading\n"
+            "````\n"
+            "[visible](after.md)\n"
+            "~~~text\n"
+            "```` not a tilde closer\n"
+            "[also hidden](inside.md)\n"
+            "~~~~ trailing text\n"
+            "~~~~~\n"
+            "[also visible](missing.md)\n"
+        )
+        documents = {source: markdown}
+
+        errors = check_local_links(documents)
+        anchors = markdown_anchors(markdown)
+
+        self.assertEqual(len(errors), 2)
+        self.assertIn("guide.md:6: missing local file", errors[0])
+        self.assertIn("guide.md:12: missing local file", errors[1])
+        self.assertNotIn("fake-heading", anchors)
 
     def test_html_ids_and_duplicate_heading_anchors(self):
         markdown = "<span id=\"custom-section\"></span>\n## Repeated Heading\n## Repeated Heading\n"

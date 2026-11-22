@@ -201,7 +201,7 @@ fn test_log_response_buffered_body_reports_exhausted_redaction_budget() {
     });
 
     assert!(logs.contains("<skipped: redaction output budget exhausted>"));
-    assert!(!logs.contains("<skipped: body not yet consumed>"));
+    assert!(!logs.contains("<skipped: body not buffered>"));
     assert!(!logs.contains("raw-secret-body"));
     assert!(!logs.contains("raw-secret-url-value"));
 }
@@ -506,7 +506,7 @@ fn test_log_request_hides_raw_path_when_url_resolution_fails() {
 }
 
 #[test]
-fn test_execute_returns_body_read_error_from_response_logging() {
+fn test_execute_with_trace_leaves_body_read_failure_to_caller() {
     let logs = capture_trace_logs(|| {
         let runtime = Builder::new_current_thread()
             .enable_all()
@@ -531,11 +531,21 @@ fn test_execute_returns_body_read_error_from_response_logging() {
                 .expect("client should be created");
 
             let request = client.request(Method::GET, "/trace-body-read-error").build();
-            let response = timeout(std::time::Duration::from_secs(3), client.execute(request))
+            let mut response = timeout(std::time::Duration::from_secs(3), client.execute(request))
                 .await
                 .expect("execute timed out")
                 .expect("response logging must not consume the body");
-            drop(response);
+            assert_eq!(response.status(), StatusCode::OK);
+            let body_error = timeout(std::time::Duration::from_secs(3), response.bytes())
+                .await
+                .expect("body read timed out")
+                .expect_err("truncated response body should fail when consumed");
+            assert_eq!(body_error.kind, HttpErrorKind::Transport);
+            assert_eq!(body_error.status, Some(StatusCode::OK));
+            assert_eq!(
+                body_error.url,
+                Some(server.base_url().join("/trace-body-read-error").unwrap())
+            );
 
             let captured = timeout(std::time::Duration::from_secs(3), server.finish())
                 .await
@@ -544,6 +554,7 @@ fn test_execute_returns_body_read_error_from_response_logging() {
         });
     });
     assert!(logs.contains("<-- 200"));
+    assert!(logs.contains("Response body: <skipped: body not buffered>"));
 }
 
 #[test]
@@ -603,7 +614,7 @@ fn test_execute_skips_trace_response_body_for_streaming_or_unknown_size_body() {
                 .expect("server finish timed out");
         });
     });
-    assert!(logs.contains("Response body: <skipped: body not yet consumed>"));
+    assert!(logs.contains("Response body: <skipped: body not buffered>"));
 }
 
 #[test]
@@ -652,7 +663,7 @@ fn test_execute_logs_response_body_when_content_type_only_has_sse_prefix() {
             assert_eq!(captured.target, "/trace-not-sse-prefix");
         });
     });
-    assert!(logs.contains("Response body: <skipped: body not yet consumed>"));
+    assert!(logs.contains("Response body: <skipped: body not buffered>"));
 }
 
 #[test]
@@ -837,7 +848,7 @@ fn test_execute_logs_response_body_from_backend_when_trace_enabled() {
             assert_eq!(captured.target, "/logger-backend-path");
         });
     });
-    assert!(logs.contains("Response body: <skipped: body not yet consumed>"));
+    assert!(logs.contains("Response body: <skipped: body not buffered>"));
 }
 
 #[test]
@@ -906,7 +917,7 @@ fn test_log_response_skips_body_when_backend_already_consumed() {
             assert_eq!(captured.target, "/consumed-backend");
         });
     });
-    assert!(logs.contains("Response body: <skipped: body not yet consumed>"));
+    assert!(logs.contains("Response body: <skipped: body not buffered>"));
 }
 
 #[test]
@@ -950,7 +961,7 @@ fn test_log_response_skips_body_for_sse_content_type() {
             assert_eq!(captured.target, "/sse-log-skip");
         });
     });
-    assert!(logs.contains("Response body: <skipped: body not yet consumed>"));
+    assert!(logs.contains("Response body: <skipped: body not buffered>"));
 }
 
 #[test]

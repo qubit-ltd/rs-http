@@ -236,7 +236,7 @@ impl<'a> HttpLogger<'a> {
                     ))))
                 }
             } else {
-                Some(Err("<skipped: body not yet consumed>"))
+                Some(Err("<skipped: body not buffered>"))
             }
         } else {
             None

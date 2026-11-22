@@ -14,7 +14,9 @@ use serde::Serialize;
 /// Controls how JSON parse failures on SSE `data:` lines are handled.
 ///
 /// Lenient mode normalizes supported JSON forms and skips payloads that remain
-/// invalid. Strict mode returns an error for the first invalid payload.
+/// invalid. Strict mode returns an error for the first invalid payload. In
+/// either mode, a JSON resource-budget failure is returned as an error rather
+/// than skipped.
 ///
 /// # Examples
 ///
@@ -29,10 +31,11 @@ use serde::Serialize;
 #[display(style = "snake_case")]
 pub enum SseJsonMode {
     /// Apply supported JSON normalization, then skip chunks that remain
-    /// invalid.
+    /// invalid. JSON resource-budget failures still terminate decoding.
     #[from_str(regex = "(?i)lenient")]
     Lenient,
-    /// Propagate [`crate::HttpError::sse_decode`] on first failure.
+    /// Propagate [`crate::HttpError::sse_decode`] on the first invalid payload
+    /// or JSON resource-budget failure.
     #[from_str(regex = "(?i)strict")]
     Strict,
 }
