@@ -14,6 +14,8 @@ import subprocess
 import sys
 import tempfile
 import tomllib
+import unicodedata
+import urllib.parse
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -35,6 +37,89 @@ DEPENDENCIES_START = "<!-- guide-dependencies:start -->"
 DEPENDENCIES_END = "<!-- guide-dependencies:end -->"
 TOML_FENCE = re.compile(r"```toml\s*\n(.*?)\n```", re.DOTALL)
 TOKEN_REFRESH_DECLARATION = "async fn refresh_access_token() -> HttpResult<String> {"
+MARKDOWN_LINK = re.compile(r"!?\[[^\]]*\]\((<[^>]+>|[^)]*)\)")
+HTML_ID = re.compile(r"<(?:a|span)\b[^>]*\b(?:id|name)\s*=\s*['\"]([^'\"]+)['\"]", re.IGNORECASE)
+
+
+def markdown_anchors(markdown: str) -> set[str]:
+    """Collect GitHub-style anchors generated from ATX headings and HTML IDs."""
+    anchors = set()
+    counts: dict[str, int] = {}
+    in_fence = False
+    for line in markdown.splitlines():
+        fence = re.match(r"^\s{0,3}(`{3,}|~{3,})", line)
+        if fence:
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        anchors.update(HTML_ID.findall(line))
+        heading = re.match(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$", line)
+        if not heading:
+            continue
+        title = re.sub(r"[`*_~]", "", heading.group(1))
+        title = re.sub(r"!?\[([^\]]*)\]\([^)]*\)", r"\1", title)
+        slug = "".join(
+            "-" if char.isspace() else char
+            for char in title.lower()
+            if not unicodedata.category(char).startswith("P") or char == "-"
+        )
+        slug = re.sub(r"-+", "-", slug).strip("-")
+        occurrence = counts.get(slug, 0)
+        counts[slug] = occurrence + 1
+        anchors.add(slug if occurrence == 0 else f"{slug}-{occurrence}")
+    return anchors
+
+
+def check_local_links(documents: dict[pathlib.Path, str]) -> list[str]:
+    """Return broken local file and Markdown fragment links with source lines."""
+    contents = {path.resolve(): markdown for path, markdown in documents.items()}
+    errors = []
+    for source, markdown in contents.items():
+        in_fence = False
+        for line_number, line in enumerate(markdown.splitlines(), start=1):
+            fence = re.match(r"^\s{0,3}(`{3,}|~{3,})", line)
+            if fence:
+                in_fence = not in_fence
+                continue
+            if in_fence:
+                continue
+            for match in MARKDOWN_LINK.finditer(line):
+                destination = match.group(1).strip()
+                if destination.startswith("<") and destination.endswith(">"):
+                    destination = destination[1:-1]
+                destination = re.split(r"\s+['\"]", destination, maxsplit=1)[0]
+                if destination.startswith("//"):
+                    continue
+                parsed = urllib.parse.urlsplit(destination)
+                if parsed.scheme or parsed.netloc:
+                    continue
+                relative_path = urllib.parse.unquote(parsed.path)
+                target = source if not relative_path else (source.parent / relative_path).resolve()
+                if target not in contents and not target.is_file():
+                    errors.append(f"{source}:{line_number}: missing local file for link {destination!r}")
+                    continue
+                if parsed.fragment and target.suffix.lower() == ".md":
+                    target_markdown = contents.get(target)
+                    if target_markdown is None:
+                        try:
+                            target_markdown = target.read_text(encoding="utf-8")
+                        except OSError:
+                            errors.append(f"{source}:{line_number}: cannot read Markdown target {destination!r}")
+                            continue
+                    fragment = urllib.parse.unquote(parsed.fragment)
+                    if fragment not in markdown_anchors(target_markdown):
+                        errors.append(f"{source}:{line_number}: missing heading anchor in link {destination!r}")
+    return errors
+
+
+def check_repository_local_links() -> None:
+    """Check local links emitted by both READMEs and both user guides."""
+    paths = [*READMES.values(), *GUIDES.values()]
+    documents = {path: path.read_text(encoding="utf-8") for path in paths}
+    errors = check_local_links(documents)
+    if errors:
+        raise ValueError("local links:\n" + "\n".join(errors))
 
 
 def extract_dependencies(markdown: str) -> dict:
@@ -337,6 +422,58 @@ def validate_generated_bins(
     for name, path in declared.items():
         if name not in expected:
             raise ValueError(f"fixture: extra bin {name} points to {path}")
+
+
+class LocalLinkTests(unittest.TestCase):
+    def test_local_chinese_heading_and_legacy_anchor(self):
+        source = pathlib.Path("guide.md")
+        documents = {
+            source: "[correct](#header注入器和拦截器)\n[legacy](#header-注入器和拦截器)\n"
+            "## Header、注入器和拦截器\n"
+        }
+
+        errors = check_local_links(documents)
+
+        self.assertEqual(len(errors), 1)
+        self.assertIn("missing heading anchor", errors[0])
+        self.assertIn("#header-注入器和拦截器", errors[0])
+
+    def test_relative_files_and_cross_file_headings(self):
+        source = pathlib.Path("docs/index.md")
+        target = pathlib.Path("docs/guide.md")
+        documents = {
+            source: "[guide](guide.md#install-%E4%B8%AD%E6%96%87) [missing](absent.md)\n",
+            target: "## Install 中文\n",
+        }
+
+        errors = check_local_links(documents)
+
+        self.assertEqual(len(errors), 1)
+        self.assertIn("missing local file", errors[0])
+        self.assertIn("absent.md", errors[0])
+
+    def test_ignores_external_links_and_fenced_code(self):
+        source = pathlib.Path("guide.md")
+        documents = {
+            source: "[external](https://example.com/missing) [protocol-relative](//example.com/missing)\n"
+            "```markdown\n[hidden](missing.md#absent)\n```\n"
+        }
+
+        self.assertEqual(check_local_links(documents), [])
+
+    def test_html_ids_and_duplicate_heading_anchors(self):
+        markdown = "<span id=\"custom-section\"></span>\n## Repeated Heading\n## Repeated Heading\n"
+        markdown += "```html\n<span id=\"hidden-section\"></span>\n````\n"
+
+        anchors = markdown_anchors(markdown)
+
+        self.assertIn("custom-section", anchors)
+        self.assertIn("repeated-heading", anchors)
+        self.assertIn("repeated-heading-1", anchors)
+        self.assertNotIn("hidden-section", anchors)
+
+    def test_repository_readmes_and_guides_have_valid_local_links(self):
+        check_repository_local_links()
 
 
 class GeneratedBinTests(unittest.TestCase):

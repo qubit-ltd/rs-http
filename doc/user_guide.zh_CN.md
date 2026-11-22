@@ -780,6 +780,7 @@ match client.execute(request).await {
 | --- | --- | --- |
 | URL / 配置 | `InvalidUrl`, `BuildClient`, `ProxyConfig` | URL 无法解析、客户端构建失败或代理配置非法 |
 | 超时 / 网络 | `ConnectTimeout`, `ReadTimeout`, `ResponseHeaderTimeout`, `RequestTimeout`, `Transport` | `ConnectTimeout` 表示后端报告的连接阶段超时；其它发送阶段超时仍为 `RequestTimeout`，非超时连接失败仍为 `Transport` |
+| 来源策略 | `OriginPolicy` | 初始目标违反构建请求时的策略，或重定向目标违反执行客户端后端的策略；详见[跨客户端来源策略](#跨客户端来源策略) |
 | 重定向策略 | `RedirectLimitExceeded`（`redirect_limit_exceeded`） | 超出配置的重定向次数上限 |
 | HTTP 状态 | `Status` | 收到非 2xx 状态码 |
 | 解码 / SSE | `Decode`, `SseProtocol`, `SseDecode` | 响应体解码失败、SSE 协议错误或 SSE JSON chunk 解码失败 |
@@ -853,7 +854,7 @@ backend 读取失败和流不可用。backend 读取失败时可用 `capture_err
 
 `retry.error_kinds` 可使用所有 `HttpErrorKind` 名称的配置形式。配置值会 trim，`read-timeout` 一类连字符形式会归一化为 `read_timeout`；请使用小写 snake_case 或等价的连字符形式。默认集合不含 `redirect_limit_exceeded`；普通 HTTP 调用方可按自身服务行为显式将它加入白名单。
 
-request interceptor 可以在重试流程准入后修改 method 或重试覆盖项；最终 method 和覆盖项决定该流程能否继续。拦截器不能启动此前未准入的重试流程。拦截器顺序见 [Header、注入器和拦截器](#header-注入器和拦截器)。
+request interceptor 可以在重试流程准入后修改 method 或重试覆盖项；最终 method 和覆盖项决定该流程能否继续。拦截器不能启动此前未准入的重试流程。拦截器顺序见 [Header、注入器和拦截器](#header注入器和拦截器)。
 
 对单个请求可以覆盖：
 

@@ -814,6 +814,7 @@ For non-2xx errors, the redacted preview and retained raw body have independent 
 | --- | --- | --- |
 | URL / configuration | `InvalidUrl`, `BuildClient`, `ProxyConfig` | URL resolution failed, client construction failed, or proxy options are invalid |
 | Timeout / network | `ConnectTimeout`, `ReadTimeout`, `ResponseHeaderTimeout`, `RequestTimeout`, `Transport` | `ConnectTimeout` is a timeout reported for the connection phase; other send-phase timeouts remain `RequestTimeout`, and non-timeout connection failures remain `Transport` |
+| Origin policy | `OriginPolicy` | The initial target violates the request snapshot policy, or a redirect target violates the executing client's backend policy; see [origin policy across clients](#origin-policy-across-clients) |
 | Redirect policy | `RedirectLimitExceeded` (`redirect_limit_exceeded`) | The configured redirect ceiling rejected another redirect |
 | HTTP status | `Status` | A non-2xx status code was returned |
 | Decoding / SSE | `Decode`, `SseProtocol`, `SseDecode` | Body decoding failed, SSE framing was invalid, or an SSE JSON chunk could not be decoded |
