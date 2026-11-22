@@ -67,8 +67,6 @@ pub struct HttpError {
     pub retry_after: Option<Duration>,
     /// Optional source error.
     pub source: Option<BoxError>,
-    /// Retry-flow metadata retained independently from the source chain.
-    pub(crate) retry_metadata: Option<RetryErrorMetadata>,
     /// Retry execution diagnostics retained for the final failure.
     pub(crate) retry_diagnostics: Option<HttpRetryDiagnostics>,
     /// Bounded response data captured for a status failure.
@@ -151,7 +149,6 @@ impl HttpError {
             response_body_preview: None,
             retry_after: None,
             source: None,
-            retry_metadata: None,
             retry_diagnostics: None,
             status_response: None,
             log_redactor: Redactor::application_default(),
@@ -335,7 +332,6 @@ impl HttpError {
     #[inline]
     #[deprecated(note = "Use retry_diagnostics() and the RetryError<HttpError> source instead")]
     pub fn retry_metadata(&self) -> Option<&RetryErrorMetadata> {
-        let _ = &self.retry_metadata;
         None
     }
 
