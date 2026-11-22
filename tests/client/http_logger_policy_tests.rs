@@ -169,6 +169,44 @@ fn test_log_response_masks_sensitive_response_url() {
 }
 
 #[test]
+fn test_log_response_buffered_body_reports_exhausted_redaction_budget() {
+    let policy = RedactionPolicy::default()
+        .to_builder()
+        .limits(|limits| {
+            limits.max_input_bytes(256).max_output_bytes(1);
+        })
+        .expect("test policy should be valid")
+        .build()
+        .expect("test policy should be valid");
+    let mut client_options = HttpClientOptions::default();
+    client_options.logging = HttpLoggingOptions::default();
+    client_options.log_redaction_policy = policy;
+    let logger = HttpLogger::new(&client_options);
+
+    let logs = capture_trace_logs(|| {
+        let mut response = HttpResponse::new(
+            StatusCode::OK,
+            HeaderMap::new(),
+            Bytes::from_static(b"raw-secret-body"),
+            Url::parse("https://example.com/data?api_key=raw-secret-url-value").expect("response URL should parse"),
+            Method::GET,
+        );
+        let runtime = Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("failed to build tokio runtime");
+        runtime
+            .block_on(async { logger.log_response(&mut response).await })
+            .expect("response logging should succeed");
+    });
+
+    assert!(logs.contains("<skipped: redaction output budget exhausted>"));
+    assert!(!logs.contains("<skipped: body not yet consumed>"));
+    assert!(!logs.contains("raw-secret-body"));
+    assert!(!logs.contains("raw-secret-url-value"));
+}
+
+#[test]
 fn test_log_stream_response_headers_masks_sensitive_response_url() {
     let options = HttpLoggingOptions::default();
     let mut client_options = HttpClientOptions::default();

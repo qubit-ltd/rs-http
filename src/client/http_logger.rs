@@ -222,42 +222,35 @@ impl<'a> HttpLogger<'a> {
             .options
             .log_response_header
             .then(|| batch.redact_http_headers(response.headers()));
-        if self.options.log_response_body && !batch.is_output_exhausted() {
-            let content_type = Self::content_type(response.headers()).cloned();
-            let mut body_empty = false;
-            let body_handle = if let Some(body) = response.buffered_body_for_logging() {
+        let body_preview = if self.options.log_response_body {
+            if let Some(body) = response.buffered_body_for_logging() {
                 if body.is_empty() {
-                    body_empty = true;
-                    None
+                    Some(Ok(None))
+                } else if batch.is_output_exhausted() {
+                    Some(Err("<skipped: redaction output budget exhausted>"))
                 } else {
-                    Some(batch.redact_http_body(
+                    let content_type = Self::content_type(response.headers()).cloned();
+                    Some(Ok(Some(batch.redact_http_body(
                         BodyPreview::new(body.as_ref(), self.options.body_size_limit).capture(),
                         content_type.as_ref(),
-                    ))
+                    ))))
                 }
             } else {
-                None
-            };
-            let diagnostics = batch.finish();
-            trace!("<-- {} {}", response.status().as_u16(), diagnostics.text(url_handle));
-            if let Some(handle) = header_handle {
-                trace!("{}", diagnostics.text(handle));
-            }
-            if body_empty {
-                trace!("Response body: <empty>");
-            } else if let Some(handle) = body_handle {
-                trace!("Response body: {}", diagnostics.text(handle));
-            } else {
-                trace!("Response body: <skipped: body not yet consumed>");
+                Some(Err("<skipped: body not yet consumed>"))
             }
         } else {
-            let diagnostics = batch.finish();
-            trace!("<-- {} {}", response.status().as_u16(), diagnostics.text(url_handle));
-            if let Some(handle) = header_handle {
-                trace!("{}", diagnostics.text(handle));
-            }
-            if self.options.log_response_body {
-                trace!("Response body: <skipped: body not yet consumed>");
+            None
+        };
+        let diagnostics = batch.finish();
+        trace!("<-- {} {}", response.status().as_u16(), diagnostics.text(url_handle));
+        if let Some(handle) = header_handle {
+            trace!("{}", diagnostics.text(handle));
+        }
+        if let Some(body_preview) = body_preview {
+            match body_preview {
+                Ok(None) => trace!("Response body: <empty>"),
+                Ok(Some(handle)) => trace!("Response body: {}", diagnostics.text(handle)),
+                Err(reason) => trace!("Response body: {reason}"),
             }
         }
         Ok(())
